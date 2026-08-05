@@ -17,6 +17,7 @@
 
 #include "AppHost.h"
 #include "TerminalProtocolComServer.h"
+#include "../TerminalApp/KeepRunningSessionHelpers.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
@@ -1468,6 +1469,12 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             case NIN_SELECT:
             case NIN_KEYSELECT:
             {
+                if (_windows.empty())
+                {
+                    _activateHeadlessTrayWindow(SW_SHOWNORMAL);
+                    break;
+                }
+
                 SummonWindowSelectionArgs args;
                 args.SummonBehavior.MoveToCurrentDesktop(false);
                 args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
@@ -1879,16 +1886,12 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
         return;
     }
 
-    // With kept sessions and no windows there is nothing to summon, and the
-    // icon would be a dead end. Open a fresh window instead, which is also
-    // where the durable sessions get reattached.
+    // With no windows there is nothing to summon. Re-run the persisted layout
+    // restore first when durable sessions are detached so the tray brings back
+    // the last real window arrangement instead of a blank default tab.
     if (windowId == 0 && _windows.empty())
     {
-        const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
-        const auto env = stringFromDoubleNullTerminated(envMem.get());
-        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
-        const std::array args{ winrt::hstring{ L"wt" } };
-        _dispatchCommandlineCommon(args, cwd, env, SW_SHOWNORMAL);
+        _activateHeadlessTrayWindow(SW_SHOWNORMAL);
         return;
     }
 
@@ -1918,6 +1921,26 @@ winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
     return nullptr;
 }
 
+void WindowEmperor::_activateHeadlessTrayWindow(const uint32_t showWindowCommand)
+{
+    _assertIsMainThread();
+    WI_ASSERT(_windows.empty());
+
+    const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
+    const auto env = stringFromDoubleNullTerminated(envMem.get());
+    const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
+
+    if (winrt::TerminalApp::implementation::ClassifyHeadlessTrayActivation(false, _hasKeptSessions()) ==
+            winrt::TerminalApp::implementation::HeadlessTrayActivationMode::RestorePersistedLayoutsBeforeFreshWindow &&
+        _restorePersistedLayouts(cwd, env, showWindowCommand))
+    {
+        return;
+    }
+
+    const std::array args{ winrt::hstring{ L"wt" } };
+    _dispatchCommandlineCommon(args, cwd, env, showWindowCommand);
+}
+
 // Brings a detached tab back on screen. Its panes are right here in the
 // ContentManager, so this reuses the same "open with existing content" path a
 // cross-window pane drag uses, rather than going anywhere near the saved
@@ -1933,26 +1956,11 @@ try
     }
 
     // Atomic take: after this the tab is ours and is no longer listed.
-    const auto contentIds = manager.TryReattachKeptGroup(groupId);
-    if (!contentIds || contentIds.Size() == 0)
+    const auto restoredGroup = manager.TryReattachKeptGroup(groupId);
+    auto actions = winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(restoredGroup);
+    if (actions.empty())
     {
         return;
-    }
-
-    using namespace winrt::Microsoft::Terminal::Settings::Model;
-    std::vector<ActionAndArgs> actions;
-    for (const auto contentId : contentIds)
-    {
-        NewTerminalArgs terminalArgs;
-        terminalArgs.ContentId(contentId);
-        if (actions.empty())
-        {
-            actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ terminalArgs });
-        }
-        else
-        {
-            actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, terminalArgs });
-        }
     }
 
     const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));

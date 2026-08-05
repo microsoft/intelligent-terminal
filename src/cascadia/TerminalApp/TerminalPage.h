@@ -707,7 +707,7 @@ namespace winrt::TerminalApp::implementation
         static _ShellSessionSaveResult _ParseShellSessionSaveResponse(std::string_view json);
         void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _PersistShellSession(Tab* tab);
-        void _DetachShellPanesForKeepRunning(Tab* tab, const winrt::hstring& shellSessionId);
+        void _DetachShellPanesForKeepRunning(Tab* tab, const winrt::hstring& shellSessionId, int64_t shellSessionRevision);
         // Session ids of panes detached for keep-running during the tab close
         // that is currently in flight, so _NotifyPanesClosing can tell them
         // apart from panes that really are going away.

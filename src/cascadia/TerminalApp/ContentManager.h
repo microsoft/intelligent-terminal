@@ -31,6 +31,7 @@ Abstract:
 #include "ContentManager.g.h"
 #include "DetachedSessionEndedArgs.g.h"
 #include "DetachedSessionInfo.g.h"
+#include "KeptGroupRestoreResult.g.h"
 
 #include <inc/cppwinrt_utils.h>
 namespace winrt::TerminalApp::implementation
@@ -82,6 +83,28 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _state{ L"closed" };
     };
 
+    struct KeptGroupRestoreResult : KeptGroupRestoreResultT<KeptGroupRestoreResult>
+    {
+    public:
+        KeptGroupRestoreResult(std::vector<uint64_t> contentIds,
+                               winrt::hstring shellSessionId,
+                               const int64_t shellSessionRevision) :
+            _contentIds{ winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView() },
+            _shellSessionId{ std::move(shellSessionId) },
+            _shellSessionRevision{ shellSessionRevision }
+        {
+        }
+
+        winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentIds() const noexcept { return _contentIds; }
+        winrt::hstring ShellSessionId() const noexcept { return _shellSessionId; }
+        int64_t ShellSessionRevision() const noexcept { return _shellSessionRevision; }
+
+    private:
+        winrt::Windows::Foundation::Collections::IVectorView<uint64_t> _contentIds{ nullptr };
+        winrt::hstring _shellSessionId;
+        int64_t _shellSessionRevision{ 0 };
+    };
+
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
@@ -97,11 +120,12 @@ namespace winrt::TerminalApp::implementation
                                   const winrt::guid& sessionId,
                                   const winrt::hstring& title,
                                   const winrt::hstring& shellSessionId,
+                                  int64_t shellSessionRevision,
                                   const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> DetachedSessions();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
-        winrt::Windows::Foundation::Collections::IVectorView<uint64_t> TryReattachKeptGroup(const winrt::guid& groupId);
+        winrt::TerminalApp::KeptGroupRestoreResult TryReattachKeptGroup(const winrt::guid& groupId);
         bool DiscardKeptSession(const winrt::guid& sessionId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         bool HasKeptSessions() const noexcept;
@@ -138,6 +162,7 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::hstring title;
             winrt::hstring shellSessionId;
+            int64_t shellSessionRevision{ 0 };
             std::vector<winrt::guid> sessionIds;
         };
 

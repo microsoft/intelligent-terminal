@@ -79,8 +79,10 @@ emperor that detached content is a reason to stay alive.
 
 ### What a detached session is
 
-`ContentManager::DetachForKeepRunning(sessionId, control)` detaches the control and
-records `sessionId → ContentId`. The detached `ControlInteractivity` keeps:
+`ContentManager::DetachForKeepRunning(...)` detaches the control and records
+`sessionId → ContentId`, plus the detached tab's committed durable
+`shell_sessions` id/revision on the kept-group metadata. The detached
+`ControlInteractivity` keeps:
 
 * its `ConptyConnection`, whose output thread keeps reading the pty — so nothing
   ever stalls on a full pipe buffer;
@@ -110,8 +112,10 @@ follow:
 
 A terminal with no windows is otherwise invisible and unquittable, so
 `_checkWindowsForNotificationIcon` now also shows the notification-area icon
-whenever sessions are detached, and clicking "Focus Terminal" with no windows opens
-a fresh one instead of doing nothing.
+whenever sessions are detached, and clicking "Focus Terminal" with no windows
+re-runs the persisted-layout restore first so the detached sessions come back in
+their saved layout, falling back to a fresh window only when no persisted layout
+is available.
 
 ### Ordering with bucket 1
 
