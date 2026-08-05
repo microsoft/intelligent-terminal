@@ -133,9 +133,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void NewCustomModelProviderBaseUrl(const winrt::hstring& value);
         winrt::hstring NewCustomModelId() const { return _newCustomModelId; }
         void NewCustomModelId(const winrt::hstring& value);
-        winrt::hstring NewCustomModelApiKey() const { return _newCustomModelApiKey; }
-        void NewCustomModelApiKey(const winrt::hstring& value);
-        winrt::hstring NewCustomModelApiKeyError() const { return _newCustomModelApiKeyError; }
         bool CanSaveCustomModelProvider() const { return _HasNonWhitespace(_newCustomModelProviderBaseUrl) && _HasNonWhitespace(_newCustomModelId); }
         winrt::hstring CustomModelProviderUnsupportedMessage();
         void AddCustomModelProvider();
@@ -236,8 +233,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _customDelegateCommand;
         winrt::hstring _newCustomModelProviderBaseUrl;
         winrt::hstring _newCustomModelId;
-        winrt::hstring _newCustomModelApiKey;
-        winrt::hstring _newCustomModelApiKeyError;
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();

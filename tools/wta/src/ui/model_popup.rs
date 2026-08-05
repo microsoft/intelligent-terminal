@@ -1,7 +1,7 @@
 //! `/model` picker modal.
 //!
 //! Opened by the `/model` slash command (`App::cmd_model`), this overlay
-//! lists the configured BYOK models. Cloud/native models are intentionally
+//! lists the configured BYOM models. Cloud/native models are intentionally
 //! omitted; restart-required choices remain visible but dimmed and must be
 //! changed in Settings. Modeled on the
 //! slash-command
@@ -57,7 +57,7 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
             } else {
                 CURRENT_PAD
             };
-            let mut spans = vec![Span::styled(
+            let spans = vec![Span::styled(
                 format!(" {marker}{}", m.name),
                 if disabled {
                     theme::DIM
@@ -65,15 +65,6 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
                     theme::INPUT_TEXT
                 },
             )];
-            // Show the raw id when it differs from the display name, plus the
-            // optional one-line description, both dimmed. Custom BYOK entries
-            // need their selection ids visible because display names can match.
-            if m.id != m.name {
-                spans.push(Span::styled(format!("  ({})", m.id), theme::DIM));
-            }
-            if let Some(desc) = m.description.as_deref().filter(|d| !d.is_empty()) {
-                spans.push(Span::styled(format!("  — {}", desc), theme::DIM));
-            }
             ListItem::new(Line::from(spans))
         })
         .collect();

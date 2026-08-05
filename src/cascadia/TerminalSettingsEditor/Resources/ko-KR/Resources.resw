@@ -2979,12 +2979,12 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>지능형 터미널이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
   </data>
-  <data name="AIAgents_CustomModelsGroupHeader.Text" xml:space="preserve">
-    <value>BYOK 공급자</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>BYOM 공급자</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
-    <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용합니다. GitHub Copilot 및 OpenCode에서 지원됩니다.</value>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용합니다. GitHub Copilot 및 OpenCode를 지원합니다.</value>
     <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
@@ -3003,10 +3003,6 @@
     <value>모델 ID</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
-    <value>API 키(로컬 공급자의 경우 선택 사항)</value>
-    <comment>Placeholder for a custom provider API key. {Locked="API"}</comment>
-  </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>새로 추가</value>
     <comment>Button that starts adding a custom model provider.</comment>
@@ -3020,8 +3016,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (BYOK)</value>
-    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 호환</value>

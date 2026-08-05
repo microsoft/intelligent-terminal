@@ -2919,12 +2919,12 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Permita que Terminal Inteligente envíe errores a su agente para sugerir correcciones automáticamente.</value>
   </data>
-  <data name="AIAgents_CustomModelsGroupHeader.Text" xml:space="preserve">
-    <value>Proveedores BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>Proveedores BYOM</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
-    <value>Use un punto de conexión de API de Chat Completions compatible con OpenAI. Compatible con GitHub Copilot y OpenCode.</value>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>Use un punto de conexión de API de Chat Completions compatible con OpenAI. Admite GitHub Copilot y OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
@@ -2943,10 +2943,6 @@
     <value>ID de modelo</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
-    <value>Clave de API (opcional para proveedores locales)</value>
-    <comment>Placeholder for a custom provider API key. {Locked="API"}</comment>
-  </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Agregar nuevo</value>
     <comment>Button that starts adding a custom model provider.</comment>
@@ -2960,8 +2956,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (BYOK)</value>
-    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Compatible con OpenAI</value>

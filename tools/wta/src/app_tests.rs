@@ -2337,8 +2337,8 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
         .all(|model| model.id != "custom:old:model-b"));
     assert!(app.available_models.iter().any(|model| {
         model.id == "custom:new:model-c"
-            && model.name == "Renamed Model (BYOK)"
-            && model.description.as_deref() == Some("Renamed Provider")
+            && model.name == "model-c (BYOM)"
+            && model.description.is_none()
     }));
     let new_provider = app
         .custom_model_catalog
@@ -5751,7 +5751,7 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: the `/model` picker must list BYOK models and omit cloud models. Lifts
+/// Render: the `/model` picker must list BYOM model IDs and omit cloud models. Lifts
 /// `ui/model_popup.rs`.
 #[test]
 fn render_model_picker_lists_models() {
@@ -5787,9 +5787,10 @@ fn render_model_picker_lists_models() {
         "the model picker must omit cloud models; rendered:\n{text}"
     );
     assert!(
-        text.contains("custom:provider-one:shared-model")
-            && text.contains("custom:provider-two:shared-model"),
-        "custom models with duplicate display names must show distinct ids; rendered:\n{text}"
+        text.contains("shared-model (BYOM)")
+            && !text.contains("custom:provider-one")
+            && !text.contains("custom:provider-two"),
+        "custom models must show only modelId (BYOM); rendered:\n{text}"
     );
 }
 

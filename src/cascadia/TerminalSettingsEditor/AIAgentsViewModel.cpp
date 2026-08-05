@@ -190,6 +190,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     self->_RebuildAcpModelListFromCache();
                 }
             });
+        // A Settings page must not depend on an agent pane having connected
+        // first. Always refresh the native catalog in a clean environment so
+        // BYOM entries supplement cloud models instead of replacing them.
+        _TriggerAcpModelProbe();
 
         // Delegate agents — same GPO-filtered + install-filter rule.
         const auto filteredDelegate = Reg::FilteredDelegateAgents();
@@ -302,11 +306,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.CustomModelProviders(providers);
         _originalCustomModelProviders = std::move(mergedProviders);
 
-        // Refresh the cloud catalog without discarding the last successful
-        // snapshot. Some agents return no native models after BYOK is enabled,
-        // so clearing first would leave only the configured BYOK entries when
-        // a probe times out.
-        _TriggerAcpModelProbe();
+        // The clean cloud catalog is independent of configured BYOM providers.
+        // Rebuild the combined list without launching another agent process.
+        _RebuildAcpModelListFromCache();
         _NotifyChanges(L"CustomModelProviders");
     }
 
@@ -349,16 +351,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _newCustomModelId = value;
             _NotifyChanges(L"NewCustomModelId", L"CanSaveCustomModelProvider");
-        }
-    }
-
-    void AIAgentsViewModel::NewCustomModelApiKey(const winrt::hstring& value)
-    {
-        if (_newCustomModelApiKey != value)
-        {
-            _newCustomModelApiKey = value;
-            _newCustomModelApiKeyError.clear();
-            _NotifyChanges(L"NewCustomModelApiKey", L"NewCustomModelApiKeyError");
         }
     }
 
@@ -425,24 +417,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         provider.ApiContract(winrt::hstring{ ::Microsoft::Terminal::CustomModels::CanonicalApiContract });
         provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
-        if (!_newCustomModelApiKey.empty())
-        {
-            try
-            {
-                provider.ApiKeyCredential(::Microsoft::Terminal::CustomModels::StoreApiKey(
-                    {},
-                    _newCustomModelApiKey));
-                provider.ApiKeyRequired(true);
-            }
-            catch (...)
-            {
-                const auto hr = wil::ResultFromCaughtException();
-                LOG_HR(hr);
-                _newCustomModelApiKeyError = winrt::hresult_error{ hr }.message();
-                _NotifyChanges(L"NewCustomModelApiKeyError");
-                return;
-            }
-        }
 
         auto weakThis = get_weak();
         _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
@@ -462,14 +436,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _isAddingCustomModelProvider = false;
         _newCustomModelProviderBaseUrl.clear();
         _newCustomModelId.clear();
-        _newCustomModelApiKey.clear();
-        _newCustomModelApiKeyError.clear();
         _NotifyChanges(
             L"IsAddingCustomModelProvider",
             L"NewCustomModelProviderBaseUrl",
             L"NewCustomModelId",
-            L"NewCustomModelApiKey",
-            L"NewCustomModelApiKeyError",
             L"CanSaveCustomModelProvider");
     }
 
@@ -1467,7 +1437,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
     }
 
-    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision)
+    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(
+        winrt::hstring agentId,
+        std::wstring agentCmdline,
+        uint64_t generation,
+        uint64_t cacheRevision)
     {
         auto strongThis = get_strong();
         auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
@@ -1485,10 +1459,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 escaped.replace(pos, 1, L"\"\"");
             }
             const std::wstring args = L"probe-models --agent \"" + escaped + L"\"";
-            // 40s ceiling matches probe.rs's internal limits (npx
-            // initialize 25s + new_session 10s + slack). Cached
-            // adapters return in <2s.
-            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 40'000);
+            // WTA owns the shared three-attempt policy. The ceiling covers
+            // three cold npx attempts (25s initialize + 10s session each)
+            // plus retry delays and process startup slack.
+            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 120'000);
         }
 
         const auto catalog = ::Microsoft::Terminal::AcpModels::ParseModelCatalog(std::string_view{ stdoutText });
@@ -1521,7 +1495,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _acpProbing = false;
 
-        if (catalog)
+        if (catalog && !parsed.empty())
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
             if (!Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId))

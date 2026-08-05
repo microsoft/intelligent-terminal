@@ -910,7 +910,7 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
-    /// BYOK-only projection used by the `/model` command. Cloud/native models
+    /// BYOM-only projection used by the `/model` command. Cloud/native models
     /// remain in `available_models` for Settings but are not shown in-pane.
     model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
@@ -1661,15 +1661,10 @@ impl App {
                 model.id != custom.selection_id
                     && model.id != format!("intelligent-terminal/{}", custom.model_id)
             });
-            let display_name = Some(custom.name.as_str())
-                .filter(|name| !name.is_empty())
-                .unwrap_or(custom.model_id.as_str());
             merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
-                name: format!("{display_name} (BYOK)"),
-                description: Some(custom.provider_name.as_str())
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_string),
+                name: format!("{} (BYOM)", custom.model_id),
+                description: None,
             });
         }
         merged
@@ -2041,7 +2036,7 @@ impl App {
         self.current_tab().model_picker_open
     }
 
-    /// `/model [id]` — show the pane's configured BYOK models. Cloud/native
+    /// `/model [id]` — show the pane's configured BYOM models. Cloud/native
     /// models are intentionally available only through Settings.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
@@ -2153,8 +2148,8 @@ impl App {
             .any(|model| model.selection_id == model_id)
     }
 
-    /// `/model` only exposes BYOK rows. A selected BYOK model is visible as the
-    /// current row, but entering or changing BYOK still requires Settings.
+    /// `/model` only exposes BYOM rows. A selected BYOM model is visible as the
+    /// current row, but entering or changing BYOM still requires Settings.
     fn model_pick_enabled(&self, model_id: &str) -> bool {
         self.current_model_id_for_picker() == Some(model_id)
     }
