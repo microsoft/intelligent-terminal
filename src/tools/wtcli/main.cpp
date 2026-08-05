@@ -25,6 +25,7 @@
 #include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -166,6 +167,50 @@ static HRESULT CallJson(F&& call, Json::Value& out)
     if (raw)
         SysFreeString(raw);
     return hr;
+}
+
+static std::string MethodDisplayName(std::string_view method)
+{
+    std::string displayName{ method };
+    for (auto& ch : displayName)
+    {
+        if (ch == '_')
+            ch = '-';
+    }
+    return displayName;
+}
+
+static bool SupportsMethod(ITerminalProtocol* server, std::string_view method, int& exitCode)
+{
+    Json::Value methods;
+    const auto hr = CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, methods);
+    const auto displayName = MethodDisplayName(method);
+
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities failed while checking %s support: 0x%08X\n",
+                displayName.c_str(),
+                static_cast<uint32_t>(hr));
+        exitCode = 1;
+        return false;
+    }
+    if (!methods.isArray())
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities returned malformed capabilities while checking %s support.\n",
+                displayName.c_str());
+        exitCode = 1;
+        return false;
+    }
+
+    for (const auto& supportedMethod : methods)
+    {
+        if (supportedMethod.isString() && supportedMethod.asString() == method)
+            return true;
+    }
+
+    fprintf(stderr, "[wtcli] Connected Terminal does not support %s.\n", displayName.c_str());
+    exitCode = 1;
+    return false;
 }
 
 static std::string GuidToString(const GUID& g)
@@ -439,6 +484,8 @@ int main()
     listDetachedSessionsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
+        if (!SupportsMethod(server.get(), "list_detached_sessions", exitCode))
+            return;
         Json::Value detachedSessions;
         auto hr = CallJson([&](BSTR* j) { return server->ListDetachedSessions(j); }, detachedSessions);
         if (FAILED(hr)) { fprintf(stderr, "ListDetachedSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
@@ -635,6 +682,8 @@ int main()
 
         auto server = connect();
         if (!server) return;
+        if (!SupportsMethod(server.get(), "kill_detached_session", exitCode))
+            return;
 
         const auto hr = server->KillDetachedSession(sessionId);
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
