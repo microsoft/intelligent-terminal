@@ -29,6 +29,8 @@
 #include "FreOverlay.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
+#include "RepoAwarenessService.h"
+#include "RepoSummarySerializer.h"
 #include "ScratchpadContent.h"
 #include "SettingsPaneContent.h"
 #include "SharedWta.h"
@@ -73,6 +75,21 @@ namespace winrt
     namespace WUX = Windows::UI::Xaml;
     using IInspectable = Windows::Foundation::IInspectable;
     using VirtualKeyModifiers = Windows::System::VirtualKeyModifiers;
+}
+
+namespace
+{
+    std::string _plainGuidString(const winrt::guid& value)
+    {
+        wchar_t buffer[40]{};
+        StringFromGUID2(value, buffer, ARRAYSIZE(buffer));
+        std::wstring_view formatted{ buffer };
+        if (formatted.size() > 2 && formatted.front() == L'{' && formatted.back() == L'}')
+        {
+            formatted = formatted.substr(1, formatted.size() - 2);
+        }
+        return winrt::to_string(winrt::hstring{ formatted });
+    }
 }
 
 namespace clipboard
@@ -240,13 +257,138 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
         _WindowProperties.PropertyChanged({ get_weak(), &TerminalPage::_windowPropertyChanged });
+        const auto dispatcher = Dispatcher();
+        _repoSummarySubscription = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().SubscribeSummaryChanged(
+            [weakThis = get_weak(), dispatcher](const std::string& sessionId, const ::Microsoft::Terminal::RepoAwareness::RepoSummary& summary) {
+                const auto eventJson = winrt::to_hstring(
+                    ::Microsoft::Terminal::RepoAwareness::SerializeRepoStateChanged(sessionId, summary));
+
+                dispatcher.RunAsync(
+                    CoreDispatcherPriority::Normal,
+                    [weakThis, sessionId, eventJson]() {
+                        try
+                        {
+                            const auto page = weakThis.get();
+                            if (!page)
+                            {
+                                return;
+                            }
+                            if (!page->_repoObservationAllowed.load(std::memory_order_acquire) ||
+                                !page->_IsTrackedRepoSession(sessionId))
+                            {
+                                return;
+                            }
+
+                            const auto target = winrt::guid{ winrt::to_hstring(sessionId) };
+                            for (const auto& tab : page->_tabs)
+                            {
+                                const auto tabImpl = page->_GetTabImpl(tab);
+                                if (tabImpl && tabImpl->GetRootPane()->FindPaneBySessionId(target))
+                                {
+                                    page->ProtocolVtSequenceReceived.raise(*page, eventJson);
+                                    return;
+                                }
+                            }
+                        }
+                        catch (...)
+                        {
+                            LOG_CAUGHT_EXCEPTION();
+                        }
+                    });
+            });
     }
 
     TerminalPage::~TerminalPage()
     {
+        _ClearTrackedRepoSessions();
+        if (_repoSummarySubscription != 0)
+        {
+            ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().UnsubscribeSummaryChanged(_repoSummarySubscription);
+        }
         // wta-helper processes are conpty children of TermControl and so
         // are torn down by the standard pane teardown path. No per-page
         // wta-process watch state to disarm here (removed in Phase 5).
+    }
+
+    hstring TerminalPage::GetProtocolRepoState(const winrt::guid sessionId, const bool forceRefresh)
+    {
+        const auto sessionIdString = _plainGuidString(sessionId);
+        if (!_repoObservationAllowed.load(std::memory_order_acquire))
+        {
+            ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().RemovePane(sessionIdString);
+            return winrt::to_hstring(::Microsoft::Terminal::RepoAwareness::SerializeRepoSummary({}));
+        }
+
+        const auto summary = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().GetSummary(
+            sessionIdString,
+            forceRefresh);
+        return winrt::to_hstring(::Microsoft::Terminal::RepoAwareness::SerializeRepoSummary(summary));
+    }
+
+    void TerminalPage::SetProtocolRepoConsumerCount(const uint32_t count)
+    {
+        ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().SetConsumerCount(count);
+    }
+
+    bool TerminalPage::_SetTrackedRepoSession(const TermControl& control, std::optional<std::string> sessionId)
+    {
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
+        std::optional<std::string> previousSession;
+        bool tracked = false;
+        {
+            std::lock_guard lock{ _repoSessionsMutex };
+            if (sessionId && !_repoObservationAllowed.load(std::memory_order_acquire))
+            {
+                sessionId.reset();
+            }
+            if (const auto found = _repoSessionsByControl.find(key); found != _repoSessionsByControl.end())
+            {
+                if (!sessionId || found->second != *sessionId)
+                {
+                    previousSession = std::move(found->second);
+                    _repoSessionsByControl.erase(found);
+                }
+            }
+            if (sessionId)
+            {
+                _repoSessionsByControl.insert_or_assign(key, std::move(*sessionId));
+                tracked = true;
+            }
+        }
+
+        if (previousSession)
+        {
+            ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().RemovePane(*previousSession);
+        }
+        return tracked;
+    }
+
+    bool TerminalPage::_IsTrackedRepoSession(const std::string_view sessionId)
+    {
+        std::lock_guard lock{ _repoSessionsMutex };
+        return std::any_of(_repoSessionsByControl.begin(), _repoSessionsByControl.end(), [&](const auto& pair) {
+            return pair.second == sessionId;
+        });
+    }
+
+    void TerminalPage::_ClearTrackedRepoSessions()
+    {
+        std::vector<std::string> sessions;
+        {
+            std::lock_guard lock{ _repoSessionsMutex };
+            sessions.reserve(_repoSessionsByControl.size());
+            for (auto& [_, sessionId] : _repoSessionsByControl)
+            {
+                sessions.emplace_back(std::move(sessionId));
+            }
+            _repoSessionsByControl.clear();
+        }
+
+        auto& service = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+        for (const auto& sessionId : sessions)
+        {
+            service.RemovePane(sessionId);
+        }
     }
 
     // Method Description:
@@ -298,6 +440,14 @@ namespace winrt::TerminalApp::implementation
             _terminalSettingsCache = std::make_shared<TerminalSettingsCache>(settings);
         }
         _settings = settings;
+        const auto repoObservationAllowed =
+            !_settings.GlobalSettings().IsAutoFixPolicyLocked() &&
+            _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
+        const auto wasRepoObservationAllowed = _repoObservationAllowed.exchange(repoObservationAllowed, std::memory_order_acq_rel);
+        if (wasRepoObservationAllowed && !repoObservationAllowed)
+        {
+            _ClearTrackedRepoSessions();
+        }
 
         // Seed the agent-settings baseline on first load so that later
         // in-memory mutations (e.g. the bottom-bar agent selector click,
@@ -5803,15 +5953,7 @@ namespace winrt::TerminalApp::implementation
             const auto sid = conn.SessionId();
             if (sid != winrt::guid{})
             {
-                // Format as plain GUID string (no braces), matching WT_SESSION.
-                wchar_t buf[40]{};
-                StringFromGUID2(sid, buf, ARRAYSIZE(buf));
-                // StringFromGUID2 produces {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
-                // Strip braces for plain format.
-                std::wstring ws(buf);
-                if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
-                    ws = ws.substr(1, ws.size() - 2);
-                return winrt::to_string(winrt::hstring{ ws });
+                return _plainGuidString(sid);
             }
         }
         return {};
@@ -5914,18 +6056,10 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // GPO-blocked gate: when administrator policy
-                            // explicitly disables auto-fix, the feature
-                            // is off across the board — no Pending, no
-                            // Detected pill, no background analysis.
-                            // `IsAutoFixPolicyLocked()` returns true only
-                            // for the Blocked policy state; Forced-on
-                            // states the user can change fall through.
-                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
-                                return;
-
-                            // Early filter: WTA only acts on osc:133;*
-                            // and AgentEvent payloads. Every other VT
+                            // Early filter: WTA acts on osc:133;* and
+                            // AgentEvent payloads; Repo Awareness additionally
+                            // consumes OSC 9;9 in-process for authoritative CWD.
+                            // Every other VT
                             // sequence (cursor moves, OSC 0/1 titles,
                             // color resets, …) gets classified as
                             // Informational and dropped on the other
@@ -5945,9 +6079,11 @@ namespace winrt::TerminalApp::implementation
                             auto seqStr = winrt::to_string(seq);
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
                             static constexpr std::string_view osc133Prefix = "osc:133;";
+                            static constexpr std::string_view oscCwdPrefix = "osc:9;9;";
                             const bool isAgentEvent = seqStr.starts_with(agentPrefix);
                             const bool isOsc133 = seqStr.starts_with(osc133Prefix);
-                            if (!isAgentEvent && !isOsc133)
+                            const bool isOscCwd = seqStr.starts_with(oscCwdPrefix);
+                            if (!isAgentEvent && !isOsc133 && !isOscCwd)
                             {
                                 return;
                             }
@@ -5956,6 +6092,40 @@ namespace winrt::TerminalApp::implementation
                             if (paneIdStr.empty())
                                 return;
                             const auto tabIdStr = page->_FindTabIdForControl(term2);
+
+                            const auto repoObservationAllowed = page->_repoObservationAllowed.load(std::memory_order_acquire);
+                            if (isOscCwd || isOsc133)
+                            {
+                                auto& service = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+                                if (repoObservationAllowed && page->_SetTrackedRepoSession(term2, paneIdStr))
+                                {
+                                    service.ObservePane(
+                                        paneIdStr,
+                                        std::filesystem::path{ term2.WorkingDirectory().c_str() },
+                                        term2.WorkingDirectoryReportedByShell(),
+                                        term2.CommandMarksReportedByShell(),
+                                        seqStr.starts_with("osc:133;D"));
+                                    if (!page->_repoObservationAllowed.load(std::memory_order_acquire))
+                                    {
+                                        page->_SetTrackedRepoSession(term2, std::nullopt);
+                                        service.RemovePane(paneIdStr);
+                                    }
+                                }
+                                else
+                                {
+                                    page->_SetTrackedRepoSession(term2, std::nullopt);
+                                    service.RemovePane(paneIdStr);
+                                }
+                            }
+
+                            // GPO-blocked gate: no external shell/agent events.
+                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
+                                return;
+
+                            // OSC 9;9 was consumed in-process above. It must not
+                            // be forwarded because it contains the full CWD.
+                            if (isOscCwd)
+                                return;
 
                             if (isAgentEvent)
                             {
@@ -6038,8 +6208,37 @@ namespace winrt::TerminalApp::implementation
                     if (!control)
                         return;
 
+                    const auto connectionState = control.ConnectionState();
+                    const auto paneIdStr = strongThis->_FindSessionIdForControl(control);
+                    auto& repoService = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+                    if (connectionState == ConnectionState::Connected &&
+                        strongThis->_repoObservationAllowed.load(std::memory_order_acquire) &&
+                        !paneIdStr.empty() &&
+                        strongThis->_SetTrackedRepoSession(control, paneIdStr))
+                    {
+                        repoService.ObservePane(
+                            paneIdStr,
+                            std::filesystem::path{ control.WorkingDirectory().c_str() },
+                            control.WorkingDirectoryReportedByShell(),
+                            control.CommandMarksReportedByShell(),
+                            false);
+                        if (!strongThis->_repoObservationAllowed.load(std::memory_order_acquire))
+                        {
+                            strongThis->_SetTrackedRepoSession(control, std::nullopt);
+                            repoService.RemovePane(paneIdStr);
+                        }
+                    }
+                    else
+                    {
+                        strongThis->_SetTrackedRepoSession(control, std::nullopt);
+                        if (!paneIdStr.empty())
+                        {
+                            repoService.RemovePane(paneIdStr);
+                        }
+                    }
+
                     std::string stateStr;
-                    switch (control.ConnectionState())
+                    switch (connectionState)
                     {
                     case ConnectionState::Connected:
                         stateStr = "connected";
@@ -6066,7 +6265,6 @@ namespace winrt::TerminalApp::implementation
                     // `_FindSessionIdForControl` only reads
                     // `control.Connection().SessionId()`, no `_tabs`
                     // access, so it is safe off the UI thread.
-                    const auto paneIdStr = strongThis->_FindSessionIdForControl(control);
                     if (paneIdStr.empty())
                         return;
 

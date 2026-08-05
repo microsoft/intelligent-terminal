@@ -107,6 +107,11 @@
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="RepoStatusParser.h" />
+    <ClInclude Include="GitProcessRunner.h" />
+    <ClInclude Include="LocalGitProvider.h" />
+    <ClInclude Include="RepoAwarenessService.h" />
+    <ClInclude Include="RepoSummarySerializer.h" />
     <ClInclude Include="AgentPaneDragStash.h" />
     <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="Tab.h">
@@ -219,6 +224,10 @@
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="SharedWta.cpp" />
+    <ClCompile Include="RepoStatusParser.cpp" />
+    <ClCompile Include="GitProcessRunner.cpp" />
+    <ClCompile Include="LocalGitProvider.cpp" />
+    <ClCompile Include="RepoAwarenessService.cpp" />
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>

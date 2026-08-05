@@ -79,3 +79,16 @@ import "unknwn.idl";
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
 };
+
+// Optional v2 extension. It has a separate IID and vtable so existing clients
+// and the stable ITerminalProtocol ABI remain unchanged.
+[
+    object,
+    uuid(7A1D9F42-6E3B-4C85-9A27-5D8F0B2E4C61),
+    pointer_default(unique)
+] interface ITerminalProtocol2 : IUnknown
+{
+    HRESULT GetRepoState([in] GUID sessionId,
+                         [in] boolean forceRefresh,
+                         [out, retval] BSTR* json);
+};

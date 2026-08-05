@@ -39,6 +39,7 @@ namespace TerminalCoreUnitTests
 
         TEST_METHOD(SetTaskbarProgress);
         TEST_METHOD(SetWorkingDirectory);
+        TEST_METHOD(ShellIntegrationReadiness);
         TEST_METHOD(SetShellType);
     };
 };
@@ -391,6 +392,35 @@ void TerminalCoreUnitTests::TerminalApiTest::SetWorkingDirectory()
 
     stateMachine.ProcessString(L"\x1b]9;9;D:\\中文\x1b\\");
     VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"D:\\中文");
+}
+
+void TerminalCoreUnitTests::TerminalApiTest::ShellIntegrationReadiness()
+{
+    Terminal term{ Terminal::TestDummyMarker{} };
+    DummyRenderer renderer{ &term };
+    term.Create({ 100, 100 }, 0, renderer);
+
+    {
+        const auto lock = term.LockForWriting();
+        term.SetInitialWorkingDirectory(L"C:\\profile-start");
+    }
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"C:\\profile-start" }, term.GetWorkingDirectory());
+    VERIFY_IS_FALSE(term.IsWorkingDirectoryReportedByShell());
+    VERIFY_IS_FALSE(term.HasCommandMarksReportedByShell());
+
+    term._stateMachine->ProcessString(L"\x1b]9;9;C:\\shell-cwd\x1b\\");
+    VERIFY_IS_TRUE(term.IsWorkingDirectoryReportedByShell());
+    VERIFY_IS_FALSE(term.HasCommandMarksReportedByShell());
+
+    term._stateMachine->ProcessString(L"\x1b]133;A\x1b\\");
+    VERIFY_IS_TRUE(term.HasCommandMarksReportedByShell());
+
+    {
+        const auto lock = term.LockForWriting();
+        term.ResetShellIntegrationState();
+    }
+    VERIFY_IS_FALSE(term.IsWorkingDirectoryReportedByShell());
+    VERIFY_IS_FALSE(term.HasCommandMarksReportedByShell());
 }
 
 void TerminalCoreUnitTests::TerminalApiTest::SetShellType()

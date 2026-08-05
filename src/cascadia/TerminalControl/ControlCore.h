@@ -167,6 +167,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         hstring Title();
         Windows::Foundation::IReference<winrt::Windows::UI::Color> TabColor() noexcept;
         hstring WorkingDirectory() const;
+        bool WorkingDirectoryReportedByShell() const;
+        bool CommandMarksReportedByShell() const;
         hstring ShellName() const;
         hstring ShellVersion() const;
 

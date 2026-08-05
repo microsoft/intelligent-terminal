@@ -234,6 +234,7 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
     }
 
     _workingDirectory = uri;
+    _workingDirectoryReportedByShell = true;
 }
 
 void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)
@@ -457,8 +458,9 @@ void Terminal::NotifyBufferRotation(const int delta)
     }
 }
 
-void Terminal::NotifyShellIntegrationMark()
+void Terminal::NotifyShellIntegrationMark(const bool commandMark)
 {
+    _commandMarksReportedByShell = _commandMarksReportedByShell || commandMark;
     // Notify the scrollbar that marks have been added so it can refresh the mark indicators
     _NotifyScrollEvent();
 }

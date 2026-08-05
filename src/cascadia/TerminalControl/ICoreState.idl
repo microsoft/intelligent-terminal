@@ -35,6 +35,8 @@ namespace Microsoft.Terminal.Control
         UInt64 TaskbarProgress { get; };
 
         String WorkingDirectory { get; };
+        Boolean WorkingDirectoryReportedByShell { get; };
+        Boolean CommandMarksReportedByShell { get; };
 
         // Shell identity reported by shell integration via OSC 9001;ShellType.
         // Empty when the shell has not reported (no shell integration, or a
