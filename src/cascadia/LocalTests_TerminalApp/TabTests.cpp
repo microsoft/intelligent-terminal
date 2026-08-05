@@ -133,6 +133,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
         TEST_METHOD(DetachedSessionsSkipClosedConnectionBeforeQueuedReap);
         TEST_METHOD(DiscardDeadDetachedSessionBeforeQueuedReapReturnsFalse);
+        TEST_METHOD(TryReattachDeadDetachedSessionBeforeQueuedReapReturnsZero);
+        TEST_METHOD(TryReattachKeptGroupSkipsDeadMembersBeforeQueuedReap);
         TEST_METHOD(FailedDetachStillEmitsCloseEvent);
 
         TEST_METHOD(TryDuplicateBadTab);
@@ -463,6 +465,153 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+        });
+    }
+
+    void TabTests::TryReattachDeadDetachedSessionBeforeQueuedReapReturnsZero()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{12345678-1111-2222-3333-444444444444}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{87654321-aaaa-bbbb-cccc-dddddddddddd}");
+
+        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        VERIFY_IS_NOT_NULL(_contentManager);
+
+        std::vector<winrt::guid> closedSessionIds;
+        winrt::event_token closeToken{};
+        auto contentId = 0ull;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+            contentId = content.Id();
+
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+            VERIFY_IS_NOT_NULL(control);
+
+            closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::IInspectable& closedSession) {
+                closedSessionIds.push_back(winrt::unbox_value<winrt::guid>(closedSession));
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued reap reattach", L"shell-session-live", control));
+            VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
+
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+
+            VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(sessionId));
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(closedSessionIds.at(0), sessionId));
+        });
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+
+            _contentManager->DetachedSessionClosed(closeToken);
+        });
+    }
+
+    void TabTests::TryReattachKeptGroupSkipsDeadMembersBeforeQueuedReap()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{0f0f0f0f-1010-2020-3030-404040404040}");
+        const auto deadSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{deadbeef-aaaa-bbbb-cccc-111111111111}");
+        const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{feedface-dddd-eeee-ffff-222222222222}");
+
+        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        VERIFY_IS_NOT_NULL(_contentManager);
+
+        std::vector<winrt::guid> closedSessionIds;
+        winrt::event_token closeToken{};
+        auto deadContentId = 0ull;
+        auto liveContentId = 0ull;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto deadConnection = winrt::make_self<TestConnection>(
+                deadSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(deadConnection);
+            auto liveConnection = winrt::make_self<TestConnection>(
+                liveSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(liveConnection);
+
+            const auto deadContent = _contentManager->CreateCore(*settings, *settings, *deadConnection);
+            VERIFY_IS_NOT_NULL(deadContent);
+            deadContentId = deadContent.Id();
+
+            const auto liveContent = _contentManager->CreateCore(*settings, *settings, *liveConnection);
+            VERIFY_IS_NOT_NULL(liveContent);
+            liveContentId = liveContent.Id();
+
+            winrt::Microsoft::Terminal::Control::TermControl deadControl{ deadContent };
+            VERIFY_IS_NOT_NULL(deadControl);
+            winrt::Microsoft::Terminal::Control::TermControl liveControl{ liveContent };
+            VERIFY_IS_NOT_NULL(liveControl);
+
+            closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::IInspectable& closedSession) {
+                closedSessionIds.push_back(winrt::unbox_value<winrt::guid>(closedSession));
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, deadSessionId, L"Mixed keep-running group", L"shell-session-group", deadControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Mixed keep-running group", L"shell-session-group", liveControl));
+            VERIFY_ARE_EQUAL(2u, _contentManager->DetachedSessions().Size());
+
+            deadConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+
+            const auto remainingDetachedSessions{ _contentManager->DetachedSessions() };
+            VERIFY_ARE_EQUAL(1u, remainingDetachedSessions.Size());
+            VERIFY_IS_TRUE(!!::IsEqualGUID(remainingDetachedSessions.GetAt(0).SessionId(), liveSessionId));
+
+            const auto contentIds = _contentManager->TryReattachKeptGroup(groupId);
+            VERIFY_ARE_EQUAL(1u, contentIds.Size());
+            VERIFY_ARE_EQUAL(liveContentId, contentIds.GetAt(0));
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(deadSessionId));
+            VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(liveSessionId));
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(deadContentId));
+            VERIFY_IS_NOT_NULL(_contentManager->TryLookupCore(liveContentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(closedSessionIds.at(0), deadSessionId));
+        });
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(deadContentId));
+            VERIFY_IS_NOT_NULL(_contentManager->TryLookupCore(liveContentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+
+            _contentManager->DetachedSessionClosed(closeToken);
         });
     }
 

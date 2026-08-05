@@ -175,12 +175,27 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
+        const auto content{ TryLookupCore(contentId) };
+        if (!content)
+        {
+            _dropKeptSession(sessionId);
+            KeptSessionsChanged.raise(*this, nullptr);
+            return 0;
+        }
+
+        if (!_isLiveDetachedSession(content))
+        {
+            // The shell exited while detached after it was listed but before the
+            // caller asked to reattach it. Finish the reap here so the caller
+            // falls back to the snapshot/new-shell path, and the queued reap can
+            // later observe that the bookkeeping is already gone and no-op.
+            content.Close();
+            return 0;
+        }
+
         _dropKeptSession(sessionId);
         KeptSessionsChanged.raise(*this, nullptr);
-
-        // The shell may have exited while detached, in which case the content is
-        // already gone and the caller should start a fresh one.
-        return TryLookupCore(contentId) ? contentId : 0;
+        return contentId;
     }
 
     winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> ContentManager::DetachedSessions()
@@ -239,6 +254,7 @@ namespace winrt::TerminalApp::implementation
     winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentManager::TryReattachKeptGroup(const winrt::guid& groupId)
     {
         std::vector<uint64_t> contentIds;
+        auto changed = false;
 
         const auto it = _keptGroups.find(groupId);
         if (it != _keptGroups.end())
@@ -253,14 +269,30 @@ namespace winrt::TerminalApp::implementation
                     continue;
                 }
                 const auto contentId = session->second.contentId;
-                _dropKeptSession(sessionId);
-                // Skip any whose shell exited while detached.
-                if (TryLookupCore(contentId))
+                const auto content{ TryLookupCore(contentId) };
+                if (!content)
                 {
-                    contentIds.push_back(contentId);
+                    _dropKeptSession(sessionId);
+                    changed = true;
+                    continue;
                 }
+
+                if (!_isLiveDetachedSession(content))
+                {
+                    // Reattach each pane independently: dead members are reaped
+                    // here, while live members still come back in the rebuilt tab.
+                    content.Close();
+                    continue;
+                }
+
+                _dropKeptSession(sessionId);
+                changed = true;
+                contentIds.push_back(contentId);
             }
-            KeptSessionsChanged.raise(*this, nullptr);
+            if (changed)
+            {
+                KeptSessionsChanged.raise(*this, nullptr);
+            }
         }
 
         return winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView();
