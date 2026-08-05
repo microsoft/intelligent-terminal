@@ -1282,6 +1282,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>使用量</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
-  <data name="Usage_TokensUnit" xml:space="preserve"><value>權杖</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
+  <data name="Usage_TokensUnit" xml:space="preserve"><value>詞元</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>內容視窗</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
 </root>
