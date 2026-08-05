@@ -1177,12 +1177,9 @@ bool WindowEmperor::_hasKeptSessions() const
 {
     try
     {
-        if (const auto logic = _app.Logic())
+        if (const auto manager = GetContentManager())
         {
-            if (const auto manager = logic.ContentManager())
-            {
-                return manager.HasKeptSessions();
-            }
+            return manager.HasKeptSessions();
         }
     }
     CATCH_LOG();
@@ -1228,17 +1225,14 @@ catch (...)
 // state, so forwarding that protocol event is safe to enqueue immediately.
 void WindowEmperor::_setupKeptSessionTracking()
 {
-    if (const auto logic = _app.Logic())
+    if (const auto manager = GetContentManager())
     {
-        if (const auto manager = logic.ContentManager())
-        {
-            _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
-                PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
-            });
-            _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& closedSession) {
-                notifyDetachedSessionEnded(closedSession);
-            });
-        }
+        _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
+            PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
+        });
+        _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& closedSession) {
+            notifyDetachedSessionEnded(closedSession);
+        });
     }
 }
 
@@ -1736,7 +1730,7 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     // announces that *something* is alive but gives no way to see what, get it
     // back, or stop it — and with no window there is nothing else on screen.
     _keptSessionMenuIds.clear();
-    if (const auto manager = _keptSessionManager())
+    if (const auto manager = GetContentManager())
     {
         const auto groups = manager.KeptGroups();
         if (groups.Size() > 0)
@@ -1839,7 +1833,7 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     std::ignore = _summonWindow(std::move(args));
 }
 
-winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
+winrt::TerminalApp::ContentManager WindowEmperor::GetContentManager() const
 {
     try
     {
@@ -1860,7 +1854,7 @@ winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
 void WindowEmperor::_restoreKeptSession(const winrt::guid& groupId)
 try
 {
-    const auto manager = _keptSessionManager();
+    const auto manager = GetContentManager();
     if (!manager)
     {
         return;
@@ -1905,7 +1899,7 @@ CATCH_LOG()
 void WindowEmperor::_discardKeptSession(const winrt::guid& groupId)
 try
 {
-    if (const auto manager = _keptSessionManager())
+    if (const auto manager = GetContentManager())
     {
         manager.DiscardKeptGroup(groupId);
     }

@@ -298,6 +298,17 @@ static Json::Value _toJson(const Protocol::TabCreationResult& r)
     return v;
 }
 
+static Json::Value _toJson(const winrt::TerminalApp::DetachedSessionInfo& session)
+{
+    Json::Value v;
+    v["session_id"] = _guidStr(session.SessionId());
+    v["pid"] = static_cast<Json::UInt>(session.Pid());
+    v["tab_title"] = winrt::to_string(session.TabTitle());
+    v["group_id"] = _guidStr(session.GroupId());
+    v["shell_session_id"] = winrt::to_string(session.ShellSessionId());
+    return v;
+}
+
 // Convert an [in] BSTR to a winrt::hstring (null-safe).
 static winrt::hstring _hstr(BSTR b)
 {
@@ -528,6 +539,8 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
+        "list_detached_sessions",
+        "kill_detached_session",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -617,6 +630,27 @@ try
     std::istringstream stream{ serialized };
     RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
     *json = _bstrFromJson(sessions);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListDetachedSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    const auto manager = s_emperor->GetContentManager();
+    RETURN_HR_IF(E_NOT_VALID_STATE, !manager);
+
+    Json::Value rows(Json::arrayValue);
+    for (const auto& session : manager.DetachedSessions())
+    {
+        rows.append(_toJson(session));
+    }
+
+    *json = _bstrFromJson(rows);
     return S_OK;
 }
 CATCH_RETURN()
@@ -972,6 +1006,18 @@ try
     const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
     return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::KillDetachedSession(GUID sessionId)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    const auto manager = s_emperor->GetContentManager();
+    RETURN_HR_IF(E_NOT_VALID_STATE, !manager);
+
+    return manager.DiscardKeptSession(winrt::guid{ sessionId }) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 
