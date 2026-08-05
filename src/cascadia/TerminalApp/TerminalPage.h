@@ -698,9 +698,16 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
+        struct _ShellSessionSaveResult
+        {
+            winrt::hstring id;
+            int64_t revision{ 0 };
+            bool forked{ false };
+        };
+        static _ShellSessionSaveResult _ParseShellSessionSaveResponse(std::string_view json);
         void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _PersistShellSession(Tab* tab);
-        void _DetachShellPanesForKeepRunning(Tab* tab);
+        void _DetachShellPanesForKeepRunning(Tab* tab, const winrt::hstring& shellSessionId);
         // Session ids of panes detached for keep-running during the tab close
         // that is currently in flight, so _NotifyPanesClosing can tell them
         // apart from panes that really are going away.

@@ -195,6 +195,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SyntheticFailedEventSuppressesDelayedNormalCallback);
         TEST_METHOD(FailedDetachFallbackEmitsFailedEventOnce);
         TEST_METHOD(SuccessfulDetachedCloseDefersEndEventToContentManager);
+        TEST_METHOD(ParseShellSessionSaveResponse);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -1155,7 +1156,7 @@ namespace TerminalAppLocalTests
             expectedPaneId = _formatPaneId(sessionId);
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
 
-            page->_DetachShellPanesForKeepRunning(tab.get());
+            page->_DetachShellPanesForKeepRunning(tab.get(), winrt::hstring{});
 
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_IS_TRUE(page->_panesKeptRunning.empty());
@@ -1188,6 +1189,7 @@ namespace TerminalAppLocalTests
         });
 
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{52345678-1234-5678-9abc-def012345678}");
+        const winrt::hstring shellSessionId{ L"shell-session-52345678" };
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         std::string expectedPaneId;
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -1217,10 +1219,12 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
-            page->_DetachShellPanesForKeepRunning(tab.get());
+            page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId);
 
             VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
-            VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
+            const auto detachedSessions{ _contentManager->DetachedSessions() };
+            VERIFY_ARE_EQUAL(1u, detachedSessions.Size());
+            VERIFY_IS_TRUE(detachedSessions.GetAt(0).ShellSessionId() == shellSessionId);
 
             page->_NotifyPanesClosing(tab->GetRootPane());
 
@@ -1244,6 +1248,19 @@ namespace TerminalAppLocalTests
 
             _contentManager->DetachedSessionClosed(closeToken);
         });
+    }
+
+    void TabTests::ParseShellSessionSaveResponse()
+    {
+        const auto parsed = winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(R"({"id":"shell-session-7","revision":7,"forked":true})");
+        VERIFY_IS_TRUE(parsed.id == L"shell-session-7");
+        VERIFY_ARE_EQUAL(7LL, parsed.revision);
+        VERIFY_IS_TRUE(parsed.forked);
+
+        VERIFY_THROWS_SPECIFIC(
+            winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(R"({"revision":7,"forked":true})"),
+            wil::ResultException,
+            [](wil::ResultException& e) { return e.GetErrorCode() == WEB_E_INVALID_JSON_STRING; });
     }
 
     // Method Description:
