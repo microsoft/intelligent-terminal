@@ -1496,6 +1496,48 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, evt)));
     }
 
+    void TerminalPage::_RaiseConnectionStateEvent(std::string_view paneId,
+                                                  std::string_view state,
+                                                  std::string_view tabId)
+    {
+        if (paneId.empty() || state.empty())
+        {
+            return;
+        }
+
+        Json::Value params;
+        params["pane_id"] = std::string{ paneId };
+        if (!tabId.empty())
+        {
+            params["tab_id"] = std::string{ tabId };
+        }
+        params["state"] = std::string{ state };
+        _RaiseProtocolEvent("connection_state", params);
+    }
+
+    bool TerminalPage::_TryRaiseTerminalEndStateEvent(std::string_view paneId,
+                                                      std::string_view state,
+                                                      std::string_view tabId)
+    {
+        if (paneId.empty() || (state != "closed" && state != "failed"))
+        {
+            return false;
+        }
+
+        if (const auto paneSessionId = _TryParsePaneSessionId(paneId))
+        {
+            _paneAgentSessions.erase(*paneSessionId);
+        }
+
+        if (!_panesWithEmittedTerminalEndState.emplace(std::string{ paneId }).second)
+        {
+            return false;
+        }
+
+        _RaiseConnectionStateEvent(paneId, state, tabId);
+        return true;
+    }
+
     // Close the agent pane in a specific tab, if it has one.
     //
     // Under the helper+master architecture, wta-helper processes are
@@ -1688,37 +1730,8 @@ namespace winrt::TerminalApp::implementation
                 _panesKeptRunning.erase(kept);
                 return;
             }
-            std::string stateStr{ "closed" };
-            if (control.ConnectionState() == ConnectionState::Failed)
-            {
-                if (_panesWithObservedFailure.erase(paneIdStr) > 0)
-                {
-                    return;
-                }
-
-                stateStr = "failed";
-                _panesWithSuppressedFailedClose.insert(paneIdStr);
-                Dispatcher().RunAsync(
-                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                    [weakThis = get_weak(), paneIdStr]() {
-                        if (auto page = weakThis.get())
-                        {
-                            page->_panesWithSuppressedFailedClose.erase(paneIdStr);
-                        }
-                    });
-            }
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "connection_state";
-            Json::Value params;
-            params["pane_id"] = paneIdStr;
-            params["state"] = stateStr;
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
+            const auto stateStr = control.ConnectionState() == ConnectionState::Failed ? "failed" : "closed";
+            _TryRaiseTerminalEndStateEvent(paneIdStr, stateStr);
         });
     }
 
@@ -6030,39 +6043,14 @@ namespace winrt::TerminalApp::implementation
                             const auto tabIdStr = term2
                                 ? page->_FindTabIdForControl(term2)
                                 : std::string{};
-                            if (stateStr == "failed")
+                            if (stateStr == "closed" || stateStr == "failed")
                             {
-                                if (page->_panesWithSuppressedFailedClose.erase(paneIdStr) > 0)
-                                {
-                                    return;
-                                }
-                                page->_panesWithObservedFailure.insert(paneIdStr);
+                                page->_TryRaiseTerminalEndStateEvent(paneIdStr, stateStr, tabIdStr);
                             }
-                            else if (stateStr == "closed")
+                            else
                             {
-                                page->_panesWithObservedFailure.erase(paneIdStr);
-                                if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
-                                {
-                                    page->_paneAgentSessions.erase(*paneSessionId);
-                                }
+                                page->_RaiseConnectionStateEvent(paneIdStr, stateStr, tabIdStr);
                             }
-
-                            Json::Value evt;
-                            evt["type"] = "event";
-                            evt["method"] = "connection_state";
-                            Json::Value params;
-                            params["pane_id"] = paneIdStr;
-                            if (!tabIdStr.empty())
-                            {
-                                params["tab_id"] = tabIdStr;
-                            }
-                            params["state"] = stateStr;
-                            evt["params"] = params;
-                            Json::StreamWriterBuilder wb;
-                            wb["indentation"] = "";
-                            page->ProtocolVtSequenceReceived.raise(
-                                *page,
-                                winrt::to_hstring(Json::writeString(wb, evt)));
                         });
                 });
         }

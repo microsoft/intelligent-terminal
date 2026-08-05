@@ -62,10 +62,20 @@ namespace TerminalAppLocalTests
             TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
         }
 
-        void TransitionTo(const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state) noexcept
+        void SetState(const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state) noexcept
         {
             _state = state;
+        }
+
+        void RaiseStateChanged() noexcept
+        {
             StateChanged.raise(*this, nullptr);
+        }
+
+        void TransitionTo(const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state) noexcept
+        {
+            SetState(state);
+            RaiseStateChanged();
         }
 
         winrt::guid SessionId() const noexcept { return _sessionId; }
@@ -98,6 +108,42 @@ namespace TerminalAppLocalTests
         winrt::guid sessionId{};
         winrt::hstring state;
     };
+
+    struct ConnectionStateEventRecord
+    {
+        std::string paneId;
+        std::string state;
+    };
+
+    static void _recordConnectionStateEvent(const winrt::hstring& eventJson,
+                                            std::vector<ConnectionStateEventRecord>& connectionStates)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        std::istringstream stream{ winrt::to_string(eventJson) };
+        if (Json::parseFromStream(builder, stream, &evt, &errors) &&
+            evt["method"].asString() == "connection_state")
+        {
+            connectionStates.push_back({
+                evt["params"]["pane_id"].asString(),
+                evt["params"]["state"].asString() });
+        }
+    }
+
+    static std::vector<std::string> _statesForPane(const std::vector<ConnectionStateEventRecord>& connectionStates,
+                                                   const std::string& paneId)
+    {
+        std::vector<std::string> states;
+        for (const auto& connectionState : connectionStates)
+        {
+            if (connectionState.paneId == paneId)
+            {
+                states.push_back(connectionState.state);
+            }
+        }
+        return states;
+    }
 
     // TODO:microsoft/terminal#3838:
     // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
@@ -143,7 +189,11 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryReattachDeadDetachedSessionBeforeQueuedReapReturnsZero);
         TEST_METHOD(TryReattachKeptGroupSkipsDeadMembersBeforeQueuedReap);
         TEST_METHOD(DiscardKeptGroupPreservesFailedMembersAndClosesLiveMembers);
-        TEST_METHOD(FailedDetachFallbackStillEmitsFailedEvent);
+        TEST_METHOD(NaturalClosedEventThenNotifyPanesClosingEmitsOnce);
+        TEST_METHOD(NaturalFailedEventThenNotifyPanesClosingEmitsOnce);
+        TEST_METHOD(SyntheticFailedEventSuppressesDelayedNormalCallback);
+        TEST_METHOD(FailedDetachFallbackEmitsFailedEventOnce);
+        TEST_METHOD(SuccessfulDetachedCloseDefersEndEventToContentManager);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -768,7 +818,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::FailedDetachFallbackStillEmitsFailedEvent()
+    void TabTests::NaturalClosedEventThenNotifyPanesClosingEmitsOnce()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
             TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
@@ -777,19 +827,198 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup();
         VERIFY_IS_NOT_NULL(page);
 
-        std::vector<std::pair<std::string, std::string>> connectionStates;
+        std::vector<ConnectionStateEventRecord> connectionStates;
         const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
-            Json::Value evt;
-            Json::CharReaderBuilder builder;
-            std::string errors;
-            std::istringstream stream{ winrt::to_string(eventJson) };
-            if (Json::parseFromStream(builder, stream, &evt, &errors) &&
-                evt["method"].asString() == "connection_state")
-            {
-                connectionStates.emplace_back(
-                    evt["params"]["pane_id"].asString(),
-                    evt["params"]["state"].asString());
-            }
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto revokeToken = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(token);
+        });
+
+        winrt::com_ptr<TestConnection> connection;
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::string expectedPaneId;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{12345678-1234-5678-9abc-def012345678}");
+            connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(content.Id());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(tab);
+
+            expectedPaneId = _formatPaneId(sessionId);
+        });
+
+        TestOnUIThread([&]() {
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "closed" }, paneStates.at(0));
+
+            page->_NotifyPanesClosing(tab->GetRootPane());
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "closed" }, paneStates.at(0));
+        });
+    }
+
+    void TabTests::NaturalFailedEventThenNotifyPanesClosingEmitsOnce()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto revokeToken = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(token);
+        });
+
+        winrt::guid sessionId{};
+        winrt::com_ptr<TestConnection> connection;
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::string expectedPaneId;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{22345678-1234-5678-9abc-def012345678}");
+            connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(content.Id());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(tab);
+
+            expectedPaneId = _formatPaneId(sessionId);
+            page->_paneAgentSessions.insert_or_assign(
+                sessionId,
+                winrt::TerminalApp::implementation::TerminalPage::_PaneAgentSession{
+                    L"agent-session-id",
+                    L"copilot",
+                    L"wta resume" });
+        });
+
+        TestOnUIThread([&]() {
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(sessionId)));
+
+            page->_NotifyPanesClosing(tab->GetRootPane());
+            connection->SetState(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+            connection->RaiseStateChanged();
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(sessionId)));
+        });
+    }
+
+    void TabTests::SyntheticFailedEventSuppressesDelayedNormalCallback()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto revokeToken = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(token);
+        });
+
+        winrt::com_ptr<TestConnection> connection;
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::string expectedPaneId;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{32345678-1234-5678-9abc-def012345678}");
+            connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(content.Id());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(tab);
+
+            expectedPaneId = _formatPaneId(sessionId);
+
+            connection->SetState(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+            page->_NotifyPanesClosing(tab->GetRootPane());
+            connection->RaiseStateChanged();
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
+        });
+    }
+
+    void TabTests::FailedDetachFallbackEmitsFailedEventOnce()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
         });
         const auto revokeToken = wil::scope_exit([&]() noexcept {
             page->ProtocolVtSequenceReceived(token);
@@ -797,23 +1026,12 @@ namespace TerminalAppLocalTests
 
         winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
         std::string expectedPaneId;
-        const auto statesForPane = [&](const std::string& paneId) {
-            std::vector<std::string> states;
-            for (const auto& [eventPaneId, state] : connectionStates)
-            {
-                if (eventPaneId == paneId)
-                {
-                    states.push_back(state);
-                }
-            }
-            return states;
-        };
 
         TestOnUIThread([&]() {
             auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
             VERIFY_IS_NOT_NULL(settings);
 
-            const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{12345678-1234-5678-9abc-def012345678}");
+            const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{42345678-1234-5678-9abc-def012345678}");
             auto connection = winrt::make_self<TestConnection>(
                 sessionId,
                 winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
@@ -840,15 +1058,85 @@ namespace TerminalAppLocalTests
         });
 
         TestOnUIThread([&]() {
-            const auto paneStates = statesForPane(expectedPaneId);
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
             VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
         });
+    }
+
+    void TabTests::SuccessfulDetachedCloseDefersEndEventToContentManager()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto revokeToken = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(token);
+        });
+
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{52345678-1234-5678-9abc-def012345678}");
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        std::string expectedPaneId;
+        std::vector<DetachedSessionEndedRecord> endedSessions;
+        winrt::event_token closeToken{};
 
         TestOnUIThread([&]() {
-            const auto paneStates = statesForPane(expectedPaneId);
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(paneStates.size()));
-            VERIFY_ARE_EQUAL(std::string{ "failed" }, paneStates.at(0));
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(content.Id());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(tab);
+
+            expectedPaneId = _formatPaneId(sessionId);
+
+            closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
+            });
+
+            page->_DetachShellPanesForKeepRunning(tab.get());
+
+            VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
+
+            page->_NotifyPanesClosing(tab->GetRootPane());
+
+            VERIFY_IS_TRUE(page->_panesKeptRunning.empty());
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_panesWithEmittedTerminalEndState.count(expectedPaneId)));
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(paneStates.size()));
+
+            VERIFY_IS_TRUE(_contentManager->DiscardKeptSession(sessionId));
+        });
+
+        TestOnUIThread([&]() {
+            const auto paneStates = _statesForPane(connectionStates, expectedPaneId);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(paneStates.size()));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(endedSessions.at(0).sessionId, sessionId));
+            VERIFY_IS_TRUE(endedSessions.at(0).state == L"closed");
+
+            _contentManager->DetachedSessionClosed(closeToken);
         });
     }
 
