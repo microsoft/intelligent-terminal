@@ -119,6 +119,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
+        TEST_METHOD(DetachedSessionsSkipClosedConnectionBeforeQueuedReap);
         TEST_METHOD(FailedDetachStillEmitsCloseEvent);
 
         TEST_METHOD(TryDuplicateBadTab);
@@ -342,6 +343,52 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(closedSessionIds.size()));
             VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+        });
+    }
+
+    void TabTests::DetachedSessionsSkipClosedConnectionBeforeQueuedReap()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{abababab-bcbc-cdcd-dede-efefefefefef}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{01020304-1111-2222-3333-444455556666}");
+
+        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        VERIFY_IS_NOT_NULL(_contentManager);
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+            VERIFY_IS_NOT_NULL(control);
+
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued close", L"shell-session-live", control);
+            VERIFY_IS_TRUE(retained);
+
+            const auto liveDetachedSessions{ _contentManager->DetachedSessions() };
+            VERIFY_ARE_EQUAL(1u, liveDetachedSessions.Size());
+            VERIFY_ARE_EQUAL(0u, liveDetachedSessions.GetAt(0).Pid());
+
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+
+            VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+        });
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
         });
     }
 

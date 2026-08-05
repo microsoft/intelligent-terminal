@@ -22,10 +22,21 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
-    static uint32_t _getDetachedSessionPid(const ControlInteractivity& content)
+    static ITerminalConnection _getDetachedSessionConnection(const ControlInteractivity& content)
     {
         const auto core{ content ? content.Core() : nullptr };
-        const auto connection{ core ? core.Connection() : nullptr };
+        return core ? core.Connection() : nullptr;
+    }
+
+    static bool _isLiveDetachedSession(const ControlInteractivity& content)
+    {
+        const auto connection{ _getDetachedSessionConnection(content) };
+        return connection && connection.State() < ConnectionState::Closed;
+    }
+
+    static uint32_t _getDetachedSessionPid(const ControlInteractivity& content)
+    {
+        const auto connection{ _getDetachedSessionConnection(content) };
         if (const auto conpty{ connection.try_as<ConptyConnection>() })
         {
             if (const auto handle = reinterpret_cast<HANDLE>(conpty.RootProcessHandle()))
@@ -187,6 +198,10 @@ namespace winrt::TerminalApp::implementation
 
             const auto content{ TryLookupCore(kept.contentId) };
             if (!content)
+            {
+                continue;
+            }
+            if (!_isLiveDetachedSession(content))
             {
                 continue;
             }
@@ -358,9 +373,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto core{ content.Core() };
-        const auto connection{ core ? core.Connection() : nullptr };
-        if (connection && connection.State() < winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed)
+        if (_isLiveDetachedSession(content))
         {
             return;
         }
