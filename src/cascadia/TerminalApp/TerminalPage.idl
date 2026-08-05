@@ -35,7 +35,7 @@ namespace TerminalApp
         // two indistinguishable things to restore.
         //
         // See doc/specs/keep-running-sessions.md.
-        void DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Microsoft.Terminal.Control.TermControl control);
+        Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
         Windows.Foundation.Collections.IVectorView<DetachedSessionInfo> DetachedSessions();
         // Group id -> the tab title it was detached from.
@@ -50,6 +50,9 @@ namespace TerminalApp
         void DiscardKeptGroup(Guid groupId);
         Boolean HasKeptSessions { get; };
         event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> KeptSessionsChanged;
+        // Raised once when a successfully detached live session later closes
+        // while still detached. Args: boxed session Guid.
+        event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> DetachedSessionClosed;
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs

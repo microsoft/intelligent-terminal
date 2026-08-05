@@ -119,6 +119,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
+        TEST_METHOD(FailedDetachStillEmitsCloseEvent);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -266,7 +267,16 @@ namespace TerminalAppLocalTests
             const auto sessionId{ connection.SessionId() };
             VERIFY_IS_TRUE(sessionId != winrt::guid{});
 
-            _contentManager->DetachForKeepRunning(groupId, sessionId, tabTitle, shellSessionId, activeControl);
+            std::vector<winrt::guid> closedSessionIds;
+            const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::IInspectable& closedSession) {
+                closedSessionIds.push_back(winrt::unbox_value<winrt::guid>(closedSession));
+            });
+            const auto closeTokenRevoker = wil::scope_exit([&]() noexcept {
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
+
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, tabTitle, shellSessionId, activeControl);
+            VERIFY_IS_TRUE(retained);
 
             const auto detachedSessions{ _contentManager->DetachedSessions() };
             VERIFY_ARE_EQUAL(1u, detachedSessions.Size());
@@ -279,7 +289,10 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(_contentManager->DiscardKeptSession(sessionId));
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(closedSessionIds.at(0), sessionId));
             VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedSessionIds.size()));
         });
     }
 
@@ -313,12 +326,82 @@ namespace TerminalAppLocalTests
 
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
 
-            _contentManager->DetachForKeepRunning(groupId, sessionId, L"Already closed", L"shell-session-closed", control);
+            std::vector<winrt::guid> closedSessionIds;
+            const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::IInspectable& closedSession) {
+                closedSessionIds.push_back(winrt::unbox_value<winrt::guid>(closedSession));
+            });
+            const auto closeTokenRevoker = wil::scope_exit([&]() noexcept {
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
 
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Already closed", L"shell-session-closed", control);
+
+            VERIFY_IS_FALSE(retained);
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(closedSessionIds.size()));
             VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+        });
+    }
+
+    void TabTests::FailedDetachStillEmitsCloseEvent()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{12345678-1234-5678-9abc-def012345678}");
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(content.Id());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(1));
+            VERIFY_IS_NOT_NULL(tab);
+
+            auto closedCount = 0u;
+            const auto expectedPaneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(sessionId));
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+                Json::Value evt;
+                Json::CharReaderBuilder builder;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(eventJson) };
+                if (Json::parseFromStream(builder, stream, &evt, &errors) &&
+                    evt["method"].asString() == "connection_state" &&
+                    evt["params"]["pane_id"].asString() == expectedPaneId &&
+                    evt["params"]["state"].asString() == "closed")
+                {
+                    ++closedCount;
+                }
+            });
+            const auto revokeToken = wil::scope_exit([&]() noexcept {
+                page->ProtocolVtSequenceReceived(token);
+            });
+
+            page->_DetachShellPanesForKeepRunning(tab.get());
+
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_IS_TRUE(page->_panesKeptRunning.empty());
+
+            page->_NotifyPanesClosing(tab->GetRootPane());
+
+            VERIFY_ARE_EQUAL(1u, closedCount);
         });
     }
 

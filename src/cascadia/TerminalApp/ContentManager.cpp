@@ -68,8 +68,9 @@ namespace winrt::TerminalApp::implementation
     // alive with no window, as part of the tab identified by `groupId`. The
     // content keeps its ConptyConnection — and therefore its output thread and
     // its Terminal buffer — so the shell keeps running and its scrollback keeps
-    // filling while nothing is attached.
-    void ContentManager::DetachForKeepRunning(const winrt::guid& groupId,
+    // filling while nothing is attached. Returns true only if the detached
+    // session is still retained after immediate liveness reaping.
+    bool ContentManager::DetachForKeepRunning(const winrt::guid& groupId,
                                               const winrt::guid& sessionId,
                                               const winrt::hstring& title,
                                               const winrt::hstring& shellSessionId,
@@ -77,14 +78,14 @@ namespace winrt::TerminalApp::implementation
     {
         if (!control || sessionId == winrt::guid{} || groupId == winrt::guid{})
         {
-            return;
+            return false;
         }
 
         const auto contentId{ control.ContentId() };
         const auto content{ TryLookupCore(contentId) };
         if (!content)
         {
-            return;
+            return false;
         }
 
         KeptSession kept;
@@ -140,10 +141,14 @@ namespace winrt::TerminalApp::implementation
         // have run before the session was visible in _keptSessions. Re-check
         // once the maps are populated so either race still gets reaped.
         _reapDetachedSessionIfDead(sessionId);
-        if (_keptSessions.find(sessionId) != _keptSessions.end())
+        if (const auto it = _keptSessions.find(sessionId); it != _keptSessions.end())
         {
+            it->second.raiseDetachedCloseEvent = true;
             KeptSessionsChanged.raise(*this, nullptr);
+            return true;
         }
+
+        return false;
     }
 
     // Returns the ContentId of a previously detached session, or 0 if there is
@@ -374,7 +379,12 @@ namespace winrt::TerminalApp::implementation
             if (kept.contentId == contentId)
             {
                 const auto id = sessionId;
+                const auto raiseDetachedCloseEvent = kept.raiseDetachedCloseEvent;
                 _dropKeptSession(id);
+                if (raiseDetachedCloseEvent)
+                {
+                    DetachedSessionClosed.raise(*this, winrt::box_value(id));
+                }
                 KeptSessionsChanged.raise(*this, nullptr);
                 return;
             }
