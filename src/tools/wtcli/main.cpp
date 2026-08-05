@@ -421,6 +421,26 @@ int main()
         }
     });
 
+    // ── list-detached-sessions ──
+    auto* listDetachedSessionsCmd = app.add_subcommand("list-detached-sessions", "List live detached sessions");
+    listDetachedSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value detachedSessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListDetachedSessions(j); }, detachedSessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListDetachedSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["detached_sessions"] = detachedSessions;
+            PrintJson(result);
+        }
+        else
+        {
+            FormatDetachedSessionsHuman(detachedSessions);
+        }
+    });
+
     // ── restore-shell-session ──
     std::string restoreShellSessionId;
     std::string restoreShellSessionWindowId;
@@ -584,6 +604,38 @@ int main()
         else
         {
             printf("Session %s closed.\n", GuidToString(sessionId).c_str());
+        }
+    });
+
+    // ── kill-detached-session ──
+    std::string killDetachedSessionId;
+    auto* killDetachedSessionCmd = app.add_subcommand("kill-detached-session", "Close a detached session");
+    killDetachedSessionCmd->add_option("session-id", killDetachedSessionId, "Detached session GUID")->required();
+    killDetachedSessionCmd->callback([&]() {
+        const auto sessionId = GuidFromString(killDetachedSessionId);
+        if (IsEqualGUID(sessionId, GUID{}))
+        {
+            exitCode = 1;
+            return;
+        }
+
+        auto server = connect();
+        if (!server) return;
+
+        const auto hr = server->KillDetachedSession(sessionId);
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            fprintf(stderr, "[wtcli] Detached session not found: %s\n", killDetachedSessionId.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (FAILED(hr)) { fprintf(stderr, "KillDetachedSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["session_id"] = killDetachedSessionId;
+            PrintJson(result);
         }
     });
 
