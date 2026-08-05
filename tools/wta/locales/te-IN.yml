@@ -219,3 +219,9 @@ model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ �
 system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
 system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}
+tray.tooltip: "ఇంటెలిజెంట్ టెర్మినల్ — %{count} నేపథ్య సెషన్‌లు"
+tray.restore: "పునరుద్ధరించు"
+tray.end: "ముగించు"
+tray.end_all: "అన్నింటినీ ముగించు"
+tray.error_title: "నేపథ్య సెషన్ చర్య విఫలమైంది"
+tray.error_body: "చర్యను పూర్తి చేయడం సాధ్యపడలేదు:\n%{error}"

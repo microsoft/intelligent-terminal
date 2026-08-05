@@ -218,3 +218,9 @@ model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligenten Terminal — %{count} Hannergrondsessioun(en)"
+tray.restore: "Restauréieren"
+tray.end: "Ofschléissen"
+tray.end_all: "All ofschléissen"
+tray.error_title: "D'Aktioun vun der Hannergrondsessioun ass feelgeschloen"
+tray.error_body: "D'Aktioun konnt net ofgeschloss ginn:\n%{error}"

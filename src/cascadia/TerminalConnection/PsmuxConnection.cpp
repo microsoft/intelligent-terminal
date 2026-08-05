@@ -201,11 +201,41 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         _output = std::move(parentOutput);
     }
 
+    void PsmuxConnection::_launchDurableTray() noexcept
+    try
+    {
+        std::filesystem::path wtaPath{ wil::GetModuleFileNameW<std::wstring>(nullptr) };
+        wtaPath.replace_filename(L"wta.exe");
+        if (!std::filesystem::exists(wtaPath))
+        {
+            return;
+        }
+
+        auto commandline = fmt::format(FMT_COMPILE(L"\"{}\" tray"), wtaPath.wstring());
+        STARTUPINFOW startupInfo{
+            .cb = sizeof(startupInfo),
+        };
+        wil::unique_process_information processInfo;
+        LOG_IF_WIN32_BOOL_FALSE(CreateProcessW(
+            wtaPath.c_str(),
+            commandline.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+            nullptr,
+            nullptr,
+            &startupInfo,
+            &processInfo));
+    }
+    CATCH_LOG()
+
     void PsmuxConnection::Start()
     try
     {
         _transitionToState(ConnectionState::Connecting);
         _launchClient();
+        _launchDurableTray();
 
         _hOutputThread.reset(CreateThread(
             nullptr,

@@ -2144,7 +2144,7 @@ namespace winrt::TerminalApp::implementation
             args.StartingDirectory(startingDirectory);
         }
 
-        auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
+        auto rawPane = _MakeTerminalPane(args, nullptr, nullptr, false);
         if (!rawPane)
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: _MakeTerminalPane returned null");
@@ -4085,7 +4085,8 @@ namespace winrt::TerminalApp::implementation
     // - the desired connection
     TerminalConnection::ITerminalConnection TerminalPage::_CreateConnectionFromSettings(Profile profile,
                                                                                         IControlSettings settings,
-                                                                                        const bool inheritCursor)
+                                                                                        const bool inheritCursor,
+                                                                                        const bool useCommandPersistence)
     {
         static const auto textMeasurement = [&]() -> std::wstring_view {
             switch (_settings.GlobalSettings().TextMeasurement())
@@ -4146,7 +4147,7 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
-            if (_settings.GlobalSettings().ContinueRunningCommands())
+            if (useCommandPersistence)
             {
                 connection = TerminalConnection::PsmuxConnection{};
             }
@@ -4239,7 +4240,8 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        return _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), true);
+        const auto useCommandPersistence = connection.try_as<TerminalConnection::PsmuxConnection>() != nullptr;
+        return _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), true, useCommandPersistence);
     }
 
     // Method Description:
@@ -4672,6 +4674,11 @@ namespace winrt::TerminalApp::implementation
                                  winrt::to_hstring(params["agent_session_id"].asString()) :
                                  winrt::hstring{};
         }
+        std::optional<bool> hasConversation;
+        if (params.isMember("has_conversation") && params["has_conversation"].isBool())
+        {
+            hasConversation = params["has_conversation"].asBool();
+        }
 
         std::optional<bool> wantOpen;
         if (params.isMember("pane_open") && params["pane_open"].isBool())
@@ -4712,6 +4719,10 @@ namespace winrt::TerminalApp::implementation
             if (agentSessionId.has_value())
             {
                 agentContent.SetAgentSessionId(*agentSessionId);
+            }
+            if (hasConversation.has_value())
+            {
+                winrt::get_self<implementation::AgentPaneContent>(agentContent)->SetHasConversation(*hasConversation);
             }
             if (view.has_value())
             {
@@ -7823,7 +7834,8 @@ namespace winrt::TerminalApp::implementation
     //   Pane for this connection.
     std::shared_ptr<Pane> TerminalPage::_MakeTerminalPane(const NewTerminalArgs& newTerminalArgs,
                                                           const winrt::TerminalApp::Tab& sourceTab,
-                                                          TerminalConnection::ITerminalConnection existingConnection)
+                                                          TerminalConnection::ITerminalConnection existingConnection,
+                                                          const bool useCommandPersistence)
     {
         // First things first - Check for making a pane from content ID.
         if (newTerminalArgs &&
@@ -8066,7 +8078,11 @@ namespace winrt::TerminalApp::implementation
         }
         else
         {
-            connection = _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), hasSessionId);
+            const auto restoringDurableShell = newTerminalArgs && newTerminalArgs.UseCommandPersistence();
+            connection = _CreateConnectionFromSettings(profile,
+                                                       *controlSettings.DefaultSettings(),
+                                                       hasSessionId,
+                                                       useCommandPersistence || restoringDurableShell);
         }
 
         TerminalConnection::ITerminalConnection debugConnection{ nullptr };
@@ -9968,6 +9984,14 @@ namespace winrt::TerminalApp::implementation
         // actions in the future.
 
         makeItem(RS_(L"DuplicateTabText"), L"\xF5ED", ActionAndArgs{ ShortcutAction::DuplicateTab, nullptr }, menu);
+        const auto activePane = _GetFocusedTabImpl()->GetActivePane();
+        if (activePane &&
+            !activePane->IsAgentPane() &&
+            _settings.GlobalSettings().ContinueRunningCommands() &&
+            !control.Connection().try_as<TerminalConnection::PsmuxConnection>())
+        {
+            makeItem(RS_(L"PutToKeepRunningText"), L"\xE7EF", ActionAndArgs{ ShortcutAction::PutToKeepRunning, nullptr }, menu);
+        }
 
         const auto splitPaneRightText = RS_(L"SplitPaneRightText");
         const auto splitPaneDownText = RS_(L"SplitPaneDownText");

@@ -234,3 +234,9 @@ model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}
+tray.tooltip: "Խելացի տերմինալ — %{count} ֆոնային աշխատաշրջան"
+tray.restore: "Վերականգնել"
+tray.end: "Ավարտել"
+tray.end_all: "Ավարտել բոլորը"
+tray.error_title: "Ֆոնային աշխատաշրջանի գործողությունը ձախողվեց"
+tray.error_body: "Չհաջողվեց ավարտել գործողությունը՝\n%{error}"

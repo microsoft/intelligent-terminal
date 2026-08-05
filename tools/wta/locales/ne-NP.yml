@@ -219,3 +219,9 @@ model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ •
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}
+tray.tooltip: "इन्टेलिजेन्ट टर्मिनल — %{count} पृष्ठभूमि सत्र"
+tray.restore: "पुनर्स्थापना गर्नुहोस्"
+tray.end: "अन्त्य गर्नुहोस्"
+tray.end_all: "सबै अन्त्य गर्नुहोस्"
+tray.error_title: "पृष्ठभूमि सत्रको कार्य असफल भयो"
+tray.error_body: "कार्य पूरा गर्न सकिएन:\n%{error}"

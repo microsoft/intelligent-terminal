@@ -219,3 +219,9 @@ model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • En
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}
+tray.tooltip: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ — %{count} ಹಿನ್ನೆಲೆ ಸೆಷನ್‌ಗಳು"
+tray.restore: "ಮರುಸ್ಥಾಪಿಸಿ"
+tray.end: "ಕೊನೆಗೊಳಿಸಿ"
+tray.end_all: "ಎಲ್ಲವನ್ನೂ ಕೊನೆಗೊಳಿಸಿ"
+tray.error_title: "ಹಿನ್ನೆಲೆ ಸೆಷನ್ ಕ್ರಿಯೆ ವಿಫಲವಾಗಿದೆ"
+tray.error_body: "ಕ್ರಿಯೆಯನ್ನು ಪೂರ್ಣಗೊಳಿಸಲಾಗಲಿಲ್ಲ:\n%{error}"

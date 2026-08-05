@@ -218,3 +218,9 @@ model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}
+tray.tooltip: "Matalinong Terminal — %{count} session sa background"
+tray.restore: "Ibalik"
+tray.end: "Tapusin"
+tray.end_all: "Tapusin lahat"
+tray.error_title: "Nabigo ang pagkilos sa session sa background"
+tray.error_body: "Hindi makumpleto ang pagkilos:\n%{error}"

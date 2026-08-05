@@ -218,3 +218,9 @@ model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Pintar — %{count} sesi latar belakang"
+tray.restore: "Pulihkan"
+tray.end: "Tamatkan"
+tray.end_all: "Tamatkan semua"
+tray.error_title: "Tindakan sesi latar belakang gagal"
+tray.error_body: "Tindakan tidak dapat diselesaikan:\n%{error}"

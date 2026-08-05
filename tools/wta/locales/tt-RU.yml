@@ -218,3 +218,9 @@ model_picker.title: "Модель сайлагыз (↑ ↓ • Enter • Esc)" 
 system.no_models: "Тоташкан агент бер дә сайлап була торган модель игълан итмәде."
 system.model_set: "Бу панель өчен модель %{model} итеп билгеләнде."  # {Locked="%{model}"}
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}
+tray.tooltip: "Акыллы терминал — %{count} фон сеансы"
+tray.restore: "Торгызу"
+tray.end: "Тәмамлау"
+tray.end_all: "Барысын да тәмамлау"
+tray.error_title: "Фон сеансы гамәле уңышсыз булды"
+tray.error_body: "Гамәлне тәмамлап булмады:\n%{error}"

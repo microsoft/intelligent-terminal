@@ -218,3 +218,9 @@ model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligent Terminal — %{count} bakgrundssessioner"
+tray.restore: "Återställ"
+tray.end: "Avsluta"
+tray.end_all: "Avsluta alla"
+tray.error_title: "Åtgärden för bakgrundssessionen misslyckades"
+tray.error_body: "Det gick inte att slutföra åtgärden:\n%{error}"

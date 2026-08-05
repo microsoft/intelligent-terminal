@@ -131,6 +131,8 @@ enum StoreCommand {
         ShellSessionDeleteParams,
         oneshot::Sender<Result<ShellSessionDeleteResponse>>,
     ),
+    ListRecords(bool, oneshot::Sender<Result<Vec<ShellSessionRecord>>>),
+    TouchRecords(Vec<String>, bool, oneshot::Sender<Result<()>>),
 }
 
 impl ShellSessionStore {
@@ -221,6 +223,24 @@ impl ShellSessionStore {
             .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
         rx.await
             .context("shell-session store actor dropped delete response")?
+    }
+
+    pub async fn list_records(&self, elevated: bool) -> Result<Vec<ShellSessionRecord>> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCommand::ListRecords(elevated, tx))
+            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+        rx.await
+            .context("shell-session store actor dropped record-list response")?
+    }
+
+    pub async fn touch_records(&self, ids: Vec<String>, elevated: bool) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCommand::TouchRecords(ids, elevated, tx))
+            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+        rx.await
+            .context("shell-session store actor dropped record-touch response")?
     }
 }
 
@@ -355,7 +375,56 @@ impl StoreCore {
             StoreCommand::Delete(params, response) => {
                 let _ = response.send(self.delete(&params));
             }
+            StoreCommand::ListRecords(elevated, response) => {
+                let _ = response.send(self.list_records(elevated, now));
+            }
+            StoreCommand::TouchRecords(ids, elevated, response) => {
+                let _ = response.send(self.touch_records(&ids, elevated, now));
+            }
         }
+    }
+
+    fn list_records(&self, elevated: bool, now: i64) -> Result<Vec<ShellSessionRecord>> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT id, name, layout_json, elevated, created_at, updated_at,
+                        last_used_at, revision
+                   FROM shell_sessions
+                  WHERE elevated = ?1 AND last_used_at >= ?2
+                  ORDER BY last_used_at DESC, updated_at DESC, id ASC",
+            )
+            .context("failed to prepare shell-session record query")?;
+        let records = statement
+            .query_map(params![elevated, now - RETENTION_SECONDS], record_from_row)
+            .context("failed to query shell-session records")?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("failed to decode shell-session records")?;
+        Ok(records)
+    }
+
+    fn touch_records(&mut self, ids: &[String], elevated: bool, now: i64) -> Result<()> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .context("failed to begin shell-session keep-alive transaction")?;
+        {
+            let mut statement = transaction
+                .prepare(
+                    "UPDATE shell_sessions
+                        SET last_used_at = ?1
+                      WHERE id = ?2 AND elevated = ?3 AND last_used_at >= ?4",
+                )
+                .context("failed to prepare shell-session keep-alive update")?;
+            for id in ids {
+                statement
+                    .execute(params![now, id, elevated, now - RETENTION_SECONDS])
+                    .context("failed to refresh shell-session retention")?;
+            }
+        }
+        transaction
+            .commit()
+            .context("failed to commit shell-session keep-alive transaction")
     }
 
     fn list(
@@ -2102,6 +2171,23 @@ mod tests {
                     .get::<_, i64>(0),)?,
             0
         );
+        Ok(())
+    }
+
+    #[test]
+    fn touching_live_records_prevents_retention_expiry() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
+        let saved = store.save(save_params(&directory, "live", "live.tmp")?, 100)?;
+        let refreshed_at = 100 + RETENTION_SECONDS - 1;
+
+        store.touch_records(std::slice::from_ref(&saved.id), false, refreshed_at)?;
+        store.run_maintenance(100 + RETENTION_SECONDS + 1);
+
+        let records = store.list_records(false, 100 + RETENTION_SECONDS + 1)?;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].id, saved.id);
+        assert_eq!(records[0].last_used_at, refreshed_at);
         Ok(())
     }
 

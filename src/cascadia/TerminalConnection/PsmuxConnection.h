@@ -38,6 +38,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         };
 
         void _launchClient();
+        void _launchDurableTray() noexcept;
         void _writeControlCommand(std::string_view command);
         DWORD _outputThread();
         void _processProtocolLine(std::string_view line, til::u8state& u8State);

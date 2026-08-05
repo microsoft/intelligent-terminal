@@ -213,3 +213,9 @@ model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="�
 system.no_models: "已連線的智能體未公布任何可選取的模型。"
 system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}
 system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}
+tray.tooltip: "智能終端 — %{count} 個背景工作階段"
+tray.restore: "還原"
+tray.end: "結束"
+tray.end_all: "全部結束"
+tray.error_title: "背景工作階段操作失敗"
+tray.error_body: "無法完成操作：\n%{error}"

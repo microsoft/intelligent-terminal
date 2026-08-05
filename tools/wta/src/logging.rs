@@ -145,6 +145,14 @@ pub fn init(process: &str) {
 /// processes, the C++ agent-pane logger, and (through `WTA_HOOK_LOG_DIR`) the
 /// PowerShell hooks all resolve to the same `logs\<pkgver>\` folder.
 pub(crate) fn package_version() -> Option<String> {
+    // The external durable tray inherits this from its packaged bootstrap so
+    // its wta-tray.log stays in the same per-version directory as WT's logs.
+    if let Ok(version) = std::env::var("WTA_PACKAGE_VERSION") {
+        if !version.trim().is_empty() {
+            return Some(version);
+        }
+    }
+
     use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
     use windows_sys::Win32::Storage::Packaging::Appx::{GetCurrentPackageId, PACKAGE_ID};
 

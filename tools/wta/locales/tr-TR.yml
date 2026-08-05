@@ -218,3 +218,9 @@ model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
+tray.tooltip: "Akıllı Terminal — %{count} arka plan oturumu"
+tray.restore: "Geri yükle"
+tray.end: "Sonlandır"
+tray.end_all: "Tümünü sonlandır"
+tray.error_title: "Arka plan oturumu eylemi başarısız oldu"
+tray.error_body: "Eylem tamamlanamadı:\n%{error}"

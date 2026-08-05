@@ -12,6 +12,7 @@ mod command_recall;
 mod commands;
 mod coordinator;
 mod cwd_util;
+mod durable_tray;
 mod event;
 mod helper;
 mod history_loader;
@@ -322,6 +323,19 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Run the durable background-session notification-area host
+    #[command(hide = true)]
+    Tray {
+        #[arg(long, hide = true)]
+        host: bool,
+        #[arg(long, hide = true)]
+        wtcli: Option<std::path::PathBuf>,
+        #[arg(long, hide = true)]
+        aumid: Option<String>,
+        #[arg(long, hide = true)]
+        icon_source: Option<std::path::PathBuf>,
+    },
+
     /// Show Windows Terminal protocol connection info
     Info,
 
@@ -727,6 +741,28 @@ async fn main() -> Result<()> {
         // Subcommand aliases for legacy modes
         Some(Command::Info) => run_info_mode().await,
         Some(Command::TestPipe) => run_test_pipe().await,
+        Some(Command::Tray {
+            host,
+            wtcli,
+            aumid,
+            icon_source,
+        }) => {
+            let result = durable_tray::run(durable_tray::TrayArgs {
+                host,
+                wtcli,
+                aumid,
+                icon_source,
+            })
+            .await;
+            if let Err(error) = &result {
+                tracing::error!(
+                    target: "durable_tray",
+                    error = ?error,
+                    "durable tray process failed"
+                );
+            }
+            result
+        }
 
         // ── List commands ──
         Some(Command::ListWindows) => {
@@ -1027,6 +1063,7 @@ fn process_label(cli: &Cli) -> String {
     match &cli.command {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
+        Some(Command::Tray { .. }) => "tray".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
         Some(Command::ProbeSessions { .. }) => "probe".to_string(),
         Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),

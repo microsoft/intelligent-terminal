@@ -220,3 +220,9 @@ model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
 system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligent Terminal — %{count} baggrundssession(er)"
+tray.restore: "Gendan"
+tray.end: "Afslut"
+tray.end_all: "Afslut alle"
+tray.error_title: "Handlingen for baggrundssessionen mislykkedes"
+tray.error_body: "Handlingen kunne ikke fuldføres:\n%{error}"

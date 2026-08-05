@@ -221,3 +221,9 @@ model_picker.title: "মডেল নির্বাচন করুন (↑ ↓
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
 system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}
+tray.tooltip: "ইন্টেলিজেন্ট টার্মিনাল — %{count}টি ব্যাকগ্রাউন্ড সেশন"
+tray.restore: "পুনরুদ্ধার করুন"
+tray.end: "শেষ করুন"
+tray.end_all: "সব শেষ করুন"
+tray.error_title: "ব্যাকগ্রাউন্ড সেশনের ক্রিয়া ব্যর্থ হয়েছে"
+tray.error_body: "ক্রিয়াটি সম্পন্ন করা যায়নি:\n%{error}"

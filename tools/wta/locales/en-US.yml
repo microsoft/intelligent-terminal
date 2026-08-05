@@ -282,3 +282,13 @@ time.days_other: "%{count} days ago"
 # month names or day/month/year ordering. Microsoft's CLDR data covers
 # every locale Windows supports with higher fidelity than we could
 # maintain by hand.
+# ── Durable background-session tray ─────────────────────────────────────────
+# Tooltip for the notification-area icon. %{count} is the number of saved
+# shell layouts that currently have at least one detached psmux session.
+tray.tooltip: "Intelligent Terminal — %{count} background session(s)"  # {Locked="Intelligent Terminal","psmux"}
+tray.restore: "Restore"  # Command in a saved shell session's tray submenu
+tray.end: "End"  # Command in a saved shell session's tray submenu; terminates its background commands
+tray.end_all: "End all"  # Tray command that terminates every displayed background shell session
+tray.error_title: "Background session action failed"  # Title of an error dialog shown by the tray host
+# Error dialog body. %{error} is replaced with diagnostic details.
+tray.error_body: "The action could not be completed:\n%{error}"

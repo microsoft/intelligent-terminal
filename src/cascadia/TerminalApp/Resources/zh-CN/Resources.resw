@@ -1313,4 +1313,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell 执行策略正在阻止脚本。错误检测已关闭。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="PutToKeepRunningText" xml:space="preserve">
+    <value>转为后台持续运行</value>
+    <comment>Context-menu command that opens a new durable pane using the current profile and working directory.</comment>
+  </data>
 </root>

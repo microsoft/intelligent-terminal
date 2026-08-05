@@ -1646,6 +1646,34 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_HandlePutToKeepRunning(const IInspectable& sender,
+                                               const ActionEventArgs& args)
+    {
+        if (!_settings.GlobalSettings().ContinueRunningCommands())
+        {
+            return;
+        }
+
+        const auto tab = _senderOrFocusedTab(sender);
+        const auto activePane = tab ? tab->GetActivePane() : nullptr;
+        const auto control = activePane ? activePane->GetTerminalControl() : nullptr;
+        if (!control || activePane->IsAgentPane())
+        {
+            return;
+        }
+        if (control.Connection().try_as<TerminalConnection::PsmuxConnection>())
+        {
+            args.Handled(true);
+            return;
+        }
+
+        if (const auto durablePane = _MakeTerminalPane(nullptr, _GetFocusedTab(), nullptr, true))
+        {
+            _SplitPane(tab, SplitDirection::Automatic, 0.5f, durablePane);
+            args.Handled(true);
+        }
+    }
+
     void TerminalPage::_HandleOpenAgentPane(const IInspectable& /*sender*/,
                                             const ActionEventArgs& args)
     {

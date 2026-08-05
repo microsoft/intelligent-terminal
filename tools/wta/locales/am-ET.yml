@@ -219,3 +219,9 @@ model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Loc
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
+tray.tooltip: "ብልህ ተርሚናል — %{count} የጀርባ ክፍለ ጊዜ(ዎች)"
+tray.restore: "ወደነበረበት መልስ"
+tray.end: "ጨርስ"
+tray.end_all: "ሁሉንም ጨርስ"
+tray.error_title: "የጀርባ ክፍለ ጊዜ እርምጃ አልተሳካም"
+tray.error_body: "እርምጃውን ማጠናቀቅ አልተቻለም፦\n%{error}"

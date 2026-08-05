@@ -482,6 +482,7 @@ namespace SettingsModelUnitTests
                 "command": {
                     "action": "newWindow",
                     "sessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
+                    "useCommandPersistence": true,
                     "agentSession": {
                         "paneSessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
                         "agentSessionId": "agent-session-3",
@@ -666,8 +667,10 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"chat" }, terminalArgs.AgentPaneView());
             VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
+            VERIFY_IS_TRUE(terminalArgs.UseCommandPersistence());
 
             const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
+            VERIFY_IS_TRUE(serialized["useCommandPersistence"].asBool());
             VERIFY_IS_TRUE(serialized["agentSession"].isObject());
             VERIFY_ARE_EQUAL("copilot", serialized["agentSession"]["agent"].asString());
             VERIFY_ARE_EQUAL(
@@ -679,6 +682,15 @@ namespace SettingsModelUnitTests
                 serialized["agentPane"]["agentSession"]["agent"].asString());
             VERIFY_IS_FALSE(serialized.isMember("agentResumeCommandline"));
             VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
+
+            terminalArgs.AgentPaneSessionId(L"");
+            const auto freshAgentPaneJson = implementation::NewTerminalArgs::ToJson(terminalArgs);
+            const auto freshAgentPaneArgs = implementation::NewTerminalArgs::FromJson(freshAgentPaneJson);
+            VERIFY_IS_TRUE(freshAgentPaneArgs.AgentPaneSessionId().empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, freshAgentPaneArgs.AgentPaneAgent());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"chat" }, freshAgentPaneArgs.AgentPaneView());
+            VERIFY_IS_TRUE(freshAgentPaneArgs.AgentPaneOpen());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, freshAgentPaneArgs.AgentPanePosition());
         }
     }
 }

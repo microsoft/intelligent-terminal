@@ -218,3 +218,9 @@ model_picker.title: "Изаберите модел (↑ ↓ • Enter • Esc)" 
 system.no_models: "Повезани агент није огласио ниједан модел који се може изабрати."
 system.model_set: "Модел за ово окно је подешен на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Непознат модел %{model} — унесите /model да видите доступну листу."  # {Locked="%{model}","/model"}
+tray.tooltip: "Интелигентни Терминал — %{count} позадинских сесија"
+tray.restore: "Врати"
+tray.end: "Заврши"
+tray.end_all: "Заврши све"
+tray.error_title: "Радња позадинске сесије није успела"
+tray.error_body: "Радњу није било могуће довршити:\n%{error}"

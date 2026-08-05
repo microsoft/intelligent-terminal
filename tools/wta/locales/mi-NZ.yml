@@ -217,3 +217,9 @@ model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
+tray.tooltip: "Iho Atamai — %{count} wātū papamuri"
+tray.restore: "Whakaora"
+tray.end: "Whakamutua"
+tray.end_all: "Whakamutua te katoa"
+tray.error_title: "I rahua te hohenga wātū papamuri"
+tray.error_body: "Kāore i taea te whakaoti te hohenga:\n%{error}"

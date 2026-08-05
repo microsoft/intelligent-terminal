@@ -219,3 +219,9 @@ model_picker.title: "மாதிரியைத் தேர்ந்தெட�
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}
+tray.tooltip: "அறிவாண் முனையம் — %{count} பின்னணி அமர்வுகள்"
+tray.restore: "மீட்டமை"
+tray.end: "முடி"
+tray.end_all: "அனைத்தையும் முடி"
+tray.error_title: "பின்னணி அமர்வு செயல் தோல்வியடைந்தது"
+tray.error_body: "செயலை நிறைவு செய்ய முடியவில்லை:\n%{error}"

@@ -137,6 +137,7 @@ namespace winrt::TerminalApp::implementation
         {
             const auto connection = _control.Connection();
             const auto id = connection ? connection.SessionId() : winrt::guid{};
+            args.UseCommandPersistence(connection.try_as<winrt::Microsoft::Terminal::TerminalConnection::PsmuxConnection>() != nullptr);
             if (id != winrt::guid{})
             {
                 args.SessionId(id);

@@ -218,3 +218,9 @@ model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {L
 system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
 system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modèle inconnu %{model} — tapez /model pour afficher la liste disponible."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Intelligent — %{count} sessions en arrière-plan"
+tray.restore: "Restaurer"
+tray.end: "Terminer"
+tray.end_all: "Tout terminer"
+tray.error_title: "Échec de l'action de la session en arrière-plan"
+tray.error_body: "Impossible de terminer l'action :\n%{error}"

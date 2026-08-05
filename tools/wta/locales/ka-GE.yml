@@ -218,3 +218,9 @@ model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}
+tray.tooltip: "ჭკვიანი ტერმინალი — %{count} ფონური სესია"
+tray.restore: "აღდგენა"
+tray.end: "დასრულება"
+tray.end_all: "ყველას დასრულება"
+tray.error_title: "ფონური სესიის მოქმედება ვერ შესრულდა"
+tray.error_body: "მოქმედების დასრულება ვერ მოხერხდა:\n%{error}"

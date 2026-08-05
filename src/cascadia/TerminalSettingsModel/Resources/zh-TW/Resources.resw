@@ -997,4 +997,8 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>在新索引標籤中開啟背景代理</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="PutToKeepRunningCommandKey" xml:space="preserve">
+    <value>轉為背景持續執行</value>
+    <comment>Command palette action that opens a durable psmux pane. {Locked=&quot;psmux&quot;}</comment>
+  </data>
 </root>

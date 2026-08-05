@@ -218,3 +218,9 @@ model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
 system.model_set: "Model za ovo okno je podešen na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}
+tray.tooltip: "Inteligentni Terminal — %{count} pozadinskih sesija"
+tray.restore: "Vrati"
+tray.end: "Završi"
+tray.end_all: "Završi sve"
+tray.error_title: "Radnja pozadinske sesije nije uspela"
+tray.error_body: "Radnju nije bilo moguće dovršiti:\n%{error}"

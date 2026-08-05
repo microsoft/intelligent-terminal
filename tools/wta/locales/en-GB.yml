@@ -218,3 +218,9 @@ model_picker.title: "Select model (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligent Terminal — %{count} background session(s)"
+tray.restore: "Restore"
+tray.end: "End"
+tray.end_all: "End all"
+tray.error_title: "Background session action failed"
+tray.error_body: "The action could not be completed:\n%{error}"

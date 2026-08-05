@@ -115,6 +115,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::TriggerAutofix, USES_RESOURCE(L"TriggerAutofixCommandKey") },
                 { ShortcutAction::OpenBackgroundAgent, USES_RESOURCE(L"OpenBackgroundAgentCommandKey") },
                 { ShortcutAction::OpenCWD, USES_RESOURCE(L"OpenCWDCommandKey") },
+                { ShortcutAction::PutToKeepRunning, USES_RESOURCE(L"PutToKeepRunningCommandKey") },
                 { ShortcutAction::OpenNewTabDropdown, USES_RESOURCE(L"OpenNewTabDropdownCommandKey") },
                 { ShortcutAction::OpenScratchpad, USES_RESOURCE(L"OpenScratchpadKey") },
                 { ShortcutAction::OpenSettings, USES_RESOURCE(L"OpenSettingsUICommandKey") },

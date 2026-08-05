@@ -219,3 +219,9 @@ model_picker.title: "ମଡେଲ ବାଛନ୍ତୁ (↑ ↓ • Enter • E
 system.no_models: "ସଂଯୁକ୍ତ ଏଜେଣ୍ଟ କୌଣସି ଚୟନଯୋଗ୍ୟ ମଡେଲ ଘୋଷଣା କଲା ନାହିଁ।"
 system.model_set: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ %{model} କୁ ସେଟ୍ କରାଗଲା।"  # {Locked="%{model}"}
 system.model_unknown: "ଅଜଣା ମଡେଲ %{model} — ଉପଲବ୍ଧ ତାଲିକା ଦେଖିବାକୁ /model ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="%{model}","/model"}
+tray.tooltip: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ — %{count} ପୃଷ୍ଠଭୂମି ଅଧିବେଶନ"
+tray.restore: "ପୁନଃସ୍ଥାପନ କରନ୍ତୁ"
+tray.end: "ଶେଷ କରନ୍ତୁ"
+tray.end_all: "ସବୁ ଶେଷ କରନ୍ତୁ"
+tray.error_title: "ପୃଷ୍ଠଭୂମି ଅଧିବେଶନ କ୍ରିୟା ବିଫଳ ହେଲା"
+tray.error_body: "କ୍ରିୟାଟି ସମ୍ପୂର୍ଣ୍ଣ କରାଯାଇପାରିଲା ନାହିଁ:\n%{error}"

@@ -218,3 +218,9 @@ model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligente Terminal — %{count} achtergrondsessie(s)"
+tray.restore: "Herstellen"
+tray.end: "Beëindigen"
+tray.end_all: "Alles beëindigen"
+tray.error_title: "Actie voor achtergrondsessie mislukt"
+tray.error_body: "De actie kan niet worden voltooid:\n%{error}"

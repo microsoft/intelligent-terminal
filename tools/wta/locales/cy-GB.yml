@@ -219,3 +219,9 @@ model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terfynell Ddeallus — %{count} sesiwn gefndir"
+tray.restore: "Adfer"
+tray.end: "Gorffen"
+tray.end_all: "Gorffen pob un"
+tray.error_title: "Methodd gweithred y sesiwn gefndir"
+tray.error_body: "Nid oedd modd cwblhau'r weithred:\n%{error}"

@@ -219,3 +219,9 @@ model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","�
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligente Terminaal — %{count} agtergrondsessie(s)"
+tray.restore: "Herstel"
+tray.end: "Beëindig"
+tray.end_all: "Beëindig almal"
+tray.error_title: "Agtergrondsessiehandeling het misluk"
+tray.error_body: "Die handeling kon nie voltooi word nie:\n%{error}"

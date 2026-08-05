@@ -1279,4 +1279,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell 執行原則正在封鎖指令碼。錯誤偵測已關閉。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="PutToKeepRunningText" xml:space="preserve">
+    <value>轉為背景持續執行</value>
+    <comment>Context-menu command that opens a new durable pane using the current profile and working directory.</comment>
+  </data>
 </root>

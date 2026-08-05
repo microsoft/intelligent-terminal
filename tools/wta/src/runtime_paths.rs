@@ -40,8 +40,15 @@ pub fn intelligent_terminal_root() -> Option<PathBuf> {
 /// Cached for the same reason as [`intelligent_terminal_root`].
 pub fn intelligent_terminal_local_root() -> Option<PathBuf> {
     static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
-    ROOT.get_or_init(|| resolve_root(&["LocalCache", "Local"]))
-        .clone()
+    ROOT.get_or_init(|| {
+        // The cached durable tray host has no package identity. Its packaged
+        // bootstrap pins this override so logs remain in that package's
+        // private LocalCache rather than the unpackaged fallback.
+        std::env::var_os("WTA_LOCAL_ROOT")
+            .map(PathBuf::from)
+            .or_else(|| resolve_root(&["LocalCache", "Local"]))
+    })
+    .clone()
 }
 
 /// Resolve a root under `%LOCALAPPDATA%`. When the process is packaged the

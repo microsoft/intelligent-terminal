@@ -217,3 +217,9 @@ model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Intelliġenti — %{count} sessjonijiet fl-isfond"
+tray.restore: "Irrestawra"
+tray.end: "Temm"
+tray.end_all: "Temm kollha"
+tray.error_title: "L-azzjoni tas-sessjoni fl-isfond falliet"
+tray.error_body: "L-azzjoni ma setgħetx titlesta:\n%{error}"

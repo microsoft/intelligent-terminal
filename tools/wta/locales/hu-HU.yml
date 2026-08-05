@@ -217,3 +217,9 @@ model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Lock
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligens Terminál — %{count} háttérbeli munkamenet"
+tray.restore: "Visszaállítás"
+tray.end: "Befejezés"
+tray.end_all: "Összes befejezése"
+tray.error_title: "A háttérbeli munkamenet művelete sikertelen"
+tray.error_body: "A műveletet nem sikerült befejezni:\n%{error}"

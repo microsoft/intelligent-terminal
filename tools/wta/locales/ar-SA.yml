@@ -220,3 +220,9 @@ model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Lo
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}
+tray.tooltip: "الوحدة الطرفية الذكية — %{count} جلسة في الخلفية"
+tray.restore: "استعادة"
+tray.end: "إنهاء"
+tray.end_all: "إنهاء الكل"
+tray.error_title: "فشل إجراء جلسة الخلفية"
+tray.error_body: "تعذر إكمال الإجراء:\n%{error}"

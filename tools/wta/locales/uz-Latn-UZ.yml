@@ -218,3 +218,9 @@ model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
 system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}
 system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}
+tray.tooltip: "Aqlli terminal — %{count} fon seansi"
+tray.restore: "Tiklash"
+tray.end: "Tugatish"
+tray.end_all: "Barchasini tugatish"
+tray.error_title: "Fon seansi amali bajarilmadi"
+tray.error_body: "Amalni yakunlab bo‘lmadi:\n%{error}"

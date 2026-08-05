@@ -219,3 +219,9 @@ model_picker.title: "मॉडल चुनें (↑ ↓ • Enter • Esc)"  
 system.no_models: "कनेक्टेड एजेंट ने कोई चयन योग्य मॉडल घोषित नहीं किया।"
 system.model_set: "इस पेन के लिए मॉडल %{model} पर सेट किया गया।"  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}
+tray.tooltip: "इंटेलिजेंट टर्मिनल — %{count} बैकग्राउंड सत्र"
+tray.restore: "पुनर्स्थापित करें"
+tray.end: "समाप्त करें"
+tray.end_all: "सभी समाप्त करें"
+tray.error_title: "बैकग्राउंड सत्र की कार्रवाई विफल रही"
+tray.error_body: "कार्रवाई पूरी नहीं की जा सकी:\n%{error}"
