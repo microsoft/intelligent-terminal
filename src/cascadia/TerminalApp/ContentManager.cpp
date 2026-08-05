@@ -87,11 +87,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        control.Detach();
-
         KeptSession kept;
         kept.contentId = contentId;
         kept.groupId = groupId;
+        const auto core{ content.Core() };
 
         // Detaching severed the only thing that was watching this connection —
         // TermControl::Detach() clears its revokers. Without our own watch, a
@@ -101,7 +100,7 @@ namespace winrt::TerminalApp::implementation
         // The connection raises StateChanged from its output thread, so hop
         // back to the UI thread before touching our maps or tearing anything
         // down.
-        if (const auto core{ content.Core() })
+        if (core)
         {
             kept.connectionStateRevoker = core.ConnectionStateChanged(
                 winrt::auto_revoke,
@@ -121,6 +120,8 @@ namespace winrt::TerminalApp::implementation
                 });
         }
 
+        control.Detach();
+
         _keptSessions.insert_or_assign(sessionId, std::move(kept));
 
         auto& group = _keptGroups[groupId];
@@ -134,7 +135,15 @@ namespace winrt::TerminalApp::implementation
         }
         group.sessionIds.push_back(sessionId);
 
-        KeptSessionsChanged.raise(*this, nullptr);
+        // The connection may already have transitioned to Closed/Failed before
+        // we finished recording the detached session, or a queued callback may
+        // have run before the session was visible in _keptSessions. Re-check
+        // once the maps are populated so either race still gets reaped.
+        _reapDetachedSessionIfDead(sessionId);
+        if (_keptSessions.find(sessionId) != _keptSessions.end())
+        {
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
     }
 
     // Returns the ContentId of a previously detached session, or 0 if there is
