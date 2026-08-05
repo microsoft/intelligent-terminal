@@ -6409,7 +6409,7 @@ namespace winrt::TerminalApp::implementation
         // turn claims its own workspace. Unnamed windows don't have a stable
         // key, so their full layout is stored directly in the vector.
         const auto& windowName = _WindowProperties.WindowName();
-        if (const auto layout = _GetWindowLayout(!windowName.empty()))
+        if (const auto layout = _GetWindowLayout(true))
         {
             if (!windowName.empty())
             {

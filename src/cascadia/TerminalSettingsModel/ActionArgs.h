@@ -420,6 +420,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         static constexpr std::string_view ViewKey{ "view" };
         static constexpr std::string_view OpenKey{ "open" };
         static constexpr std::string_view PositionKey{ "position" };
+        static constexpr std::string_view DurableShellSessionIdKey{ "durableShellSessionId" };
+        static constexpr std::string_view DurableShellSessionRevisionKey{ "durableShellSessionRevision" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -501,6 +503,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::GetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::GetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
+            JsonUtils::GetValueForKey(json, DurableShellSessionIdKey, args->_DurableShellSessionId);
+            if (const auto& durableShellSessionRevision = json[DurableShellSessionRevisionKey.data()];
+                durableShellSessionRevision.isInt() || durableShellSessionRevision.isInt64())
+            {
+                args->_DurableShellSessionRevision = durableShellSessionRevision.asInt64();
+            }
             JsonUtils::GetValueForKey(json, ContentKey, args->_ContentId);
             return *args;
         }
@@ -555,6 +563,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::SetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
+            if (const auto durableShellSessionId = args->DurableShellSessionId();
+                !durableShellSessionId.empty())
+            {
+                JsonUtils::SetValueForKey(json, DurableShellSessionIdKey, durableShellSessionId);
+                json[DurableShellSessionRevisionKey.data()] = Json::Int64{ args->DurableShellSessionRevision() };
+            }
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
             return json;
         }
