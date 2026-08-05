@@ -185,7 +185,7 @@ static bool _parseJson(const std::string& str, Json::Value& out)
 
 // ── JSON serialization helpers (the wire format is JSON; see wtcli Formatting) ──
 
-static std::string _guidStr(const winrt::guid& g)
+static std::string _guidStr(const GUID& g)
 {
     wchar_t buf[40]{};
     ::StringFromGUID2(g, buf, ARRAYSIZE(buf));
@@ -298,14 +298,14 @@ static Json::Value _toJson(const Protocol::TabCreationResult& r)
     return v;
 }
 
-static Json::Value _toJson(const winrt::TerminalApp::DetachedSessionInfo& session)
+static Json::Value _toJson(const WindowEmperor::DetachedSessionProtocolEntry& session)
 {
     Json::Value v;
-    v["session_id"] = _guidStr(session.SessionId());
-    v["pid"] = static_cast<Json::UInt>(session.Pid());
-    v["tab_title"] = winrt::to_string(session.TabTitle());
-    v["group_id"] = _guidStr(session.GroupId());
-    v["shell_session_id"] = winrt::to_string(session.ShellSessionId());
+    v["session_id"] = _guidStr(session.SessionId);
+    v["pid"] = static_cast<Json::UInt>(session.Pid);
+    v["tab_title"] = winrt::to_string(winrt::hstring{ session.TabTitle });
+    v["group_id"] = _guidStr(session.GroupId);
+    v["shell_session_id"] = winrt::to_string(winrt::hstring{ session.ShellSessionId });
     return v;
 }
 
@@ -641,11 +641,8 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    const auto manager = s_emperor->GetContentManager();
-    RETURN_HR_IF(E_NOT_VALID_STATE, !manager);
-
     Json::Value rows(Json::arrayValue);
-    for (const auto& session : manager.DetachedSessions())
+    for (const auto& session : s_emperor->GetDetachedSessionsForProtocol())
     {
         rows.append(_toJson(session));
     }
@@ -1013,11 +1010,7 @@ STDMETHODIMP TerminalProtocolComServer::KillDetachedSession(GUID sessionId)
 try
 {
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-
-    const auto manager = s_emperor->GetContentManager();
-    RETURN_HR_IF(E_NOT_VALID_STATE, !manager);
-
-    return manager.DiscardKeptSession(winrt::guid{ sessionId }) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    return s_emperor->KillDetachedSessionForProtocol(sessionId) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

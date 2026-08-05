@@ -284,6 +284,26 @@ std::shared_ptr<AppHost> WindowEmperor::GetWindowForProtocol(const uint64_t id) 
     return std::move(request.Host);
 }
 
+std::vector<WindowEmperor::DetachedSessionProtocolEntry> WindowEmperor::GetDetachedSessionsForProtocol() const noexcept
+{
+    DetachedSessionsProtocolRequest request;
+    SendMessageW(_window.get(),
+                 WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return std::move(request.Rows);
+}
+
+bool WindowEmperor::KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept
+{
+    KillDetachedSessionProtocolRequest request{ sessionId };
+    SendMessageW(_window.get(),
+                 WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return request.Killed;
+}
+
 AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
 {
     _assertIsMainThread();
@@ -1177,7 +1197,7 @@ bool WindowEmperor::_hasKeptSessions() const
 {
     try
     {
-        if (const auto manager = GetContentManager())
+        if (const auto manager = _keptSessionManager())
         {
             return manager.HasKeptSessions();
         }
@@ -1225,7 +1245,7 @@ catch (...)
 // state, so forwarding that protocol event is safe to enqueue immediately.
 void WindowEmperor::_setupKeptSessionTracking()
 {
-    if (const auto manager = GetContentManager())
+    if (const auto manager = _keptSessionManager())
     {
         _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
             PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
@@ -1388,6 +1408,56 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 if (found != _windows.end())
                 {
                     request->Host = *found;
+                }
+            }
+            return 0;
+        }
+        case WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<DetachedSessionsProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Rows.clear();
+                if (const auto manager = _keptSessionManager())
+                {
+                    const auto sessions = manager.DetachedSessions();
+                    request->Rows.reserve(sessions.Size());
+
+                    for (const auto& session : sessions)
+                    {
+                        DetachedSessionProtocolEntry row{};
+                        row.SessionId = session.SessionId();
+                        row.GroupId = session.GroupId();
+                        row.TabTitle = std::wstring{ session.TabTitle() };
+                        row.ShellSessionId = std::wstring{ session.ShellSessionId() };
+                        row.Pid = session.Pid();
+                        request->Rows.emplace_back(std::move(row));
+                    }
+                }
+            }
+            return 0;
+        }
+        case WM_KILL_DETACHED_SESSION_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<KillDetachedSessionProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Found = false;
+                request->Killed = false;
+                if (const auto manager = _keptSessionManager())
+                {
+                    const auto sessionId = winrt::guid{ request->SessionId };
+                    for (const auto& session : manager.DetachedSessions())
+                    {
+                        if (session.SessionId() == sessionId)
+                        {
+                            request->Found = true;
+                            break;
+                        }
+                    }
+
+                    request->Killed = manager.DiscardKeptSession(sessionId);
+                    request->Found |= request->Killed;
                 }
             }
             return 0;
@@ -1730,7 +1800,7 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     // announces that *something* is alive but gives no way to see what, get it
     // back, or stop it — and with no window there is nothing else on screen.
     _keptSessionMenuIds.clear();
-    if (const auto manager = GetContentManager())
+    if (const auto manager = _keptSessionManager())
     {
         const auto groups = manager.KeptGroups();
         if (groups.Size() > 0)
@@ -1833,8 +1903,10 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     std::ignore = _summonWindow(std::move(args));
 }
 
-winrt::TerminalApp::ContentManager WindowEmperor::GetContentManager() const
+winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
 {
+    _assertIsMainThread();
+
     try
     {
         if (const auto logic = _app.Logic())
@@ -1854,7 +1926,7 @@ winrt::TerminalApp::ContentManager WindowEmperor::GetContentManager() const
 void WindowEmperor::_restoreKeptSession(const winrt::guid& groupId)
 try
 {
-    const auto manager = GetContentManager();
+    const auto manager = _keptSessionManager();
     if (!manager)
     {
         return;
@@ -1899,7 +1971,7 @@ CATCH_LOG()
 void WindowEmperor::_discardKeptSession(const winrt::guid& groupId)
 try
 {
-    if (const auto manager = GetContentManager())
+    if (const auto manager = _keptSessionManager())
     {
         manager.DiscardKeptGroup(groupId);
     }
