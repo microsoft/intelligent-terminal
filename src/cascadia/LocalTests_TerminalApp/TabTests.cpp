@@ -75,6 +75,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(DetachedSessionMetadataAndDiscard);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -197,6 +198,46 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(page);
         });
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::DetachedSessionMetadataAndDiscard()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-2222-3333-4444-555555555555}");
+        const winrt::hstring tabTitle{ L"Detached tab title" };
+        const winrt::hstring shellSessionId{ L"shell-session-42" };
+
+        TestOnUIThread([&]() {
+            const auto activeControl{ page->_GetActiveControl() };
+            VERIFY_IS_NOT_NULL(activeControl);
+
+            const auto connection{ activeControl.Connection() };
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto sessionId{ connection.SessionId() };
+            VERIFY_IS_TRUE(sessionId != winrt::guid{});
+
+            _contentManager->DetachForKeepRunning(groupId, sessionId, tabTitle, shellSessionId, activeControl);
+
+            const auto detachedSessions{ _contentManager->DetachedSessions() };
+            VERIFY_ARE_EQUAL(1u, detachedSessions.Size());
+
+            const auto detached = detachedSessions.GetAt(0);
+            VERIFY_IS_TRUE(!!::IsEqualGUID(detached.SessionId(), sessionId));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(detached.GroupId(), groupId));
+            VERIFY_IS_TRUE(detached.TabTitle() == tabTitle);
+            VERIFY_IS_TRUE(detached.ShellSessionId() == shellSessionId);
+
+            VERIFY_IS_TRUE(_contentManager->DiscardKeptSession(sessionId));
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
+        });
     }
 
     // Method Description:

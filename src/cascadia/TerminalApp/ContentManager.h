@@ -29,10 +29,41 @@ Abstract:
 #pragma once
 
 #include "ContentManager.g.h"
+#include "DetachedSessionInfo.g.h"
 
 #include <inc/cppwinrt_utils.h>
 namespace winrt::TerminalApp::implementation
 {
+    struct DetachedSessionInfo : DetachedSessionInfoT<DetachedSessionInfo>
+    {
+    public:
+        DetachedSessionInfo(const winrt::guid& sessionId,
+                            const winrt::guid& groupId,
+                            winrt::hstring tabTitle,
+                            winrt::hstring shellSessionId,
+                            const uint32_t pid) :
+            _sessionId{ sessionId },
+            _groupId{ groupId },
+            _tabTitle{ std::move(tabTitle) },
+            _shellSessionId{ std::move(shellSessionId) },
+            _pid{ pid }
+        {
+        }
+
+        winrt::guid SessionId() const noexcept { return _sessionId; }
+        winrt::guid GroupId() const noexcept { return _groupId; }
+        winrt::hstring TabTitle() const noexcept { return _tabTitle; }
+        winrt::hstring ShellSessionId() const noexcept { return _shellSessionId; }
+        uint32_t Pid() const noexcept { return _pid; }
+
+    private:
+        winrt::guid _sessionId{};
+        winrt::guid _groupId{};
+        winrt::hstring _tabTitle;
+        winrt::hstring _shellSessionId;
+        uint32_t _pid{ 0 };
+    };
+
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
@@ -44,10 +75,16 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
-        void DetachForKeepRunning(const winrt::guid& groupId, const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control);
+        void DetachForKeepRunning(const winrt::guid& groupId,
+                                  const winrt::guid& sessionId,
+                                  const winrt::hstring& title,
+                                  const winrt::hstring& shellSessionId,
+                                  const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> DetachedSessions();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
         winrt::Windows::Foundation::Collections::IVectorView<uint64_t> TryReattachKeptGroup(const winrt::guid& groupId);
+        bool DiscardKeptSession(const winrt::guid& sessionId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         bool HasKeptSessions() const noexcept;
 
@@ -72,13 +109,15 @@ namespace winrt::TerminalApp::implementation
         struct KeptGroup
         {
             winrt::hstring title;
+            winrt::hstring shellSessionId;
             std::vector<winrt::guid> sessionIds;
         };
 
         // Sessions deliberately kept alive with no window, keyed by the
-        // connection's session GUID — the same id the durable session record is
-        // persisted under, so a restore can find its way back without relying on
-        // a ContentId that is only meaningful inside this process instance.
+        // connection's live session GUID. The detached tab's durable
+        // shell_sessions.id is tracked separately on the group, because one
+        // detached tab may have several live panes sharing the same durable
+        // record.
         std::unordered_map<winrt::guid, KeptSession> _keptSessions;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
 

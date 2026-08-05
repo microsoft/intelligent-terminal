@@ -17,10 +17,26 @@ using namespace winrt::Windows::UI::Core;
 using namespace winrt::Windows::System;
 using namespace winrt::Microsoft::Terminal;
 using namespace winrt::Microsoft::Terminal::Control;
+using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
+    static uint32_t _getDetachedSessionPid(const ControlInteractivity& content)
+    {
+        const auto core{ content ? content.Core() : nullptr };
+        const auto connection{ core ? core.Connection() : nullptr };
+        if (const auto conpty{ connection.try_as<ConptyConnection>() })
+        {
+            if (const auto handle = reinterpret_cast<HANDLE>(conpty.RootProcessHandle()))
+            {
+                return static_cast<uint32_t>(GetProcessId(handle));
+            }
+        }
+
+        return 0;
+    }
+
     ControlInteractivity ContentManager::CreateCore(const Microsoft::Terminal::Control::IControlSettings& settings,
                                                     const IControlAppearance& unfocusedAppearance,
                                                     const TerminalConnection::ITerminalConnection& connection)
@@ -53,7 +69,11 @@ namespace winrt::TerminalApp::implementation
     // content keeps its ConptyConnection — and therefore its output thread and
     // its Terminal buffer — so the shell keeps running and its scrollback keeps
     // filling while nothing is attached.
-    void ContentManager::DetachForKeepRunning(const winrt::guid& groupId, const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control)
+    void ContentManager::DetachForKeepRunning(const winrt::guid& groupId,
+                                              const winrt::guid& sessionId,
+                                              const winrt::hstring& title,
+                                              const winrt::hstring& shellSessionId,
+                                              const Microsoft::Terminal::Control::TermControl& control)
     {
         if (!control || sessionId == winrt::guid{} || groupId == winrt::guid{})
         {
@@ -108,6 +128,10 @@ namespace winrt::TerminalApp::implementation
         {
             group.title = title;
         }
+        if (group.shellSessionId.empty())
+        {
+            group.shellSessionId = shellSessionId;
+        }
         group.sessionIds.push_back(sessionId);
 
         KeptSessionsChanged.raise(*this, nullptr);
@@ -132,6 +156,36 @@ namespace winrt::TerminalApp::implementation
         // The shell may have exited while detached, in which case the content is
         // already gone and the caller should start a fresh one.
         return TryLookupCore(contentId) ? contentId : 0;
+    }
+
+    winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> ContentManager::DetachedSessions()
+    {
+        std::vector<winrt::TerminalApp::DetachedSessionInfo> rows;
+        rows.reserve(_keptSessions.size());
+
+        for (const auto& [sessionId, kept] : _keptSessions)
+        {
+            const auto group = _keptGroups.find(kept.groupId);
+            if (group == _keptGroups.end())
+            {
+                continue;
+            }
+
+            const auto content{ TryLookupCore(kept.contentId) };
+            if (!content)
+            {
+                continue;
+            }
+
+            rows.emplace_back(winrt::make<winrt::TerminalApp::implementation::DetachedSessionInfo>(
+                sessionId,
+                kept.groupId,
+                group->second.title,
+                group->second.shellSessionId,
+                _getDetachedSessionPid(content)));
+        }
+
+        return winrt::single_threaded_vector<winrt::TerminalApp::DetachedSessionInfo>(std::move(rows)).GetView();
     }
 
     bool ContentManager::HasKeptSessions() const noexcept
@@ -181,6 +235,29 @@ namespace winrt::TerminalApp::implementation
         }
 
         return winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView();
+    }
+
+    bool ContentManager::DiscardKeptSession(const winrt::guid& sessionId)
+    {
+        const auto it = _keptSessions.find(sessionId);
+        if (it == _keptSessions.end())
+        {
+            return false;
+        }
+
+        const auto contentId = it->second.contentId;
+        if (const auto content{ TryLookupCore(contentId) })
+        {
+            // Drops through _closedHandler, which also raises the event.
+            content.Close();
+        }
+        else
+        {
+            _dropKeptSession(sessionId);
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
+
+        return true;
     }
 
     // Ends a detached tab on purpose. Closing each content is what tears its
