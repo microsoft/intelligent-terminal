@@ -52,7 +52,7 @@ namespace TerminalApp
         Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Int64 shellSessionRevision, Microsoft.Terminal.Settings.Model.NewTerminalArgs restoreArgs, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
         void CancelKeptSessionReattach(Guid sessionId);
-        void ConfirmReattachedContent(UInt64 contentId);
+        Boolean ConfirmReattachedContent(UInt64 contentId);
         Boolean IsReattachPendingContent(UInt64 contentId);
         Windows.Foundation.Collections.IVectorView<DetachedSessionInfo> DetachedSessions();
         // Group id -> the tab title it was detached from.

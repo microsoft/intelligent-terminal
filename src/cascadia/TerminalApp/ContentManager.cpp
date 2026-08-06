@@ -459,15 +459,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void ContentManager::ConfirmReattachedContent(const uint64_t contentId)
+    bool ContentManager::ConfirmReattachedContent(const uint64_t contentId)
     {
+        auto tookEndEventOwnership = false;
         _invokeOnOwnerThread([&]() {
             _drainPendingOwnerWork();
-            _confirmReattachedContentOnOwner(contentId);
+            tookEndEventOwnership = _confirmReattachedContentOnOwner(contentId);
         });
+        return tookEndEventOwnership;
     }
 
-    void ContentManager::_confirmReattachedContentOnOwner(const uint64_t contentId)
+    bool ContentManager::_confirmReattachedContentOnOwner(const uint64_t contentId)
     {
         _assertIsOwnerThread();
 
@@ -477,9 +479,11 @@ namespace winrt::TerminalApp::implementation
             {
                 _dropKeptSession(sessionId);
                 KeptSessionsChanged.raise(*this, nullptr);
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
     bool ContentManager::IsReattachPendingContent(const uint64_t contentId)

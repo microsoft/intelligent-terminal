@@ -129,7 +129,7 @@ namespace winrt::TerminalApp::implementation
                                   const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
         void CancelKeptSessionReattach(const winrt::guid& sessionId);
-        void ConfirmReattachedContent(uint64_t contentId);
+        bool ConfirmReattachedContent(uint64_t contentId);
         bool IsReattachPendingContent(uint64_t contentId);
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> DetachedSessions();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
@@ -217,7 +217,7 @@ namespace winrt::TerminalApp::implementation
                                           const Microsoft::Terminal::Control::ControlCore& core);
         uint64_t _tryReattachKeptSessionOnOwner(const winrt::guid& sessionId);
         void _cancelKeptSessionReattachOnOwner(const winrt::guid& sessionId);
-        void _confirmReattachedContentOnOwner(uint64_t contentId);
+        bool _confirmReattachedContentOnOwner(uint64_t contentId);
         bool _isReattachPendingContentOnOwner(uint64_t contentId) const;
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> _detachedSessionsOnOwner();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> _keptGroupsOnOwner();

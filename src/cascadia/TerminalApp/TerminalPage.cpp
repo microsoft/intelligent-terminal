@@ -7854,15 +7854,41 @@ namespace winrt::TerminalApp::implementation
                 return nullptr;
             }
 
+            const auto rawControl = TermControl::NewControlByAttachingContent(content);
+            const auto paneId = _FindSessionIdForControl(rawControl);
+            const bool tookEndEventOwnership = _manager.ConfirmReattachedContent(contentId);
+            const auto raiseTerminalEndStateIfNeeded = [&]() {
+                const auto state = rawControl.ConnectionState();
+                if (tookEndEventOwnership && state >= ConnectionState::Closed)
+                {
+                    _TryRaiseTerminalEndStateEvent(
+                        paneId,
+                        state == ConnectionState::Failed ? "failed" : "closed");
+                }
+            };
+
+            auto closeOnSetupFailure = wil::scope_exit([&]() noexcept {
+                try
+                {
+                    rawControl.Close();
+                }
+                CATCH_LOG();
+
+                try
+                {
+                    raiseTerminalEndStateIfNeeded();
+                }
+                CATCH_LOG();
+            });
+
             // We have to pass in our current keybindings, because that's an
             // object that belongs to this TerminalPage, on this thread. If we
             // don't, then when we move the content to another thread, and it
             // tries to handle a key, it'll callback on the original page's
-            // stack, inevitably resulting in a wrong_thread
-            // The connection can still exit after this final check; attaching
-            // a pane that exits after the boundary is the ordinary close race.
-            const auto control = _SetupControl(TermControl::NewControlByAttachingContent(content));
-            _manager.ConfirmReattachedContent(contentId);
+            // stack, inevitably resulting in a wrong_thread.
+            const auto control = _SetupControl(rawControl);
+            raiseTerminalEndStateIfNeeded();
+            closeOnSetupFailure.release();
             return control;
         }
         return nullptr;
