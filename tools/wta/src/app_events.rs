@@ -1580,8 +1580,8 @@ impl App {
                 // so multi-window setups don't cross-talk. When window_id
                 // is unknown on either side we apply (best-effort fallback).
                 //
-                // Processed BEFORE the own-pane skip below: this is a
-                // global UI command, not a per-pane signal.
+                // Processed BEFORE the own-pane skip below: this command
+                // is routed by the target tab rather than the source pane.
                 if method == "set_agent_state" {
                     let target_window = params
                         .get("window_id")
@@ -1611,6 +1611,18 @@ impl App {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| self.active_tab_key().to_string());
+
+                    if let Some(owner) = self.owner_tab_id.as_deref() {
+                        if owner != target_tab {
+                            tracing::debug!(
+                                target: "set_agent_state",
+                                owner,
+                                tab = %target_tab,
+                                "ignoring set_agent_state for non-owner tab"
+                            );
+                            return;
+                        }
+                    }
 
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
