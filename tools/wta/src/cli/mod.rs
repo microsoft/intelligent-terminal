@@ -34,9 +34,6 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             channel,
             payload_json,
         } => agent_tools::run_action_proposal(channel, payload_json).await,
-        Command::ProposalMcpServer { pipe, capability } => {
-            crate::agent_tools::action_proposal::mcp::run_stdio(pipe, capability).await
-        }
         Command::Delegate {
             prompt,
             agent,

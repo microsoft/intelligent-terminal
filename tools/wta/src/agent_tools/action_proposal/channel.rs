@@ -160,21 +160,8 @@ pub struct ConfirmationClaim {
 struct ChannelState {
     pipe_available: bool,
     agent_transport_available: bool,
-    mcp_session: Option<McpSessionBinding>,
-    pending_mcp_capability: Option<[u8; 32]>,
     active: Option<ActiveChannel>,
     tombstones: VecDeque<Tombstone>,
-}
-
-struct McpSessionBinding {
-    capability_hash: [u8; 32],
-    session_id: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ProposalMcpSession {
-    pub capability: String,
-    pub pipe_name: String,
 }
 
 pub struct ProposalChannelManager {
@@ -189,8 +176,6 @@ impl ProposalChannelManager {
             state: Mutex::new(ChannelState {
                 pipe_available: true,
                 agent_transport_available: true,
-                mcp_session: None,
-                pending_mcp_capability: None,
                 active: None,
                 tombstones: VecDeque::new(),
             }),
@@ -199,40 +184,6 @@ impl ProposalChannelManager {
 
     pub fn pipe_name(&self) -> String {
         format!("{PIPE_PREFIX}{:x}", self.helper_instance_id.simple())
-    }
-
-    pub fn prepare_mcp_session(&self) -> ProposalMcpSession {
-        let capability = Uuid::new_v4().simple().to_string();
-        let mut state = self.lock_state();
-        self.invalidate_active(&mut state, ProposalFinalStatus::Superseded);
-        state.pending_mcp_capability = Some(secret_hash(&capability));
-        ProposalMcpSession {
-            capability,
-            pipe_name: self.pipe_name(),
-        }
-    }
-
-    pub fn bind_mcp_session(&self, capability: &str, session_id: String) -> bool {
-        let mut state = self.lock_state();
-        let capability_hash = secret_hash(capability);
-        if state.pending_mcp_capability != Some(capability_hash) {
-            return false;
-        }
-        state.pending_mcp_capability = None;
-        state.mcp_session = Some(McpSessionBinding {
-            capability_hash,
-            session_id,
-        });
-        true
-    }
-
-    pub fn cancel_mcp_session(&self, capability: &str) -> bool {
-        let mut state = self.lock_state();
-        if state.pending_mcp_capability != Some(secret_hash(capability)) {
-            return false;
-        }
-        state.pending_mcp_capability = None;
-        true
     }
 
     pub fn issue(
@@ -316,15 +267,10 @@ impl ProposalChannelManager {
                 false,
             ));
         }
-        let mcp_matches = state
-            .mcp_session
-            .as_ref()
-            .map(|binding| binding.session_id.as_str())
-            == Some(session_id);
         let active_matches = state.active.as_ref().is_some_and(|active| {
             active.binding.session_id == session_id && active.state == ProposalChannelState::Issued
         });
-        if !mcp_matches || !active_matches {
+        if !active_matches {
             return Err(failure(
                 ProposalValidationStatus::Stale,
                 "MCP proposal tool does not belong to the active turn",
@@ -373,7 +319,7 @@ impl ProposalChannelManager {
 
     pub fn begin_mcp_validation(
         &self,
-        capability: &str,
+        session_id: &str,
     ) -> Result<ValidationContext, ChannelFailure> {
         let mut state = self.lock_state();
         self.prune_tombstones(&mut state);
@@ -384,18 +330,6 @@ impl ProposalChannelManager {
                 false,
             ));
         }
-        let session_id = state
-            .mcp_session
-            .as_ref()
-            .filter(|binding| binding.capability_hash == secret_hash(capability))
-            .map(|binding| binding.session_id.clone())
-            .ok_or_else(|| {
-                failure(
-                    ProposalValidationStatus::UnknownChannel,
-                    "MCP proposal session is unknown or not bound",
-                    false,
-                )
-            })?;
         let Some(active) = state.active.as_mut() else {
             return Err(failure(
                 ProposalValidationStatus::Stale,
@@ -647,10 +581,6 @@ fn channel_hash(channel: &ProposalChannel) -> [u8; 32] {
     Sha256::digest(channel.to_string().as_bytes()).into()
 }
 
-fn secret_hash(secret: &str) -> [u8; 32] {
-    Sha256::digest(secret.as_bytes()).into()
-}
-
 fn failure(
     status: ProposalValidationStatus,
     reason: &'static str,
@@ -751,57 +681,20 @@ mod tests {
     }
 
     #[test]
-    fn mcp_session_is_bound_without_exposing_turn_channel() {
+    fn mcp_validation_uses_trusted_session_id() {
         let manager = ProposalChannelManager::new();
-        let mcp = manager.prepare_mcp_session();
-        assert!(manager.bind_mcp_session(&mcp.capability, "session".into()));
         manager.issue("session".into(), 1, None, false).unwrap();
 
-        let context = manager.begin_mcp_validation(&mcp.capability).unwrap();
+        let context = manager.begin_mcp_validation("session").unwrap();
         assert_eq!(context.binding.session_id, "session");
         assert_eq!(context.binding.prompt_id, 1);
-    }
-
-    #[test]
-    fn replacing_mcp_session_invalidates_previous_capability() {
-        let manager = ProposalChannelManager::new();
-        let old = manager.prepare_mcp_session();
-        assert!(manager.bind_mcp_session(&old.capability, "old".into()));
-        let current = manager.prepare_mcp_session();
-        assert!(manager.bind_mcp_session(&current.capability, "current".into()));
-        manager.issue("current".into(), 2, None, false).unwrap();
-
         assert_eq!(
             manager
-                .begin_mcp_validation(&old.capability)
+                .begin_mcp_validation("other")
                 .unwrap_err()
                 .status,
-            ProposalValidationStatus::UnknownChannel
+            ProposalValidationStatus::Stale
         );
-        assert!(manager.begin_mcp_validation(&current.capability).is_ok());
-    }
-
-    #[test]
-    fn failed_mcp_session_replacement_preserves_previous_capability() {
-        let manager = ProposalChannelManager::new();
-        let old = manager.prepare_mcp_session();
-        assert!(manager.bind_mcp_session(&old.capability, "old".into()));
-        let replacement = manager.prepare_mcp_session();
-        assert!(manager.cancel_mcp_session(&replacement.capability));
-        manager.issue("old".into(), 2, None, false).unwrap();
-
-        assert!(manager.begin_mcp_validation(&old.capability).is_ok());
-        assert!(!manager.bind_mcp_session(&replacement.capability, "new".into()));
-    }
-
-    #[test]
-    fn newer_pending_mcp_session_supersedes_older_pending_capability() {
-        let manager = ProposalChannelManager::new();
-        let older = manager.prepare_mcp_session();
-        let newer = manager.prepare_mcp_session();
-
-        assert!(!manager.bind_mcp_session(&older.capability, "older".into()));
-        assert!(manager.bind_mcp_session(&newer.capability, "newer".into()));
     }
 
     #[test]

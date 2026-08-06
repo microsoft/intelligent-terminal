@@ -218,9 +218,6 @@ fn process_label(cli: &Cli) -> String {
     match &cli.command {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
-        Some(Command::ProposalMcpServer { .. }) => {
-            format!("proposal_mcp-{}", std::process::id())
-        }
         Some(Command::ProbeModels { .. })
         | Some(Command::ProbeAgentSources { .. })
         | Some(Command::ProbeSessions { .. })

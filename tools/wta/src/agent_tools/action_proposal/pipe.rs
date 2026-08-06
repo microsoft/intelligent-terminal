@@ -24,26 +24,6 @@ pub struct ProposalPipeRequest {
     pub payload: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProposalMcpPipeRequest {
-    pub version: u32,
-    pub capability: String,
-    pub payload: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum IncomingProposalPipeRequest {
-    Cli(ProposalPipeRequest),
-    Mcp(ProposalMcpPipeRequest),
-}
-
-enum ProposalRequestRoute {
-    Cli(ProposalChannel),
-    Mcp(String),
-}
-
 enum ProposalCompletion {
     Detached,
     AwaitFinal(oneshot::Receiver<ProposalFinalStatus>),
@@ -165,7 +145,7 @@ async fn serve_connection(
 ) -> Result<()> {
     let (read_half, mut write_half) = tokio::io::split(pipe);
     let frame = read_frame(read_half).await?;
-    let request: IncomingProposalPipeRequest = match serde_json::from_slice(&frame) {
+    let request: ProposalPipeRequest = match serde_json::from_slice(&frame) {
         Ok(request) => request,
         Err(error) => {
             return write_validation_failure(
@@ -177,34 +157,21 @@ async fn serve_connection(
             .await;
         }
     };
-    let (version, payload, route, source) = match request {
-        IncomingProposalPipeRequest::Cli(request) => {
-            let channel = match request.channel.parse::<ProposalChannel>() {
-                Ok(channel) => channel,
-                Err(error) => {
-                    return write_validation_failure(
-                        &mut write_half,
-                        ProposalValidationStatus::UnknownChannel,
-                        error.to_string(),
-                        false,
-                    )
-                    .await;
-                }
-            };
-            (
-                request.version,
-                request.payload,
-                ProposalRequestRoute::Cli(channel),
-                ProposalPayloadSource::Cli,
+    let version = request.version;
+    let payload = request.payload;
+    let channel = match request.channel.parse::<ProposalChannel>() {
+        Ok(channel) => channel,
+        Err(error) => {
+            return write_validation_failure(
+                &mut write_half,
+                ProposalValidationStatus::UnknownChannel,
+                error.to_string(),
+                false,
             )
+            .await;
         }
-        IncomingProposalPipeRequest::Mcp(request) => (
-            request.version,
-            request.payload,
-            ProposalRequestRoute::Mcp(request.capability),
-            ProposalPayloadSource::Mcp,
-        ),
     };
+    let source = ProposalPayloadSource::Cli;
     if version != PROTOCOL_VERSION {
         return write_validation_failure(
             &mut write_half,
@@ -223,10 +190,7 @@ async fn serve_connection(
         )
         .await;
     }
-    let context = match route {
-        ProposalRequestRoute::Cli(channel) => manager.begin_validation(&channel),
-        ProposalRequestRoute::Mcp(capability) => manager.begin_mcp_validation(&capability),
-    };
+    let context = manager.begin_validation(&channel);
     let context = match context {
         Ok(context) => context,
         Err(failure) => {
@@ -483,16 +447,6 @@ mod tests {
             serde_json::to_string(&request).unwrap(),
             r#"{"version":1,"channel":"v1.helper.turn","payload":"{}"}"#
         );
-        let mcp_request = ProposalMcpPipeRequest {
-            version: PROTOCOL_VERSION,
-            capability: "capability".to_string(),
-            payload: "{}".to_string(),
-        };
-        assert_eq!(
-            serde_json::to_string(&mcp_request).unwrap(),
-            r#"{"version":1,"capability":"capability","payload":"{}"}"#
-        );
-
         let validation = ProposalValidationResponse {
             phase: ValidationPhase::Validation,
             status: ProposalValidationStatus::Accepted,
@@ -624,92 +578,4 @@ mod tests {
         tokio::join!(server_future, event_future, client_future);
     }
 
-    #[tokio::test]
-    async fn mcp_round_trip_returns_after_card_commit() {
-        let manager = Arc::new(ProposalChannelManager::new());
-        let mcp = manager.prepare_mcp_session();
-        assert!(manager.bind_mcp_session(&mcp.capability, "session".to_string()));
-        manager
-            .issue("session".to_string(), 1, None, false)
-            .unwrap();
-        let pipe_name = manager.pipe_name();
-        let security = super::super::pipe_security::build_required().unwrap();
-        let server =
-            super::super::pipe_security::create_server(&pipe_name, true, Some(&security)).unwrap();
-        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-
-        let server_manager = Arc::clone(&manager);
-        let server_future = async move {
-            server.connect().await.unwrap();
-            serve_connection(server, server_manager, event_tx)
-                .await
-                .unwrap();
-        };
-        let event_manager = Arc::clone(&manager);
-        let event_future = async move {
-            let proposal_id = match event_rx.recv().await.unwrap() {
-                ProposalPipeEvent::Validate {
-                    context,
-                    source,
-                    responder,
-                    ..
-                } => {
-                    assert_eq!(source, ProposalPayloadSource::Mcp);
-                    let proposal_id = context.proposal_id;
-                    responder
-                        .send(ProposalValidationDecision::accepted())
-                        .unwrap();
-                    proposal_id
-                }
-                ProposalPipeEvent::Commit { .. } => panic!("commit arrived before validation"),
-                ProposalPipeEvent::Invalidate { .. } => {
-                    panic!("invalidation arrived before validation")
-                }
-            };
-            match event_rx.recv().await.unwrap() {
-                ProposalPipeEvent::Commit {
-                    proposal_id: committed,
-                    responder,
-                } => {
-                    assert_eq!(committed, proposal_id);
-                    responder.send(true).unwrap();
-                }
-                ProposalPipeEvent::Validate { .. } => panic!("duplicate validation event"),
-                ProposalPipeEvent::Invalidate { .. } => {
-                    panic!("unexpected invalidation for committed proposal")
-                }
-            }
-            let claim = event_manager.claim_confirmation(&proposal_id).unwrap();
-            event_manager.finalize_confirmation(claim, ProposalFinalStatus::Confirmed);
-        };
-        let client_future = async move {
-            let client = tokio::net::windows::named_pipe::ClientOptions::new()
-                .open(&pipe_name)
-                .unwrap();
-            let (read_half, mut write_half) = tokio::io::split(client);
-            let mut request = serde_json::to_vec(&ProposalMcpPipeRequest {
-                version: PROTOCOL_VERSION,
-                capability: mcp.capability,
-                payload:
-                    r#"{"choices":[{"title":"run","actions":[{"type":"send","input":"echo ok"}]}]}"#
-                        .to_string(),
-            })
-            .unwrap();
-            request.push(b'\n');
-            write_half.write_all(&request).await.unwrap();
-            write_half.flush().await.unwrap();
-
-            let mut lines = BufReader::new(read_half).lines();
-            let validation: ProposalValidationResponse =
-                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-            assert_eq!(validation.status, ProposalValidationStatus::Accepted);
-            assert!(validation.proposal_id.is_some());
-            assert!(
-                lines.next_line().await.unwrap().is_none(),
-                "MCP must not wait for the user's final card decision"
-            );
-        };
-
-        tokio::join!(server_future, event_future, client_future);
-    }
 }

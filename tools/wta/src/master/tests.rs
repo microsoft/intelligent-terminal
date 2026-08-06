@@ -523,6 +523,8 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
 fn make_state() -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        proposal_mcp_endpoint: "http://127.0.0.1:1/mcp".to_string(),
+        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -2097,6 +2099,8 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
 fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        proposal_mcp_endpoint: "http://127.0.0.1:1/mcp".to_string(),
+        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),

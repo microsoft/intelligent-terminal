@@ -2,18 +2,20 @@
 
 ## Status
 
-Implemented session-level stdio MCP design. The direct WTA CLI remains as a
-fallback transport.
+Implemented session-level Streamable HTTP MCP design. The direct WTA CLI
+remains as a fallback transport.
 
 ## Summary
 
-Each host ACP session receives its own lightweight proposal MCP server:
+`wta-master` owns one loopback proposal MCP endpoint. Each host ACP session
+receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> stdio MCP: intelligent_terminal/request_terminal_actions
-  -> wta proposal-mcp-server
-  -> owning Helper's authenticated named pipe
+  -> HTTP MCP: intelligent_terminal/request_terminal_actions
+  -> wta-master capability -> ACP SessionId
+  -> session_to_helper -> existing master/helper ACP pipe
+  -> owning Helper
   -> existing recommendation card
   -> user confirmation
   -> existing wtcli/COM executor
@@ -31,18 +33,20 @@ human-held tool call.
 
 MCP is session-level, not agent-level. `wta-master` still owns one shared Agent
 CLI process, while every ACP `session/new` or `session/load` request includes a
-distinct `McpServer::Stdio` entry.
+distinct `McpServer::Http` entry. All entries point to the same ephemeral
+`127.0.0.1` endpoint but carry different `Authorization` headers.
 
-Before creating or loading a session, the Helper:
+Before creating or loading a session:
 
-1. generates an opaque capability;
-2. places the Helper pipe and capability in structured MCP process arguments;
-3. sends the MCP server configuration in the ACP request;
-4. binds the capability to the returned ACP SessionId on success; or
-5. discards the pending capability on failure.
+1. the Helper marks the private ACP request as proposal-MCP eligible;
+2. master generates an opaque capability and sends the HTTP MCP configuration
+   to the Agent CLI;
+3. master binds the capability to the returned ACP SessionId on success; or
+4. master discards the pending capability on failure.
 
 A failed replacement leaves the prior session capability valid. A successful
-replacement retires it.
+replacement retires it. Orphan Helper rebinds preserve the existing capability
+because the Agent CLI session and MCP client are still alive.
 
 The model never receives or supplies a Helper, session, prompt, tab, window,
 pane, channel, capability, origin, schema version, or choice ID. The Helper
@@ -63,8 +67,9 @@ request_terminal_actions
 ```
 
 The server supports MCP `initialize`, `ping`, `tools/list`, and `tools/call`
-over newline-delimited JSON-RPC on stdio. It exposes no terminal read or
-execution tools.
+over stateless Streamable HTTP JSON-RPC. POST responses use JSON or HTTP 202
+for notifications; GET and DELETE return 405 because server-initiated streams
+are unnecessary. It exposes no terminal read or execution tools.
 
 Input:
 
@@ -115,21 +120,25 @@ this result.
 
 ## Helper validation
 
+Master owns:
+
+- one loopback HTTP listener;
+- hashed pending and committed session capabilities;
+- the `SessionId -> current HelperRoute` map.
+
 The Helper's `ProposalChannelManager` owns:
 
-- one stable per-Helper proposal pipe;
-- one committed MCP session capability;
-- pending capabilities for in-flight session creation or loading;
 - one active turn binding;
 - bounded CLI channel tombstones.
 
 An MCP request is accepted only when:
 
-1. its capability is the committed capability;
-2. that capability is bound to the current ACP SessionId;
-3. the same SessionId owns the active proposal-enabled turn;
-4. the turn is still in `Issued`;
-5. strict schema, size, count, origin, target, and delegate policy passes.
+1. master recognizes its bearer capability;
+2. that capability is committed to an ACP SessionId;
+3. `session_to_helper` resolves that SessionId to the current Helper;
+4. the same SessionId owns the Helper's active proposal-enabled turn;
+5. the turn is still in `Issued`;
+6. strict schema, size, count, origin, target, and delegate policy passes.
 
 The active binding contains the trusted prompt ID, active pane target, and
 Autofix bit. These values never come from model input.
@@ -140,8 +149,9 @@ An accepted MCP proposal transitions synchronously:
 Issued -> Validating -> AwaitingUser
 ```
 
-The pipe responds immediately after `Commit` is queued. Confirmation later
-claims the proposal and drives the existing card execution path.
+The private master-to-Helper ACP extension responds immediately after `Commit`
+is queued. Confirmation later claims the proposal and drives the existing card
+execution path.
 
 ## Permission and tool-call UI
 
@@ -159,22 +169,18 @@ Unrelated MCP and shell permissions continue through the normal permission UI.
 The proposal MCP tool-call row is hidden because the recommendation card is the
 user-facing representation.
 
-## Named-pipe boundary
+## HTTP and ACP boundaries
 
-The MCP sidecar connects only to the pipe named in its process arguments and
-sends:
+The HTTP server binds only to an ephemeral IPv4 loopback port. It requires the
+session bearer capability, validates Host and any Origin header, rejects
+duplicate or oversized headers, rejects transfer encoding, and caps request
+bodies. Capabilities are stored hashed and are never logged.
 
-```json
-{
-  "version": 1,
-  "capability": "<opaque capability>",
-  "payload": "{...}"
-}
-```
-
-The pipe uses the existing current-user ACL and rejects remote clients.
-Capabilities are stored hashed by the Helper. They are process credentials,
-not model-visible arguments.
+After authentication, master resolves capability to SessionId, then resolves
+SessionId through the live `session_to_helper` map. It forwards the typed
+arguments over the existing ACP named pipe with a private extension request.
+There is no second MCP-specific master/helper channel. Capabilities are process
+credentials in ACP session configuration, not model-visible arguments.
 
 ## CLI fallback
 
@@ -195,6 +201,6 @@ future agents that work better through shell commands.
 
 ## Scope
 
-The MCP server is attached only for host agents. WSL-side MCP process launching
-is not implemented. Assistant text remains ordinary chat content and is never
-parsed into terminal actions.
+The MCP server is attached only for host agents that advertise ACP HTTP MCP
+support. Assistant text remains ordinary chat content and is never parsed into
+terminal actions.
