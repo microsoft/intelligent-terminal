@@ -706,6 +706,7 @@ namespace winrt::TerminalApp::implementation
             bool forked{ false };
         };
         static _ShellSessionSaveResult _ParseShellSessionSaveResponse(std::string_view json);
+        static void _ApplyShellSessionSaveResult(Tab* tab, const _ShellSessionSaveResult& save);
         void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _PersistShellSession(Tab* tab);
         void _DetachShellPanesForKeepRunning(Tab* tab, const winrt::hstring& shellSessionId, int64_t shellSessionRevision);

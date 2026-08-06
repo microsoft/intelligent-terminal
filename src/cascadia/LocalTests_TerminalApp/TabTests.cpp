@@ -208,8 +208,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(DetachShellPanesForKeepRunningStoresDurableMetadata);
         TEST_METHOD(DetachedSessionsSkipClosedConnectionBeforeQueuedReap);
         TEST_METHOD(BuildKeptGroupRestoreActionsPreservesDurableMetadata);
+        TEST_METHOD(DurableSessionCloseWritesSaveResultsToTabAndPersistedActions);
         TEST_METHOD(GetWindowLayoutIncludesDurableMetadataForPersistedFullLayoutsOnly);
         TEST_METHOD(PersistStateForUnnamedWindowIncludesDurableMetadata);
+        TEST_METHOD(DurableSessionCloseForcesLayoutOnlyForLastWindowWithKeptSessions);
         TEST_METHOD(ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow);
         TEST_METHOD(DetachedFailedSessionQueuedReapEmitsFailedEventOnce);
         TEST_METHOD(DiscardDeadDetachedSessionBeforeQueuedReapReturnsFalse);
@@ -788,6 +790,57 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
     }
 
+    void TabTests::DurableSessionCloseWritesSaveResultsToTabAndPersistedActions()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            const auto applyAndVerify = [&](const std::string_view response,
+                                            const winrt::hstring& expectedId,
+                                            const int64_t expectedRevision,
+                                            const bool expectedForked) {
+                const auto save = winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(response);
+                VERIFY_ARE_EQUAL(expectedForked, save.forked);
+
+                winrt::TerminalApp::implementation::TerminalPage::_ApplyShellSessionSaveResult(tab.get(), save);
+                VERIFY_ARE_EQUAL(expectedId, tab->DurableShellSessionId());
+                VERIFY_ARE_EQUAL(expectedRevision, tab->DurableShellSessionRevision());
+
+                const auto persistedLayout = WindowLayout::FromJson(WindowLayout::ToJson(page->_GetWindowLayout(true)));
+                VERIFY_IS_NOT_NULL(persistedLayout);
+                const auto persistedActions = persistedLayout.TabLayout();
+                VERIFY_IS_NOT_NULL(persistedActions);
+                VERIFY_ARE_EQUAL(1u, persistedActions.Size());
+
+                const auto terminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
+                VERIFY_IS_NOT_NULL(terminalArgs);
+                VERIFY_ARE_EQUAL(expectedId, terminalArgs.DurableShellSessionId());
+                VERIFY_ARE_EQUAL(expectedRevision, terminalArgs.DurableShellSessionRevision());
+
+                return persistedActions.GetAt(0).Args().as<NewTabArgs>();
+            };
+
+            applyAndVerify(R"({"id":"shell-session-first","revision":1,"forked":false})",
+                           L"shell-session-first",
+                           1,
+                           false);
+            const auto forkedArgs = applyAndVerify(R"({"id":"shell-session-fork","revision":2,"forked":true})",
+                                                   L"shell-session-fork",
+                                                   2,
+                                                   true);
+
+            page->_HandleNewTab(nullptr, ActionEventArgs{ forkedArgs });
+            const auto restoredTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(restoredTab);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-fork" }, restoredTab->DurableShellSessionId());
+            VERIFY_ARE_EQUAL(2LL, restoredTab->DurableShellSessionRevision());
+        });
+    }
+
     void TabTests::GetWindowLayoutIncludesDurableMetadataForPersistedFullLayoutsOnly()
     {
         auto page = _commonSetup();
@@ -930,6 +983,14 @@ namespace TerminalAppLocalTests
         VERIFY_IS_NOT_NULL(terminalArgs);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-unnamed" }, terminalArgs.DurableShellSessionId());
         VERIFY_ARE_EQUAL(17LL, terminalArgs.DurableShellSessionRevision());
+    }
+
+    void TabTests::DurableSessionCloseForcesLayoutOnlyForLastWindowWithKeptSessions()
+    {
+        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(0, true));
+        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(1, false));
+        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(1, true));
+        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(2, true));
     }
 
     void TabTests::ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow()

@@ -1289,6 +1289,8 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         case WM_CLOSE_TERMINAL_WINDOW:
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
+            const auto hasKeptSessions = _hasKeptSessions();
+            const auto forcePersistClosingWindowLayout = winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(_windows.size(), hasKeptSessions);
             // Keep the last window in the array so that we can persist it on exit.
             // We check for AllowHeadless(), as that being true prevents us from ever quitting in the first place.
             // (= If we avoided closing the last window you wouldn't be able to reach a headless state.)
@@ -1297,24 +1299,13 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             const auto shouldKeepWindow =
                 _windows.size() == 1 &&
                 globalSettings.ShouldUsePersistedLayout() &&
-                !_hasKeptSessions() &&
+                !hasKeptSessions &&
                 !globalSettings.AllowHeadless();
 
             if (!shouldKeepWindow)
             {
                 // Did the window counter get out of sync? It shouldn't.
                 assert(_windowCount == gsl::narrow_cast<int32_t>(_windows.size()));
-
-                // We are about to drop the last window while kept sessions hold
-                // the process open. _persistState() reads _windows, so capture
-                // the layout now: once the array is empty there is nothing left
-                // to write, and the finalize on our eventual exit would clear
-                // the saved layout and delete the buffer sidecars with it.
-                if (_windows.size() == 1 && _hasKeptSessions())
-                {
-                    _persistState(ApplicationState::SharedInstance());
-                    _skipPersistence = true;
-                }
 
                 // !!! NOTE !!!
                 // At least theoretically the lParam pointer may be invalid.
@@ -1341,13 +1332,23 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // deterministic window count management.
                         const auto strong = *it;
 
-                        // Before destroying a named window, persist its full
-                        // tab/buffer state as a workspace so it can be restored later.
-                        try
+                        if (forcePersistClosingWindowLayout)
                         {
-                            strong->Logic().PersistWorkspace();
+                            // The last window must be captured even when the normal
+                            // firstWindowPreference is DefaultProfile.
+                            strong->Logic().PersistState();
+                            _skipPersistence = true;
                         }
-                        CATCH_LOG();
+                        else
+                        {
+                            // Before destroying a named window, persist its full
+                            // tab/buffer state as a workspace so it can be restored later.
+                            try
+                            {
+                                strong->Logic().PersistWorkspace();
+                            }
+                            CATCH_LOG();
+                        }
 
                         _windows.erase(it);
                         try

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 namespace winrt::TerminalApp::implementation
@@ -48,6 +49,11 @@ namespace winrt::TerminalApp::implementation
 
         return hasKeptSessions ? HeadlessTrayActivationMode::RestorePersistedLayoutsBeforeFreshWindow :
                                  HeadlessTrayActivationMode::OpenFreshWindow;
+    }
+
+    inline constexpr bool ShouldForcePersistClosingWindowLayout(const size_t windowCount, const bool hasKeptSessions) noexcept
+    {
+        return windowCount == 1 && hasKeptSessions;
     }
 
     inline std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildKeptGroupRestoreActions(const winrt::TerminalApp::KeptGroupRestoreResult& restoredGroup)
