@@ -128,14 +128,14 @@ private:
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
     void _finalizeSessionPersistence() const;
-    void _clearForcedKeptLayouts();
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
     bool _hasKeptSessions() const;
     bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupKeptSessionTracking();
     void _activateHeadlessTrayWindow(uint32_t showWindowCommand);
-    void _restoreKeptSession(const winrt::guid& groupId);
+    bool _restoreAllKeptSessions();
+    bool _restoreKeptSession(const winrt::guid& groupId);
     void _discardKeptSession(const winrt::guid& groupId);
     winrt::TerminalApp::ContentManager _keptSessionManager() const;
 
@@ -152,7 +152,6 @@ private:
     HMENU _currentWindowMenu = nullptr;
     bool _notificationIconShown = false;
     bool _skipPersistence = false;
-    bool _forcedKeptLayoutsActive = false;
     bool _needsPersistenceCleanup = false;
     SafeDispatcherTimer _persistStateTimer;
     std::optional<bool> _currentSystemThemeIsDark;

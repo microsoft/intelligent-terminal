@@ -33,52 +33,26 @@ namespace winrt::TerminalApp::implementation
         return true;
     }
 
-    enum class HeadlessTrayActivationMode
+    template<typename TRestore>
+    inline bool RestoreAllKeptGroups(const winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring>& groups,
+                                     TRestore&& restore)
     {
-        SummonExistingWindow = 0,
-        RestorePersistedLayoutsBeforeFreshWindow = 1,
-        OpenFreshWindow = 2,
-    };
-
-    inline HeadlessTrayActivationMode ClassifyHeadlessTrayActivation(const bool hasWindows, const bool hasKeptSessions) noexcept
-    {
-        if (hasWindows)
+        std::vector<winrt::guid> groupIds;
+        if (groups)
         {
-            return HeadlessTrayActivationMode::SummonExistingWindow;
+            groupIds.reserve(groups.Size());
+            for (const auto& group : groups)
+            {
+                groupIds.emplace_back(group.Key());
+            }
         }
 
-        return hasKeptSessions ? HeadlessTrayActivationMode::RestorePersistedLayoutsBeforeFreshWindow :
-                                 HeadlessTrayActivationMode::OpenFreshWindow;
-    }
-
-    enum class ForcedKeptLayoutCloseAction
-    {
-        None = 0,
-        StartGeneration = 1,
-        AppendGeneration = 2,
-    };
-
-    inline constexpr ForcedKeptLayoutCloseAction ClassifyForcedKeptLayoutClose(const bool generationActive,
-                                                                                const size_t windowCount,
-                                                                                const bool hasKeptSessions) noexcept
-    {
-        if (windowCount == 0 || !hasKeptSessions)
+        auto restoredAny = false;
+        for (const auto& groupId : groupIds)
         {
-            return ForcedKeptLayoutCloseAction::None;
+            restoredAny = restore(groupId) || restoredAny;
         }
-
-        return generationActive ? ForcedKeptLayoutCloseAction::AppendGeneration :
-                                  ForcedKeptLayoutCloseAction::StartGeneration;
-    }
-
-    inline constexpr bool ShouldPreserveForcedKeptLayoutGeneration(const bool generationActive, const bool hasKeptSessions) noexcept
-    {
-        return generationActive && hasKeptSessions;
-    }
-
-    inline constexpr bool ShouldCompleteForcedKeptLayoutGeneration(const bool generationActive, const bool hasKeptSessions) noexcept
-    {
-        return generationActive && !hasKeptSessions;
+        return restoredAny;
     }
 
     inline std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildKeptGroupRestoreActions(const winrt::TerminalApp::KeptGroupRestoreResult& restoredGroup)

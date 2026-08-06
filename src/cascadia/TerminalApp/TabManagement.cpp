@@ -1171,9 +1171,17 @@ namespace winrt::TerminalApp::implementation
         // Per-tab model: each tab owns its own agent pane. Closing a tab
         // takes its agent pane with it — no rescue needed.
 
+        // Persist first so a named workspace serializes the returned durable
+        // id/revision, matching the last-pane close path.
+        try
+        {
+            _PersistShellSession(t);
+        }
+        CATCH_LOG()
+
         // If this is the last tab in a named window, persist the workspace
-        // layout now while tab content is still alive. After tab.Close()
-        // the pane content will be torn down by the time _RemoveTab runs.
+        // layout while tab content is still alive. After tab.Close() the pane
+        // content will be torn down by the time _RemoveTab runs.
         if (_tabs.Size() == 1)
         {
             try
@@ -1183,11 +1191,6 @@ namespace winrt::TerminalApp::implementation
             CATCH_LOG()
         }
 
-        try
-        {
-            _PersistShellSession(t);
-        }
-        CATCH_LOG()
         tab.Close();
     }
 
