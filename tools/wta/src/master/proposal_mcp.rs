@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use agent_client_protocol as acp;
@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::MasterStateInner;
+use super::{AgentInstanceId, MasterStateInner};
 use crate::agent_source::AgentSource;
 use crate::agent_tools::action_proposal::mcp::HelperRequest;
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
@@ -29,13 +29,19 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const WSL_RELAY_SCRIPT: &str = r#"
 import base64
+import os
+import socket
 import socketserver
 import subprocess
 import sys
+import threading
 import time
 
 UPSTREAM_HOST = sys.argv[1]
 UPSTREAM_PORT = sys.argv[2]
+LISTEN_PORT = int(sys.argv[3])
+MAX_CONNECTIONS = 32
+READ_TIMEOUT_SECONDS = 5
 POWERSHELL = r'''
 __D__client = [Net.Sockets.TcpClient]::new()
 __D__client.Connect('__WTA_HOST__', [int]'__WTA_PORT__')
@@ -57,28 +63,46 @@ def forward(request):
          "-EncodedCommand", POWERSHELL_ENCODED],
         input=request, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         timeout=35, check=False)
-    return process.stdout if process.returncode == 0 else b""
+    if process.returncode != 0:
+        raise RuntimeError("Windows bridge exited with a nonzero status")
+    return process.stdout
+
+def send_response(sock, status, reason, message):
+    body = message.encode("utf-8")
+    response = (
+        "HTTP/1.1 " + str(status) + " " + reason + "\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + str(len(body)) + "\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n\r\n"
+    ).encode("ascii") + body
+    try:
+        sock.sendall(response)
+    except OSError:
+        pass
 
 def read_request(sock):
     data = b""
     while b"\r\n\r\n" not in data:
         chunk = sock.recv(4096)
         if not chunk:
-            return None
+            raise ValueError("client disconnected before HTTP headers")
         data += chunk
         if len(data) > 32768:
-            return None
+            raise ValueError("HTTP headers exceed the size limit")
     head, body = data.split(b"\r\n\r\n", 1)
     lines = head.split(b"\r\n")
     content_length = 0
     rewritten = [lines[0]]
     for line in lines[1:]:
         name, separator, value = line.partition(b":")
+        if not separator:
+            raise ValueError("malformed HTTP header")
         lower = name.strip().lower()
         if lower == b"content-length":
             content_length = int(value.strip())
-            if content_length > 1048576:
-                return None
+            if content_length < 0 or content_length > 1048576:
+                raise ValueError("HTTP body exceeds the size limit")
         if lower == b"host":
             line = b"Host: " + UPSTREAM_HOST.encode() + b":" + UPSTREAM_PORT.encode()
         elif lower == b"origin":
@@ -89,26 +113,73 @@ def read_request(sock):
     while len(body) < content_length:
         chunk = sock.recv(min(4096, content_length - len(body)))
         if not chunk:
-            return None
+            raise ValueError("client disconnected before HTTP body")
         body += chunk
     return b"\r\n".join(rewritten) + b"\r\n\r\n" + body[:content_length]
 
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
-        request = read_request(self.request)
-        if request is None:
+        self.request.settimeout(READ_TIMEOUT_SECONDS)
+        try:
+            request = read_request(self.request)
+        except socket.timeout:
+            send_response(self.request, 408, "Request Timeout", "request timed out")
             return
-        self.request.sendall(forward(request))
+        except (OSError, ValueError):
+            send_response(self.request, 400, "Bad Request", "invalid HTTP request")
+            return
+        try:
+            response = forward(request)
+        except subprocess.TimeoutExpired:
+            send_response(self.request, 504, "Gateway Timeout", "Windows bridge timed out")
+            return
+        except (OSError, RuntimeError):
+            send_response(self.request, 502, "Bad Gateway", "Windows bridge failed")
+            return
+        self.request.sendall(response)
 
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = False
     daemon_threads = True
+    request_queue_size = MAX_CONNECTIONS
 
-with Server(("127.0.0.1", 0), Handler) as server:
+    def __init__(self, server_address, handler):
+        self.connection_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(server_address, handler)
+
+    def process_request(self, request, client_address):
+        if not self.connection_slots.acquire(blocking=False):
+            send_response(request, 503, "Service Unavailable", "relay is busy")
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.connection_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.connection_slots.release()
+
+def exit_when_owner_disconnects():
+    try:
+        sys.stdin.buffer.read()
+    finally:
+        os._exit(0)
+
+with Server(("127.0.0.1", LISTEN_PORT), Handler) as server:
+    threading.Thread(target=exit_when_owner_disconnects, daemon=True).start()
     probe = ("GET /mcp HTTP/1.1\r\nHost: " + UPSTREAM_HOST + ":" +
              UPSTREAM_PORT + "\r\nConnection: close\r\n\r\n").encode()
     for attempt in range(50):
-        if forward(probe).startswith(b"HTTP/1.1 401"):
+        try:
+            response = forward(probe)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            response = b""
+        if response.startswith(b"HTTP/1.1 401"):
             break
         time.sleep(0.1)
     else:
@@ -119,12 +190,20 @@ with Server(("127.0.0.1", 0), Handler) as server:
 
 pub(super) struct Endpoints {
     host: String,
-    wsl: Mutex<HashMap<String, WslRelay>>,
+    wsl: Mutex<HashMap<String, Arc<Mutex<RelaySlot>>>>,
 }
 
 struct WslRelay {
     endpoint: String,
+    port: u16,
     child: tokio::process::Child,
+}
+
+#[derive(Default)]
+struct RelaySlot {
+    relay: Option<WslRelay>,
+    port: Option<u16>,
+    supervisor_started: bool,
 }
 
 impl Endpoints {
@@ -149,22 +228,29 @@ pub(super) struct CapabilityRegistry {
 
 #[derive(Default)]
 struct CapabilityRoutes {
-    by_capability: HashMap<[u8; 32], Option<acp::schema::v1::SessionId>>,
+    by_capability: HashMap<[u8; 32], CapabilityRoute>,
     by_session: HashMap<acp::schema::v1::SessionId, [u8; 32]>,
+    by_owner: HashMap<AgentInstanceId, HashSet<[u8; 32]>>,
+}
+
+struct CapabilityRoute {
+    session_id: Option<acp::schema::v1::SessionId>,
+    owner: AgentInstanceId,
 }
 
 impl CapabilityRegistry {
     pub(super) async fn prepare(
         &self,
+        owner: AgentInstanceId,
         session_id: Option<acp::schema::v1::SessionId>,
     ) -> PendingCapability {
         let secret = Uuid::new_v4().simple().to_string();
         let hash = hash_secret(&secret);
-        self.routes
-            .lock()
-            .await
+        let mut routes = self.routes.lock().await;
+        routes
             .by_capability
-            .insert(hash, session_id);
+            .insert(hash, CapabilityRoute { session_id, owner });
+        routes.by_owner.entry(owner).or_default().insert(hash);
         PendingCapability { secret, hash }
     }
 
@@ -178,14 +264,37 @@ impl CapabilityRegistry {
             return false;
         }
         if let Some(old) = routes.by_session.insert(session_id.clone(), pending.hash) {
-            routes.by_capability.remove(&old);
+            if old != pending.hash {
+                Self::remove_capability(&mut routes, &old);
+            }
         }
-        routes.by_capability.insert(pending.hash, Some(session_id));
+        if let Some(route) = routes.by_capability.get_mut(&pending.hash) {
+            route.session_id = Some(session_id);
+        }
         true
     }
 
     pub(super) async fn cancel(&self, pending: &PendingCapability) {
-        self.routes.lock().await.by_capability.remove(&pending.hash);
+        let mut routes = self.routes.lock().await;
+        Self::remove_capability(&mut routes, &pending.hash);
+    }
+
+    pub(super) async fn remove_owner(&self, owner: AgentInstanceId) -> usize {
+        let mut routes = self.routes.lock().await;
+        let Some(hashes) = routes.by_owner.remove(&owner) else {
+            return 0;
+        };
+        let count = hashes.len();
+        for hash in hashes {
+            if let Some(route) = routes.by_capability.remove(&hash) {
+                if let Some(session_id) = route.session_id {
+                    if routes.by_session.get(&session_id) == Some(&hash) {
+                        routes.by_session.remove(&session_id);
+                    }
+                }
+            }
+        }
+        count
     }
 
     async fn resolve(&self, secret: &str) -> CapabilityResolution {
@@ -195,11 +304,31 @@ impl CapabilityRegistry {
             .await
             .by_capability
             .get(&hash_secret(secret))
-            .cloned()
+            .map(|route| route.session_id.clone())
         {
             Some(Some(session_id)) => CapabilityResolution::Bound(session_id),
             Some(None) => CapabilityResolution::Pending,
             None => CapabilityResolution::Unknown,
+        }
+    }
+
+    fn remove_capability(routes: &mut CapabilityRoutes, hash: &[u8; 32]) {
+        let Some(route) = routes.by_capability.remove(hash) else {
+            return;
+        };
+        let remove_owner = if let Some(hashes) = routes.by_owner.get_mut(&route.owner) {
+            hashes.remove(hash);
+            hashes.is_empty()
+        } else {
+            false
+        };
+        if remove_owner {
+            routes.by_owner.remove(&route.owner);
+        }
+        if let Some(session_id) = route.session_id {
+            if routes.by_session.get(&session_id) == Some(hash) {
+                routes.by_session.remove(&session_id);
+            }
         }
     }
 }
@@ -229,12 +358,20 @@ pub(super) async fn endpoint_for(
         return Ok(state.proposal_mcp_endpoints.host.clone());
     };
 
-    let mut relays = state.proposal_mcp_endpoints.wsl.lock().await;
-    if let Some(relay) = relays.get_mut(distro) {
+    let relay_slot = {
+        let mut relays = state.proposal_mcp_endpoints.wsl.lock().await;
+        Arc::clone(
+            relays
+                .entry(distro.clone())
+                .or_insert_with(|| Arc::new(Mutex::new(RelaySlot::default()))),
+        )
+    };
+    let mut slot = relay_slot.lock().await;
+    if let Some(relay) = slot.relay.as_mut() {
         if relay.child.try_wait()?.is_none() {
             return Ok(relay.endpoint.clone());
         }
-        relays.remove(distro);
+        slot.relay = None;
     }
 
     let upstream = state
@@ -246,6 +383,37 @@ pub(super) async fn endpoint_for(
     let (upstream_host, upstream_port) = upstream
         .rsplit_once(':')
         .context("proposal MCP host endpoint has no port")?;
+    let relay = start_wsl_relay(
+        distro,
+        upstream_host,
+        upstream_port,
+        slot.port.unwrap_or(0),
+    )
+    .await?;
+    let endpoint = relay.endpoint.clone();
+    slot.port = Some(relay.port);
+    slot.relay = Some(relay);
+    let start_supervisor = !slot.supervisor_started;
+    slot.supervisor_started = true;
+    drop(slot);
+
+    if start_supervisor {
+        spawn_wsl_relay_supervisor(
+            Arc::downgrade(&relay_slot),
+            distro.clone(),
+            upstream_host.to_string(),
+            upstream_port.to_string(),
+        );
+    }
+    Ok(endpoint)
+}
+
+async fn start_wsl_relay(
+    distro: &str,
+    upstream_host: &str,
+    upstream_port: &str,
+    listen_port: u16,
+) -> Result<WslRelay> {
     let mut command = tokio::process::Command::new("wsl.exe");
     command
         .arg("-d")
@@ -257,7 +425,8 @@ pub(super) async fn endpoint_for(
         .arg(WSL_RELAY_SCRIPT)
         .arg(upstream_host)
         .arg(upstream_port)
-        .stdin(std::process::Stdio::null())
+        .arg(listen_port.to_string())
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
@@ -290,18 +459,90 @@ pub(super) async fn endpoint_for(
     let endpoint = format!("http://127.0.0.1:{port}{ENDPOINT_PATH}");
     tracing::info!(
         target: "proposal_mcp",
-        distro = %distro,
+        distro,
         endpoint = %endpoint,
         "WSL proposal MCP loopback relay ready"
     );
-    relays.insert(
-        distro.clone(),
-        WslRelay {
-            endpoint: endpoint.clone(),
-            child,
-        },
-    );
-    Ok(endpoint)
+    Ok(WslRelay {
+        endpoint,
+        port,
+        child,
+    })
+}
+
+fn spawn_wsl_relay_supervisor(
+    relay_slot: Weak<Mutex<RelaySlot>>,
+    distro: String,
+    upstream_host: String,
+    upstream_port: String,
+) {
+    tokio::task::spawn_local(async move {
+        let mut retry_delay = Duration::from_secs(1);
+        loop {
+            tokio::time::sleep(retry_delay).await;
+            let Some(relay_slot) = relay_slot.upgrade() else {
+                return;
+            };
+            let mut slot = relay_slot.lock().await;
+            let relay_stopped = match slot.relay.as_mut() {
+                Some(relay) => match relay.child.try_wait() {
+                    Ok(None) => {
+                        retry_delay = Duration::from_secs(1);
+                        continue;
+                    }
+                    Ok(Some(status)) => {
+                        tracing::warn!(
+                            target: "proposal_mcp",
+                            distro = %distro,
+                            ?status,
+                            "WSL proposal MCP relay exited; restarting on the same port"
+                        );
+                        true
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "proposal_mcp",
+                            distro = %distro,
+                            %error,
+                            "failed to inspect WSL proposal MCP relay; restarting on the same port"
+                        );
+                        true
+                    }
+                },
+                None => true,
+            };
+            if !relay_stopped {
+                continue;
+            }
+            slot.relay = None;
+            let Some(port) = slot.port else {
+                return;
+            };
+            match start_wsl_relay(&distro, &upstream_host, &upstream_port, port).await {
+                Ok(relay) => {
+                    slot.relay = Some(relay);
+                    retry_delay = Duration::from_secs(1);
+                    tracing::info!(
+                        target: "proposal_mcp",
+                        distro = %distro,
+                        port,
+                        "WSL proposal MCP relay restarted"
+                    );
+                }
+                Err(error) => {
+                    retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
+                    tracing::warn!(
+                        target: "proposal_mcp",
+                        distro = %distro,
+                        port,
+                        retry_secs = retry_delay.as_secs(),
+                        error = %format!("{error:#}"),
+                        "failed to restart WSL proposal MCP relay"
+                    );
+                }
+            }
+        }
+    });
 }
 
 pub(super) async fn run(listener: TcpListener, state: Arc<MasterStateInner>) -> Result<()> {
@@ -688,10 +929,11 @@ mod tests {
     #[tokio::test]
     async fn capability_binding_replaces_old_session_capability() {
         let registry = CapabilityRegistry::default();
-        let old = registry.prepare(None).await;
+        let owner = AgentInstanceId::new_v4();
+        let old = registry.prepare(owner, None).await;
         let session_id = acp::schema::v1::SessionId::new("session");
         assert!(registry.bind(&old, session_id.clone()).await);
-        let new = registry.prepare(Some(session_id.clone())).await;
+        let new = registry.prepare(owner, Some(session_id.clone())).await;
         assert!(registry.bind(&new, session_id.clone()).await);
         assert!(matches!(
             registry.resolve(&old.secret).await,
@@ -706,11 +948,12 @@ mod tests {
     #[tokio::test]
     async fn cancelled_replacement_preserves_committed_capability() {
         let registry = CapabilityRegistry::default();
+        let owner = AgentInstanceId::new_v4();
         let session_id = acp::schema::v1::SessionId::new("session");
-        let committed = registry.prepare(None).await;
+        let committed = registry.prepare(owner, None).await;
         assert!(registry.bind(&committed, session_id.clone()).await);
 
-        let replacement = registry.prepare(Some(session_id.clone())).await;
+        let replacement = registry.prepare(owner, Some(session_id.clone())).await;
         registry.cancel(&replacement).await;
 
         assert!(matches!(
@@ -726,7 +969,7 @@ mod tests {
     #[tokio::test]
     async fn server_config_is_http_and_carries_only_its_session_capability() {
         let registry = CapabilityRegistry::default();
-        let pending = registry.prepare(None).await;
+        let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
         let config = server_config("http://127.0.0.1:4321/mcp", &pending);
         let acp::schema::v1::McpServer::Http(config) = config else {
             panic!("proposal MCP must use HTTP");
@@ -739,6 +982,42 @@ mod tests {
             config.headers[0].value.strip_prefix("Bearer "),
             Some(pending.secret.as_str())
         );
+    }
+
+    #[tokio::test]
+    async fn removing_agent_owner_revokes_only_its_capabilities() {
+        let registry = CapabilityRegistry::default();
+        let removed_owner = AgentInstanceId::new_v4();
+        let retained_owner = AgentInstanceId::new_v4();
+        let removed = registry.prepare(removed_owner, None).await;
+        let retained = registry.prepare(retained_owner, None).await;
+        assert!(
+            registry
+                .bind(
+                    &removed,
+                    acp::schema::v1::SessionId::new("removed-session")
+                )
+                .await
+        );
+        assert!(
+            registry
+                .bind(
+                    &retained,
+                    acp::schema::v1::SessionId::new("retained-session")
+                )
+                .await
+        );
+
+        assert_eq!(registry.remove_owner(removed_owner).await, 1);
+        assert!(matches!(
+            registry.resolve(&removed.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&retained.secret).await,
+            CapabilityResolution::Bound(session_id)
+                if session_id == acp::schema::v1::SessionId::new("retained-session")
+        ));
     }
 
     #[tokio::test]
@@ -806,5 +1085,9 @@ mod tests {
         );
         assert!(WSL_RELAY_SCRIPT.contains("chr(36)"));
         assert!(WSL_RELAY_SCRIPT.contains("-EncodedCommand"));
+        assert!(WSL_RELAY_SCRIPT.contains("sys.stdin.buffer.read()"));
+        assert!(WSL_RELAY_SCRIPT.contains("BoundedSemaphore(MAX_CONNECTIONS)"));
+        assert!(WSL_RELAY_SCRIPT.contains("settimeout(READ_TIMEOUT_SECONDS)"));
+        assert!(WSL_RELAY_SCRIPT.contains("LISTEN_PORT = int(sys.argv[3])"));
     }
 }

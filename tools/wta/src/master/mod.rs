@@ -74,6 +74,10 @@ use config::MasterConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct HelperId(u64);
 
+type AgentCmdKey = String;
+type AgentInstanceId = uuid::Uuid;
+type AgentCell = Arc<tokio::sync::OnceCell<Arc<AgentCli>>>;
+
 /// Per-session routing entry. Owned by `session_to_helper` and
 /// keyed by `acp::schema::v1::SessionId`.
 ///
@@ -223,7 +227,7 @@ struct MasterStateInner {
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
-    pub(crate) agents: Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -360,9 +364,6 @@ async fn bind_session_route(
 /// execution source, and full command line. Two tabs with the same identity,
 /// source, and command share one CLI; custom and built-in agents never share
 /// merely because their commands happen to match.
-/// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
-type AgentCmdKey = String;
-
 fn agent_cmd_key(
     command: &str,
     agent_id: Option<&str>,
@@ -375,6 +376,7 @@ fn agent_cmd_key(
 /// talk to it. Shared (`Arc`) across every helper currently bound to
 /// this agent.
 struct AgentCli {
+    instance_id: AgentInstanceId,
     /// Master is the ACP *client* of this CLI. Every helper request for
     /// a session owned by this agent forwards onto this connection.
     conn: conn::ClientLink,
@@ -1213,6 +1215,51 @@ impl HelperHandler {
 }
 
 impl HelperHandler {
+    async fn proposal_endpoint_for_session(
+        &self,
+        agent: &AgentCli,
+        wta_meta: &crate::session_registry::WtaMeta,
+        operation: &str,
+    ) -> acp::Result<Option<String>> {
+        if wta_meta.proposal_mcp.as_deref() != Some("http-v1") {
+            return Ok(None);
+        }
+        if !agent
+            .cached_init_resp
+            .agent_capabilities
+            .mcp_capabilities
+            .http
+        {
+            tracing::error!(
+                target: "proposal_mcp",
+                helper_id = ?self.helper_id,
+                op = operation,
+                source = %agent.source,
+                "helper requested proposal MCP after agent HTTP support disappeared"
+            );
+            return Err(acp::Error::internal_error().data(serde_json::json!(
+                "proposal MCP is unavailable because the agent does not support HTTP MCP"
+            )));
+        }
+        proposal_mcp::endpoint_for(&self.state, &agent.source)
+            .await
+            .map(Some)
+            .map_err(|error| {
+                let error_chain = format!("{error:#}");
+                tracing::error!(
+                    target: "proposal_mcp",
+                    helper_id = ?self.helper_id,
+                    op = operation,
+                    source = %agent.source,
+                    error = %error_chain,
+                    "proposal MCP endpoint became unavailable after initialize"
+                );
+                acp::Error::internal_error().data(serde_json::json!(format!(
+                    "proposal MCP endpoint unavailable: {error_chain}"
+                )))
+            })
+    }
+
     async fn initialize(
         &self,
         mut args: acp::schema::v1::InitializeRequest,
@@ -1345,8 +1392,8 @@ impl HelperHandler {
                     %error,
                     "failed to serialize private cloud model catalog metadata"
                 );
-        Ok(agent.cached_init_resp.clone())
-    }
+                Ok(agent.cached_init_resp.clone())
+            }
         }
     }
 
@@ -1383,21 +1430,15 @@ impl HelperHandler {
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let cwd_for_registry = args.cwd.clone();
         let agent = self.resolved_agent("new_session")?;
-        let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
-            && agent
-                .cached_init_resp
-                .agent_capabilities
-                .mcp_capabilities
-                .http
-        {
-            proposal_mcp::endpoint_for(&self.state, &agent.source)
-                .await
-                .ok()
-        } else {
-            None
-        };
+        let proposal_endpoint = self
+            .proposal_endpoint_for_session(&agent, &wta_meta, "new_session")
+            .await?;
         let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
-            let pending = self.state.proposal_mcp_capabilities.prepare(None).await;
+            let pending = self
+                .state
+                .proposal_mcp_capabilities
+                .prepare(agent.instance_id, None)
+                .await;
             args.mcp_servers
                 .push(proposal_mcp::server_config(&endpoint, &pending));
             Some(pending)
@@ -1609,24 +1650,25 @@ impl HelperHandler {
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
-            let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
-                && agent
-                    .cached_init_resp
-                    .agent_capabilities
-                    .mcp_capabilities
-                    .http
+            let proposal_endpoint = match self
+                .proposal_endpoint_for_session(&agent, &wta_meta, "load_session")
+                .await
             {
-                proposal_mcp::endpoint_for(&self.state, &agent.source)
-                    .await
-                    .ok()
-            } else {
-                None
+                Ok(endpoint) => endpoint,
+                Err(error) => {
+                    self.state
+                        .session_to_helper
+                        .lock()
+                        .await
+                        .remove(&session_id);
+                    return Err(error);
+                }
             };
             let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
                 let pending = self
                     .state
                     .proposal_mcp_capabilities
-                    .prepare(Some(session_id.clone()))
+                    .prepare(agent.instance_id, Some(session_id.clone()))
                     .await;
                 args.mcp_servers
                     .push(proposal_mcp::server_config(&endpoint, &pending));
@@ -2697,6 +2739,7 @@ async fn get_or_spawn_agent(
         .get_or_try_init(|| async {
             spawn_one_agent(
                 state,
+                &cell,
                 &key,
                 agent_cmd,
                 agent_id,
@@ -2716,12 +2759,14 @@ async fn get_or_spawn_agent(
 /// other tabs' agents keep running.
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
+    cell: &AgentCell,
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
+    let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
         .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
@@ -2871,6 +2916,7 @@ async fn spawn_one_agent(
     // the next helper retries cleanly instead of reusing a dead slot.
     {
         let state = Arc::clone(state);
+        let cell = Arc::clone(cell);
         let key = key.clone();
         tokio::task::spawn_local(async move {
             match handle_io.await {
@@ -2886,7 +2932,7 @@ async fn spawn_one_agent(
                     "agent CLI ACP I/O loop ended with error — removing from pool"
                 ),
             }
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
 
@@ -2943,6 +2989,7 @@ async fn spawn_one_agent(
     // the next helper respawns it; the master stays up for other agents.
     {
         let state = Arc::clone(state);
+        let cell = Arc::clone(cell);
         let key = key.clone();
         tokio::task::spawn_local(async move {
             let status = child.wait().await;
@@ -2952,7 +2999,7 @@ async fn spawn_one_agent(
                 ?status,
                 "agent CLI exited — removing from pool (master stays up for other agents)"
             );
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
 
@@ -2988,6 +3035,7 @@ async fn spawn_one_agent(
     let (cloud_catalog, start_clean_probe) =
         prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
     let agent = Arc::new(AgentCli {
+        instance_id,
         conn,
         cached_init_resp: init_resp,
         cli_source,
@@ -3014,17 +3062,38 @@ async fn spawn_one_agent(
 /// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
 /// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
 /// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
-async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
-    let removed = { state.agents.lock().await.remove(key).is_some() };
+async fn reap_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    cell: &AgentCell,
+    instance_id: AgentInstanceId,
+) {
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        if agents
+            .get(key)
+            .is_some_and(|current| Arc::ptr_eq(current, cell))
+        {
+            agents.remove(key);
+            true
+        } else {
+            false
+        }
+    };
     if removed {
         // Every session THIS CLI held died with it, so drop only this
         // agent's orphan set — a post-respawn resume then forwards a real
         // `session/load` (reloading from disk) instead of re-binding to a
         // session the new CLI never had. Other agents' orphans are untouched.
         state.orphaned_sessions.lock().await.remove(key);
+        let capabilities_removed = state
+            .proposal_mcp_capabilities
+            .remove_owner(instance_id)
+            .await;
         tracing::info!(
             target: "master",
             agent = %key,
+            capabilities_removed,
             "dead agent removed from pool; next pane for this agent will respawn it"
         );
     }

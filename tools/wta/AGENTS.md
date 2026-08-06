@@ -27,8 +27,11 @@ bare `wta` with neither a role flag nor a subcommand exits with an error.
   listener owned by `wta-master`, plus an on-demand loopback relay per WSL
   distro) -- exposes only `request_terminal_actions`. A per-session bearer
   capability resolves to ACP SessionId, then `session_to_helper` routes the
-  request over the existing master/helper pipe. It never executes terminal
-  actions.
+  request over the existing master/helper pipe. Relays are bounded
+  master-lifetime services and exit when their master-owned stdin pipe closes.
+  Unexpected relay failure is restarted on the same port. Capabilities are
+  revoked when their exact Agent CLI instance dies. The endpoint never
+  executes terminal actions.
 
 The helper side owns `ShellManager`, which services the agent CLI's ACP
 `create_terminal` / permission requests by routing to either a local subprocess

@@ -1864,7 +1864,6 @@ pub async fn run_acp_client_over_pipe(
         .as_ref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let mut proposal_commands_supported = true;
 
     // Connect to the master singleton over the named pipe. The C++
     // SharedWta side spawns the master and the helper basically back
@@ -2190,7 +2189,7 @@ pub async fn run_acp_client_over_pipe(
         family_id: usage_family_id,
         reporter_id: init_resp.agent_info.as_ref().map(|info| info.name.clone()),
     };
-    proposal_commands_supported &= init_resp.agent_capabilities.mcp_capabilities.http
+    let proposal_commands_supported = init_resp.agent_capabilities.mcp_capabilities.http
         && wta_meta.proposal_mcp.as_deref() == Some("http-v1");
     // Connection milestone at info so a clean handshake is visible in release.
     tracing::info!(

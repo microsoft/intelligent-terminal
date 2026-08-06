@@ -105,6 +105,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             let config_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -199,6 +200,7 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
                 .insert(helper_id, ext_tx);
 
             let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -703,6 +705,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let a_config_hit = Arc::new(AtomicBool::new(false));
             let a_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_a = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_model_agent(
                     true,
                     Arc::clone(&a_config_hit),
@@ -721,6 +724,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let b_config_hit = Arc::new(AtomicBool::new(false));
             let b_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_b = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&b_config_hit),
@@ -779,6 +783,7 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
             let config_hit = Arc::new(AtomicBool::new(false));
             let legacy_hit = Arc::new(AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&config_hit),
@@ -838,6 +843,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
             // the timeout path.
             let agent = Arc::new(OnceLock::new());
             let _ = agent.set(Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: client_connection_to_pending_new_session_agent(),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -960,11 +966,31 @@ async fn reap_agent_drops_only_its_own_orphans() {
             .insert(SessionId::new("b-sess"));
     }
     // reap only acts when the key is a live pool entry.
-    {
+    let cell = {
         let mut agents = state.agents.lock().await;
-        agents.insert(key_a.clone(), Arc::new(tokio::sync::OnceCell::new()));
-    }
-    reap_agent(&state, &key_a).await;
+        let cell = Arc::new(tokio::sync::OnceCell::new());
+        agents.insert(key_a.clone(), Arc::clone(&cell));
+        cell
+    };
+    let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+    reap_agent(
+        &state,
+        &key_a,
+        &stale_cell,
+        AgentInstanceId::new_v4(),
+    )
+    .await;
+    assert!(
+        state.agents.lock().await.contains_key(&key_a),
+        "a stale reaper must not remove a replacement pool entry"
+    );
+    reap_agent(
+        &state,
+        &key_a,
+        &cell,
+        AgentInstanceId::new_v4(),
+    )
+    .await;
     let orphans = state.orphaned_sessions.lock().await;
     assert!(
         !orphans.contains_key(&key_a),
@@ -1110,6 +1136,7 @@ async fn prompt_forward_survives_reentrant_permission() {
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let agent = Arc::new(OnceLock::new());
             let _ = agent.set(Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
                 conn: agent_conn,
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,

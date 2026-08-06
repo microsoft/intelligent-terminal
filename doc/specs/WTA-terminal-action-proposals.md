@@ -46,7 +46,14 @@ distro with `wsl.exe`; the relay invokes a fixed, encoded Windows PowerShell
 byte forwarder for each HTTP request, which reaches master's Windows-loopback
 endpoint. The bearer header remains in the forwarded bytes and never enters a
 process command line. If Python 3 or Windows interop is unavailable in a
-distro, master does not advertise proposal MCP to that Helper.
+distro, master does not advertise proposal MCP to that Helper. The relay is
+cached for that master's lifetime, but its stdin remains connected to an
+ownership pipe: normal child cleanup or unexpected master termination closes
+the pipe and makes the Python relay exit. Each distro has an independent
+startup lock, so a slow distro does not block endpoint selection for another.
+Master also supervises the relay and restarts it on the same loopback port
+after an unexpected relay failure, preserving URLs already stored by ACP
+sessions.
 
 Before creating or loading a session:
 
@@ -55,6 +62,13 @@ Before creating or loading a session:
    to the Agent CLI;
 3. master binds the capability to the returned ACP SessionId on success; or
 4. master discards the pending capability on failure.
+
+Helper disconnect preserves the committed capability while the same Agent CLI
+still owns an orphaned ACP session, allowing direct rebind without
+`session/load`. When that Agent CLI instance dies, master revokes every
+capability owned by that exact instance. Reapers compare the pool cell identity
+before removal, so a late reaper from an old process cannot revoke or remove a
+replacement process using the same command.
 
 A failed replacement leaves the prior session capability valid. A successful
 replacement retires it. Orphan Helper rebinds preserve the existing capability
@@ -186,7 +200,9 @@ user-facing representation.
 The HTTP server binds only to an ephemeral IPv4 Windows-loopback port. WSL
 relays bind only to ephemeral loopback ports inside their distro and rewrite
 loopback Host/Origin authorities to the upstream loopback authority before
-byte-forwarding. The master server requires the session bearer capability,
+byte-forwarding. A relay limits concurrent handlers, applies a request read
+timeout and the same header/body size ceilings, and returns explicit HTTP
+errors when request parsing or the Windows bridge fails. The master server requires the session bearer capability,
 validates Host and any Origin header, rejects duplicate or oversized headers,
 rejects transfer encoding, and caps request bodies. Capabilities are stored
 hashed and are never logged.
