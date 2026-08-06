@@ -465,7 +465,7 @@ fn spawn_wsl_agent_process(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     // Shared-provider configuration is Host-only. Remove any Windows-side
-    // provider variables (including pre-existing WSLENV forwarding) while
+    // provider variables (including preexisting WSLENV forwarding) while
     // leaving the distro's own environment untouched for normal launches.
     // Clean probes additionally unset provider keys inside the Linux shell via
     // `wsl_agent_launch_script`.

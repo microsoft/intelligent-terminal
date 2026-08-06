@@ -536,7 +536,7 @@ namespace SettingsModelUnitTests
         provider.Models().Append(CustomModel{ L"model-b", L"model-b" });
 
         VERIFY_ARE_EQUAL(
-            winrt::hstring{ L"Friendly Model (model-a)\nmodel-b" },
+            winrt::hstring{ L"Friendly Model (model-a)\n" L"model-b" },
             CustomModels::FormatModelDisplayText(provider));
 
         const auto providers = std::array{ provider };

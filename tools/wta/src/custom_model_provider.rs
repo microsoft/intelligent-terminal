@@ -507,7 +507,7 @@ mod tests {
         let config = Config {
             base_url: "https://openrouter.ai/api/v1".to_string(),
             model: "qwen/qwen3.5-9b".to_string(),
-            credential_id: Some("{79bbdb49-9af3-4ea8-b773-wta-missing-test}".to_string()),
+            credential_id: Some("{79000049-9af3-4ea8-b773-wta-missing-test}".to_string()),
             api_key_required: true,
             credential_resource: "IntelligentTerminal.TestMissingModelProviderCredential",
         };

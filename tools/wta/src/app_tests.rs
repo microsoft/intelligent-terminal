@@ -2199,7 +2199,7 @@ fn global_settings_change_preserves_local_pick() {
     app.available_models = vec![model_info("local"), model_info("globalv2")];
     app.current_tab_mut().session_id = Some("sid-1".into());
 
-    // Preserve a pre-existing pane override while applying a Settings update.
+    // Preserve a preexisting pane override while applying a Settings update.
     app.current_tab_mut().model_override = Some("local".into());
     app.current_model_id = Some("local".into());
     assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));

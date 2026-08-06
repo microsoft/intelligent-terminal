@@ -14,6 +14,7 @@ bestpractices
 breadcrumb
 breadcrumbs
 byok
+byom
 caac
 CACHEDIR
 capturep
@@ -279,6 +280,7 @@ Wez
 wezterm
 workarounds
 WSLs
+wslenv
 XBox
 YBox
 yeelam
