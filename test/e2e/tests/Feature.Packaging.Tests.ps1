@@ -11,6 +11,94 @@ BeforeDiscovery {
     $script:UiReady = $script:Ready -and [bool](Get-Command winapp -ErrorAction SilentlyContinue)
 }
 
+Describe 'Feature §9 COM activation lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:activationApp = Resolve-ItApp -Package (Get-ItTestPackage)
+        $script:activationClsid = Get-ItProtocolComClsid -App $script:activationApp
+        Stop-AppInstances -App $script:activationApp
+        Backup-WtConfig -App $script:activationApp
+        Set-WtSettings -App $script:activationApp -Settings @{ 'compatibility.allowHeadless' = $false } | Out-Null
+    }
+    BeforeEach {
+        Stop-AppInstances -App $script:activationApp
+    }
+    AfterAll {
+        if ($script:activationApp) {
+            Stop-AppInstances -App $script:activationApp
+            Restore-WtConfig -App $script:activationApp
+        }
+    }
+
+    It 'Abandoned COM activation exits promptly' {
+        $started = Get-Date
+        $probe = Invoke-Native -FilePath $script:activationApp.WtcliPath -Arguments @('info') `
+            -TimeoutSec 15 -Environment @{ WT_COM_CLSID = $script:activationClsid }
+        $probe.ExitCode | Should -Be 0
+        $probe.StdOut | Should -Match 'Connection:\s+OK'
+
+        $server = Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Because 'the DCOM-activated Terminal server process' -Condition {
+            Get-WtProcessesForApp -App $script:activationApp | Select-Object -First 1
+        }
+        $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId=$($server.Id)").CommandLine
+        $commandLine | Should -Match '(?i)\s-Embedding(?:\s|$)'
+        $server.MainWindowHandle | Should -Be 0
+
+        Test-Until -TimeoutSec 10 -IntervalSec 0.1 -Condition {
+            $null -eq (Get-Process -Id $server.Id -ErrorAction SilentlyContinue)
+        } | Should -BeTrue -Because 'an unused packaged COM server must release package files after its five-second handoff lease'
+        ((Get-Date) - $started).TotalSeconds | Should -BeLessThan 10
+    }
+
+    It 'Valid COM handoff survives the activation timeout' {
+        $probe = Invoke-Native -FilePath $script:activationApp.WtcliPath -Arguments @('info') `
+            -TimeoutSec 15 -Environment @{ WT_COM_CLSID = $script:activationClsid }
+        $probe.ExitCode | Should -Be 0
+
+        $server = Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Because 'the DCOM-activated Terminal server process' -Condition {
+            Get-WtProcessesForApp -App $script:activationApp | Select-Object -First 1
+        }
+        Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($script:activationApp.AppUserModelId)" | Out-Null
+
+        Wait-Until -TimeoutSec 8 -IntervalSec 0.2 -Because 'a real window handed off to the activated server' -Condition {
+            $windows = Invoke-Native -FilePath $script:activationApp.WtcliPath -Arguments @('--json', 'list-windows') `
+                -TimeoutSec 5 -Environment @{ WT_COM_CLSID = $script:activationClsid }
+            if ($windows.ExitCode -ne 0) { return $false }
+            $json = $windows.StdOut | ConvertFrom-JsonSafe
+            $null -ne $json -and @($json.windows).Count -gt 0
+        } | Out-Null
+
+        Test-Until -TimeoutSec 7 -IntervalSec 0.2 -Condition {
+            $null -eq (Get-Process -Id $server.Id -ErrorAction SilentlyContinue)
+        } | Should -BeFalse -Because 'a real handoff must cancel the startup timeout'
+        (Get-WtProcessesForApp -App $script:activationApp | Select-Object -ExpandProperty Id) | Should -Contain $server.Id
+    }
+
+    It 'Explicit headless mode survives the activation timeout' {
+        Set-WtSettings -App $script:activationApp -Settings @{ 'compatibility.allowHeadless' = $true } | Out-Null
+        try {
+            $probe = Invoke-Native -FilePath $script:activationApp.WtcliPath -Arguments @('info') `
+                -TimeoutSec 15 -Environment @{ WT_COM_CLSID = $script:activationClsid }
+            $probe.ExitCode | Should -Be 0
+
+            $server = Wait-Until -TimeoutSec 5 -IntervalSec 0.1 -Because 'the explicitly headless Terminal server process' -Condition {
+                Get-WtProcessesForApp -App $script:activationApp | Select-Object -First 1
+            }
+            $windows = Invoke-Native -FilePath $script:activationApp.WtcliPath -Arguments @('--json', 'list-windows') `
+                -TimeoutSec 5 -Environment @{ WT_COM_CLSID = $script:activationClsid }
+            $windows.ExitCode | Should -Be 0
+            @((($windows.StdOut | ConvertFrom-JsonSafe).windows)).Count | Should -Be 0
+            Test-Until -TimeoutSec 7 -IntervalSec 0.2 -Condition {
+                $null -eq (Get-Process -Id $server.Id -ErrorAction SilentlyContinue)
+            } | Should -BeFalse -Because 'AllowHeadless remains the authoritative opt-in lifetime policy'
+        }
+        finally {
+            Stop-AppInstances -App $script:activationApp
+            Set-WtSettings -App $script:activationApp -Settings @{ 'compatibility.allowHeadless' = $false } | Out-Null
+        }
+    }
+}
+
 Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force

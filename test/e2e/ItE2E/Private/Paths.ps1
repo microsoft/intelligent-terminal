@@ -145,6 +145,31 @@ function Get-RunnableWtaPath {
     $runnable
 }
 
+function Get-ItProtocolComClsid {
+    <#
+    .SYNOPSIS
+        Read the protocol server CLSID registered by the package under test.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory, ValueFromPipeline)]$App)
+
+    $manifestPath = Join-Path $App.InstallLocation 'AppxManifest.xml'
+    $manifest = [xml](Get-Content -Raw $manifestPath)
+    $registeredClasses = @(
+        $manifest.SelectNodes(
+            "//*[local-name()='Extension' and @Category='windows.comServer']//*[local-name()='Class']/@Id"
+        ) | ForEach-Object Value
+    )
+
+    foreach ($clsid in $script:ItBrandClsids.Values) {
+        if ($registeredClasses -contains $clsid.Trim('{}')) {
+            return $clsid
+        }
+    }
+
+    throw "No known Terminal protocol COM server class found in $manifestPath."
+}
+
 function Resolve-WtComClsid {
     <#
     .SYNOPSIS

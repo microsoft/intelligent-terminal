@@ -95,6 +95,8 @@ private:
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
 
+    static constexpr UINT_PTR HandoffTimeoutTimerId = 1;
+
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
     std::vector<std::shared_ptr<::AppHost>> _windows;
@@ -113,6 +115,7 @@ private:
     std::optional<bool> _currentSystemThemeIsDark;
     int32_t _windowCount = 0;
     int32_t _messageBoxCount = 0;
+    int32_t _handoffWindowCreationCount = 0;
     std::wstring _pendingAumidLnkPath;
     std::wstring _pendingAumid;
 
