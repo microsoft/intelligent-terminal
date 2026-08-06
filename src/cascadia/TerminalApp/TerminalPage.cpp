@@ -7825,7 +7825,7 @@ namespace winrt::TerminalApp::implementation
         return _SetupControl(control);
     }
 
-    TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId)
+    TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId, const NewTerminalArgs& newTerminalArgs)
     {
         if (const auto& content{ _manager.TryLookupCore(contentId) })
         {
@@ -7855,8 +7855,23 @@ namespace winrt::TerminalApp::implementation
             }
 
             const auto rawControl = TermControl::NewControlByAttachingContent(content);
+            const auto attachedConnection = rawControl.Connection();
+            const auto attachedSessionId = attachedConnection ? attachedConnection.SessionId() : winrt::guid{};
             const auto paneId = _FindSessionIdForControl(rawControl);
-            const bool tookEndEventOwnership = _manager.ConfirmReattachedContent(contentId);
+            const bool insertedAgentBinding = newTerminalArgs &&
+                                              !newTerminalArgs.AgentSessionId().empty() &&
+                                              attachedSessionId != winrt::guid{};
+            if (insertedAgentBinding)
+            {
+                _paneAgentSessions.insert_or_assign(
+                    attachedSessionId,
+                    _PaneAgentSession{
+                        newTerminalArgs.AgentSessionId(),
+                        newTerminalArgs.AgentSessionAgent(),
+                        newTerminalArgs.AgentResumeCommandline() });
+            }
+
+            bool tookEndEventOwnership = false;
             const auto raiseTerminalEndStateIfNeeded = [&]() {
                 const auto state = rawControl.ConnectionState();
                 if (tookEndEventOwnership && state >= ConnectionState::Closed)
@@ -7879,7 +7894,14 @@ namespace winrt::TerminalApp::implementation
                     raiseTerminalEndStateIfNeeded();
                 }
                 CATCH_LOG();
+
+                if (insertedAgentBinding)
+                {
+                    _paneAgentSessions.erase(attachedSessionId);
+                }
             });
+
+            tookEndEventOwnership = _manager.ConfirmReattachedContent(contentId);
 
             // We have to pass in our current keybindings, because that's an
             // object that belongs to this TerminalPage, on this thread. If we
@@ -7954,7 +7976,7 @@ namespace winrt::TerminalApp::implementation
             // serialize the actual profile's GUID along with the content guid.
             const uint64_t contentId = newTerminalArgs.ContentId();
             const auto& profile = _settings.GetProfileForArgs(newTerminalArgs);
-            const auto control = _AttachControlToContent(contentId);
+            const auto control = _AttachControlToContent(contentId, newTerminalArgs);
             if (!control)
             {
                 // A dead ContentId cannot be moved or restored. Clear the
@@ -7966,22 +7988,6 @@ namespace winrt::TerminalApp::implementation
             }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
-
-            if (!newTerminalArgs.AgentSessionId().empty())
-            {
-                if (const auto attachedConnection = control.Connection())
-                {
-                    if (const auto attachedSessionId = attachedConnection.SessionId(); attachedSessionId != winrt::guid{})
-                    {
-                        _paneAgentSessions.insert_or_assign(
-                            attachedSessionId,
-                            _PaneAgentSession{
-                                newTerminalArgs.AgentSessionId(),
-                                newTerminalArgs.AgentSessionAgent(),
-                                newTerminalArgs.AgentResumeCommandline() });
-                    }
-                }
-            }
 
             // Cross-window agent-pane drag: if the source tab stashed an
             // original StableId for this ContentId, the migrating pane was
@@ -8217,24 +8223,9 @@ namespace winrt::TerminalApp::implementation
                     auto cancelReattach = wil::scope_exit([&]() noexcept {
                         _manager.CancelKeptSessionReattach(keptId);
                     });
-                    if (const auto keptControl = _AttachControlToContent(keptContentId))
+                    if (const auto keptControl = _AttachControlToContent(keptContentId, newTerminalArgs))
                     {
                         cancelReattach.release();
-                        if (newTerminalArgs && !newTerminalArgs.AgentSessionId().empty())
-                        {
-                            const auto attachedConnection = keptControl.Connection();
-                            const auto attachedSessionId = attachedConnection ? attachedConnection.SessionId() : winrt::guid{};
-                            if (attachedSessionId != winrt::guid{})
-                            {
-                                _paneAgentSessions.insert_or_assign(
-                                    attachedSessionId,
-                                    _PaneAgentSession{
-                                        newTerminalArgs.AgentSessionId(),
-                                        newTerminalArgs.AgentSessionAgent(),
-                                        newTerminalArgs.AgentResumeCommandline() });
-                            }
-                        }
-
                         auto keptContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, keptControl) };
                         return std::make_shared<Pane>(keptContent);
                     }

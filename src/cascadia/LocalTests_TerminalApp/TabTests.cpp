@@ -200,6 +200,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ShellSessionCloseActionsRespectIndependentSettings);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
+        TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
         TEST_METHOD(WindowCloseAcceptanceIsOneShot);
         TEST_METHOD(ContentMapOperationsUseOwnerThread);
         TEST_METHOD(ContentAttachRejectsDeadConnections);
@@ -433,6 +434,7 @@ namespace TerminalAppLocalTests
         const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{52a75f00-aaaa-bbbb-cccc-dddddddddddd}");
         const auto fallbackSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{52a75f00-eeee-ffff-1111-222222222222}");
 
+        winrt::com_ptr<TestConnection> connection;
         auto sessionBornBound = false;
         const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
             Json::Value evt;
@@ -451,7 +453,7 @@ namespace TerminalAppLocalTests
 
         TestOnUIThread([&]() {
             auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
-            auto connection = winrt::make_self<TestConnection>(
+            connection = winrt::make_self<TestConnection>(
                 liveSessionId,
                 winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
             const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
@@ -483,6 +485,70 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-live" }, restoredArgs.AgentSessionId());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, restoredArgs.AgentSessionAgent());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot --resume agent-session-live" }, restoredArgs.AgentResumeCommandline());
+        });
+
+        TestOnUIThread([&]() {
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+        });
+
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(liveSessionId)));
+        });
+    }
+
+    void TabTests::ContentIdHandoffEndClearsAgentBinding()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{62a75f00-1111-2222-3333-444444444444}");
+        const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{62a75f00-aaaa-bbbb-cccc-dddddddddddd}");
+        const auto fallbackSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{62a75f00-eeee-ffff-1111-222222222222}");
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto protocolToken = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto protocolTokenRevoker = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(protocolToken);
+        });
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            auto connection = winrt::make_self<TestConnection>(
+                liveSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            winrt::Microsoft::Terminal::Control::TermControl detachedControl{ content };
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Reattach", L"", 0, NewTerminalArgs{}, detachedControl));
+            VERIFY_ARE_EQUAL(content.Id(), _contentManager->TryReattachKeptSession(liveSessionId));
+
+            NewTerminalArgs args{};
+            args.ContentId(content.Id());
+            args.SessionId(fallbackSessionId);
+            args.AgentSessionId(L"agent-session-ended");
+            args.AgentSessionAgent(L"copilot");
+            args.AgentResumeCommandline(L"copilot --resume agent-session-ended");
+
+            auto closeDuringConfirm = true;
+            const auto changedToken = _contentManager->KeptSessionsChanged([&](auto&&, auto&&) {
+                if (closeDuringConfirm)
+                {
+                    closeDuringConfirm = false;
+                    connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+                }
+            });
+            const auto reattachedPane = page->_MakeTerminalPane(args);
+            _contentManager->KeptSessionsChanged(changedToken);
+
+            VERIFY_IS_NOT_NULL(reattachedPane);
+            VERIFY_IS_FALSE(closeDuringConfirm);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(liveSessionId)));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(fallbackSessionId)));
+
+            const auto closedStates = _statesForPane(connectionStates, _formatPaneId(liveSessionId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "closed" }, closedStates.at(0));
         });
     }
 
