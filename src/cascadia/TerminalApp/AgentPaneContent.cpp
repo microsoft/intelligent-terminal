@@ -292,8 +292,6 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
-        // Re-pick up the pane position in case settings changed it.
-        SetAgentPanePosition(settings.GlobalSettings().AgentPanePosition());
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()

@@ -1324,6 +1324,10 @@ fn set_agent_state_ignored_when_target_tab_differs_from_owner() {
     app.tab_id = Some("OWNER-TAB".to_string());
     app.tab_sessions
         .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.tab_sessions
+        .get_mut("OWNER-TAB")
+        .unwrap()
+        .agent_pane_position = Some("left");
 
     app.handle_event(AppEvent::WtEvent {
         method: "set_agent_state".to_string(),
@@ -1342,6 +1346,11 @@ fn set_agent_state_ignored_when_target_tab_differs_from_owner() {
     );
     assert_eq!(app.tab_sessions["OWNER-TAB"].current_view, View::Chat);
     assert!(!app.tab_sessions["OWNER-TAB"].pane_open);
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].agent_pane_position,
+        Some("left"),
+        "non-owner helper must not overwrite the owner's pane position"
+    );
 }
 
 // ─── SessionAttached load-target gating (Plan-C race fix) ───────────────
@@ -1404,6 +1413,34 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
         Some("sess-target"),
         "load target must persist across unrelated SessionAttached"
     );
+}
+
+#[test]
+fn set_agent_state_preserves_owner_pane_position() {
+    let mut app = test_app();
+    app.window_id = Some("window-1".into());
+    app.owner_tab_id = Some("owner-tab".into());
+    app.tab_id = Some("owner-tab".into());
+    {
+        let tab = app.tab_mut("owner-tab");
+        tab.agent_pane_position = Some("left");
+        tab.pane_open = false;
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": "window-1",
+            "tab_id": "owner-tab",
+            "pane_open": true,
+        }),
+    });
+
+    let tab = &app.tab_sessions["owner-tab"];
+    assert!(tab.pane_open);
+    assert_eq!(tab.agent_pane_position, Some("left"));
 }
 
 /// SessionAttached for the actual load target DOES close the window

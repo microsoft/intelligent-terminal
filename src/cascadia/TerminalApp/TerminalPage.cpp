@@ -895,6 +895,11 @@ namespace winrt::TerminalApp::implementation
         return SplitDirection::Right;
     }
 
+    winrt::hstring TerminalPage::_AgentPanePositionToContentPosition(const winrt::hstring& position)
+    {
+        return position == L"up" ? winrt::hstring{ L"top" } : position;
+    }
+
     // ── First-run experience ──────────────────────────────────────────────
 
     bool TerminalPage::_IsFreRequired() const
@@ -1005,24 +1010,24 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Repositions agent panes (one per tab) to match the current
-    // AgentPanePosition setting. Walks every tab in this window.
+    // Repositions agent panes (one per tab) to match each tab's runtime
+    // override or the global AgentPanePosition fallback.
     void TerminalPage::_RepositionAgentPanes()
     {
-        const auto splitDirection = _AgentPanePositionToSplitDirection(
-            _settings.GlobalSettings().AgentPanePosition());
-        const auto position = _settings.GlobalSettings().AgentPanePosition();
+        const auto globalPosition = _settings.GlobalSettings().AgentPanePosition();
         for (const auto& tab : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(tab))
             {
+                const auto position = tabImpl->EffectiveAgentPanePosition(globalPosition);
+                const auto splitDirection = _AgentPanePositionToSplitDirection(position);
                 if (const auto rootPane = tabImpl->GetRootPane())
                 {
                     rootPane->RepositionAgentPane(splitDirection);
                 }
                 if (const auto agentContent = tabImpl->FindAgentPaneContent())
                 {
-                    agentContent.SetAgentPanePosition(position);
+                    agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(position));
                 }
             }
         }
@@ -2424,6 +2429,7 @@ namespace winrt::TerminalApp::implementation
         }
         auto newPane = _WrapInAgentPaneContent(rawPane);
         newPane->IsAgentPane(true);
+        const auto panePosition = tab->EffectiveAgentPanePosition(globals.AgentPanePosition());
 
         // Wire the AgentPaneContent's bottom-bar click events to the page
         // so toolbar buttons drive the per-tab logic. We need the tab
@@ -2431,7 +2437,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
-            agentContent.SetAgentPanePosition(globals.AgentPanePosition());
+            agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
         }
 
         {
@@ -2449,7 +2455,7 @@ namespace winrt::TerminalApp::implementation
         // scope_exit so a successful return doesn't double-release.
         sharedAcquired.release();
 
-        const auto splitDirection = _AgentPanePositionToSplitDirection(globals.AgentPanePosition());
+        const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
         tab->SplitPaneAtRoot(splitDirection, newPane);
 
         if (autoStash)
@@ -2837,7 +2843,10 @@ namespace winrt::TerminalApp::implementation
 
         // Swap the toggle icon to match the current pane position.
         {
-            const auto position = _settings ? _settings.GlobalSettings().AgentPanePosition() : winrt::hstring{ L"bottom" };
+            const auto globalPosition = _settings ? _settings.GlobalSettings().AgentPanePosition() : winrt::hstring{ L"bottom" };
+            const auto position = focusedTabImpl ?
+                                      focusedTabImpl->EffectiveAgentPanePosition(globalPosition) :
+                                      globalPosition;
             const bool isVertical = (position == L"right" || position == L"left");
             if (auto iconBottom = AgentToggleIconBottom())
                 iconBottom.Visibility(isVertical ? Visibility::Collapsed : Visibility::Visible);
@@ -3387,7 +3396,8 @@ namespace winrt::TerminalApp::implementation
             if (existingPane->IsHidden())
             {
                 _agentPaneLog("found stashed agent pane on focused tab — unstashing locally + notifying wta");
-                const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                const auto splitDir = _AgentPanePositionToSplitDirection(
+                    focusedTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                 focusedTab->RestoreStashedAgentPane(splitDir);
                 // ALWAYS specify view on unstash. If we left it `nullopt`,
                 // wta would echo back its stored view (which is whatever
@@ -5025,7 +5035,8 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
-        std::optional<winrt::hstring> panePosition;
+        bool panePositionSpecified = false;
+        std::optional<winrt::hstring> panePositionOverride;
         if (params.isMember("pane_position"))
         {
             if (params["pane_position"].isString())
@@ -5034,14 +5045,14 @@ namespace winrt::TerminalApp::implementation
                 if (requested == L"left" || requested == L"right" ||
                     requested == L"up" || requested == L"bottom")
                 {
-                    panePosition = requested;
+                    panePositionSpecified = true;
+                    panePositionOverride = requested;
                     logSuffix += " pane_position=" + winrt::to_string(requested);
                 }
             }
             else if (params["pane_position"].isNull())
             {
-                panePosition = _settings.GlobalSettings().AgentPanePosition();
-                logSuffix += " pane_position=global";
+                logSuffix += " pane_position=unchanged";
             }
         }
         std::optional<Json::Value> usage;
@@ -5054,6 +5065,14 @@ namespace winrt::TerminalApp::implementation
                                             " usage=invalid";
         }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
+
+        // Cache the WTA-owned runtime override on the Tab before applying
+        // pane_open. Creation and restoration below must use the position
+        // carried by this same snapshot, not the global fallback.
+        if (panePositionSpecified)
+        {
+            targetTab->AgentPanePositionOverride(panePositionOverride);
+        }
 
         // Apply view to the existing AgentPaneContent if any.
         if (view.has_value())
@@ -5080,7 +5099,8 @@ namespace winrt::TerminalApp::implementation
             {
                 if (targetTab->HasStashedAgentPane())
                 {
-                    const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                    const auto splitDir = _AgentPanePositionToSplitDirection(
+                        targetTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                     targetTab->RestoreStashedAgentPane(splitDir);
                 }
                 else if (!targetTab->FindAgentPane())
@@ -5123,11 +5143,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Apply the per-tab `/move` override, or reset this tab to the global
-        // position when WTA explicitly sends null. Never mutate GlobalSettings
-        // or walk the other tabs.
-        if (panePosition.has_value())
+        // Apply a per-tab `/move` override. A null projection means WTA has no
+        // override to contribute; it must not erase the Tab's runtime mirror
+        // after a helper restart. Never mutate GlobalSettings or other tabs.
+        if (panePositionSpecified)
         {
+            const auto panePosition = targetTab->EffectiveAgentPanePosition(
+                _settings.GlobalSettings().AgentPanePosition());
             const auto agentPane = targetTab->FindAgentPane();
             const auto focusedTab = _GetFocusedTabImpl();
             const bool restoreAgentFocus = agentPane &&
@@ -5138,15 +5160,11 @@ namespace winrt::TerminalApp::implementation
             bool repositioned = false;
             if (const auto rootPane = targetTab->GetRootPane())
             {
-                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(panePosition));
             }
             if (const auto agentContent = targetTab->FindAgentPaneContent())
             {
-                // AgentPaneContent uses the settings spelling "top" for Up.
-                const auto contentPosition = *panePosition == L"up" ?
-                                                 winrt::hstring{ L"top" } :
-                                                 *panePosition;
-                agentContent.SetAgentPanePosition(contentPosition);
+                agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
 
                 // RepositionAgentPane rebuilds the split's XAML visual tree,
                 // which clears focus. `/move` originates in this TermControl,

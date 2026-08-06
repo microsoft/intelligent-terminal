@@ -764,6 +764,7 @@ namespace winrt::TerminalApp::implementation
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
+        static winrt::hstring _AgentPanePositionToContentPosition(const winrt::hstring& position);
 
         // First-run experience
         bool _IsFreRequired() const;
