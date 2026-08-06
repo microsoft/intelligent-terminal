@@ -8125,7 +8125,7 @@ namespace winrt::TerminalApp::implementation
         // and a fresh one in SessionId, and only the loser of the race uses the
         // fresh one. The persisted-window-layout path has no separate id and
         // reattaches on SessionId itself.
-        if (!existingConnection && _settings.GlobalSettings().ContinueRunningCommands())
+        if (!existingConnection)
         {
             const auto keptId = newTerminalArgs && newTerminalArgs.KeptSessionId() != winrt::guid{} ?
                                     newTerminalArgs.KeptSessionId() :

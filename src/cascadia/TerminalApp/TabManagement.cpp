@@ -871,9 +871,9 @@ namespace winrt::TerminalApp::implementation
         const auto closeActions = GetShellSessionCloseActions(
             _settings.GlobalSettings().RestoreShellSessions(),
             _settings.GlobalSettings().ContinueRunningCommands());
-        if (!closeActions.save)
+        if (!closeActions.save && !closeActions.detach)
         {
-            _agentPaneLog("_PersistShellSession: skipped — restoreShellSessions is off");
+            _agentPaneLog("_PersistShellSession: skipped — saving and keep-running are off");
             return;
         }
 
@@ -894,170 +894,179 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto sessionName = tab->Title();
-        auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
-        if (sessionName.empty() || actions.empty())
+        if (!closeActions.save)
         {
-            _agentPaneLog(std::string{ "_PersistShellSession: skipped — nameEmpty=" } +
-                          (sessionName.empty() ? "true" : "false") + " actions=" +
-                          std::to_string(actions.size()));
+            _agentPaneLog("_PersistShellSession: detaching without saving");
+            _DetachShellPanesForKeepRunning(tab, tab->DurableShellSessionId(), tab->DurableShellSessionRevision());
             return;
         }
 
-        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-        const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"shell-session-staging";
-        std::filesystem::create_directories(stagingDirectory);
-        const auto elevated = IsRunningElevated();
-        std::vector<std::filesystem::path> persistedPaths;
-        Json::Value buffers{ Json::arrayValue };
-        bool committed = false;
-        const auto cleanup = wil::scope_exit([&]() {
-            if (!committed)
-            {
-                for (const auto& path : persistedPaths)
-                {
-                    std::error_code error;
-                    std::filesystem::remove(path, error);
-                }
-            }
-        });
-
-        wil::unique_hlocal_security_descriptor sd;
-        SECURITY_ATTRIBUTES sa{};
-        if (elevated)
+        try
         {
-            unsigned long size;
-            THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
-            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-            sa.lpSecurityDescriptor = sd.get();
-        }
-
-        _AddDurableSessionMetadata(tab, actions);
-
-        tab->GetRootPane()->WalkTree([&](const auto& pane) {
-            if (pane->IsAgentPane())
+            const auto sessionName = tab->Title();
+            auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
+            if (sessionName.empty() || actions.empty())
             {
-                return;
+                _agentPaneLog(std::string{ "_PersistShellSession: skipped — nameEmpty=" } +
+                              (sessionName.empty() ? "true" : "false") + " actions=" +
+                              std::to_string(actions.size()));
             }
-
-            std::filesystem::path path;
-            try
+            else
             {
-                if (const auto control = pane->GetTerminalControl())
-                {
-                    if (const auto connection = control.Connection())
+                const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+                const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"shell-session-staging";
+                std::filesystem::create_directories(stagingDirectory);
+                const auto elevated = IsRunningElevated();
+                std::vector<std::filesystem::path> persistedPaths;
+                Json::Value buffers{ Json::arrayValue };
+                bool committed = false;
+                const auto cleanup = wil::scope_exit([&]() {
+                    if (!committed)
                     {
-                        const auto sessionId = connection.SessionId();
-                        if (sessionId != winrt::guid{})
+                        for (const auto& path : persistedPaths)
                         {
-                            const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
-                            path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
-                            wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
-                            THROW_LAST_ERROR_IF(!file);
-                            control.PersistTo(reinterpret_cast<int64_t>(file.get()));
-                            persistedPaths.emplace_back(path);
+                            std::error_code error;
+                            std::filesystem::remove(path, error);
+                        }
+                    }
+                });
 
-                            Json::Value buffer;
-                            buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
-                            buffer["staging_path"] = til::u16u8(path.wstring());
-                            buffers.append(std::move(buffer));
+                wil::unique_hlocal_security_descriptor sd;
+                SECURITY_ATTRIBUTES sa{};
+                if (elevated)
+                {
+                    unsigned long size;
+                    THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
+                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                    sa.lpSecurityDescriptor = sd.get();
+                }
+
+                _AddDurableSessionMetadata(tab, actions);
+
+                tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (pane->IsAgentPane())
+                    {
+                        return;
+                    }
+
+                    std::filesystem::path path;
+                    try
+                    {
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            if (const auto connection = control.Connection())
+                            {
+                                const auto sessionId = connection.SessionId();
+                                if (sessionId != winrt::guid{})
+                                {
+                                    const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
+                                    path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
+                                    wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                                    THROW_LAST_ERROR_IF(!file);
+                                    control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                                    persistedPaths.emplace_back(path);
+
+                                    Json::Value buffer;
+                                    buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                                    buffer["staging_path"] = til::u16u8(path.wstring());
+                                    buffers.append(std::move(buffer));
+                                }
+                            }
+                        }
+                    }
+                    catch (...)
+                    {
+                        if (!path.empty())
+                        {
+                            std::error_code error;
+                            std::filesystem::remove(path, error);
+                        }
+                        throw;
+                    }
+                });
+
+                WindowLayout layout;
+                layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+
+                Json::Value params;
+                params["name"] = winrt::to_string(sessionName);
+
+                TermControl activeShellControl{ nullptr };
+                for (const auto paneId : tab->GetMruPanes())
+                {
+                    if (const auto pane = tab->GetRootPane()->FindPane(paneId);
+                        pane && !pane->IsAgentPane())
+                    {
+                        activeShellControl = pane->GetTerminalControl();
+                        if (activeShellControl)
+                        {
+                            break;
                         }
                     }
                 }
-            }
-            catch (...)
-            {
-                if (!path.empty())
+                if (!activeShellControl)
                 {
-                    std::error_code error;
-                    std::filesystem::remove(path, error);
+                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (!activeShellControl && !pane->IsAgentPane())
+                        {
+                            activeShellControl = pane->GetTerminalControl();
+                        }
+                    });
                 }
-                throw;
-            }
-        });
 
-        WindowLayout layout;
-        layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
-
-        Json::Value params;
-        params["name"] = winrt::to_string(sessionName);
-
-        TermControl activeShellControl{ nullptr };
-        for (const auto paneId : tab->GetMruPanes())
-        {
-            if (const auto pane = tab->GetRootPane()->FindPane(paneId);
-                pane && !pane->IsAgentPane())
-            {
-                activeShellControl = pane->GetTerminalControl();
                 if (activeShellControl)
                 {
-                    break;
+                    params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
                 }
-            }
-        }
-        if (!activeShellControl)
-        {
-            tab->GetRootPane()->WalkTree([&](const auto& pane) {
-                if (!activeShellControl && !pane->IsAgentPane())
+                else
                 {
-                    activeShellControl = pane->GetTerminalControl();
+                    params["active_pane_cwd"] = "";
                 }
-            });
-        }
+                params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
+                params["elevated"] = elevated;
+                params["buffers"] = std::move(buffers);
+                if (!tab->DurableShellSessionId().empty())
+                {
+                    params["id"] = winrt::to_string(tab->DurableShellSessionId());
+                    params["expected_revision"] = Json::Int64{ tab->DurableShellSessionRevision() };
+                }
 
-        if (activeShellControl)
-        {
-            params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
-        }
-        else
-        {
-            params["active_pane_cwd"] = "";
-        }
-        params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
-        params["elevated"] = elevated;
-        params["buffers"] = std::move(buffers);
-        if (!tab->DurableShellSessionId().empty())
-        {
-            params["id"] = winrt::to_string(tab->DurableShellSessionId());
-            params["expected_revision"] = Json::Int64{ tab->DurableShellSessionRevision() };
-        }
+                auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+                bool temporaryAcquire = false;
+                if (!sharedWta.IsRunning())
+                {
+                    const auto wtaPath = _DetectWtaPath();
+                    const auto extraArgs = _BuildSharedWtaExtraArgs();
+                    temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+                    THROW_HR_IF(E_FAIL, !temporaryAcquire);
+                }
+                const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+                    if (temporaryAcquire)
+                    {
+                        sharedWta.ReleasePane();
+                    }
+                });
 
-        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
-        bool temporaryAcquire = false;
-        if (!sharedWta.IsRunning())
-        {
-            const auto wtaPath = _DetectWtaPath();
-            const auto extraArgs = _BuildSharedWtaExtraArgs();
-            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
-            THROW_HR_IF(E_FAIL, !temporaryAcquire);
-        }
-        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
-            if (temporaryAcquire)
-            {
-                sharedWta.ReleasePane();
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                const auto result = sharedWta.Request(
+                    "_intellterm.wta/shell_sessions/save",
+                    Json::writeString(writer, params));
+                if (!result)
+                {
+                    _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result");
+                }
+                THROW_HR_IF(E_FAIL, !result);
+                const auto save = _ParseShellSessionSaveResponse(*result);
+                _ApplyShellSessionSaveResult(tab, save);
+                committed = true;
             }
-        });
-
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        const auto result = sharedWta.Request(
-            "_intellterm.wta/shell_sessions/save",
-            Json::writeString(writer, params));
-        if (!result)
-        {
-            _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result — not detaching");
         }
-        THROW_HR_IF(E_FAIL, !result);
-        const auto save = _ParseShellSessionSaveResponse(*result);
-        _ApplyShellSessionSaveResult(tab, save);
-        committed = true;
+        CATCH_LOG()
 
-        // Only now that the record is durably saved is it sound to detach the
-        // live panes: a save that failed first would leave shells running that
-        // nothing could ever find its way back to.
         if (closeActions.detach)
         {
-            _DetachShellPanesForKeepRunning(tab, save.id, save.revision);
+            _DetachShellPanesForKeepRunning(tab, tab->DurableShellSessionId(), tab->DurableShellSessionRevision());
         }
     }
 
@@ -1599,32 +1608,58 @@ namespace winrt::TerminalApp::implementation
         }
         _AddPreviouslyClosedPaneOrTab(std::move(state.args));
 
+        winrt::com_ptr<Tab> owningTab;
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const std::shared_ptr<Pane>& candidate) {
+                    if (candidate == pane)
+                    {
+                        owningTab = tabImpl;
+                    }
+                });
+            }
+            if (owningTab)
+            {
+                break;
+            }
+        }
+
+        const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
+        if (isLastPane)
+        {
+            try
+            {
+                _PersistShellSession(owningTab.get());
+            }
+            CATCH_LOG()
+        }
+
+        // If this is the last pane on the last tab of a named window, persist
+        // the workspace after the shell-session save has updated the tab's
+        // durable id and revision, while the pane content is still alive.
+        if (isLastPane && _tabs.Size() == 1)
+        {
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
+        }
+
         // Notify wta of pane closure BEFORE destruction (see
         // `_NotifyPanesClosing` for the revoker-race rationale). Must
         // happen before `pane->Close()` since Close destroys the
         // TermControl and the SessionId becomes unresolvable.
         _NotifyPanesClosing(pane);
 
-        // If this is the last pane on the last tab of a named window, persist
-        // the workspace layout now while the pane content is still alive.
-        // We can't wait until _RemoveTab, because pane->Close() below will
-        // destroy the content before _RemoveTab is reached.
-        if (_tabs.Size() == 1)
-        {
-            if (const auto activeTab{ _GetFocusedTabImpl() })
-            {
-                if (activeTab->GetLeafPaneCount() == 1)
-                {
-                    try
-                    {
-                        _SaveWorkspaceIfNeeded();
-                    }
-                    CATCH_LOG()
-                }
-            }
-        }
-
-        // If specified, detach before closing to directly update the pane structure
         pane->Close();
     }
 

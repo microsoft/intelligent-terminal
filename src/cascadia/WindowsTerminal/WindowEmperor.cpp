@@ -1290,7 +1290,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
             const auto hasKeptSessions = _hasKeptSessions();
-            const auto forcePersistClosingWindowLayout = winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayout(_windows.size(), hasKeptSessions);
+            const auto forcePersistClosingWindowLayout = winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(_windows.size(), hasKeptSessions);
             // Keep the last window in the array so that we can persist it on exit.
             // We check for AllowHeadless(), as that being true prevents us from ever quitting in the first place.
             // (= If we avoided closing the last window you wouldn't be able to reach a headless state.)
