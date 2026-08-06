@@ -2007,27 +2007,12 @@ fn model_info(id: &str) -> AcpModelInfo {
     }
 }
 
-fn custom_model_info(id: &str) -> CustomModelCatalogEntry {
-    CustomModelCatalogEntry {
-        selection_id: id.to_string(),
-        model_id: id.to_string(),
-        ..Default::default()
-    }
-}
-
 #[test]
 fn model_config_update_refreshes_active_session_picker() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("sid-1".into());
     app.available_models = vec![model_info("claude-sonnet-5")];
     app.current_model_id = Some("claude-sonnet-5".into());
-    app.set_custom_model_config(
-        vec![
-            custom_model_info("claude-sonnet-5"),
-            custom_model_info("gpt-5.6-sol"),
-        ],
-        None,
-    );
 
     app.handle_event(AppEvent::ModelConfigUpdated {
         session_id: "sid-1".into(),
@@ -2167,26 +2152,30 @@ fn new_session_prunes_previous_model_config() {
     assert!(!app.session_model_configs.contains_key("sid-old"));
 }
 
-/// `/model <id>` records a per-pane override and hot-applies it to *that*
-/// tab's live session (a targeted `SetSessionModel`, not a fan-out).
-/// Cloud/native models remain available to Settings but are not exposed
-/// through `/model`, so the command cannot create a live pane override.
+/// `/model <id>` hot-applies a model within the current Settings-selected mode
+/// and does not restart the agent CLI.
 #[test]
-fn slash_model_does_not_apply_cloud_model_to_live_session() {
+fn slash_model_hot_applies_cloud_model_to_live_session() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
     app.set_cloud_models(vec![model_info("gpt-5.5"), model_info("gpt-5.4")]);
     app.current_tab_mut().session_id = Some("sid-1".into());
 
     app.cmd_model("gpt-5.4".into());
 
-    assert!(
-        app.current_tab().model_override.is_none(),
-        "cloud models must not create a pane-local override"
+    assert_eq!(
+        app.current_tab().model_override.as_deref(),
+        Some("gpt-5.4")
     );
-    assert!(
-        master_rx.try_recv().is_err(),
-        "the command must not send SetSessionModel for a hidden cloud model"
-    );
+    match master_rx.try_recv().expect("live model switch request") {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+        } => {
+            assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
+            assert_eq!(model, "gpt-5.4");
+        }
+        other => panic!("expected SetSessionModel, got {other:?}"),
+    }
 }
 
 /// A pane-local `/model` pick remains authoritative when the matching global
@@ -5939,8 +5928,8 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: the `/model` picker must list BYOM model IDs and omit cloud models. Lifts
-/// `ui/model_popup.rs`.
+/// Render: cloud mode lists cloud models and omits BYOM rows. Lifts
+/// `ui/model_popup.rs`; local-mode filtering is covered by slash-command tests.
 #[test]
 fn render_model_picker_lists_models() {
     let mut app = test_app();
@@ -5971,14 +5960,12 @@ fn render_model_picker_lists_models() {
 
     let text = render_to_text(&mut app, 120, 24);
     assert!(
-        !text.contains("PickModelXYZ"),
-        "the model picker must omit cloud models; rendered:\n{text}"
+        text.contains("PickModelXYZ"),
+        "the cloud-mode model picker must show cloud models; rendered:\n{text}"
     );
     assert!(
-        text.contains("shared-model (BYOM)")
-            && !text.contains("custom:provider-one")
-            && !text.contains("custom:provider-two"),
-        "custom models must show only modelId (BYOM); rendered:\n{text}"
+        !text.contains("shared-model (BYOM)"),
+        "the cloud-mode model picker must omit BYOM rows; rendered:\n{text}"
     );
 }
 

@@ -361,15 +361,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Hot-reload of runtime agent config (autofix gate, acp-model,
-        // delegate agent/model). When any of these change between settings
+        // Hot-reload of runtime agent config (autofix gate and delegate
+        // agent/model). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
         // event to the running wta-helper(s) so they update in place,
         // WITHOUT tearing down and restarting the agent pane. This is the
         // unified dispatch for every hot-updatable agent setting — adding a
         // new one means adding a field to AgentRuntimeConfigSnapshot, not a
-        // bespoke diff/emit block here. (Agent *identity* changes still go
-        // through _RebuildAgentStack in _RefreshUIForSettingsReload.)
+        // bespoke diff/emit block here. Agent identity and model changes go
+        // through _RebuildAgentStack in _RefreshUIForSettingsReload.
         _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
@@ -1542,6 +1542,9 @@ namespace winrt::TerminalApp::implementation
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
             std::wstring{ globals.AcpCustomCommand() },
+            _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
+                std::wstring{} :
+                std::wstring{ globals.AcpModel() },
             _CaptureCustomModelLaunchConfiguration(globals),
         };
         for (const auto& profile : _settings.AllProfiles())
@@ -1558,15 +1561,14 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
-        // Agent identity changes rebuild helpers. acp-model and delegate-*
-        // fields are hot-updated over the protocol and must not trigger a
-        // teardown. A profile backend is part of identity because it changes
-        // both the agent id and the execution source for that profile. Only
-        // selected-provider fields consumed by the master launch environment
-        // participate in identity. The helper-safe full catalog is hot-updated
-        // separately.
+        // Agent identity and effective model changes rebuild helpers. A profile
+        // backend is part of identity because it changes both the agent id and
+        // the execution source for that profile. Only selected-provider fields
+        // consumed by the master launch environment participate in identity.
+        // The helper-safe full catalog is hot-updated separately.
         return a.acpAgent != b.acpAgent ||
                a.acpCustomCommand != b.acpCustomCommand ||
+               a.acpModel != b.acpModel ||
                a.customModelLaunch != b.customModelLaunch ||
                a.profileBackends != b.profileBackends;
     }
@@ -1574,10 +1576,8 @@ namespace winrt::TerminalApp::implementation
     TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
     {
         const auto& globals = _settings.GlobalSettings();
-        const bool providerConfigured = _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals);
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
         return AgentRuntimeConfigSnapshot{
-            providerConfigured ? std::wstring{} : std::wstring{ globals.AcpModel() },
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
@@ -1586,13 +1586,12 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
-    // Hot-propagate runtime agent config to the running wta-helper(s) over
-    // the protocol event channel. Unlike agent *identity* changes (which
+    // Hot-propagate runtime agent config to the running wta-helper(s) over the
+    // protocol event channel. Unlike agent identity/model changes (which
     // require a master respawn via _RebuildAgentStack), these take effect
     // without tearing down the agent pane. A single consolidated
     // `agent_config_changed` event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
-    //   - acp_model + target_agent_id : the global ACP agent's scoped model
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
@@ -1613,14 +1612,13 @@ namespace winrt::TerminalApp::implementation
 
         const auto& last = _lastAgentRuntimeConfig;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
-        const bool acpModelChanged = last.acpModel != current.acpModel;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
 
-        if (!autofixChanged && !acpModelChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged)
         {
             return;
         }
@@ -1629,12 +1627,6 @@ namespace winrt::TerminalApp::implementation
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
-        }
-        if (acpModelChanged)
-        {
-            params["acp_model"] = winrt::to_string(current.acpModel);
-            params["target_agent_id"] =
-                winrt::to_string(_settings.GlobalSettings().EffectiveAcpAgent());
         }
         if (delegateChanged)
         {
@@ -3104,8 +3096,11 @@ namespace winrt::TerminalApp::implementation
              _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
         const bool customModelLaunchChanged =
             _lastAgentSettings.customModelLaunch != current.customModelLaunch;
+        const bool cloudModelChanged =
+            _lastAgentSettings.acpModel != current.acpModel;
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
+            cloudModelChanged ||
             customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
@@ -3234,7 +3229,7 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // Built-in agent changes do not restart the master. It is now a
+        // Built-in agent identity changes do not restart the master. It is now a
         // multi-agent broker — it spawns/reuses one agent CLI per distinct
         // agent command line, driven by each helper's `initialize`
         // handshake (which carries the tab's agent). The master's own
@@ -3244,10 +3239,10 @@ namespace winrt::TerminalApp::implementation
         // affected (non-override) tabs' helpers is enough: each fresh
         // helper declares the new global agent and the master lazily
         // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched. Custom commands and selected provider
-        // launch fields are the exceptions: both are supplied only on the
-        // master's trusted launch configuration, so refresh it after affected
-        // helpers are down.
+        // (and other windows) untouched. Custom commands and model selections
+        // are exceptions: model/provider launch state is supplied on the
+        // master's trusted launch configuration, and a model change requires a
+        // fresh agent CLI rather than mutating the existing ACP session.
         if (masterConfigurationChanged)
         {
             const auto wtaPath = _DetectWtaPath();

@@ -368,14 +368,16 @@ namespace winrt::TerminalApp::implementation
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
         //
-        // Agent identity changes (global acpAgent/acpCustomCommand or an
-        // effective per-profile backend) rebuild affected helpers. A custom
-        // global command or selected provider launch configuration forces a
-        // master respawn; unselected provider catalog changes are hot-updated.
+        // Agent identity changes (global acpAgent/acpCustomCommand, the
+        // effective model selection, or an effective per-profile backend)
+        // rebuild affected helpers. Model changes force a master respawn so
+        // the agent CLI starts with a clean model-provider environment;
+        // unselected provider catalog changes are hot-updated.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
             std::wstring acpCustomCommand;
+            std::wstring acpModel;
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
         };
@@ -385,13 +387,12 @@ namespace winrt::TerminalApp::implementation
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (autofix gate, scoped
-        // acp-model, delegate agent/model, credential-free model catalogs).
+        // agent setting that can be hot-reloaded (autofix gate, delegate
+        // agent/model, credential-free model catalogs).
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
-            std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
             std::wstring customModelSelection;

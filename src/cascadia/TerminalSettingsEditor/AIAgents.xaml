@@ -172,13 +172,12 @@
             <local:SettingContainer x:Name="CustomModelProvidersExpander"
                                     x:Uid="AIAgents_CustomModels"
                                     StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
                 <local:SettingContainer.CurrentValue>
                     <Button x:Uid="AIAgents_CustomProviderAdd"
                             VerticalAlignment="Center"
                             Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                            Style="{StaticResource AccentButtonStyle}"
-                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
+                            Style="{StaticResource AccentButtonStyle}" />
                 </local:SettingContainer.CurrentValue>
                 <StackPanel>
                     <TextBlock Margin="0,12,0,0"
