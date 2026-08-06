@@ -122,14 +122,47 @@ pub struct NewSessionForTab {
     pub cwd: Option<String>,
 }
 
-/// User-initiated full reconnect of the ACP client. Emitted by the
-/// `/restart` slash command. The ACP client task kills the agent child
-/// process, drops the connection, then respawns the agent and
-/// re-initializes from scratch. If `agent_cmd` is set, the supervisor
-/// switches to a different agent on restart.
+/// User-initiated full reconnect of the agent stack. Emitted by the
+/// `/restart` slash command and forwarded to Windows Terminal independently
+/// of the ACP task so recovery still works after initialization fails.
 #[derive(Debug, Clone, Default)]
 pub struct RestartRequest {
     pub agent_cmd: Option<String>,
+}
+
+fn restart_agent_executable(req: &RestartRequest) -> Option<String> {
+    req.agent_cmd.as_deref().and_then(|agent_cmd| {
+        crate::coordinator::split_windows_commandline(agent_cmd.trim())
+            .into_iter()
+            .next()
+    })
+}
+
+async fn forward_restart_agent_stack_requests(
+    mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
+    mut publish: impl FnMut(String),
+) {
+    while let Some(req) = restart_rx.recv().await {
+        let new_agent_executable = restart_agent_executable(&req);
+        tracing::info!(
+            target: "helper",
+            new_agent_executable = ?new_agent_executable,
+            "restart requested — asking WT to force-restart the agent stack"
+        );
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "restart_agent_stack",
+            "params": {},
+        });
+        publish(evt.to_string());
+    }
+}
+
+pub fn spawn_restart_agent_stack_forwarder(restart_rx: mpsc::UnboundedReceiver<RestartRequest>) {
+    tokio::spawn(forward_restart_agent_stack_requests(
+        restart_rx,
+        crate::wt_protocol_events::send,
+    ));
 }
 
 #[derive(Debug, Clone)]
@@ -1594,7 +1627,6 @@ pub async fn run_acp_client_over_pipe(
     mut load_session_rx: mpsc::UnboundedReceiver<LoadSessionForTab>,
     mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
-    mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
     mut session_hook_rx: mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
     mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
@@ -2338,33 +2370,6 @@ pub async fn run_acp_client_over_pipe(
             }
             Some(req) = master_ext_rx.recv() => {
                 dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
-            }
-            Some(req) = restart_rx.recv() => {
-                // Helper can't restart the agent CLI in-process — master owns
-                // its lifetime, and master itself is a singleton owned by
-                // `SharedWta` on the C++ side. Ask the C++ side to do a full
-                // force-restart of the agent stack: tear down every agent
-                // pane, kill master via `SharedWta::Restart()` (bypassing
-                // refcount), respawn master under the same stable pipe name,
-                // and re-toggle the active tab's pane. The new wta-helper
-                // that gets spawned will reconnect to the new master and
-                // the user sees a fresh session.
-                //
-                // Signal travels: helper → `wtcli publish` (see
-                // `wt_protocol_events::send`) → `IProtocolServer::SendEvent`
-                // (route `RestartAgentStack`) →
-                // `TerminalPage::OnRestartAgentStackRequested`.
-                tracing::info!(
-                    target: "helper",
-                    new_agent = ?req.agent_cmd,
-                    "restart requested — asking WT to force-restart the agent stack"
-                );
-                let evt = serde_json::json!({
-                    "type": "event",
-                    "method": "restart_agent_stack",
-                    "params": {},
-                });
-                crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
                 dispatch_cancel(req, &conn, &cancel_signals);
@@ -3418,10 +3423,10 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::acp;
     use super::{
-        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        is_redundant_startup_model_error, post_login_authenticate_error,
-        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SoftStopReason, WtaClient,
+        acp_result_failure_fields, complete_prompt_request, forward_restart_agent_stack_requests,
+        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
+        restart_agent_executable, timeout_result_failure_fields, tool_call_kind_label, ClientState,
+        PromptTimingState, PromptUsageIdentity, RestartRequest, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3429,6 +3434,49 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn restart_forwarder_does_not_depend_on_an_acp_connection() {
+        let (restart_tx, restart_rx) = mpsc::unbounded_channel();
+        let (published_tx, mut published_rx) = mpsc::unbounded_channel();
+
+        let forwarder = tokio::spawn(forward_restart_agent_stack_requests(
+            restart_rx,
+            move |payload| {
+                let _ = published_tx.send(payload);
+            },
+        ));
+        restart_tx
+            .send(RestartRequest::default())
+            .expect("restart receiver must remain active");
+
+        let payload = published_rx
+            .recv()
+            .await
+            .expect("restart event must be published");
+        let event: serde_json::Value =
+            serde_json::from_str(&payload).expect("restart event must be valid JSON");
+        assert_eq!(event["method"], "restart_agent_stack");
+
+        drop(restart_tx);
+        forwarder
+            .await
+            .expect("restart forwarder must shut down cleanly");
+    }
+
+    #[test]
+    fn restart_logging_excludes_agent_arguments() {
+        let request = RestartRequest {
+            agent_cmd: Some(
+                r#""C:\Program Files\Agent\custom-agent.exe" --token secret"#.to_string(),
+            ),
+        };
+
+        assert_eq!(
+            restart_agent_executable(&request).as_deref(),
+            Some(r"C:\Program Files\Agent\custom-agent.exe")
+        );
+    }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
         use acp::schema::v1::{
