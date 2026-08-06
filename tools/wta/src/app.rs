@@ -1776,13 +1776,13 @@ impl App {
     fn rebuild_model_catalog(&mut self) {
         let old_selected_ids = self.capture_model_picker_selections();
         self.available_models = self.merge_custom_models(self.agent_models.clone());
-        let model_picker_models = self
+        let local_mode = self.selected_custom_model_id().is_some();
+        self.model_picker_models = self
             .available_models
             .iter()
-            .filter(|model| self.is_custom_model(&model.id))
+            .filter(|model| self.is_custom_model(&model.id) == local_mode)
             .cloned()
             .collect();
-        self.model_picker_models = model_picker_models;
         self.recompute_current_model_id();
         self.reconcile_model_picker_selections(old_selected_ids);
     }
@@ -2057,8 +2057,9 @@ impl App {
         self.current_tab().model_picker_open
     }
 
-    /// `/model [id]` — show the pane's configured BYOM models. Cloud/native
-    /// models are intentionally available only through Settings.
+    /// `/model [id]` — show models from the mode selected in Settings. Cloud
+    /// mode shows only agent/cloud models; local mode shows only BYOM models.
+    /// Crossing modes requires changing Settings and restarting the agent.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
         if self.model_picker_models.is_empty() {
@@ -2169,17 +2170,14 @@ impl App {
             .any(|model| model.selection_id == model_id)
     }
 
-    /// `/model` only exposes BYOM rows. A selected BYOM model is visible as the
-    /// current row, but entering or changing BYOM still requires Settings.
-    fn model_pick_enabled(&self, model_id: &str) -> bool {
-        self.current_model_id_for_picker() == Some(model_id)
+    fn model_pick_enabled(&self, _model_id: &str) -> bool {
+        true
     }
 
-    /// Pin the active pane to `model_id`: record the per-pane override, mirror
-    /// it into the status projection (title bar / settings dropdown), and
-    /// hot-apply it to the tab's live session. Shared by the picker (Enter)
-    /// and `/model <id>`. If no session is live yet, the override is stored
-    /// and `SessionAttached` applies it via `effective_model_for_tab`.
+    /// Pin the active pane to `model_id` and hot-apply it to the live ACP
+    /// session. The picker is already scoped to the local/cloud mode selected
+    /// in Settings, so slash-command changes never cross modes or restart the
+    /// agent CLI.
     fn apply_model_pick(&mut self, model_id: String) {
         if self.current_model_id_for_picker() == Some(model_id.as_str()) {
             return;
@@ -2205,8 +2203,8 @@ impl App {
         };
         self.current_model_id = Some(model_id.clone());
         self.agent_current_model_id = Some(model_id.clone());
-        if let Some(sid) = session_id {
-            self.send_session_model(Some(sid), model_id);
+        if let Some(session_id) = session_id {
+            self.send_session_model(Some(session_id), model_id);
         }
         self.publish_agent_status();
     }

@@ -252,7 +252,11 @@ fn slash_model_without_models_notes_none() {
 #[test]
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
-    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
+    let selected = "custom:provider:local";
+    app.set_custom_model_config(
+        vec![custom_model(selected, "local")],
+        Some(selected.into()),
+    );
 
     run_slash(&mut app, "model");
 
@@ -263,7 +267,7 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
-fn slash_model_hides_cloud_models() {
+fn slash_model_shows_cloud_models() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
         id: "cloud".into(),
@@ -273,11 +277,8 @@ fn slash_model_hides_cloud_models() {
 
     run_slash(&mut app, "model");
 
-    assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert!(app.current_tab().model_picker_open);
+    assert_eq!(app.model_picker_models[0].id, "cloud");
 }
 
 #[test]
@@ -391,11 +392,11 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         .iter()
         .any(|model| model.id == "custom:provider-one:shared-model"
             && model.name == "shared-model (BYOM)"));
-    assert_eq!(app.model_picker_models.len(), 1);
-    assert_eq!(
-        app.model_picker_models[0].id,
-        "custom:provider-one:shared-model"
-    );
+    assert_eq!(app.model_picker_models.len(), 2);
+    assert!(app
+        .model_picker_models
+        .iter()
+        .all(|model| !model.id.starts_with("custom:")));
 }
 
 #[test]
@@ -437,7 +438,11 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
 #[test]
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
-    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
+    let selected = "custom:provider:local";
+    app.set_custom_model_config(
+        vec![custom_model(selected, "local")],
+        Some(selected.into()),
+    );
 
     app.open_model_picker();
     assert!(app.current_tab().model_picker_open);
@@ -472,7 +477,7 @@ fn slash_model_direct_current_byok_is_a_noop() {
 }
 
 #[test]
-fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
+fn slash_model_only_shows_cloud_choices_while_cloud_is_active() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
         id: "cloud".into(),
@@ -487,16 +492,21 @@ fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
         app.model_popup_state().expect("picker state")
     };
     assert_eq!(state.models.len(), 1);
-    assert_eq!(state.models[0].id, "custom:provider:local");
-    assert_eq!(state.disabled, vec![true]);
+    assert_eq!(state.models[0].id, "cloud");
+    assert_eq!(state.disabled, vec![false]);
 
+    app.close_model_picker();
     run_slash_args(&mut app, "model", "custom:provider:local");
     assert_eq!(app.current_tab().model_override, None);
-    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
 }
 
 #[test]
-fn slash_model_locks_non_current_choices_while_byok_is_active() {
+fn slash_model_only_shows_byok_choices_while_byok_is_active() {
     let mut app = test_app();
     let selected = "custom:provider:local";
     app.set_cloud_models(vec![AcpModelInfo {
@@ -516,7 +526,11 @@ fn slash_model_locks_non_current_choices_while_byok_is_active() {
     let state = app.model_popup_state().expect("picker state");
     assert_eq!(state.current_id, Some(selected));
     assert_eq!(state.models.len(), 2);
-    assert_eq!(state.disabled, vec![false, true]);
+    assert!(state
+        .models
+        .iter()
+        .all(|model| model.id.starts_with("custom:")));
+    assert_eq!(state.disabled, vec![false, false]);
 
     app.close_model_picker();
     run_slash_args(&mut app, "model", "cloud");
