@@ -1313,7 +1313,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Контекстное окно</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
   <data name="CmdAppHelpFooter" xml:space="preserve">
     <value>Примечание. Нераспознанные аргументы автоматически передаются в подкоманду "new-tab".
-Например, "wt -p "Ubuntu" -d C:\" эквивалентно "wt new-tab -p "Ubuntu" -d C:\".
+Например, 'wt -p "Ubuntu" -d C:\' эквивалентно 'wt new-tab -p "Ubuntu" -d C:\'.
 Для просмотра всех доступных параметров выполните команду "wt new-tab --help".</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
