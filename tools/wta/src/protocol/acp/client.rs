@@ -733,22 +733,21 @@ impl WtaClient {
                             acp::schema::v1::RequestPermissionOutcome::Cancelled,
                         ));
                     };
-                    let arm_result = self.state.proposal_channels.arm(
-                        &session_id,
-                        &invocation.channel,
-                        invocation.payload.as_bytes(),
-                    );
+                    let permission_result = self
+                        .state
+                        .proposal_channels
+                        .validate_permission(&session_id, &invocation.channel);
                     tracing::info!(
                         target: "proposal_permission",
                         session_id = %session_id,
-                        armed = arm_result.is_ok(),
-                        status = ?arm_result.as_ref().err().map(|failure| failure.status),
+                        approved = permission_result.is_ok(),
+                        status = ?permission_result.as_ref().err().map(|failure| failure.status),
                         "silently resolving canonical proposal permission"
                     );
-                    if arm_result.is_err() {
+                    if permission_result.is_err() {
                         self.state
                             .prompt_timing
-                            .permission_resolved(&session_id, "proposal_arm_failed");
+                            .permission_resolved(&session_id, "proposal_permission_rejected");
                         return Ok(acp::schema::v1::RequestPermissionResponse::new(
                             acp::schema::v1::RequestPermissionOutcome::Cancelled,
                         ));
@@ -3472,7 +3471,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canonical_proposal_permission_is_silent_and_arms_payload() {
+    async fn canonical_proposal_permission_is_silent_and_does_not_gate_submission() {
         let manager =
             Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
         let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
@@ -3497,13 +3496,11 @@ mod tests {
             Ok(AppEvent::HideToolCall { session_id, id })
                 if session_id == "proposal-session" && id == "proposal-tool"
         ));
-        assert!(manager
-            .begin_validation(&channel, payload.as_bytes())
-            .is_ok());
+        assert!(manager.begin_validation(&channel).is_ok());
     }
 
     #[tokio::test]
-    async fn canonical_proposal_permission_is_cancelled_when_arming_fails() {
+    async fn canonical_proposal_permission_is_cancelled_for_another_session() {
         let manager =
             Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
         let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
@@ -3527,13 +3524,7 @@ mod tests {
             event_rx.try_recv(),
             Ok(AppEvent::HideToolCall { .. })
         ));
-        assert_eq!(
-            manager
-                .begin_validation(&channel, payload.as_bytes())
-                .unwrap_err()
-                .status,
-            crate::agent_tools::action_proposal::channel::ProposalValidationStatus::NotArmed
-        );
+        assert!(manager.begin_validation(&channel).is_ok());
     }
 
     #[tokio::test]
