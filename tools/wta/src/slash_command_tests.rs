@@ -506,7 +506,7 @@ fn slash_model_only_shows_cloud_choices_while_cloud_is_active() {
 }
 
 #[test]
-fn slash_model_only_shows_byok_choices_while_byok_is_active() {
+fn slash_model_only_shows_selected_byok_while_byok_is_active() {
     let mut app = test_app();
     let selected = "custom:provider:local";
     app.set_cloud_models(vec![AcpModelInfo {
@@ -525,14 +525,19 @@ fn slash_model_only_shows_byok_choices_while_byok_is_active() {
     app.open_model_picker();
     let state = app.model_popup_state().expect("picker state");
     assert_eq!(state.current_id, Some(selected));
-    assert_eq!(state.models.len(), 2);
-    assert!(state
-        .models
-        .iter()
-        .all(|model| model.id.starts_with("custom:")));
-    assert_eq!(state.disabled, vec![false, false]);
+    assert_eq!(state.models.len(), 1);
+    assert_eq!(state.models[0].id, selected);
+    assert_eq!(state.disabled, vec![false]);
 
     app.close_model_picker();
+    run_slash_args(&mut app, "model", "custom:provider:other");
+    assert_eq!(app.current_tab().model_override, None);
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+
     run_slash_args(&mut app, "model", "cloud");
     assert_eq!(app.current_tab().model_override, None);
     assert!(!app.current_tab().model_picker_open);

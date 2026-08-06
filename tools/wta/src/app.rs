@@ -1776,11 +1776,17 @@ impl App {
     fn rebuild_model_catalog(&mut self) {
         let old_selected_ids = self.capture_model_picker_selections();
         self.available_models = self.merge_custom_models(self.agent_models.clone());
-        let local_mode = self.selected_custom_model_id().is_some();
+        let selected_custom = self.selected_custom_model_id().map(str::to_owned);
         self.model_picker_models = self
             .available_models
             .iter()
-            .filter(|model| self.is_custom_model(&model.id) == local_mode)
+            .filter(|model| match selected_custom.as_deref() {
+                Some(selected) => model.id == selected,
+                None => !self
+                    .custom_model_catalog
+                    .iter()
+                    .any(|custom| custom.selection_id == model.id),
+            })
             .cloned()
             .collect();
         self.recompute_current_model_id();
@@ -2162,12 +2168,6 @@ impl App {
             .or_else(|| self.selected_custom_model_id())
             .or(self.current_model_id.as_deref())
             .or(self.acp_model.as_deref())
-    }
-
-    fn is_custom_model(&self, model_id: &str) -> bool {
-        self.custom_model_catalog
-            .iter()
-            .any(|model| model.selection_id == model_id)
     }
 
     fn model_pick_enabled(&self, _model_id: &str) -> bool {
