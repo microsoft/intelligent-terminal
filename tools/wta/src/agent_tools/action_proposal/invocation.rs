@@ -74,8 +74,8 @@ fn decode_single_quoted(expression: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::channel::ProposalChannelManager;
     use super::*;
+    use super::super::channel::ProposalChannelManager;
 
     fn payload() -> &'static str {
         r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"Run user's test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#

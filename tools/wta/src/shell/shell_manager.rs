@@ -126,12 +126,7 @@ impl ShellManager {
         args.push("--".to_string());
         if !config.env.is_empty() {
             args.push("env".to_string());
-            args.extend(
-                config
-                    .env
-                    .iter()
-                    .map(|(name, value)| format!("{name}={value}")),
-            );
+            args.extend(config.env.iter().map(|(name, value)| format!("{name}={value}")));
         }
         args.push(config.command);
         args.extend(config.args);
@@ -176,7 +171,9 @@ impl ShellManager {
         params.insert("background".into(), true.into());
 
         if let Ok(active) = self.wt_get_active_pane().await {
-            if let Some(profile) = crate::coordinator::resolve_agent_profile(None, Some(&active)) {
+            if let Some(profile) =
+                crate::coordinator::resolve_agent_profile(None, Some(&active))
+            {
                 params.insert("profile".into(), profile.into());
             }
         }
@@ -603,7 +600,10 @@ impl ShellManager {
     /// from a pane. Returns an empty `content` string if shell integration
     /// (OSC 133) is not active or no prompt has completed yet — callers
     /// should fall back to `wt_read_pane_output` in that case.
-    pub async fn wt_read_last_prompt(&self, pane_id: &str) -> anyhow::Result<serde_json::Value> {
+    pub async fn wt_read_last_prompt(
+        &self,
+        pane_id: &str,
+    ) -> anyhow::Result<serde_json::Value> {
         let params = serde_json::json!({
             "session_id": pane_id,
             "source": "last_prompt",
@@ -632,10 +632,11 @@ mod tests {
 
     #[test]
     fn wsl_source_wraps_terminal_command_cwd_and_environment() {
-        let manager =
-            ShellManager::new().with_agent_source(crate::agent_source::AgentSource::Wsl {
+        let manager = ShellManager::new().with_agent_source(
+            crate::agent_source::AgentSource::Wsl {
                 distro: "Ubuntu".to_string(),
-            });
+            },
+        );
         let wrapped = manager
             .prepare_terminal_config(TerminalConfig {
                 command: "bash".to_string(),
@@ -667,10 +668,11 @@ mod tests {
 
     #[test]
     fn wsl_source_rejects_windows_terminal_cwd() {
-        let manager =
-            ShellManager::new().with_agent_source(crate::agent_source::AgentSource::Wsl {
+        let manager = ShellManager::new().with_agent_source(
+            crate::agent_source::AgentSource::Wsl {
                 distro: "Ubuntu".to_string(),
-            });
+            },
+        );
         let error = manager
             .prepare_terminal_config(TerminalConfig {
                 command: "bash".to_string(),
@@ -681,4 +683,5 @@ mod tests {
             .expect_err("Windows cwd must not leak into a WSL tool request");
         assert!(error.to_string().contains("non-Linux terminal cwd"));
     }
+
 }

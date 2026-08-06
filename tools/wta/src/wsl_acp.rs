@@ -222,10 +222,7 @@ mod tests {
     use std::time::SystemTime;
 
     fn session_info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
-        acp::schema::v1::SessionInfo::new(
-            acp::schema::v1::SessionId::new(id.to_string()),
-            PathBuf::from(cwd),
-        )
+        acp::schema::v1::SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd))
     }
 
     fn map_wsl_session(

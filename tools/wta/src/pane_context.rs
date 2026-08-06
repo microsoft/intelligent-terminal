@@ -35,20 +35,11 @@ mod tests {
     #[test]
     fn effective_source_prefers_source_then_falls_back_to_pane() {
         // Both present → source wins.
-        assert_eq!(
-            ctx(Some("src"), Some("pane")).effective_source_pane_id(),
-            Some("src")
-        );
+        assert_eq!(ctx(Some("src"), Some("pane")).effective_source_pane_id(), Some("src"));
         // Only pane present → fall back to pane.
-        assert_eq!(
-            ctx(None, Some("pane")).effective_source_pane_id(),
-            Some("pane")
-        );
+        assert_eq!(ctx(None, Some("pane")).effective_source_pane_id(), Some("pane"));
         // Only source present → source.
-        assert_eq!(
-            ctx(Some("src"), None).effective_source_pane_id(),
-            Some("src")
-        );
+        assert_eq!(ctx(Some("src"), None).effective_source_pane_id(), Some("src"));
         // Neither → None (must not invent a target pane).
         assert_eq!(ctx(None, None).effective_source_pane_id(), None);
     }

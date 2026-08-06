@@ -70,10 +70,7 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 // Running (or streaming toward) a tool — still Working.
                 vec![SessionEvent::ToolStarting {
                     key: key.clone(),
-                    tool_name: tool_names
-                        .first()
-                        .map(|s| (*s).to_string())
-                        .unwrap_or_default(),
+                    tool_name: tool_names.first().map(|s| (*s).to_string()).unwrap_or_default(),
                 }]
             }
         }

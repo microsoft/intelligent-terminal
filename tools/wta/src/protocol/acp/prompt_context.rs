@@ -301,7 +301,8 @@ async fn resolve_pane_by_session_id(
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
-    resolver_invocation: Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
+    resolver_invocation:
+        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 async fn build_terminal_context(
@@ -620,11 +621,9 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(
-        crate::agent_tools::command_resolution::CommandResolverInvocation::new(
+    Some(crate::agent_tools::command_resolution::CommandResolverInvocation::new(
         executable, shell, cwd,
-        ),
-    )
+    ))
 }
 
 #[async_trait]

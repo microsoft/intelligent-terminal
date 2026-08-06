@@ -200,7 +200,9 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
     let managed = managed_js || managed_support;
-    let complete = managed_js && managed_support && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js
+        && managed_support
+        && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -813,7 +815,12 @@ fn install_for_codex(_home: &Path) -> bool {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli("codex", &["plugin", "add", &plugin_ref], "agent_hooks", &[]) {
+    match run_plugin_cli(
+        "codex",
+        &["plugin", "add", &plugin_ref],
+        "agent_hooks",
+        &[],
+    ) {
         Ok(()) => true,
         Err(e) => {
             tracing::warn!(
@@ -1099,7 +1106,8 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
         false
     };
     if support_dir.exists() {
-        let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
+        let managed_support =
+            opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
             || installed_js_managed;
         if !managed_support {
             return Err(std::io::Error::new(
@@ -2220,8 +2228,11 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
         if support_dir_empty {
             if let Err(e) = fs::remove_dir(&support_dir) {
                 removed = false;
-                out.messages
-                    .push(format!("failed to remove {}: {}", support_dir.display(), e));
+                out.messages.push(format!(
+                    "failed to remove {}: {}",
+                    support_dir.display(),
+                    e
+                ));
             }
         }
     }
@@ -3389,7 +3400,8 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
         .and_then(|entries| {
             entries.iter().find(|entry| {
                 entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
-                    && entry.get("marketplace").and_then(Value::as_str) == Some(MARKETPLACE_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str)
+                        == Some(MARKETPLACE_NAME)
             })
         })
     else {
@@ -3690,7 +3702,12 @@ impl UpgradeState {
         }
     }
 
-    fn record_completed(&mut self, cli: CliKind, version: Option<String>, completed: bool) -> bool {
+    fn record_completed(
+        &mut self,
+        cli: CliKind,
+        version: Option<String>,
+        completed: bool,
+    ) -> bool {
         if !completed {
             return false;
         }

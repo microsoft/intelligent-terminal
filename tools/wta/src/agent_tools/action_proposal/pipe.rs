@@ -91,8 +91,8 @@ pub async fn run_server(
     event_tx: mpsc::UnboundedSender<ProposalPipeEvent>,
 ) -> Result<()> {
     let pipe_name = manager.pipe_name();
-    let security =
-        super::pipe_security::build_required().context("build hardened proposal pipe security")?;
+    let security = super::pipe_security::build_required()
+        .context("build hardened proposal pipe security")?;
     let mut server = super::pipe_security::create_server(&pipe_name, true, Some(&security))
         .with_context(|| format!("create proposal pipe '{pipe_name}'"))?;
     tracing::info!(

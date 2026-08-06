@@ -207,8 +207,9 @@ fn push_caret_spans(
         },
     ));
     if !after.is_empty() {
-        let after_start =
-            line_start + before.len() + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
+        let after_start = line_start
+            + before.len()
+            + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
         push_styled_input(spans, &after, after_start, attachment_ranges);
     }
 
@@ -267,7 +268,8 @@ pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -
         0
     };
     let visible_lines = wrapped.lines[scroll_row..scroll_row + visible_rows].to_vec();
-    let visible_line_starts = wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
+    let visible_line_starts =
+        wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
 
     InputViewport {
         visible_lines,

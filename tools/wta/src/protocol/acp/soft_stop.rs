@@ -63,10 +63,7 @@ mod tests {
 
     #[test]
     fn end_turn_is_not_a_soft_stop() {
-        assert_eq!(
-            SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::EndTurn),
-            None
-        );
+        assert_eq!(SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::EndTurn), None);
     }
 
     #[test]

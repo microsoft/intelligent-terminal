@@ -286,13 +286,7 @@ pub struct TabSession {
     #[allow(dead_code)]
     pub session_id: Option<String>,
 
-    /// Per-pane ACP model override, set by the `/model` picker. `None` means
-    /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
-    /// specific model and survives `/new` (re-applied to fresh sessions in the
-    /// `SessionAttached` handler via `effective_model_for_tab`). Global
-    /// `acpModel` changes update only unpinned panes, so this override remains
-    /// authoritative for the pane. In-memory only — not persisted across pane
-    /// close / Terminal restart. See `App::commit_model_pick`.
+    /// Per-pane ACP model override, set by the `/model` picker.
     pub model_override: Option<String>,
     /// True while the `/model` picker modal is up for this tab.
     pub model_picker_open: bool,

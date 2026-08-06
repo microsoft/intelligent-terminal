@@ -32,7 +32,8 @@ pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: R
         .agents
         .iter()
         .map(|agent| {
-            let marker = if agent.id == state.current_id && &agent.source == state.current_source {
+            let marker =
+                if agent.id == state.current_id && &agent.source == state.current_source {
                 CURRENT_MARKER
             } else {
                 CURRENT_PAD

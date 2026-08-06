@@ -76,9 +76,7 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
 /// a user-facing session, and must not surface as its own session row.
 pub(crate) fn codex_record_is_subagent_meta(v: &serde_json::Value) -> bool {
     v.get("type").and_then(|t| t.as_str()) == Some("session_meta")
-        && v.get("payload")
-            .map(codex_payload_is_subagent)
-            .unwrap_or(false)
+        && v.get("payload").map(codex_payload_is_subagent).unwrap_or(false)
 }
 
 /// True if a Codex `session_meta` payload's `source` is the subagent variant
@@ -119,11 +117,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
                         return None;
                     }
                     let total_seconds = hh * 3600 + mm * 60;
-                    if offset_part.starts_with('-') {
-                        -total_seconds
-                    } else {
-                        total_seconds
-                    }
+                    if offset_part.starts_with('-') { -total_seconds } else { total_seconds }
                 } else {
                     return None;
                 }
@@ -179,20 +173,8 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     fn is_leap(y: u64) -> bool {
         y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
     }
-    let days_in_month: [u64; 12] = [
-        31,
-        if is_leap(year) { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
+    let days_in_month: [u64; 12] = [31, if is_leap(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
     // Validate month bounds
     if month < 1 || month > 12 {
@@ -241,9 +223,7 @@ pub(crate) fn parse_simple_yaml(text: &str, key: &str) -> Option<String> {
     while let Some((_, line)) = lines.next() {
         let key_indent = line.len() - line.trim_start().len();
         let trimmed = &line[key_indent..];
-        let Some(rest) = trimmed.strip_prefix(key) else {
-            continue;
-        };
+        let Some(rest) = trimmed.strip_prefix(key) else { continue };
         // Reject prefix matches like key="summa" against "summary: ...".
         // Allow only whitespace or `:` immediately after the key.
         let next = rest.chars().next();
@@ -251,9 +231,7 @@ pub(crate) fn parse_simple_yaml(text: &str, key: &str) -> Option<String> {
             continue;
         }
         let rest = rest.trim_start();
-        let Some(after_colon) = rest.strip_prefix(':') else {
-            continue;
-        };
+        let Some(after_colon) = rest.strip_prefix(':') else { continue };
         let inline = after_colon.trim();
 
         // Block scalar: `|`, `|-`, `|+`, `>`, `>-`, `>+`. Anything trailing
@@ -387,9 +365,7 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
         }
     } else {
         for (i, line) in raw.iter().enumerate() {
-            if i > 0 {
-                out.push('\n');
-            }
+            if i > 0 { out.push('\n'); }
             out.push_str(line);
         }
     }
@@ -399,13 +375,9 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
     // we always trim trailing whitespace at the call site, but honor
     // the semantics so the function is correct for other callers.
     if chomp_strip {
-        while out.ends_with('\n') {
-            out.pop();
-        }
+        while out.ends_with('\n') { out.pop(); }
     } else if !chomp_keep {
-        while out.ends_with("\n\n") {
-            out.pop();
-        }
+        while out.ends_with("\n\n") { out.pop(); }
         if !out.ends_with('\n') && !out.is_empty() {
             // clip keeps exactly one trailing \n iff the block had any content;
             // a fully-empty block stays empty.
@@ -423,10 +395,7 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
 
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
-enum ClaudeOrGemini {
-    Claude,
-    Gemini,
-}
+enum ClaudeOrGemini { Claude, Gemini }
 
 /// Best-effort: scan first chunk of JSONL for a user-message line and
 /// return its text content, truncated to 60 chars.
@@ -434,17 +403,13 @@ enum ClaudeOrGemini {
 fn first_user_text_jsonl(path: &Path, kind: ClaudeOrGemini) -> Option<String> {
     let text = read_first_bytes(path, TITLE_TAIL_BYTES).ok()?;
     for line in text.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
+        if line.trim().is_empty() { continue; }
         let val: serde_json::Value = match serde_json::from_str(line) {
             Ok(v) => v,
             Err(_) => continue,
         };
         let ty = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        if ty != "user" {
-            continue;
-        }
+        if ty != "user" { continue; }
         // Skip Claude meta entries
         if val.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false) {
             continue;
@@ -455,9 +420,7 @@ fn first_user_text_jsonl(path: &Path, kind: ClaudeOrGemini) -> Option<String> {
             ClaudeOrGemini::Gemini => extract_gemini_user_text(&val),
         };
         let cleaned = raw?.trim().lines().next().unwrap_or("").trim().to_string();
-        if cleaned.is_empty() {
-            continue;
-        }
+        if cleaned.is_empty() { continue; }
         return Some(truncate_chars(&cleaned, 60));
     }
     None
@@ -476,9 +439,7 @@ fn extract_claude_user_text(v: &serde_json::Value) -> Option<String> {
             }
         }
     }
-    msg.get("text")
-        .and_then(|t| t.as_str())
-        .map(String::from)
+    msg.get("text").and_then(|t| t.as_str()).map(String::from)
         .or_else(|| v.get("content").and_then(|c| c.as_str()).map(String::from))
 }
 
@@ -503,9 +464,7 @@ fn read_first_bytes(path: &Path, max: u64) -> std::io::Result<String> {
 
 #[allow(dead_code)]
 fn truncate_chars(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        return s.to_string();
-    }
+    if s.chars().count() <= n { return s.to_string(); }
     let mut out: String = s.chars().take(n.saturating_sub(1)).collect();
     out.push('…');
     out
@@ -521,14 +480,10 @@ mod tests {
 
     fn tmp_root(label: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        let id = format!(
-            "wta-history-test-{}-{:?}-{:?}",
+        let id = format!("wta-history-test-{}-{:?}-{:?}",
             label,
             std::process::id(),
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
+            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos(),
         );
         p.push(id);
         let _ = fs::create_dir_all(&p);
@@ -536,9 +491,7 @@ mod tests {
     }
 
     fn write_file(p: &Path, contents: &str) {
-        if let Some(parent) = p.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
+        if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
         let mut f = fs::File::create(p).unwrap();
         f.write_all(contents.as_bytes()).unwrap();
     }
@@ -548,10 +501,7 @@ mod tests {
         // Robustness: a line `summary_count: 0` must not match key `summary`.
         let text = "summary: hello\nsummary_count: 0\n";
         assert_eq!(parse_simple_yaml(text, "summary").as_deref(),       Some("hello"));
-        assert_eq!(
-            parse_simple_yaml(text, "summary_count").as_deref(),
-            Some("0")
-        );
+        assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
         // Querying a nonexistent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
     }
@@ -576,10 +526,7 @@ mod tests {
         // for the raw value, but title-extraction trims trailing whitespace
         // so the visible string ends at the last non-blank char.
         let text = "summary: |\n  one\n  two\n\nname: x\n";
-        assert_eq!(
-            parse_simple_yaml(text, "summary").as_deref(),
-            Some("one\ntwo")
-        );
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("one\ntwo"));
     }
 
     #[test]
@@ -598,10 +545,7 @@ mod tests {
         // indent level — otherwise we would consume the next mapping key
         // (`name`) as part of the block.
         let text = "summary: |-\n  body line\nname: tail\n";
-        assert_eq!(
-            parse_simple_yaml(text, "summary").as_deref(),
-            Some("body line")
-        );
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("body line"));
         assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("tail"));
     }
 
@@ -625,40 +569,59 @@ mod tests {
 
     #[test]
     fn yaml_extraction_handles_unquoted_and_quoted_values() {
-        let text =
-            "id: abc-123\ncwd: C:\\Users\\foo\nname: 'My session'\nsummary: \"Bug fix #42\"\n";
+        let text = "id: abc-123\ncwd: C:\\Users\\foo\nname: 'My session'\nsummary: \"Bug fix #42\"\n";
         assert_eq!(parse_simple_yaml(text, "id").as_deref(),      Some("abc-123"));
-        assert_eq!(
-            parse_simple_yaml(text, "cwd").as_deref(),
-            Some("C:\\Users\\foo")
-        );
-        assert_eq!(
-            parse_simple_yaml(text, "name").as_deref(),
-            Some("My session")
-        );
-        assert_eq!(
-            parse_simple_yaml(text, "summary").as_deref(),
-            Some("Bug fix #42")
-        );
+        assert_eq!(parse_simple_yaml(text, "cwd").as_deref(),     Some("C:\\Users\\foo"));
+        assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("My session"));
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("Bug fix #42"));
         assert_eq!(parse_simple_yaml(text, "missing"),            None);
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // ─── Codex tests ────────────────────────────────────────────────────
+
+
 
     #[test]
     fn codex_payload_is_subagent_discriminates_source() {
         let cli = serde_json::json!({ "source": "cli" });
-        assert!(
-            !codex_payload_is_subagent(&cli),
-            "top-level source=\"cli\" is not a subagent"
-        );
-        let sub =
-            serde_json::json!({ "source": { "subagent": { "thread_spawn": { "depth": 1 } } } });
-        assert!(
-            codex_payload_is_subagent(&sub),
-            "source.subagent must be detected"
-        );
+        assert!(!codex_payload_is_subagent(&cli), "top-level source=\"cli\" is not a subagent");
+        let sub = serde_json::json!({ "source": { "subagent": { "thread_spawn": { "depth": 1 } } } });
+        assert!(codex_payload_is_subagent(&sub), "source.subagent must be detected");
     }
+
+
+
+
+
+
+
+
+
 
     #[test]
     fn parse_iso_handles_positive_offset() {

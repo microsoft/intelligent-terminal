@@ -136,8 +136,7 @@ fn busy_same_pane_reemit_does_not_resubmit() {
     // Same pane, still busy: re-emit only — no generation bump, no resubmit.
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
     assert_eq!(
-        app.tab_mut(tab).autofix.generation,
-        gen_after_first,
+        app.tab_mut(tab).autofix.generation, gen_after_first,
         "same-pane re-trigger while busy must not bump the generation (no resubmit)"
     );
     assert_eq!(
@@ -175,8 +174,7 @@ fn busy_different_pane_is_dropped() {
         "different-pane re-trigger while busy must not steal the armed pane"
     );
     assert_eq!(
-        app.tab_mut(tab).autofix.generation,
-        gen_after_first,
+        app.tab_mut(tab).autofix.generation, gen_after_first,
         "different-pane re-trigger while busy must not submit a new turn"
     );
 }

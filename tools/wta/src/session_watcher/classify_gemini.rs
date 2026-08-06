@@ -229,8 +229,7 @@ mod tests {
 
     #[test]
     fn header_and_unknown_types_emit_nothing() {
-        let header =
-            rec(r#"{"sessionId":"e42015ce-7b10-49f1-ad9d-dca02e033cd7","projectHash":"x"}"#);
+        let header = rec(r#"{"sessionId":"e42015ce-7b10-49f1-ad9d-dca02e033cd7","projectHash":"x"}"#);
         assert!(classify_record(&header, &"k".to_string()).is_empty());
     }
 }

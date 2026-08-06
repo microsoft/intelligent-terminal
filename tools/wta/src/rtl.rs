@@ -147,7 +147,12 @@ mod tests {
         let mut locales: Vec<String> = Vec::new();
         let lparam = &mut locales as *mut Vec<String> as isize;
         let ok = unsafe {
-            EnumSystemLocalesEx(Some(cb), LOCALE_WINDOWS, lparam, std::ptr::null::<c_void>())
+            EnumSystemLocalesEx(
+                Some(cb),
+                LOCALE_WINDOWS,
+                lparam,
+                std::ptr::null::<c_void>(),
+            )
         };
         assert!(ok != 0, "EnumSystemLocalesEx failed");
         locales

@@ -98,7 +98,10 @@ async fn wsl_delegate_agent_available(distro: &str, agent_exe: &str) -> bool {
 /// active pane's shell/distro to pick a source and never routes to WSL
 /// unless the caller asks for it explicitly. `--delegate-wsl-distro` is only
 /// meaningful (and required) alongside an explicit `--delegate-source wsl`.
-fn parse_delegate_source(source: Option<&str>, wsl_distro: Option<&str>) -> Result<AgentSource> {
+fn parse_delegate_source(
+    source: Option<&str>,
+    wsl_distro: Option<&str>,
+) -> Result<AgentSource> {
     match source.map(str::trim) {
         None => {
             anyhow::ensure!(
@@ -415,7 +418,9 @@ async fn delegate_with_context(
         // above) is reused here rather than falling back to the raw
         // Windows `cwd`, which would be misleading for a WSL session.
         if crate::history_loader::wsl_sessions_enabled() {
-            if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
+            if let (Some(sid), Some(pane)) =
+                (pinned_session_id.as_deref(), pane_guid.as_deref())
+            {
                 super::sessions::register_launched(sid, pane, &runtime.id, wsl_cwd, Some(distro))
                     .await;
             }
@@ -515,9 +520,7 @@ mod tests {
     #[test]
     fn parse_delegate_source_rejects_distro_with_explicit_host() {
         let err = super::parse_delegate_source(Some("host"), Some("Ubuntu")).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("invalid with --delegate-source host"));
+        assert!(err.to_string().contains("invalid with --delegate-source host"));
         assert!(super::parse_delegate_source(Some("host"), Some("")).is_err());
         assert!(super::parse_delegate_source(Some("host"), Some("   ")).is_err());
     }
@@ -530,7 +533,9 @@ mod tests {
             .contains("requires --delegate-wsl-distro"));
 
         let empty = super::parse_delegate_source(Some("wsl"), Some("")).unwrap_err();
-        assert!(empty.to_string().contains("requires --delegate-wsl-distro"));
+        assert!(empty
+            .to_string()
+            .contains("requires --delegate-wsl-distro"));
 
         let whitespace = super::parse_delegate_source(Some("wsl"), Some("   ")).unwrap_err();
         assert!(whitespace

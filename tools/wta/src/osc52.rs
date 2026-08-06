@@ -7,7 +7,8 @@
 
 use std::io::Write;
 
-const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Standard base64 (RFC 4648) — implemented inline so this module doesn't
 /// pull in the `base64` crate just for clipboard plumbing.

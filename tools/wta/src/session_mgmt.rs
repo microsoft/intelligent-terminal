@@ -263,10 +263,7 @@ mod tests {
             true,
             true,
         );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
-        );
+        assert_eq!(decide_enter_action(&r, true), decide_enter_action(&r, false));
     }
 
     #[test]
@@ -299,10 +296,7 @@ mod tests {
             true,
             true,
         );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
-        );
+        assert_eq!(decide_enter_action(&r, true), decide_enter_action(&r, false));
     }
 
     #[test]
@@ -335,10 +329,7 @@ mod tests {
             false,
             true,
         );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
-        );
+        assert_eq!(decide_enter_action(&r, true), decide_enter_action(&r, false));
     }
 
     #[test]

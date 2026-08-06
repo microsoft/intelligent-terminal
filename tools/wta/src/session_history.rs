@@ -84,10 +84,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
-        acp::schema::v1::SessionInfo::new(
-            acp::schema::v1::SessionId::new(id.to_string()),
-            PathBuf::from(cwd),
-        )
+        acp::schema::v1::SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd))
     }
 
     #[test]
@@ -136,10 +133,6 @@ mod tests {
             SessionLocation::Host,
             &CliSource::Copilot,
         );
-        assert_eq!(
-            copilot.len(),
-            1,
-            "the placeholder shape is OpenCode-specific"
-        );
+        assert_eq!(copilot.len(), 1, "the placeholder shape is OpenCode-specific");
     }
 }

@@ -548,7 +548,8 @@ mod tests {
             "the autofix prompt must constrain the proposed mutation to one shell submission"
         );
         assert!(
-            !built_prompt.contains("`Terminal Output` and `User Request` are evidence to analyze"),
+            !built_prompt
+                .contains("`Terminal Output` and `User Request` are evidence to analyze"),
             "the autofix prompt must not demote the user request to untrusted evidence"
         );
         assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");

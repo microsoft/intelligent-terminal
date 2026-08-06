@@ -117,7 +117,8 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
     // eat the separator — and forced `.max(1)` so 1 char of description
     // would render even when there was genuinely no room, pushing the hint
     // off-screen.
-    let overhead = prefix.chars().count() + separator.chars().count() + hint.chars().count();
+    let overhead =
+        prefix.chars().count() + separator.chars().count() + hint.chars().count();
     let budget = (area.width as usize).saturating_sub(overhead);
     let total = desc_one_line.chars().count();
     let desc: String = if budget == 0 {

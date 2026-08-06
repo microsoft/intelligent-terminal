@@ -120,7 +120,13 @@ pub fn render(
         (None, content_area)
     };
     if let Some(search_area) = search_area {
-        render_search(f, search_area, search_query, search_focused, pane_focused);
+        render_search(
+            f,
+            search_area,
+            search_query,
+            search_focused,
+            pane_focused,
+        );
     }
 
     let folded_query = search_query.to_lowercase();
@@ -492,7 +498,10 @@ fn highlight_matches(text: &str, folded_query: &str, base_style: Style) -> Vec<S
         if cursor < start {
             spans.push(Span::styled(text[cursor..start].to_string(), base_style));
         }
-        spans.push(Span::styled(text[start..end].to_string(), highlight_style));
+        spans.push(Span::styled(
+            text[start..end].to_string(),
+            highlight_style,
+        ));
         cursor = end;
     }
     if cursor < text.len() {
@@ -1101,9 +1110,7 @@ mod tests {
             attention_reason: None,
             log_path:         None,
             origin:           SessionOrigin::Unknown,
-            location: crate::agent_sessions::SessionLocation::Wsl {
-                distro: "Ubuntu".to_string(),
-            },
+            location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
         };
         assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
     }
@@ -1146,10 +1153,7 @@ mod tests {
             location:         crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
-        assert_eq!(
-            status_badge(&mk(AgentStatus::Attention)),
-            "Waiting for input"
-        );
+        assert_eq!(status_badge(&mk(AgentStatus::Attention)), "Waiting for input");
         assert_eq!(status_badge(&mk(AgentStatus::Idle)), "Idle");
         assert_eq!(status_badge(&mk(AgentStatus::Error)), "Error");
         // Terminal / on-disk rows render an empty badge — no live activity to show.

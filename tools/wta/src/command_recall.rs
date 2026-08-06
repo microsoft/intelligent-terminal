@@ -113,7 +113,11 @@ pub fn extract_command_token(content: &str) -> Option<String> {
     let token = token.split([';', '|', '&']).next().unwrap_or(token);
     // After peeling `&`, an explicit / relative path is still not a bare PATH
     // command, so a near-match suggestion wouldn't apply.
-    if token.is_empty() || token.starts_with('.') || token.contains('\\') || token.contains('/') {
+    if token.is_empty()
+        || token.starts_with('.')
+        || token.contains('\\')
+        || token.contains('/')
+    {
         return None;
     }
     Some(token.to_string())
@@ -130,10 +134,7 @@ pub fn strip_exe_ext(name: &str) -> &str {
         // `get` guards the slice boundary: a non-ASCII command name
         // (functions/aliases can be Unicode) could put `split` mid-char,
         // and direct byte slicing would panic and crash prompt assembly.
-        if name
-            .get(split..)
-            .is_some_and(|tail| tail.eq_ignore_ascii_case(ext))
-        {
+        if name.get(split..).is_some_and(|tail| tail.eq_ignore_ascii_case(ext)) {
             return &name[..split];
         }
     }
@@ -148,9 +149,7 @@ pub fn strip_exe_ext(name: &str) -> &str {
 /// (`deploy-it.ps1`) still matches the stripped candidate (`deploy-it`).
 pub fn command_exists(token: &str, names: &[String]) -> bool {
     let t = strip_exe_ext(token).to_ascii_lowercase();
-    names
-        .iter()
-        .any(|n| strip_exe_ext(n).eq_ignore_ascii_case(&t))
+    names.iter().any(|n| strip_exe_ext(n).eq_ignore_ascii_case(&t))
 }
 
 /// Rank `names` by Damerau-Levenshtein distance to `token`, returning up to
@@ -183,11 +182,7 @@ pub fn rank_near_matches(token: &str, names: &[String], max: usize) -> Vec<Strin
             // anagram of the token (a pure transposition like `gti`→`git`)
             // is the most likely intended command, so rank it ahead of an
             // equidistant substitution (`gti`→`gci`).
-            let anagram_rank: u8 = if sorted_chars(&key) == token_sorted {
-                0
-            } else {
-                1
-            };
+            let anagram_rank: u8 = if sorted_chars(&key) == token_sorted { 0 } else { 1 };
             scored.push((d, anagram_rank, display.to_string()));
         }
     }
@@ -404,8 +399,7 @@ static COMMAND_CACHE: std::sync::OnceLock<
 
 /// Cached wrapper over [`enumerate_powershell_commands`]; see [`COMMAND_CACHE`].
 async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
-    let cache =
-        COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let cache = COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let key = format!(
         "{}|{}",
         shell_exe.to_ascii_lowercase(),
@@ -552,10 +546,7 @@ mod tests {
 
     #[test]
     fn extract_token_strips_quotes_and_leading_blank_lines() {
-        assert_eq!(
-            extract_command_token("\n\n  gti status\n").as_deref(),
-            Some("gti")
-        );
+        assert_eq!(extract_command_token("\n\n  gti status\n").as_deref(), Some("gti"));
         // A surrounding quote the user typed is stripped from the token.
         assert_eq!(extract_command_token("'gti' foo").as_deref(), Some("gti"));
     }
@@ -575,10 +566,7 @@ mod tests {
     fn extract_token_peels_powershell_call_operator() {
         // `& cmd` (or `&cmd`) still performs normal command resolution, so a
         // not-found `& gti` is just as correctable — extract the invoked name.
-        assert_eq!(
-            extract_command_token("& gti status").as_deref(),
-            Some("gti")
-        );
+        assert_eq!(extract_command_token("& gti status").as_deref(), Some("gti"));
         assert_eq!(extract_command_token("&gti").as_deref(), Some("gti"));
         assert_eq!(extract_command_token("& 'gti'").as_deref(), Some("gti"));
         // But after the operator, an explicit path is still not a PATH-style
@@ -595,16 +583,10 @@ mod tests {
         // A command chained without whitespace keeps the separator stuck to the
         // token; only the command name should survive so the gate/ranking stay
         // clean.
-        assert_eq!(
-            extract_command_token("gti;git status").as_deref(),
-            Some("gti")
-        );
+        assert_eq!(extract_command_token("gti;git status").as_deref(), Some("gti"));
         assert_eq!(extract_command_token("gti| less").as_deref(), Some("gti"));
         assert_eq!(extract_command_token("gti|less").as_deref(), Some("gti"));
-        assert_eq!(
-            extract_command_token("gti&&echo done").as_deref(),
-            Some("gti")
-        );
+        assert_eq!(extract_command_token("gti&&echo done").as_deref(), Some("gti"));
         // Trailing separator with a space still resolves to the bare command.
         assert_eq!(extract_command_token("gti ; git").as_deref(), Some("gti"));
         // A leading separator leaves nothing to suggest.
@@ -708,11 +690,7 @@ mod tests {
         assert!(got.len() <= 3, "must cap at max, got {got:?}");
         let mut sorted = got.clone();
         sorted.dedup();
-        assert_eq!(
-            sorted.len(),
-            got.len(),
-            "must not contain duplicates: {got:?}"
-        );
+        assert_eq!(sorted.len(), got.len(), "must not contain duplicates: {got:?}");
     }
 
     #[test]
@@ -780,14 +758,11 @@ mod tests {
         let raw = ["profile noise line", ENUM_SENTINEL, &alias_row, &app_row].join("\n");
         let got = parse_resolve_output(&raw).expect("resolutions after sentinel");
         assert_eq!(got.len(), 2);
-        assert_eq!(
-            got[0],
-            CommandResolution {
+        assert_eq!(got[0], CommandResolution {
             command_type: "Alias".into(),
             name: "which".into(),
             target: "where.exe".into(),
-            }
-        );
+        });
         assert_eq!(got[1].command_type, "Application");
         assert_eq!(got[1].target, "C:\\Windows\\system32\\where.exe");
     }
@@ -876,9 +851,7 @@ mod integration_tests {
             .expect("enumerate should return a non-empty command list");
         // `Get-ChildItem` is present in every PowerShell host, profile or not.
         assert!(
-            names
-                .iter()
-                .any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
+            names.iter().any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
             "expected the Get-ChildItem cmdlet in the enumerated list"
         );
     }
@@ -897,9 +870,7 @@ mod integration_tests {
             .await
             .expect("enumerate should spawn from a bare shell name");
         assert!(
-            names
-                .iter()
-                .any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
+            names.iter().any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
             "expected Get-ChildItem from a bare-name enumerate"
         );
     }
@@ -915,10 +886,7 @@ mod integration_tests {
         // pre-gate passes). The full enumerate gate must still recognize it and
         // suppress near-match injection.
         let got = powershell_near_matches(&shell, "Get-ChildItem").await;
-        assert!(
-            got.is_none(),
-            "expected None for the existing cmdlet, got {got:?}"
-        );
+        assert!(got.is_none(), "expected None for the existing cmdlet, got {got:?}");
     }
 
     #[tokio::test]
@@ -977,9 +945,7 @@ mod integration_tests {
             "expected ExternalScript, got {hit:?}"
         );
         assert!(
-            hit.target
-                .to_ascii_lowercase()
-                .ends_with("resolve-fixture.ps1"),
+            hit.target.to_ascii_lowercase().ends_with("resolve-fixture.ps1"),
             "target should be the script's path, got {hit:?}"
         );
     }

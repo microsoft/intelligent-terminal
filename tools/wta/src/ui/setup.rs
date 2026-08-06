@@ -4,8 +4,8 @@ use ratatui::widgets::Paragraph;
 use crate::app::{App, SetupOption};
 
 const SPINNER: &[char] = &[
-    '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}',
-    '\u{2807}', '\u{280F}',
+    '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}',
+    '\u{2827}', '\u{2807}', '\u{280F}',
 ];
 
 // Muted secondary text. Dimmed default fg (not a fixed gray) so it tracks the
@@ -57,15 +57,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     lines.push(Line::from(""));
 
     // Info messages (e.g. "Copied to clipboard") — shown before options
-    if !setup.install_in_progress && setup.install_error.is_none() && !setup.install_log.is_empty()
-    {
+    if !setup.install_in_progress && setup.install_error.is_none() && !setup.install_log.is_empty() {
         for (i, log_line) in setup.install_log.iter().enumerate() {
             let prefix = if i == 0 { "  \u{2714} " } else { "    " };
-            let style = if i == 0 {
-                Style::new().fg(Color::Green)
-            } else {
-                DIM_TEXT
-            };
+            let style = if i == 0 { Style::new().fg(Color::Green) } else { DIM_TEXT };
             lines.push(Line::from(vec![
                 Span::styled(prefix, style),
                 Span::styled(log_line.clone(), style),
@@ -90,30 +85,21 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 } else {
                     format!("  {}", t!("setup.option.install_hint"))
                 };
-                (
-                    t!("setup.option.install", agent = display_name.as_str()).into_owned(),
-                    status,
-                )
+                (t!("setup.option.install", agent = display_name.as_str()).into_owned(), status)
             }
-            SetupOption::SignIn { display_name, .. } => (
-                t!("setup.option.signin", agent = display_name.as_str()).into_owned(),
-                String::new(),
-            ),
+            SetupOption::SignIn { display_name, .. } => {
+                (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())
+            }
             SetupOption::Retry => {
                 let label = match setup.reason {
-                    crate::app::SetupReason::AgentMissing => {
-                        t!("setup.option.retry_detection").into_owned()
-                    }
-                    crate::app::SetupReason::AgentError => {
-                        t!("setup.option.retry_auth").into_owned()
-                    }
+                    crate::app::SetupReason::AgentMissing => t!("setup.option.retry_detection").into_owned(),
+                    crate::app::SetupReason::AgentError => t!("setup.option.retry_auth").into_owned(),
                 };
                 (label, String::new())
             }
         };
 
-        let is_installing_opt =
-            matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress;
+        let is_installing_opt = matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress;
         let status_style = if is_installing_opt {
             Style::new().fg(Color::Yellow)
         } else if is_selected {
@@ -126,7 +112,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             lines.push(Line::from(vec![
                 Span::styled(
                     "  > ",
-                    Style::new().fg(SELECTED_COLOR).add_modifier(Modifier::BOLD),
+                    Style::new()
+                        .fg(SELECTED_COLOR)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(label, Style::new().fg(SELECTED_COLOR)),
                 Span::styled(status_text, status_style),
@@ -145,7 +133,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::styled("  ", DIM_TEXT),
-            Span::styled(format!("{}", spinner_char), Style::new().fg(Color::Yellow)),
+            Span::styled(
+                format!("{}", spinner_char),
+                Style::new().fg(Color::Yellow),
+            ),
             Span::styled(
                 t!("setup.status.installing_winget").into_owned(),
                 Style::new().fg(Color::Reset),
@@ -159,15 +150,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
+
     // Install error
     if let Some(ref err) = setup.install_error {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::styled("  ", DIM_TEXT),
-            Span::styled(
-                t!("setup.status.install_failed").into_owned(),
-                Style::new().fg(Color::Red),
-            ),
+            Span::styled(t!("setup.status.install_failed").into_owned(), Style::new().fg(Color::Red)),
             Span::styled(err.clone(), Style::new().fg(Color::Red)),
         ]));
         for log_line in setup

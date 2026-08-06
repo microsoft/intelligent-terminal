@@ -70,7 +70,8 @@ pub struct OriginRecord {
 /// only if neither `%LOCALAPPDATA%` nor `%APPDATA%` is set, which is
 /// extremely unusual on Windows but matches the rest of `runtime_paths`.
 pub fn default_index_path() -> Option<PathBuf> {
-    crate::runtime_paths::intelligent_terminal_root().map(|root| root.join(INDEX_FILENAME))
+    crate::runtime_paths::intelligent_terminal_root()
+        .map(|root| root.join(INDEX_FILENAME))
 }
 
 /// Append an `agent_pane` record for `session_id` to the default index.
@@ -185,9 +186,7 @@ fn installed_package_index_paths() -> Vec<PathBuf> {
     // `load_default_set` calls this on every routed event in unpackaged/dev mode,
     // and the relevant package directories don't change mid-run.
     static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
-    CACHE
-        .get_or_init(installed_package_index_paths_uncached)
-        .clone()
+    CACHE.get_or_init(installed_package_index_paths_uncached).clone()
 }
 
 fn installed_package_index_paths_uncached() -> Vec<PathBuf> {
@@ -234,17 +233,11 @@ pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord
     };
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+        if trimmed.is_empty() { continue; }
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(trimmed);
         let Ok(value) = parsed else { continue }; // skip corrupt line
-        let Some(id) = value.get("session_id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        if id.is_empty() {
-            continue;
-        }
+        let Some(id) = value.get("session_id").and_then(|v| v.as_str()) else { continue };
+        if id.is_empty() { continue; }
         let pane_session_id = value
             .get("pane_session_id")
             .and_then(|v| v.as_str())
@@ -284,9 +277,7 @@ fn unix_secs_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     let mut days_left = days as i64;
     loop {
         let dy = if is_leap_year(year) { 366 } else { 365 };
-        if days_left < dy {
-            break;
-        }
+        if days_left < dy { break; }
         days_left -= dy;
         year += 1;
     }
@@ -297,9 +288,7 @@ fn unix_secs_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     };
     let mut month: u32 = 1;
     for &dm in &months {
-        if days_left < dm as i64 {
-            break;
-        }
+        if days_left < dm as i64 { break; }
         days_left -= dm as i64;
         month += 1;
     }
@@ -334,18 +323,8 @@ mod tests {
         assert_eq!(set.len(), 2);
 
         let records = load_records_from(&path);
-        assert_eq!(
-            records
-                .get("abc-123")
-                .and_then(|r| r.pane_session_id.as_deref()),
-            None
-        );
-        assert_eq!(
-            records
-                .get("def-456")
-                .and_then(|r| r.pane_session_id.as_deref()),
-            Some("pane-xyz")
-        );
+        assert_eq!(records.get("abc-123").and_then(|r| r.pane_session_id.as_deref()), None);
+        assert_eq!(records.get("def-456").and_then(|r| r.pane_session_id.as_deref()), Some("pane-xyz"));
     }
 
     #[test]
@@ -370,9 +349,7 @@ mod tests {
         let records = load_records_from(&path);
         assert_eq!(records.len(), 1);
         assert_eq!(
-            records
-                .get("same-id")
-                .and_then(|r| r.pane_session_id.as_deref()),
+            records.get("same-id").and_then(|r| r.pane_session_id.as_deref()),
             Some("pane-new")
         );
     }
@@ -418,18 +395,8 @@ mod tests {
         assert!(set.contains("good-2"));
         assert_eq!(set.len(), 2);
         let records = load_records_from(&path);
-        assert_eq!(
-            records
-                .get("good-1")
-                .and_then(|r| r.pane_session_id.as_deref()),
-            None
-        );
-        assert_eq!(
-            records
-                .get("good-2")
-                .and_then(|r| r.pane_session_id.as_deref()),
-            Some("pane-2")
-        );
+        assert_eq!(records.get("good-1").and_then(|r| r.pane_session_id.as_deref()), None);
+        assert_eq!(records.get("good-2").and_then(|r| r.pane_session_id.as_deref()), Some("pane-2"));
     }
 
     #[test]
@@ -454,12 +421,7 @@ mod tests {
         )
         .unwrap();
         let records = load_records_from(&path);
-        assert_eq!(
-            records
-                .get("abc")
-                .and_then(|r| r.pane_session_id.as_deref()),
-            None
-        );
+        assert_eq!(records.get("abc").and_then(|r| r.pane_session_id.as_deref()), None);
     }
 
     #[test]

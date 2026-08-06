@@ -419,7 +419,7 @@ fn spawn_mock_pair(
                     let c = c.clone();
                     async move {
                         if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
-                            c.dispatch_session_notification(n).await;
+                            let _ = c.session_notification(n).await;
                         }
             Ok(())
                     }
@@ -668,8 +668,9 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
-    let proposal_channels =
-        Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+    let proposal_channels = Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
@@ -1911,7 +1912,9 @@ async fn session_notification_routes_provider_reported_zero_size() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(1, 0)),
+            acp::schema::v1::SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(1, 0),
+            ),
         ))
         .await
         .expect("provider-owned capacity must not be rejected by the client");
@@ -1930,9 +1933,7 @@ async fn notification_dispatch_routes_over_capacity_usage_and_keeps_chat_flow() 
     client
         .dispatch_session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(
-                101, 100,
-            )),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(101, 100)),
         ))
         .await;
 

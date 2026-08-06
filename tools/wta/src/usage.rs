@@ -89,7 +89,9 @@ impl UsageSnapshot {
                 .find(|existing| existing.metric_id == metric.metric_id)
             {
                 *existing = metric;
-            } else {
+            }
+            else
+            {
                 self.provider_metrics.push(metric);
             }
         }
@@ -146,26 +148,13 @@ impl UsageProjection {
                 display_kind: UsageDisplayKind::Context,
                 value_decimal_text: context.used.to_string(),
                 limit_decimal_text: Some(context.size.to_string()),
-                value_display_text: snapshot
-                    .context_display
-                    .as_ref()
-                    .map(|display| display.used_text.clone()),
-                limit_display_text: snapshot
-                    .context_display
-                    .as_ref()
-                    .map(|display| display.size_text.clone()),
-                reported_percent: snapshot
-                    .context_display
-                    .as_ref()
-                    .map(|display| display.reported_percent),
+                value_display_text: snapshot.context_display.as_ref().map(|display| display.used_text.clone()),
+                limit_display_text: snapshot.context_display.as_ref().map(|display| display.size_text.clone()),
+                reported_percent: snapshot.context_display.as_ref().map(|display| display.reported_percent),
                 unit_id: "token".to_string(),
                 unit_display_text: "token".to_string(),
                 scope: "session",
-                source: if snapshot.context_display.is_some() {
-                    "provider_reported"
-                } else {
-                    "acp_standard"
-                },
+                source: if snapshot.context_display.is_some() { "provider_reported" } else { "acp_standard" },
                 stale: staleness.context,
             });
         }
@@ -205,15 +194,10 @@ impl UsageProjection {
     }
 }
 
-pub fn normalize_provider_contribution(
-    contribution: providers::ProviderUsageContribution,
-) -> UsageSnapshot {
+pub fn normalize_provider_contribution(contribution: providers::ProviderUsageContribution) -> UsageSnapshot {
     let (context, context_display) = contribution.context.map_or((None, None), |context| {
         (
-            Some(UsageContext {
-                used: context.used,
-                size: context.size,
-            }),
+            Some(UsageContext { used: context.used, size: context.size }),
             Some(UsageContextDisplay {
                 used_text: context.used_display_text,
                 size_text: context.size_display_text,
@@ -225,18 +209,14 @@ pub fn normalize_provider_contribution(
         context,
         context_display,
         cost: contribution.cost,
-        provider_metrics: contribution
-            .metrics
-            .into_iter()
-            .map(|metric| UsageProviderMetric {
+        provider_metrics: contribution.metrics.into_iter().map(|metric| UsageProviderMetric {
             metric_id: metric.metric_id,
             display_kind: metric.display_kind,
             value_decimal_text: metric.value_decimal_text,
             limit_decimal_text: metric.limit_decimal_text,
             unit_id: metric.unit_id,
             unit_display_text: metric.unit_display_text,
-            })
-            .collect(),
+        }).collect(),
     }
 }
 
@@ -378,14 +358,8 @@ mod tests {
         let projection = UsageProjection::from(&snapshot);
         assert_eq!(projection.items.len(), 2);
         assert_eq!(projection.items[0].metric_id, "acp.context.window");
-        assert_eq!(
-            projection.items[0].value_display_text.as_deref(),
-            Some("30k")
-        );
-        assert_eq!(
-            projection.items[0].limit_display_text.as_deref(),
-            Some("264k")
-        );
+        assert_eq!(projection.items[0].value_display_text.as_deref(), Some("30k"));
+        assert_eq!(projection.items[0].limit_display_text.as_deref(), Some("264k"));
         assert_eq!(projection.items[0].reported_percent, Some(11));
         assert_eq!(projection.items[0].source, "provider_reported");
         assert_eq!(projection.items[1].metric_id, "github.copilot.ai_credits");
@@ -415,19 +389,12 @@ mod tests {
         }
 
         let valid = UsageProjection::from(&UsageSnapshot {
-            context: Some(UsageContext {
-                used: 100,
-                size: 100,
-            }),
+            context: Some(UsageContext { used: 100, size: 100 }),
             context_display: None,
             cost: None,
             provider_metrics: Vec::new(),
         });
-        assert_eq!(
-            valid.items.len(),
-            1,
-            "a full but valid context remains useful"
-        );
+        assert_eq!(valid.items.len(), 1, "a full but valid context remains useful");
         assert_eq!(valid.items[0].display_kind, UsageDisplayKind::Context);
     }
 

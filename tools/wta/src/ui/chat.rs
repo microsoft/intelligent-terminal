@@ -8,9 +8,7 @@ use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String {
-    t!("chat.activity_thinking").into_owned()
-}
+fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 
@@ -25,16 +23,8 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // Fetch once for the pending-height calculation.
     let pending_text = pending_render_text(tab);
 
-    let messages: usize = tab
-        .messages
-        .iter()
-        .map(|m| message_height(m, wrap_width))
-        .sum();
-    let turns: usize = tab
-        .completed_turns
-        .iter()
-        .map(|t| turn_height(t, wrap_width))
-        .sum();
+    let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
+    let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
     let pending = pending_text
         .as_deref()
         .map(|text| {
@@ -47,15 +37,15 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // it off the top of the visible chat block. Always a single row —
     // terminal min-width guarantees the localized title fits without
     // wrapping.
-    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+    let welcome = if app.show_welcome_hint
+        && app.state == crate::app::ConnectionState::Connected
+    {
         1
     } else {
         0
     };
 
-    (messages + turns + pending + welcome)
-        .max(1)
-        .min(u16::MAX as usize) as u16
+    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -63,11 +53,7 @@ fn wrap_count(text: &str, width: usize) -> usize {
     text.split('\n')
         .map(|line| {
             let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(w)
-            }
+            if chars == 0 { 1 } else { chars.div_ceil(w) }
         })
         .sum::<usize>()
         .max(1)
@@ -88,11 +74,7 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
-        ChatMessage::ToolCall {
-            location,
-            location_is_command,
-            ..
-        } => {
+        ChatMessage::ToolCall { location, location_is_command, .. } => {
             // Command targets render one line per split statement (see
             // the render arm below, and `command_format`) — must count
             // the same number of rows here, or the chat area's height
@@ -141,8 +123,7 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
-    {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -228,8 +209,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let pane_focused = app.pane_focused;
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines =
-                build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
             reversed_lines.extend(turn_lines.drain(..).rev());
             if reversed_lines.len() >= requested_lines {
                 truncated = true;
@@ -239,25 +219,25 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
-        let mut welcome_lines = vec![Line::from(vec![
-            Span::styled(
-                "● ",
-                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-            ),
+    if app.show_welcome_hint
+        && app.state == crate::app::ConnectionState::Connected
+    {
+        let mut welcome_lines = vec![
+            Line::from(vec![
+                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     t!("chat.welcome_title").into_owned(),
                     Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
-        ])];
+            ]),
+        ];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = lines.len();
-    let scroll = total_lines
-        .saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
+    let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
@@ -281,11 +261,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         format!(
             "messages={} pending_chars={} requested_lines={} visible_height={} area={}x{}",
             app.current_tab().messages.len(),
-            app.current_tab()
-                .turn
-                .buffer()
-                .map(|b| b.chars().count())
-                .unwrap_or(0),
+            app.current_tab().turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
             requested_lines,
             visible_height,
             area.width,
@@ -407,7 +383,10 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
+    let line = Line::from(shimmer::shimmer_spans(
+        &label,
+        tab.activity_frame,
+    ));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -563,10 +542,7 @@ fn build_message_lines<'a>(
             }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(
-                t!("chat.plan_header").into_owned(),
-                theme::PLAN_STYLE,
-            )));
+            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -787,10 +763,7 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(
-            line.spans.get(3).map(|span| span.style),
-            expected_detail_style
-        );
+        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1021,7 +994,10 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
+        assert_eq!(
+            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
+            "●"
+        );
     }
 
     #[test]
@@ -1041,7 +1017,8 @@ mod tests {
             location_is_command: false,
         };
 
-        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines =
+            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1120,9 +1097,8 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String = std::iter::repeat('é')
-            .take(MAX_RENDER_LINE_CHARS + 10)
-            .collect();
+        let over: String =
+            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1133,13 +1109,7 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(
-            &mut lines,
-            "\n\nHello",
-            40,
-            theme::DOT_AGENT,
-            theme::AGENT_TEXT,
-        );
+        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1147,18 +1117,9 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(
-            &mut lines,
-            "A\n\nB",
-            40,
-            theme::DOT_AGENT,
-            theme::AGENT_TEXT,
-        );
+        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(
-            texts,
-            vec!["● A".to_string(), String::new(), "  B".to_string()]
-        );
+        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
     }
 
     #[test]
@@ -1173,10 +1134,7 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(
-            line_text(&lines[0]).starts_with("● "),
-            "first row gets the dot"
-        );
+        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
@@ -1195,10 +1153,7 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(
-            texts,
-            vec!["> line one".to_string(), "  line two".to_string()]
-        );
+        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
     }
 
     #[test]
@@ -1214,10 +1169,7 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(
-            texts,
-            vec!["> A".to_string(), String::new(), "  B".to_string()]
-        );
+        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
     }
 
     #[test]
