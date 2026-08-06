@@ -199,6 +199,58 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     }
 }
 
+Describe 'Feature §9 listener lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeEach {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:listenerApp = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:listener = $null
+    }
+    AfterEach {
+        if ($script:listener) { Stop-WtEventListener -Listener $script:listener }
+        if ($script:listenerApp) { Stop-Terminal -App $script:listenerApp }
+    }
+
+    It 'wtcli listen exits when Terminal disconnects' {
+        $eventType = "protocol.disconnect_probe.$([guid]::NewGuid().ToString('N'))"
+        $script:listener = Start-WtEventListener -App $script:listenerApp -EventFilter $eventType
+        Wait-Until -TimeoutSec 10 -IntervalSec 0.25 -Because 'the wtcli listener subscription to become ready' -Condition {
+            Invoke-WtCli -App $script:listenerApp -Arguments @('send-event', '-e', $eventType, '{}') | Out-Null
+            Start-Sleep -Milliseconds 100
+            @(Get-WtEvents -Listener $script:listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.event -eq $eventType
+            }).Count -gt 0
+        } | Out-Null
+
+        Stop-Terminal -App $script:listenerApp
+        $script:listenerApp = $null
+
+        Test-Until -TimeoutSec 5 -IntervalSec 0.1 -Condition {
+            $script:listener.Process.HasExited
+        } | Should -BeTrue -Because 'a listener must release its packaged executable after the COM server exits'
+        $script:listener.Process.ExitCode | Should -Be 0
+    }
+
+    It 'wta listen exits when Terminal disconnects' {
+        $eventType = "protocol.wta_disconnect_probe.$([guid]::NewGuid().ToString('N'))"
+        $script:listener = Start-WtEventListener -App $script:listenerApp -ViaWta
+        Wait-Until -TimeoutSec 10 -IntervalSec 0.25 -Because 'the WTA listener subscription to become ready' -Condition {
+            Invoke-WtCli -App $script:listenerApp -Arguments @('send-event', '-e', $eventType, '{}') | Out-Null
+            Start-Sleep -Milliseconds 100
+            @(Get-WtEvents -Listener $script:listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.event -eq $eventType
+            }).Count -gt 0
+        } | Out-Null
+
+        Stop-Terminal -App $script:listenerApp
+        $script:listenerApp = $null
+
+        Test-Until -TimeoutSec 5 -IntervalSec 0.1 -Condition {
+            $script:listener.Process.HasExited
+        } | Should -BeTrue -Because 'WTA must close its event receiver and release packaged executables after the COM server exits'
+        $script:listener.Process.ExitCode | Should -Be 0
+    }
+}
+
 Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:UiReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force

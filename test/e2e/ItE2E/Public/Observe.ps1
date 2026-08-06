@@ -74,24 +74,29 @@ function Start-WtEventListener {
         [Parameter(Mandatory, ValueFromPipeline)]$App,
         [string]$EventFilter,
         [string]$SessionId,
-        [switch]$SkipAuthenticate
+        [switch]$SkipAuthenticate,
+        [switch]$ViaWta
     )
     process {
+        if ($ViaWta -and $SkipAuthenticate) {
+            throw 'Start-WtEventListener: -SkipAuthenticate is not supported with -ViaWta.'
+        }
         if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
         $args = @('--json')
         if ($SkipAuthenticate) { $args += '--skip-authenticate' }
         $args += 'listen'
         if ($SessionId) { $args += @('-t', $SessionId) }
-        if ($EventFilter) { $args += @('--event', $EventFilter) }
+        if ($EventFilter -and -not $ViaWta) { $args += @('--event', $EventFilter) }
 
         $psi = [System.Diagnostics.ProcessStartInfo]::new()
-        $psi.FileName = $App.WtcliPath
+        $psi.FileName = if ($ViaWta) { Get-RunnableWtaPath -App $App } else { $App.WtcliPath }
         foreach ($a in $args) { $psi.ArgumentList.Add([string]$a) }
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
         $psi.Environment['WT_COM_CLSID'] = $App.ComClsid
+        if ($ViaWta) { $psi.Environment['WT_WTCLI_PATH'] = $App.WtcliPath }
 
         $events = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
         $p = [System.Diagnostics.Process]::new(); $p.StartInfo = $psi
@@ -105,7 +110,8 @@ function Start-WtEventListener {
         $sourceId = "ItE2E.WtEventListener.$([guid]::NewGuid())"
         $reg = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $handler -MessageData $events -SourceIdentifier $sourceId
         [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
-        Write-ItLog -Level INFO -Message "Event listener started (filter='$EventFilter' session='$SessionId')."
+        $transport = if ($ViaWta) { 'wta' } else { 'wtcli' }
+        Write-ItLog -Level INFO -Message "$transport event listener started (filter='$EventFilter' session='$SessionId')."
         [pscustomobject]@{ Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App }
     }
 }

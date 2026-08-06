@@ -577,7 +577,10 @@ async fn run_listen(pane_filter: Option<&str>) -> Result<()> {
     let mut event_rx = arc_channel.subscribe_events();
     arc_channel.start_reader().await;
 
-    let _ = arc_channel.request("get_capabilities", json!({})).await;
+    arc_channel
+        .request("get_capabilities", json!({}))
+        .await
+        .context("Failed to verify the Terminal connection")?;
 
     eprintln!("Connected. Listening for events... (Ctrl+C to stop)");
     if let Some(pane) = pane_filter {
@@ -600,6 +603,10 @@ async fn run_listen(pane_filter: Option<&str>) -> Result<()> {
         }
 
         println!("{}", serde_json::to_string(&msg).unwrap_or_default());
+    }
+
+    if let Some(error) = arc_channel.take_event_error() {
+        bail!("Event stream failed: {error}");
     }
 
     eprintln!("Event stream closed.");
