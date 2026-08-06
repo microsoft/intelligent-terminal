@@ -214,7 +214,7 @@ namespace winrt::TerminalApp::implementation
         void _dropKeptSession(const winrt::guid& sessionId);
         void _reapDetachedSessionIfDead(const winrt::guid& sessionId);
         void _forgetKeptSession(uint64_t contentId, const winrt::hstring& fallbackDetachedEndState);
-        void _processClosedContent(uint64_t contentId, const winrt::hstring& detachedEndState);
+        bool _processClosedContent(uint64_t contentId, const winrt::hstring& detachedEndState);
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
                             const winrt::Windows::Foundation::IInspectable& e);

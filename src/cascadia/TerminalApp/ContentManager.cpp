@@ -86,15 +86,26 @@ namespace winrt::TerminalApp::implementation
         ControlInteractivity content{ settings, unfocusedAppearance, connection };
         content.Closed({ get_weak(), &ContentManager::_closedHandler });
 
-        _content.emplace(content.Id(), content);
+        _invokeOnOwnerThread([&]() {
+            _content.emplace(content.Id(), content);
+            _drainPendingOwnerWork();
+        });
 
         return content;
     }
 
     ControlInteractivity ContentManager::TryLookupCore(uint64_t id)
     {
-        const auto it = _content.find(id);
-        return it != _content.end() ? it->second : ControlInteractivity{ nullptr };
+        ControlInteractivity content{ nullptr };
+        _invokeOnOwnerThread([&]() {
+            _drainPendingOwnerWork();
+            const auto it = _content.find(id);
+            if (it != _content.end())
+            {
+                content = it->second;
+            }
+        });
+        return content;
     }
 
     void ContentManager::Detach(const Microsoft::Terminal::Control::TermControl& control)
@@ -730,7 +741,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void ContentManager::_processClosedContent(const uint64_t contentId, const winrt::hstring& detachedEndState)
+    bool ContentManager::_processClosedContent(const uint64_t contentId, const winrt::hstring& detachedEndState)
     {
         _assertIsOwnerThread();
 
@@ -741,7 +752,10 @@ namespace winrt::TerminalApp::implementation
         if (_content.erase(contentId) != 0)
         {
             _forgetKeptSession(contentId, detachedEndState);
+            return true;
         }
+
+        return false;
     }
 
     void ContentManager::_closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
@@ -757,7 +771,10 @@ namespace winrt::TerminalApp::implementation
             // maps and events are owned by its configured dispatcher thread.
             if (_isOwnerThread())
             {
-                _processClosedContent(contentId, detachedEndState);
+                if (!_processClosedContent(contentId, detachedEndState))
+                {
+                    _queuePendingClosedContent(contentId, detachedEndState);
+                }
             }
             else
             {
@@ -766,7 +783,10 @@ namespace winrt::TerminalApp::implementation
                         if (const auto self{ weakThis.get() })
                         {
                             self->_drainPendingOwnerWork();
-                            self->_processClosedContent(contentId, detachedEndState);
+                            if (!self->_processClosedContent(contentId, detachedEndState))
+                            {
+                                self->_queuePendingClosedContent(contentId, detachedEndState);
+                            }
                         }
                     }))
                 {
