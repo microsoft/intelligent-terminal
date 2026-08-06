@@ -51,9 +51,34 @@ namespace winrt::TerminalApp::implementation
                                  HeadlessTrayActivationMode::OpenFreshWindow;
     }
 
-    inline constexpr bool ShouldForcePersistClosingWindowLayoutForKeptSessions(const size_t windowCount, const bool hasKeptSessions) noexcept
+    enum class ForcedKeptLayoutCloseAction
     {
-        return windowCount != 0 && hasKeptSessions;
+        None = 0,
+        StartGeneration = 1,
+        AppendGeneration = 2,
+    };
+
+    inline constexpr ForcedKeptLayoutCloseAction ClassifyForcedKeptLayoutClose(const bool generationActive,
+                                                                                const size_t windowCount,
+                                                                                const bool hasKeptSessions) noexcept
+    {
+        if (windowCount == 0 || !hasKeptSessions)
+        {
+            return ForcedKeptLayoutCloseAction::None;
+        }
+
+        return generationActive ? ForcedKeptLayoutCloseAction::AppendGeneration :
+                                  ForcedKeptLayoutCloseAction::StartGeneration;
+    }
+
+    inline constexpr bool ShouldPreserveForcedKeptLayoutGeneration(const bool generationActive, const bool hasKeptSessions) noexcept
+    {
+        return generationActive && hasKeptSessions;
+    }
+
+    inline constexpr bool ShouldCompleteForcedKeptLayoutGeneration(const bool generationActive, const bool hasKeptSessions) noexcept
+    {
+        return generationActive && !hasKeptSessions;
     }
 
     inline std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildKeptGroupRestoreActions(const winrt::TerminalApp::KeptGroupRestoreResult& restoredGroup)

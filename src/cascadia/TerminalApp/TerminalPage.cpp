@@ -7829,11 +7829,24 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto& content{ _manager.TryLookupCore(contentId) })
         {
+            const auto core = content.Core();
+            const auto connection = core ? core.Connection() : nullptr;
+            if (!connection || connection.State() >= ConnectionState::Closed)
+            {
+                // ContentId is also the only marker on tray group restores, so
+                // all ContentId attaches reject content already observed dead.
+                // Closing it routes removal through ContentManager's owner.
+                content.Close();
+                return nullptr;
+            }
+
             // We have to pass in our current keybindings, because that's an
             // object that belongs to this TerminalPage, on this thread. If we
             // don't, then when we move the content to another thread, and it
             // tries to handle a key, it'll callback on the original page's
             // stack, inevitably resulting in a wrong_thread
+            // The connection can still exit after this final check; attaching
+            // a pane that exits after the boundary is the ordinary close race.
             return _SetupControl(TermControl::NewControlByAttachingContent(content));
         }
         return nullptr;
@@ -7897,8 +7910,18 @@ namespace winrt::TerminalApp::implementation
         {
             // Don't need to worry about duplicating or anything - we'll
             // serialize the actual profile's GUID along with the content guid.
+            const uint64_t contentId = newTerminalArgs.ContentId();
             const auto& profile = _settings.GetProfileForArgs(newTerminalArgs);
-            const auto control = _AttachControlToContent(newTerminalArgs.ContentId());
+            const auto control = _AttachControlToContent(contentId);
+            if (!control)
+            {
+                // A dead ContentId cannot be moved or restored. Clear the
+                // transient marker and use the normal snapshot/profile path.
+                winrt::hstring ignoredOldTabId;
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Take(contentId, ignoredOldTabId);
+                newTerminalArgs.ContentId(0);
+                return _MakeTerminalPane(newTerminalArgs, sourceTab, existingConnection);
+            }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
 
@@ -7907,7 +7930,6 @@ namespace winrt::TerminalApp::implementation
             // an agent pane. Re-wrap into AgentPaneContent here so the
             // target window restores the chrome (bottom bar, status, click
             // handlers).
-            const uint64_t contentId = newTerminalArgs.ContentId();
             winrt::hstring oldTabId;
             if (winrt::TerminalApp::implementation::AgentPaneDragStash::Take(contentId, oldTabId))
             {

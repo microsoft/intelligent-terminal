@@ -99,13 +99,21 @@ namespace winrt::TerminalApp::implementation
         ControlInteractivity content{ nullptr };
         _invokeOnOwnerThread([&]() {
             _drainPendingOwnerWork();
-            const auto it = _content.find(id);
-            if (it != _content.end())
-            {
-                content = it->second;
-            }
+            content = _tryLookupCoreOnOwner(id);
         });
         return content;
+    }
+
+    ControlInteractivity ContentManager::_tryLookupCoreOnOwner(uint64_t id)
+    {
+        _assertIsOwnerThread();
+
+        const auto it = _content.find(id);
+        if (it != _content.end())
+        {
+            return it->second;
+        }
+        return nullptr;
     }
 
     void ContentManager::Detach(const Microsoft::Terminal::Control::TermControl& control)
@@ -357,7 +365,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
-        const auto content{ TryLookupCore(contentId) };
+        const auto content{ _tryLookupCoreOnOwner(contentId) };
         if (!content)
         {
             const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
@@ -412,7 +420,7 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
-            const auto content{ TryLookupCore(kept.contentId) };
+            const auto content{ _tryLookupCoreOnOwner(kept.contentId) };
             if (!content)
             {
                 continue;
@@ -505,7 +513,7 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             const auto contentId = session->second.contentId;
-            const auto content{ TryLookupCore(contentId) };
+            const auto content{ _tryLookupCoreOnOwner(contentId) };
             if (!content)
             {
                 const auto raiseDetachedCloseEvent = session->second.raiseDetachedCloseEvent;
@@ -568,7 +576,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
-        const auto content{ TryLookupCore(contentId) };
+        const auto content{ _tryLookupCoreOnOwner(contentId) };
         const auto liveDetachedSession = content && _isLiveDetachedSession(content);
         if (content)
         {
@@ -625,7 +633,7 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             const auto contentId = session->second.contentId;
-            if (const auto content{ TryLookupCore(contentId) })
+            if (const auto content{ _tryLookupCoreOnOwner(contentId) })
             {
                 // Drops through _closedHandler, which also raises the event.
                 session->second.detachedEndState = _getDetachedSessionEndedState(content);
@@ -692,7 +700,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
-        const auto content{ TryLookupCore(contentId) };
+        const auto content{ _tryLookupCoreOnOwner(contentId) };
         if (!content)
         {
             const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
