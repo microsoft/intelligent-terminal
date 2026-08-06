@@ -113,15 +113,18 @@ follow:
 A terminal with no windows is otherwise invisible and unquittable, so
 `_checkWindowsForNotificationIcon` now also shows the notification-area icon
 whenever sessions are detached, and clicking "Focus Terminal" with no windows
-re-runs the persisted-layout restore first so the detached sessions come back in
-their saved layout, falling back to a fresh window only when no persisted layout
-is available.
+reattaches every live group directly from the process-wide `ContentManager`.
+The notification-area menu also lists each detached tab separately, with
+**Restore** and **Close** actions.
 
 ### Ordering with bucket 1
 
-Panes are detached in `_PersistShellSession`, **after** the save request to wta has
-committed — a save that failed first would leave shells running that nothing
-could find its way back to.
+Saving a snapshot and keeping a process alive are independent decisions.
+`restoreShellSessions` controls the database snapshot; `continueRunningCommands`
+controls detachment. When both are enabled, a successful save supplies the
+durable database id and revision stored beside the detached group. If saving is
+disabled or fails, a qualifying live shell can still remain detached, but it has
+no new snapshot id to display or fall back to.
 
 `_PersistShellSession` is normally reached from `_HandleCloseTabRequested`, which
 a window close never goes through. Since "close the terminal" is the whole point
@@ -155,26 +158,27 @@ a genuinely new shell. Deciding this earlier, while building the actions, would
 leave exactly that window open, and a duplicated id means two panes sharing one
 buffer sidecar, one `pane_id` and one agent binding.
 
-The persisted-window-layout path has no separate id and reattaches on `SessionId`
-itself, which it preserves.
-
 ### Getting back in
 
 Launching the terminal again does not start a new process — the named-mutex
-handoff delivers the commandline to the headless one. But the persisted-layout
-restore only runs during emperor startup, and this process never restarted, so a
-bare launch would otherwise open an unrelated default tab and leave the kept
-sessions stranded with no way to reach them. `WM_COPYDATA` therefore re-runs the
-layout restore when it arrives at a headless process that has kept sessions,
-which is what walks the saved records back through `_MakeTerminalPane` and into
-the detached content.
+handoff delivers the commandline to the headless one. A bare launch snapshots
+the current detached group ids, atomically takes each group, and rebuilds tabs
+from their live `ContentId` values. This deliberately does not use
+`PersistedWindowLayouts`: those layouts are controlled by the user's
+`firstWindowPreference` and become stale after a partial restore or discard.
+
+Groups from several former windows may be restored into one available window.
+The original window topology and pane split ratios are not retained; panes in a
+multi-pane group are currently rebuilt with equal splits.
 
 ## Settings
 
 `continueRunningCommands` (global, default `true`,
 Settings → Startup → "Continue running commands when terminal relaunches"). The
 setting was already defined and surfaced in the Settings UI by bucket 1 but had
-no consumer; this is that consumer. It is read when detaching and when reattaching.
+no consumer; this is that consumer. It controls future detach decisions only.
+Turning it off does not prevent an already-detached live session from being
+reattached.
 
 ## Capabilities and limitations
 
@@ -188,6 +192,11 @@ no consumer; this is that consumer. It is read when detaching and when reattachi
 * Detached sessions hold their whole `ControlCore` and buffer in memory. That is
   heavier than a raw output ring, and is what buys full scrollback, marks and
   search on reattach.
+* Only qualifying sessions are detached: a shell must have received user input
+  or already belong to a durable record. Blank or accidental tabs remain
+  excluded.
+* Restoring several detached tabs can coalesce them into one window. Multi-pane
+  tabs retain their live panes but currently use equal split sizes.
 * Agent panes are excluded — their durability is the agent CLI's own resume
   mechanism.
 
@@ -197,8 +206,5 @@ no consumer; this is that consumer. It is read when detaching and when reattachi
   individual session to keep running, with a badge on the pane. Today the setting
   is global. The plumbing is per-pane already, so this is a UI change plus a flag
   consulted in `_DetachShellPanesForKeepRunning`.
-* **Surfacing detached sessions.** The notification icon says *something* is
-  running but not what. Its menu should list kept sessions and offer to restore
-  or discard them.
 * **Releasing the renderer while detached.** Detached content does not need its
   renderer; dropping it would cut the memory cost of a long-detached session.
