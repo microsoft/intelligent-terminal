@@ -7835,6 +7835,20 @@ namespace winrt::TerminalApp::implementation
             {
                 // ContentId is also the only marker on tray group restores, so
                 // all ContentId attaches reject content already observed dead.
+                // The keep take already removed detached bookkeeping and its
+                // revoker, so raise the terminal-end event at this boundary.
+                if (connection)
+                {
+                    const auto sessionId = connection.SessionId();
+                    if (sessionId != winrt::guid{})
+                    {
+                        const auto paneId = winrt::to_string(winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sessionId) });
+                        _TryRaiseTerminalEndStateEvent(
+                            paneId,
+                            connection.State() == ConnectionState::Failed ? "failed" : "closed");
+                    }
+                }
+
                 // Closing it routes removal through ContentManager's owner.
                 content.Close();
                 return nullptr;
@@ -8158,6 +8172,21 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto keptControl = _AttachControlToContent(keptContentId))
                     {
+                        if (newTerminalArgs && !newTerminalArgs.AgentSessionId().empty())
+                        {
+                            const auto attachedConnection = keptControl.Connection();
+                            const auto attachedSessionId = attachedConnection ? attachedConnection.SessionId() : winrt::guid{};
+                            if (attachedSessionId != winrt::guid{})
+                            {
+                                _paneAgentSessions.insert_or_assign(
+                                    attachedSessionId,
+                                    _PaneAgentSession{
+                                        newTerminalArgs.AgentSessionId(),
+                                        newTerminalArgs.AgentSessionAgent(),
+                                        newTerminalArgs.AgentResumeCommandline() });
+                            }
+                        }
+
                         auto keptContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, keptControl) };
                         return std::make_shared<Pane>(keptContent);
                     }
