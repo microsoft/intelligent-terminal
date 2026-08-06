@@ -199,6 +199,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(ShellSessionCloseActionsRespectIndependentSettings);
         TEST_METHOD(WindowCloseAcceptanceIsOneShot);
+        TEST_METHOD(ContentMapOperationsUseOwnerThread);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
         TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
         TEST_METHOD(ClosedContentFallbackWaitsForOwnerDrain);
@@ -395,6 +396,32 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(closeAccepted);
     }
 
+    void TabTests::ContentMapOperationsUseOwnerThread()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        _createContentManager();
+
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-6262-6363-6464-656565656565}");
+        auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+        auto connection = winrt::make_self<TestConnection>(
+            sessionId,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+
+        const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+        const auto contentId = content.Id();
+
+        const auto lookup = _contentManager->TryLookupCore(contentId);
+        VERIFY_IS_NOT_NULL(lookup);
+        VERIFY_ARE_EQUAL(contentId, lookup.Id());
+
+        content.Close();
+
+        VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+    }
+
     void TabTests::DetachedReapUsesConfiguredOwnerScheduler()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
@@ -535,11 +562,8 @@ namespace TerminalAppLocalTests
         closeThread.join();
 
         TestOnUIThread([&]() {
-            VERIFY_IS_NOT_NULL(_contentManager->TryLookupCore(contentId));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(endedSessions.size()));
-
-            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
             VERIFY_IS_TRUE(!!::IsEqualGUID(endedSessions.at(0).sessionId, sessionId));
             VERIFY_IS_TRUE(endedSessions.at(0).state == L"closed");

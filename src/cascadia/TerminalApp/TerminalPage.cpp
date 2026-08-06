@@ -1017,7 +1017,10 @@ namespace winrt::TerminalApp::implementation
         // elevated profile), close the window.
         if (_tabs.Size() == 0)
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             return;
         }
 
