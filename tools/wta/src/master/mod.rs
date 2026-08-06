@@ -65,6 +65,7 @@ use crate::protocol::acp::spawn::{
 };
 
 pub(crate) mod config;
+mod proposal_mcp;
 
 use config::MasterConfig;
 
@@ -144,6 +145,8 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    proposal_mcp_endpoints: proposal_mcp::Endpoints,
+    proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
     /// SessionId while an omitted optional cost is retained from an
     /// undelivered prior update.
@@ -507,9 +510,19 @@ async fn inject_ready_cloud_catalog(
 
 async fn initialize_response_for_agent(
     agent: &AgentCli,
+    proposal_mcp_available: bool,
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
     inject_ready_cloud_catalog(agent, &mut response.meta).await?;
+    if proposal_mcp_available {
+        crate::session_registry::inject_wta_meta(
+            &mut response.meta,
+            &crate::session_registry::WtaMeta {
+                proposal_mcp: Some("http-v1".to_string()),
+                ..Default::default()
+            },
+        );
+    }
     Ok(response)
 }
 
@@ -1296,12 +1309,34 @@ impl HelperHandler {
             .get()
             .expect("helper agent binding is set before initialize response");
         agent.bound_helpers.lock().await.insert(self.helper_id);
+        let proposal_mcp_available = if agent
+            .cached_init_resp
+            .agent_capabilities
+            .mcp_capabilities
+            .http
+        {
+            match proposal_mcp::endpoint_for(&self.state, &agent.source).await {
+                Ok(_) => true,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "proposal_mcp",
+                        helper_id = ?self.helper_id,
+                        source = %agent.source,
+                        error = %format!("{error:#}"),
+                        "proposal MCP is unavailable for helper source"
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent).await {
+        match initialize_response_for_agent(agent, proposal_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -1347,6 +1382,28 @@ impl HelperHandler {
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let cwd_for_registry = args.cwd.clone();
+        let agent = self.resolved_agent("new_session")?;
+        let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
+            && agent
+                .cached_init_resp
+                .agent_capabilities
+                .mcp_capabilities
+                .http
+        {
+            proposal_mcp::endpoint_for(&self.state, &agent.source)
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
+            let pending = self.state.proposal_mcp_capabilities.prepare(None).await;
+            args.mcp_servers
+                .push(proposal_mcp::server_config(&endpoint, &pending));
+            Some(pending)
+        } else {
+            None
+        };
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1356,13 +1413,35 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let agent = self.resolved_agent("new_session")?;
-        let resp = self
+        let resp = match self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(pending) = proposal_mcp.as_ref() {
+                    self.state.proposal_mcp_capabilities.cancel(pending).await;
+                }
+                return Err(error);
+            }
+        };
+        if let Some(pending) = proposal_mcp.as_ref() {
+            if !self
+                .state
+                .proposal_mcp_capabilities
+                .bind(pending, resp.session_id.clone())
+                .await
+            {
+                tracing::warn!(
+                    target: "proposal_mcp",
+                    session_id = %resp.session_id,
+                    "proposal MCP capability disappeared before session binding"
+                );
+            }
+        }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&resp);
         let forwarder = self.forwarder_for_route("new_session")?;
@@ -1530,12 +1609,56 @@ impl HelperHandler {
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
+            let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
+                && agent
+                    .cached_init_resp
+                    .agent_capabilities
+                    .mcp_capabilities
+                    .http
+            {
+                proposal_mcp::endpoint_for(&self.state, &agent.source)
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+            let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
+                let pending = self
+                    .state
+                    .proposal_mcp_capabilities
+                    .prepare(Some(session_id.clone()))
+                    .await;
+                args.mcp_servers
+                    .push(proposal_mcp::server_config(&endpoint, &pending));
+                Some(pending)
+            } else {
+                None
+            };
             match agent.conn.load_session(args).await {
-                Ok(resp) => resp,
+                Ok(resp) => {
+                    if let Some(pending) = proposal_mcp.as_ref() {
+                        if !self
+                            .state
+                            .proposal_mcp_capabilities
+                            .bind(pending, session_id.clone())
+                            .await
+                        {
+                            tracing::warn!(
+                                target: "proposal_mcp",
+                                session_id = %session_id,
+                                "proposal MCP capability disappeared before load binding"
+                            );
+                        }
+                    }
+                    resp
+                }
                 // Fallback for an orphan we didn't track (e.g. it predates
                 // this master): the CLI reports "already loaded", so re-bind
                 // onto the pre-registered routing just like the fast path.
                 Err(err) if is_already_loaded_error(&err) => {
+                    if let Some(pending) = proposal_mcp.as_ref() {
+                        self.state.proposal_mcp_capabilities.cancel(pending).await;
+                    }
                     tracing::info!(
                         target: "master",
                         step = "helper→agent",
@@ -1547,6 +1670,9 @@ impl HelperHandler {
                     acp::schema::v1::LoadSessionResponse::new()
                 }
                 Err(err) => {
+                    if let Some(pending) = proposal_mcp.as_ref() {
+                        self.state.proposal_mcp_capabilities.cancel(pending).await;
+                    }
                     // Roll back the pre-registration. Only `session_to_helper`
                     // needs touching — we never wrote to `registry` and we
                     // never broadcast `session_added`, so peers never saw
@@ -2213,8 +2339,22 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "agent allowlist resolved"
     );
 
+    let proposal_mcp_listener = tokio::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        0,
+    ))
+    .await
+    .context("bind master proposal MCP HTTP endpoint")?;
+    let proposal_mcp_endpoint = format!(
+        "http://{}/mcp",
+        proposal_mcp_listener
+            .local_addr()
+            .context("read master proposal MCP HTTP endpoint")?
+    );
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(proposal_mcp_endpoint),
+        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -2240,6 +2380,20 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
+    {
+        let proposal_mcp_state = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            if let Err(error) =
+                proposal_mcp::run(proposal_mcp_listener, proposal_mcp_state).await
+            {
+                tracing::error!(
+                    target: "proposal_mcp",
+                    error = %format!("{error:#}"),
+                    "master proposal MCP HTTP endpoint stopped"
+                );
+            }
+        });
+    }
 
     // ── Hookless Class-B session watcher ──────────────────────────────
     // A blocking `notify` watcher runs on its own OS thread; a bridge thread

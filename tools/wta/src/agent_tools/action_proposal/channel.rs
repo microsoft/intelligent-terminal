@@ -154,7 +154,7 @@ struct Tombstone {
 
 pub struct ConfirmationClaim {
     channel_hash: [u8; 32],
-    final_responder: oneshot::Sender<ProposalFinalStatus>,
+    final_responder: Option<oneshot::Sender<ProposalFinalStatus>>,
 }
 
 struct ChannelState {
@@ -258,6 +258,28 @@ impl ProposalChannelManager {
         Ok(())
     }
 
+    pub fn validate_mcp_permission(&self, session_id: &str) -> Result<(), ChannelFailure> {
+        let state = self.lock_state();
+        if !state.pipe_available || !state.agent_transport_available {
+            return Err(failure(
+                ProposalValidationStatus::Unavailable,
+                "proposal transport is unavailable",
+                false,
+            ));
+        }
+        let active_matches = state.active.as_ref().is_some_and(|active| {
+            active.binding.session_id == session_id && active.state == ProposalChannelState::Issued
+        });
+        if !active_matches {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "MCP proposal tool does not belong to the active turn",
+                false,
+            ));
+        }
+        Ok(())
+    }
+
     pub fn begin_validation(
         &self,
         channel: &ProposalChannel,
@@ -295,10 +317,65 @@ impl ProposalChannelManager {
         })
     }
 
+    pub fn begin_mcp_validation(
+        &self,
+        session_id: &str,
+    ) -> Result<ValidationContext, ChannelFailure> {
+        let mut state = self.lock_state();
+        self.prune_tombstones(&mut state);
+        if !state.pipe_available || !state.agent_transport_available {
+            return Err(failure(
+                ProposalValidationStatus::Unavailable,
+                "proposal transport is unavailable",
+                false,
+            ));
+        }
+        let Some(active) = state.active.as_mut() else {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "no proposal-enabled turn is active",
+                false,
+            ));
+        };
+        if active.binding.session_id != session_id {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "MCP proposal session does not own the active turn",
+                false,
+            ));
+        }
+        if active.state != ProposalChannelState::Issued {
+            return Err(failure(
+                ProposalValidationStatus::AlreadyConsumed,
+                "a proposal is already being validated or awaiting the user",
+                false,
+            ));
+        }
+        let proposal_id = Uuid::new_v4().to_string();
+        active.state = ProposalChannelState::Validating;
+        active.proposal_id = Some(proposal_id.clone());
+        Ok(ValidationContext {
+            proposal_id,
+            binding: active.binding.clone(),
+        })
+    }
+
     pub fn accept_validation(
         &self,
         proposal_id: &str,
         final_responder: oneshot::Sender<ProposalFinalStatus>,
+    ) -> bool {
+        self.accept_validation_inner(proposal_id, Some(final_responder))
+    }
+
+    pub fn accept_validation_detached(&self, proposal_id: &str) -> bool {
+        self.accept_validation_inner(proposal_id, None)
+    }
+
+    fn accept_validation_inner(
+        &self,
+        proposal_id: &str,
+        final_responder: Option<oneshot::Sender<ProposalFinalStatus>>,
     ) -> bool {
         let mut state = self.lock_state();
         let Some(active) = state.active.as_mut() else {
@@ -310,7 +387,7 @@ impl ProposalChannelManager {
             return false;
         }
         active.state = ProposalChannelState::AwaitingUser;
-        active.final_responder = Some(final_responder);
+        active.final_responder = final_responder;
         true
     }
 
@@ -340,12 +417,11 @@ impl ProposalChannelManager {
         let active = state.active.as_ref()?;
         if active.state != ProposalChannelState::AwaitingUser
             || active.proposal_id.as_deref() != Some(proposal_id)
-            || active.final_responder.is_none()
         {
             return None;
         }
         let mut active = state.active.take()?;
-        let final_responder = active.final_responder.take()?;
+        let final_responder = active.final_responder.take();
         let channel_hash = channel_hash(&active.channel);
         state.tombstones.push_back(Tombstone {
             channel_hash,
@@ -378,7 +454,9 @@ impl ProposalChannelManager {
         }
         self.prune_tombstones(&mut state);
         drop(state);
-        let _ = claim.final_responder.send(status);
+        if let Some(responder) = claim.final_responder {
+            let _ = responder.send(status);
+        }
     }
 
     pub fn resolve_final(&self, proposal_id: &str, status: ProposalFinalStatus) -> bool {
@@ -474,9 +552,11 @@ impl ProposalChannelManager {
 
     fn prune_tombstones(&self, state: &mut ChannelState) {
         let now = Instant::now();
-        while state.tombstones.front().is_some_and(|item| {
-            now.saturating_duration_since(item.created_at) >= TOMBSTONE_TTL
-        }) {
+        while state
+            .tombstones
+            .front()
+            .is_some_and(|item| now.saturating_duration_since(item.created_at) >= TOMBSTONE_TTL)
+        {
             state.tombstones.pop_front();
         }
         while state.tombstones.len() > MAX_TOMBSTONES {
@@ -598,6 +678,23 @@ mod tests {
         manager.validate_permission("session", &channel).unwrap();
         assert_eq!(manager.active_state(), Some(ProposalChannelState::Issued));
         assert!(manager.begin_validation(&channel).is_ok());
+    }
+
+    #[test]
+    fn mcp_validation_uses_trusted_session_id() {
+        let manager = ProposalChannelManager::new();
+        manager.issue("session".into(), 1, None, false).unwrap();
+
+        let context = manager.begin_mcp_validation("session").unwrap();
+        assert_eq!(context.binding.session_id, "session");
+        assert_eq!(context.binding.prompt_id, 1);
+        assert_eq!(
+            manager
+                .begin_mcp_validation("other")
+                .unwrap_err()
+                .status,
+            ProposalValidationStatus::Stale
+        );
     }
 
     #[test]

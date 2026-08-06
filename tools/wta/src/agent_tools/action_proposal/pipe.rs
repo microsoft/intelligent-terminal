@@ -24,6 +24,17 @@ pub struct ProposalPipeRequest {
     pub payload: String,
 }
 
+enum ProposalCompletion {
+    Detached,
+    AwaitFinal(oneshot::Receiver<ProposalFinalStatus>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProposalPayloadSource {
+    Cli,
+    Mcp,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProposalValidationResponse {
     pub phase: ValidationPhase,
@@ -75,10 +86,12 @@ pub enum ProposalPipeEvent {
     Validate {
         context: ValidationContext,
         payload: String,
+        source: ProposalPayloadSource,
         responder: oneshot::Sender<ProposalValidationDecision>,
     },
     Commit {
         proposal_id: String,
+        responder: oneshot::Sender<bool>,
     },
     Invalidate {
         proposal_id: String,
@@ -91,8 +104,8 @@ pub async fn run_server(
     event_tx: mpsc::UnboundedSender<ProposalPipeEvent>,
 ) -> Result<()> {
     let pipe_name = manager.pipe_name();
-    let security = super::pipe_security::build_required()
-        .context("build hardened proposal pipe security")?;
+    let security =
+        super::pipe_security::build_required().context("build hardened proposal pipe security")?;
     let mut server = super::pipe_security::create_server(&pipe_name, true, Some(&security))
         .with_context(|| format!("create proposal pipe '{pipe_name}'"))?;
     tracing::info!(
@@ -144,27 +157,8 @@ async fn serve_connection(
             .await;
         }
     };
-    if request.version != PROTOCOL_VERSION {
-        return write_validation_failure(
-            &mut write_half,
-            ProposalValidationStatus::Rejected,
-            format!(
-                "unsupported proposal pipe version {} (expected {PROTOCOL_VERSION})",
-                request.version
-            ),
-            false,
-        )
-        .await;
-    }
-    if request.payload.len() > MAX_PAYLOAD_BYTES {
-        return write_validation_failure(
-            &mut write_half,
-            ProposalValidationStatus::InvalidSchema,
-            format!("payload exceeds the {MAX_PAYLOAD_BYTES}-byte inline limit"),
-            false,
-        )
-        .await;
-    }
+    let version = request.version;
+    let payload = request.payload;
     let channel = match request.channel.parse::<ProposalChannel>() {
         Ok(channel) => channel,
         Err(error) => {
@@ -177,7 +171,27 @@ async fn serve_connection(
             .await;
         }
     };
-    let context = match manager.begin_validation(&channel) {
+    let source = ProposalPayloadSource::Cli;
+    if version != PROTOCOL_VERSION {
+        return write_validation_failure(
+            &mut write_half,
+            ProposalValidationStatus::Rejected,
+            format!("unsupported proposal pipe version {version} (expected {PROTOCOL_VERSION})"),
+            false,
+        )
+        .await;
+    }
+    if payload.len() > MAX_PAYLOAD_BYTES {
+        return write_validation_failure(
+            &mut write_half,
+            ProposalValidationStatus::InvalidSchema,
+            format!("payload exceeds the {MAX_PAYLOAD_BYTES}-byte inline limit"),
+            false,
+        )
+        .await;
+    }
+    let context = manager.begin_validation(&channel);
+    let context = match context {
         Ok(context) => context,
         Err(failure) => {
             return write_validation_failure(
@@ -195,7 +209,8 @@ async fn serve_connection(
     if event_tx
         .send(ProposalPipeEvent::Validate {
             context,
-            payload: request.payload,
+            payload,
+            source,
             responder: validation_tx,
         })
         .is_err()
@@ -237,16 +252,72 @@ async fn serve_connection(
         .await;
     }
 
-    let (final_tx, final_rx) = oneshot::channel();
-    if !manager.accept_validation(&proposal_id, final_tx) {
+    let completion = if source == ProposalPayloadSource::Mcp {
+        if !manager.accept_validation_detached(&proposal_id) {
+            return write_validation_failure(
+                &mut write_half,
+                ProposalValidationStatus::Stale,
+                "proposal was invalidated while validation completed".to_string(),
+                false,
+            )
+            .await;
+        }
+        ProposalCompletion::Detached
+    } else {
+        let (final_tx, final_rx) = oneshot::channel();
+        if !manager.accept_validation(&proposal_id, final_tx) {
+            return write_validation_failure(
+                &mut write_half,
+                ProposalValidationStatus::Stale,
+                "proposal was invalidated while validation completed".to_string(),
+                false,
+            )
+            .await;
+        }
+        ProposalCompletion::AwaitFinal(final_rx)
+    };
+
+    let (commit_tx, commit_rx) = oneshot::channel();
+    if event_tx
+        .send(ProposalPipeEvent::Commit {
+            proposal_id: proposal_id.clone(),
+            responder: commit_tx,
+        })
+        .is_err()
+    {
+        manager.resolve_final(&proposal_id, ProposalFinalStatus::Unavailable);
         return write_validation_failure(
             &mut write_half,
-            ProposalValidationStatus::Stale,
-            "proposal was invalidated while validation completed".to_string(),
+            ProposalValidationStatus::Unavailable,
+            "Helper UI is unavailable".to_string(),
             false,
         )
         .await;
     }
+    match tokio::time::timeout(VALIDATION_TIMEOUT, commit_rx).await {
+        Ok(Ok(true)) => {}
+        Ok(Ok(false)) => {
+            manager.resolve_final(&proposal_id, ProposalFinalStatus::Cancelled);
+            return write_validation_failure(
+                &mut write_half,
+                ProposalValidationStatus::Stale,
+                "proposal became stale before the card could be presented".to_string(),
+                false,
+            )
+            .await;
+        }
+        Ok(Err(_)) | Err(_) => {
+            manager.resolve_final(&proposal_id, ProposalFinalStatus::Unavailable);
+            return write_validation_failure(
+                &mut write_half,
+                ProposalValidationStatus::Unavailable,
+                "Helper did not confirm that the card was presented".to_string(),
+                false,
+            )
+            .await;
+        }
+    }
+
     if let Err(error) = write_response(
         &mut write_half,
         &ProposalValidationResponse {
@@ -266,14 +337,10 @@ async fn serve_connection(
         });
         return Err(error);
     }
-    if event_tx
-        .send(ProposalPipeEvent::Commit {
-            proposal_id: proposal_id.clone(),
-        })
-        .is_err()
-    {
-        manager.resolve_final(&proposal_id, ProposalFinalStatus::Unavailable);
-    }
+    let final_rx = match completion {
+        ProposalCompletion::Detached => return Ok(()),
+        ProposalCompletion::AwaitFinal(final_rx) => final_rx,
+    };
 
     let final_status = match tokio::time::timeout(USER_DECISION_TIMEOUT, final_rx).await {
         Ok(Ok(status)) => status,
@@ -380,7 +447,6 @@ mod tests {
             serde_json::to_string(&request).unwrap(),
             r#"{"version":1,"channel":"v1.helper.turn","payload":"{}"}"#
         );
-
         let validation = ProposalValidationResponse {
             phase: ValidationPhase::Validation,
             status: ProposalValidationStatus::Accepted,
@@ -471,7 +537,11 @@ mod tests {
             match event_rx.recv().await.unwrap() {
                 ProposalPipeEvent::Commit {
                     proposal_id: committed,
-                } => assert_eq!(committed, proposal_id),
+                    responder,
+                } => {
+                    assert_eq!(committed, proposal_id);
+                    responder.send(true).unwrap();
+                }
                 ProposalPipeEvent::Validate { .. } => panic!("duplicate validation event"),
                 ProposalPipeEvent::Invalidate { .. } => {
                     panic!("unexpected invalidation for confirmed proposal")
@@ -507,4 +577,5 @@ mod tests {
 
         tokio::join!(server_future, event_future, client_future);
     }
+
 }

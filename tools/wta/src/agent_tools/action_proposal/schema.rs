@@ -1,10 +1,10 @@
-//! Wire schema for the direct WTA CLI terminal-action proposal flow
-//! (`wta propose-terminal-actions`). See
-//! `doc/specs/WTA-CLI-terminal-action-proposals.md`.
+//! Wire schemas for the session MCP and fallback WTA CLI terminal-action
+//! proposal flows. See
+//! `doc/specs/WTA-terminal-action-proposals.md`.
 //!
-//! An agent session that can execute tools directly (rather than relying on
-//! the ACP `create_terminal`/helper-proxy path) submits a proposal as one
-//! compact JSON object matching [`ProposalWire`]. This module owns:
+//! The preferred MCP tool accepts [`McpProposalWire`], which omits origin,
+//! schema, choice numbering, and all routing fields. The retained CLI accepts
+//! the versioned [`ProposalWire`]. This module owns:
 //!
 //! * the strict (`deny_unknown_fields`) wire types — deliberately narrower
 //!   than [`crate::coordinator::RecommendationSet`]: they never accept a
@@ -160,6 +160,23 @@ pub struct ProposalChoiceWire {
     pub actions: Vec<ProposalActionWire>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpProposalWire {
+    #[serde(default)]
+    pub recommended_choice: Option<usize>,
+    pub choices: Vec<McpProposalChoiceWire>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpProposalChoiceWire {
+    pub title: String,
+    #[serde(default)]
+    pub rationale: String,
+    pub actions: Vec<ProposalActionWire>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalOpenTargetWire {
@@ -235,6 +252,129 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
         return Err(ProposalError::UnsupportedSchemaVersion(wire.schema_version));
     }
     Ok(wire)
+}
+
+pub fn parse_mcp_proposal_payload(
+    bytes: &[u8],
+    is_autofix_turn: bool,
+) -> Result<ProposalWire, ProposalError> {
+    if bytes.len() > MAX_PAYLOAD_BYTES {
+        return Err(ProposalError::TooLarge { size: bytes.len() });
+    }
+    let proposal: McpProposalWire =
+        serde_json::from_slice(bytes).map_err(|e| ProposalError::Malformed(e.to_string()))?;
+    Ok(ProposalWire {
+        schema_version: SCHEMA_VERSION,
+        origin: if is_autofix_turn {
+            ProposalOrigin::Autofix
+        } else {
+            ProposalOrigin::TerminalAgent
+        },
+        recommended_choice: proposal.recommended_choice,
+        choices: proposal
+            .choices
+            .into_iter()
+            .enumerate()
+            .map(|(index, choice)| ProposalChoiceWire {
+                choice: index + 1,
+                title: choice.title,
+                rationale: choice.rationale,
+                actions: choice.actions,
+            })
+            .collect(),
+    })
+}
+
+pub fn mcp_input_schema() -> serde_json::Value {
+    let target = serde_json::json!({
+        "type": "string",
+        "enum": ["tab", "panel"]
+    });
+    let open_properties = serde_json::json!({
+        "target": target,
+        "cwd": { "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS },
+        "title": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS },
+        "direction": { "type": "string", "enum": ["right", "left", "up", "down", "auto"] },
+        "profile": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS }
+    });
+    let action_schema = serde_json::json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "type": { "const": "send" },
+                    "input": { "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS }
+                },
+                "required": ["type", "input"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": open_properties.as_object().unwrap().iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .chain(std::iter::once(("type".to_string(), serde_json::json!({ "const": "open" }))))
+                    .collect::<serde_json::Map<_, _>>(),
+                "required": ["type", "target"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": open_properties.as_object().unwrap().iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .chain([
+                        ("type".to_string(), serde_json::json!({ "const": "open_and_send" })),
+                        ("input".to_string(), serde_json::json!({
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": MAX_INPUT_CHARS
+                        })),
+                        ("delegate".to_string(), serde_json::json!({ "type": "boolean" }))
+                    ])
+                    .collect::<serde_json::Map<_, _>>(),
+                "required": ["type", "target", "input"]
+            }
+        ]
+    });
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "recommended_choice": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_CHOICES
+            },
+            "choices": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": MAX_CHOICES,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": MAX_TITLE_CHARS
+                        },
+                        "rationale": {
+                            "type": "string",
+                            "maxLength": MAX_RATIONALE_CHARS
+                        },
+                        "actions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": MAX_ACTIONS_PER_CHOICE,
+                            "items": action_schema
+                        }
+                    },
+                    "required": ["title", "actions"]
+                }
+            }
+        },
+        "required": ["choices"]
+    })
 }
 
 /// Convert a decoded [`ProposalWire`] into a [`RecommendationSet`], applying

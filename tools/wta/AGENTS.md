@@ -5,9 +5,8 @@
 WTA (Windows Terminal Agent) is a Rust binary that bridges AI agent CLIs with
 Windows Terminal. It is built around a **helper + master** architecture (see
 `doc/specs/Multi-window-agent-pane.md`) and runs in one of three roles, selected
-at startup by flags / subcommands — **there is no standalone agent / TUI mode and
-no MCP server**; bare `wta` with neither `--master` nor `--connect-master` exits
-with an error.
+at startup by flags / subcommands. There is no standalone agent / TUI mode;
+bare `wta` with neither a role flag nor a subcommand exits with an error.
 
 - **`wta-master`** (`--master <pipe>`, spawned once by the C++ `SharedWta`
   singleton) -- the ACP **multiplexer**. Owns the *single* `ACP/stdio`
@@ -24,6 +23,12 @@ with an error.
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
+- **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
+  listener owned by `wta-master`, plus an on-demand loopback relay per WSL
+  distro) -- exposes only `request_terminal_actions`. A per-session bearer
+  capability resolves to ACP SessionId, then `session_to_helper` routes the
+  request over the existing master/helper pipe. It never executes terminal
+  actions.
 
 The helper side owns `ShellManager`, which services the agent CLI's ACP
 `create_terminal` / permission requests by routing to either a local subprocess
@@ -49,8 +54,13 @@ a single implementation today:
                |  ACP/stdio                      |  ShellManager
                v                                 |  (create_terminal /
          Agent CLI                               |   permission)
-      (copilot/claude/                           v
-       gemini/codex)                        CliChannel
+      (copilot/claude/                           |
+       gemini/codex)                             v
+               | per-session HTTP MCP             |
+               | capability                       |  CliChannel
+               v                                  |
+        master/WSL relay MCP -------------------> |
+         (existing ACP pipe routing)              |
                                                  |
  Human / agent shell-out:                        v
    wta <subcommand>  ----------------->  wtcli.exe -> COM IProtocolServer
@@ -112,10 +122,11 @@ The COM surface exposes reads and mutations, including `list_*`, `read_pane_outp
 wta --agent "copilot --acp --stdio"
 ```
 
-Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
-by the helper. The agent reaches Windows Terminal by shelling out to the `wta` /
-`wtcli` CLI helpers (which call WT's COM `IProtocolServer`); WTA no longer
-generates an MCP config or runs an MCP server for the agent.
+Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`,
+not by the helper. Each eligible Host or WSL ACP session receives an HTTP MCP
+configuration for the master-owned proposal endpoint or its distro-local
+relay. Other Windows Terminal operations remain available through the `wta` /
+`wtcli` CLI helpers, which call WT's COM `IProtocolServer`.
 
 ### Claude and Codex
 
@@ -534,4 +545,3 @@ was already serialized.
 ready, flip `MVP_SESSIONS_ORIGIN_FILTER` to `OriginFilter::All` and
 delete `WTA_SESSIONS_SHOW_AGENT_PANE` handling in
 `resolve_sessions_origin_filter`. No other call site needs to change.
-

@@ -176,9 +176,10 @@ impl App {
         active_target: Option<&str>,
         payload: &str,
         proposal_id: &str,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource,
     ) -> DirectProposalEvaluation {
         use crate::agent_tools::action_proposal::schema::{
-            build_recommendation_set, parse_proposal_payload,
+            build_recommendation_set, parse_mcp_proposal_payload, parse_proposal_payload,
         };
 
         if !self.session_to_tab.contains_key(session_id) {
@@ -222,7 +223,15 @@ impl App {
             }
         }
 
-        let wire = match parse_proposal_payload(payload.as_bytes()) {
+        let wire = match source {
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli => {
+                parse_proposal_payload(payload.as_bytes())
+            }
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp => {
+                parse_mcp_proposal_payload(payload.as_bytes(), is_autofix)
+            }
+        };
+        let wire = match wire {
             Ok(wire) => wire,
             Err(error) => return DirectProposalEvaluation::Rejected(error),
         };
@@ -257,6 +266,7 @@ impl App {
         &mut self,
         context: &crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: &str,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource,
     ) -> crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
         use crate::agent_tools::action_proposal::channel::ProposalValidationStatus;
         use crate::agent_tools::action_proposal::schema::ProposalError;
@@ -268,6 +278,7 @@ impl App {
             binding.active_target.as_deref(),
             payload,
             &context.proposal_id,
+            source,
         ) {
             DirectProposalEvaluation::Presented => {
                 crate::agent_tools::action_proposal::pipe::ProposalValidationDecision::accepted()
