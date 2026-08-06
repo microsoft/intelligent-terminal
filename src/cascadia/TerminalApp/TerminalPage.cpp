@@ -7837,7 +7837,7 @@ namespace winrt::TerminalApp::implementation
                 // all ContentId attaches reject content already observed dead.
                 // The keep take already removed detached bookkeeping and its
                 // revoker, so raise the terminal-end event at this boundary.
-                if (connection)
+                if (connection && !_manager.IsReattachPendingContent(contentId))
                 {
                     const auto sessionId = connection.SessionId();
                     if (sessionId != winrt::guid{})
@@ -7861,7 +7861,9 @@ namespace winrt::TerminalApp::implementation
             // stack, inevitably resulting in a wrong_thread
             // The connection can still exit after this final check; attaching
             // a pane that exits after the boundary is the ordinary close race.
-            return _SetupControl(TermControl::NewControlByAttachingContent(content));
+            const auto control = _SetupControl(TermControl::NewControlByAttachingContent(content));
+            _manager.ConfirmReattachedContent(contentId);
+            return control;
         }
         return nullptr;
     }
@@ -7938,6 +7940,22 @@ namespace winrt::TerminalApp::implementation
             }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
+
+            if (!newTerminalArgs.AgentSessionId().empty())
+            {
+                if (const auto attachedConnection = control.Connection())
+                {
+                    if (const auto attachedSessionId = attachedConnection.SessionId(); attachedSessionId != winrt::guid{})
+                    {
+                        _paneAgentSessions.insert_or_assign(
+                            attachedSessionId,
+                            _PaneAgentSession{
+                                newTerminalArgs.AgentSessionId(),
+                                newTerminalArgs.AgentSessionAgent(),
+                                newTerminalArgs.AgentResumeCommandline() });
+                    }
+                }
+            }
 
             // Cross-window agent-pane drag: if the source tab stashed an
             // original StableId for this ContentId, the migrating pane was
@@ -8170,8 +8188,12 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto keptContentId = _manager.TryReattachKeptSession(keptId); keptContentId != 0)
                 {
+                    auto cancelReattach = wil::scope_exit([&]() noexcept {
+                        _manager.CancelKeptSessionReattach(keptId);
+                    });
                     if (const auto keptControl = _AttachControlToContent(keptContentId))
                     {
+                        cancelReattach.release();
                         if (newTerminalArgs && !newTerminalArgs.AgentSessionId().empty())
                         {
                             const auto attachedConnection = keptControl.Connection();

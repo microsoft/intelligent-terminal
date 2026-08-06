@@ -1098,12 +1098,26 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto sessionId = connection.SessionId(); sessionId != winrt::guid{})
                         {
+                            auto restoreArgs = pane->GetTerminalArgsForPane(BuildStartupKind::Content).try_as<NewTerminalArgs>();
+                            if (!restoreArgs)
+                            {
+                                return;
+                            }
+                            restoreArgs.ContentId(control.ContentId());
+                            restoreArgs.SessionId(sessionId);
+                            if (const auto binding = _paneAgentSessions.find(sessionId); binding != _paneAgentSessions.end())
+                            {
+                                restoreArgs.AgentSessionId(binding->second.sessionId);
+                                restoreArgs.AgentSessionAgent(binding->second.agent);
+                                restoreArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                            }
+
                             // Capture the pane id before detaching, while the
                             // control can still resolve it. Only sessions that
                             // remain retained after immediate liveness reaping
                             // suppress the ordinary tab-teardown close event.
                             auto paneId = _FindSessionIdForControl(control);
-                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, shellSessionRevision, control))
+                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, shellSessionRevision, restoreArgs, control))
                             {
                                 if (!paneId.empty())
                                 {

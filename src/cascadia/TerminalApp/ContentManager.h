@@ -91,21 +91,18 @@ namespace winrt::TerminalApp::implementation
     struct KeptGroupRestoreResult : KeptGroupRestoreResultT<KeptGroupRestoreResult>
     {
     public:
-        KeptGroupRestoreResult(std::vector<uint64_t> contentIds,
+        KeptGroupRestoreResult(std::vector<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> restoreArgs,
                                winrt::hstring shellSessionId,
-                               const int64_t shellSessionRevision) :
-            _contentIds{ winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView() },
-            _shellSessionId{ std::move(shellSessionId) },
-            _shellSessionRevision{ shellSessionRevision }
-        {
-        }
+                               const int64_t shellSessionRevision);
 
         winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentIds() const noexcept { return _contentIds; }
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> RestoreArgs() const noexcept { return _restoreArgs; }
         winrt::hstring ShellSessionId() const noexcept { return _shellSessionId; }
         int64_t ShellSessionRevision() const noexcept { return _shellSessionRevision; }
 
     private:
         winrt::Windows::Foundation::Collections::IVectorView<uint64_t> _contentIds{ nullptr };
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> _restoreArgs{ nullptr };
         winrt::hstring _shellSessionId;
         int64_t _shellSessionRevision{ 0 };
     };
@@ -128,11 +125,16 @@ namespace winrt::TerminalApp::implementation
                                   const winrt::hstring& title,
                                   const winrt::hstring& shellSessionId,
                                   int64_t shellSessionRevision,
+                                  const Microsoft::Terminal::Settings::Model::NewTerminalArgs& restoreArgs,
                                   const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
+        void CancelKeptSessionReattach(const winrt::guid& sessionId);
+        void ConfirmReattachedContent(uint64_t contentId);
+        bool IsReattachPendingContent(uint64_t contentId);
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> DetachedSessions();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
-        winrt::TerminalApp::KeptGroupRestoreResult TryReattachKeptGroup(const winrt::guid& groupId);
+        winrt::TerminalApp::KeptGroupRestoreResult BeginReattachKeptGroup(const winrt::guid& groupId);
+        void CancelKeptGroupReattach(const winrt::guid& groupId);
         bool DiscardKeptSession(const winrt::guid& sessionId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         bool HasKeptSessions();
@@ -156,6 +158,12 @@ namespace winrt::TerminalApp::implementation
             uint64_t contentId{ 0 };
             // The tab this pane was detached from.
             winrt::guid groupId{};
+            // Immutable restore configuration captured at detach time.
+            Microsoft::Terminal::Settings::Model::NewTerminalArgs restoreArgs{ nullptr };
+            // A session remains owned by ContentManager until an attach has
+            // completed. Pending sessions are hidden from duplicate restore
+            // requests but keep their liveness revoker armed.
+            bool reattachPending{ false };
             // A detached content has no TermControl, so nothing else is left
             // watching its connection. This is how we notice a shell that exits
             // while detached.
@@ -178,6 +186,7 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring title;
             winrt::hstring shellSessionId;
             int64_t shellSessionRevision{ 0 };
+            bool reattachPending{ false };
             std::vector<winrt::guid> sessionIds;
         };
 
@@ -204,11 +213,16 @@ namespace winrt::TerminalApp::implementation
                                           const winrt::hstring& shellSessionId,
                                           int64_t shellSessionRevision,
                                           uint64_t contentId,
+                                          const Microsoft::Terminal::Settings::Model::NewTerminalArgs& restoreArgs,
                                           const Microsoft::Terminal::Control::ControlCore& core);
         uint64_t _tryReattachKeptSessionOnOwner(const winrt::guid& sessionId);
+        void _cancelKeptSessionReattachOnOwner(const winrt::guid& sessionId);
+        void _confirmReattachedContentOnOwner(uint64_t contentId);
+        bool _isReattachPendingContentOnOwner(uint64_t contentId) const;
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> _detachedSessionsOnOwner();
         winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> _keptGroupsOnOwner();
-        winrt::TerminalApp::KeptGroupRestoreResult _tryReattachKeptGroupOnOwner(const winrt::guid& groupId);
+        winrt::TerminalApp::KeptGroupRestoreResult _beginReattachKeptGroupOnOwner(const winrt::guid& groupId);
+        void _cancelKeptGroupReattachOnOwner(const winrt::guid& groupId);
         bool _discardKeptSessionOnOwner(const winrt::guid& sessionId);
         void _discardKeptGroupOnOwner(const winrt::guid& groupId);
 

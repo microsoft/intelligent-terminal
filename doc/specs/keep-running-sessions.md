@@ -80,8 +80,10 @@ emperor that detached content is a reason to stay alive.
 ### What a detached session is
 
 `ContentManager::DetachForKeepRunning(...)` detaches the control and records
-`sessionId → ContentId`, plus the detached tab's committed durable
-`shell_sessions` id/revision on the kept-group metadata. The detached
+`sessionId → ContentId` and a cloned `NewTerminalArgs` restore projection
+(profile, cwd, commandline, title, appearance and agent-binding fields), plus
+the detached tab's committed durable `shell_sessions` id/revision on the
+kept-group metadata. The detached
 `ControlInteractivity` keeps:
 
 * its `ConptyConnection`, whose output thread keeps reading the pty — so nothing
@@ -115,7 +117,9 @@ A terminal with no windows is otherwise invisible and unquittable, so
 whenever sessions are detached, and clicking "Focus Terminal" with no windows
 reattaches every live group directly from the process-wide `ContentManager`.
 The notification-area menu also lists each detached tab separately, with
-**Restore** and **Close** actions.
+**Restore** and **Close** actions. A group is hidden while its restore is
+pending, preventing a second restore request; it reappears if dispatch leaves
+any pane unconfirmed.
 
 ### Ordering with bucket 1
 
@@ -152,18 +156,21 @@ Restoring from a snapshot still mints a fresh id unconditionally, exactly as
 before, because that really is a brand new shell. The `/shell-sessions` handler
 additionally passes the original id along in `KeptSessionId`, and
 `_MakeTerminalPane` calls `TryReattachKeptSession` on it. That call is the single
-arbiter: it is an atomic take, so two restores of the same record cannot both
-believe they own the session — the loser falls through and uses the fresh id for
-a genuinely new shell. Deciding this earlier, while building the actions, would
-leave exactly that window open, and a duplicated id means two panes sharing one
-buffer sidecar, one `pane_id` and one agent binding.
+arbiter: it atomically marks the session pending, so two restores cannot both
+believe they own it. `TerminalPage::_AttachControlToContent` confirms only after
+the new control is attached and set up; a failed attach cancels the pending
+claim, and the loser falls through and uses the fresh id for a genuinely new
+shell. A duplicated id would mean two panes sharing one buffer sidecar, one
+`pane_id` and one agent binding.
 
 ### Getting back in
 
 Launching the terminal again does not start a new process — the named-mutex
 handoff delivers the commandline to the headless one. A bare launch snapshots
-the current detached group ids, atomically takes each group, and rebuilds tabs
-from their live `ContentId` values. This deliberately does not use
+the current detached group ids, transactionally marks each group pending, and
+rebuilds tabs from cloned live restore arguments. Each pane stays tracked until
+its control confirms attachment; dispatch cancellation releases only
+unconfirmed panes. This deliberately does not use
 `PersistedWindowLayouts`: those layouts are controlled by the user's
 `firstWindowPreference` and become stale after a partial restore or discard.
 

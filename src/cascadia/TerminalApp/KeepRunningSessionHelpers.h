@@ -65,21 +65,27 @@ namespace winrt::TerminalApp::implementation
             return actions;
         }
 
-        const auto contentIds = restoredGroup.ContentIds();
-        if (!contentIds || contentIds.Size() == 0)
+        const auto restoreArgs = restoredGroup.RestoreArgs();
+        if (!restoreArgs || restoreArgs.Size() == 0)
         {
             return actions;
         }
 
-        actions.reserve(static_cast<size_t>(contentIds.Size()));
+        actions.reserve(static_cast<size_t>(restoreArgs.Size()));
 
         const auto shellSessionId = restoredGroup.ShellSessionId();
         const auto shellSessionRevision = restoredGroup.ShellSessionRevision();
 
-        for (const auto contentId : contentIds)
+        for (const auto& storedArgs : restoreArgs)
         {
-            NewTerminalArgs terminalArgs;
-            terminalArgs.ContentId(contentId);
+            if (!storedArgs)
+            {
+                continue;
+            }
+
+            auto terminalArgs = storedArgs.Copy().try_as<NewTerminalArgs>();
+            terminalArgs.DurableShellSessionId(L"");
+            terminalArgs.DurableShellSessionRevision(0);
 
             if (actions.empty())
             {
