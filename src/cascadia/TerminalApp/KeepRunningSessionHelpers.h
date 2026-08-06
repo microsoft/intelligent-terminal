@@ -7,6 +7,20 @@
 
 namespace winrt::TerminalApp::implementation
 {
+    struct ShellSessionCloseActions
+    {
+        bool save{ false };
+        bool detach{ false };
+    };
+
+    inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(const bool restoreShellSessions, const bool continueRunningCommands) noexcept
+    {
+        return {
+            .save = restoreShellSessions,
+            .detach = restoreShellSessions && continueRunningCommands,
+        };
+    }
+
     enum class HeadlessTrayActivationMode
     {
         SummonExistingWindow = 0,
