@@ -7565,16 +7565,7 @@ fn stage_direct_proposal(
             false,
         )
         .unwrap();
-    manager
-        .arm(
-            session_id,
-            &channel,
-            TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes(),
-        )
-        .unwrap();
-    let context = manager
-        .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-        .unwrap();
+    let context = manager.begin_validation(&channel).unwrap();
     let proposal_id = context.proposal_id.clone();
     let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::DirectTerminalActionProposal {
