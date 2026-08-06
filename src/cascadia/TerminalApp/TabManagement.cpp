@@ -861,6 +861,11 @@ namespace winrt::TerminalApp::implementation
         return _ShellSessionSaveResult{ winrt::to_hstring(id.asString()), revision.asInt64(), forked.asBool() };
     }
 
+    void TerminalPage::_ApplyShellSessionSaveResult(Tab* const tab, const _ShellSessionSaveResult& save)
+    {
+        tab->SetDurableShellSession(save.id, save.revision);
+    }
+
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
         const auto closeActions = GetShellSessionCloseActions(
@@ -884,6 +889,7 @@ namespace winrt::TerminalApp::implementation
         });
         if (!hasUserInput && tab->DurableShellSessionId().empty())
         {
+            // Intentional Durable Sessions boundary: profile startup commands alone do not qualify until the user sends input.
             _agentPaneLog("_PersistShellSession: skipped — no user input and no durable id");
             return;
         }
@@ -1043,6 +1049,7 @@ namespace winrt::TerminalApp::implementation
         }
         THROW_HR_IF(E_FAIL, !result);
         const auto save = _ParseShellSessionSaveResponse(*result);
+        _ApplyShellSessionSaveResult(tab, save);
         committed = true;
 
         // Only now that the record is durably saved is it sound to detach the
