@@ -130,14 +130,23 @@ pub struct RestartRequest {
     pub agent_cmd: Option<String>,
 }
 
+fn restart_agent_executable(req: &RestartRequest) -> Option<String> {
+    req.agent_cmd.as_deref().and_then(|agent_cmd| {
+        crate::coordinator::split_windows_commandline(agent_cmd.trim())
+            .into_iter()
+            .next()
+    })
+}
+
 async fn forward_restart_agent_stack_requests(
     mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
     mut publish: impl FnMut(String),
 ) {
     while let Some(req) = restart_rx.recv().await {
+        let new_agent_executable = restart_agent_executable(&req);
         tracing::info!(
             target: "helper",
-            new_agent = ?req.agent_cmd,
+            new_agent_executable = ?new_agent_executable,
             "restart requested — asking WT to force-restart the agent stack"
         );
         let evt = serde_json::json!({
@@ -149,10 +158,8 @@ async fn forward_restart_agent_stack_requests(
     }
 }
 
-pub fn spawn_restart_agent_stack_forwarder(
-    restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
-) {
-    tokio::task::spawn_local(forward_restart_agent_stack_requests(
+pub fn spawn_restart_agent_stack_forwarder(restart_rx: mpsc::UnboundedReceiver<RestartRequest>) {
+    tokio::spawn(forward_restart_agent_stack_requests(
         restart_rx,
         crate::wt_protocol_events::send,
     ));
@@ -3416,11 +3423,10 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::acp;
     use super::{
-        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        forward_restart_agent_stack_requests, is_redundant_startup_model_error,
-        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label,
-        ClientState, PromptTimingState, PromptUsageIdentity, RestartRequest, SoftStopReason,
-        WtaClient,
+        acp_result_failure_fields, complete_prompt_request, forward_restart_agent_stack_requests,
+        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
+        restart_agent_executable, timeout_result_failure_fields, tool_call_kind_label, ClientState,
+        PromptTimingState, PromptUsageIdentity, RestartRequest, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3456,6 +3462,20 @@ mod tests {
         forwarder
             .await
             .expect("restart forwarder must shut down cleanly");
+    }
+
+    #[test]
+    fn restart_logging_excludes_agent_arguments() {
+        let request = RestartRequest {
+            agent_cmd: Some(
+                r#""C:\Program Files\Agent\custom-agent.exe" --token secret"#.to_string(),
+            ),
+        };
+
+        assert_eq!(
+            restart_agent_executable(&request).as_deref(),
+            Some(r"C:\Program Files\Agent\custom-agent.exe")
+        );
     }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
