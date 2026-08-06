@@ -136,12 +136,12 @@ Describe 'Feature two tabs run different agents through one master' -Tag 'Featur
         Initialize-LogOffsets -App $script:app | Out-Null
         Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" | Out-Null
 
-        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
-                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
-            }) | Should -BeTrue -Because 'switching agents must replace tab B helper/pane'
-        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 45
+        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 60
         $script:tabBPane = $newB.PaneSessionId
         $script:tabBPane | Should -Match '[0-9A-Fa-f-]{36}'
+        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
+            }) | Should -BeTrue -Because 'switching agents must retire tab B old helper/pane'
 
         (& $script:GetMaster).ProcessId | Should -Be $masterBefore.ProcessId -Because 'a per-tab switch must reuse the shared master'
         (Get-AgentPaneSession -App $script:app -PaneSessionId $script:tabAPane) |

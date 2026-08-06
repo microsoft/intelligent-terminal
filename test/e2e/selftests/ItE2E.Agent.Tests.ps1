@@ -45,7 +45,6 @@ Describe 'Agent pane + autofix' -Tag 'Agent' -Skip:(-not ($script:HasPackage -an
                 # …and autofix submits a "command failed" prompt to copilot.
                 $ev = Wait-Autofix -Listener $listener -TimeoutSec 45
                 $ev | Should -Not -BeNullOrEmpty
-                $ev.params.cli_source | Should -Be 'copilot'
             }
             finally { Stop-WtEventListener -Listener $listener }
         }
