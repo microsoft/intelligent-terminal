@@ -1864,8 +1864,7 @@ pub async fn run_acp_client_over_pipe(
         .as_ref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let mut proposal_commands_supported =
-        matches!(agent_source, crate::agent_source::AgentSource::Host);
+    let mut proposal_commands_supported = true;
 
     // Connect to the master singleton over the named pipe. The C++
     // SharedWta side spawns the master and the helper basically back
@@ -2173,8 +2172,9 @@ pub async fn run_acp_client_over_pipe(
             );
             anyhow::anyhow!("initialize over master pipe failed: {}", e)
         })?;
+    let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
     let cloud_catalog =
-        crate::protocol::acp::model_select::extract_wta_cloud_catalog(&mut init_resp.meta);
+        crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
     {
@@ -2190,8 +2190,8 @@ pub async fn run_acp_client_over_pipe(
         family_id: usage_family_id,
         reporter_id: init_resp.agent_info.as_ref().map(|info| info.name.clone()),
     };
-    proposal_commands_supported &=
-        init_resp.agent_capabilities.mcp_capabilities.http;
+    proposal_commands_supported &= init_resp.agent_capabilities.mcp_capabilities.http
+        && wta_meta.proposal_mcp.as_deref() == Some("http-v1");
     // Connection milestone at info so a clean handshake is visible in release.
     tracing::info!(
         target: "helper",

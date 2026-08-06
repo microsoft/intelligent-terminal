@@ -7,8 +7,9 @@ remains as a fallback transport.
 
 ## Summary
 
-`wta-master` owns one loopback proposal MCP endpoint. Each host ACP session
-receives a distinct bearer capability:
+`wta-master` owns one Windows-loopback proposal MCP endpoint. Host ACP
+sessions use it directly. Each WSL distro gets an on-demand loopback relay,
+and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
@@ -31,10 +32,21 @@ human-held tool call.
 
 ## Ownership and routing
 
-MCP is session-level, not agent-level. `wta-master` still owns one shared Agent
-CLI process, while every ACP `session/new` or `session/load` request includes a
-distinct `McpServer::Http` entry. All entries point to the same ephemeral
-`127.0.0.1` endpoint but carry different `Authorization` headers.
+MCP is session-level, not agent-level. `wta-master` may own multiple Agent CLI
+processes, keyed by Agent identity, command, and Host/WSL source, while every
+ACP `session/new` or `session/load` request includes a distinct
+`McpServer::Http` entry. Host entries point directly to master's ephemeral
+Windows `127.0.0.1` endpoint. WSL entries point to an ephemeral
+`127.0.0.1` relay inside that Agent's distro. All entries carry different
+`Authorization` headers.
+
+The WSL relay exists because NAT-mode WSL cannot reliably reach an inbound
+Windows listener without a Hyper-V firewall rule. Master starts one relay per
+distro with `wsl.exe`; the relay invokes a fixed, encoded Windows PowerShell
+byte forwarder for each HTTP request, which reaches master's Windows-loopback
+endpoint. The bearer header remains in the forwarded bytes and never enters a
+process command line. If Python 3 or Windows interop is unavailable in a
+distro, master does not advertise proposal MCP to that Helper.
 
 Before creating or loading a session:
 
@@ -122,7 +134,7 @@ this result.
 
 Master owns:
 
-- one loopback HTTP listener;
+- one Windows-loopback HTTP listener and the per-distro WSL relay lifecycle;
 - hashed pending and committed session capabilities;
 - the `SessionId -> current HelperRoute` map.
 
@@ -171,10 +183,13 @@ user-facing representation.
 
 ## HTTP and ACP boundaries
 
-The HTTP server binds only to an ephemeral IPv4 loopback port. It requires the
-session bearer capability, validates Host and any Origin header, rejects
-duplicate or oversized headers, rejects transfer encoding, and caps request
-bodies. Capabilities are stored hashed and are never logged.
+The HTTP server binds only to an ephemeral IPv4 Windows-loopback port. WSL
+relays bind only to ephemeral loopback ports inside their distro and rewrite
+loopback Host/Origin authorities to the upstream loopback authority before
+byte-forwarding. The master server requires the session bearer capability,
+validates Host and any Origin header, rejects duplicate or oversized headers,
+rejects transfer encoding, and caps request bodies. Capabilities are stored
+hashed and are never logged.
 
 After authentication, master resolves capability to SessionId, then resolves
 SessionId through the live `session_to_helper` map. It forwards the typed

@@ -23,11 +23,12 @@ bare `wta` with neither a role flag nor a subcommand exits with an error.
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
-- **Proposal MCP endpoint** (one ephemeral loopback Streamable HTTP listener
-  owned by `wta-master`) -- exposes only `request_terminal_actions`. A
-  per-session bearer capability resolves to ACP SessionId, then
-  `session_to_helper` routes the request over the existing master/helper pipe.
-  It never executes terminal actions.
+- **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
+  listener owned by `wta-master`, plus an on-demand loopback relay per WSL
+  distro) -- exposes only `request_terminal_actions`. A per-session bearer
+  capability resolves to ACP SessionId, then `session_to_helper` routes the
+  request over the existing master/helper pipe. It never executes terminal
+  actions.
 
 The helper side owns `ShellManager`, which services the agent CLI's ACP
 `create_terminal` / permission requests by routing to either a local subprocess
@@ -58,7 +59,7 @@ a single implementation today:
                | per-session HTTP MCP             |
                | capability                       |  CliChannel
                v                                  |
-        master loopback MCP --------------------> |
+        master/WSL relay MCP -------------------> |
          (existing ACP pipe routing)              |
                                                  |
  Human / agent shell-out:                        v
@@ -121,10 +122,11 @@ The COM surface exposes reads and mutations, including `list_*`, `read_pane_outp
 wta --agent "copilot --acp --stdio"
 ```
 
-Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
-by the helper. Each host ACP session receives an HTTP MCP configuration for the
-master-owned proposal endpoint. Other Windows Terminal operations remain available
-through the `wta` / `wtcli` CLI helpers, which call WT's COM `IProtocolServer`.
+Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`,
+not by the helper. Each eligible Host or WSL ACP session receives an HTTP MCP
+configuration for the master-owned proposal endpoint or its distro-local
+relay. Other Windows Terminal operations remain available through the `wta` /
+`wtcli` CLI helpers, which call WT's COM `IProtocolServer`.
 
 ### Claude and Codex
 

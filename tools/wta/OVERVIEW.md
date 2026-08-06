@@ -102,16 +102,15 @@ running executable's directory instead.
 
 ### 4. Proposal MCP endpoint — master-owned
 
-```
-http://127.0.0.1:<ephemeral-port>/mcp
-```
-
-`wta-master` owns one stateless Streamable HTTP endpoint. Each ACP session's
-`McpServer::Http` configuration carries a distinct bearer capability. Master
-maps it to SessionId, resolves the current Helper through `session_to_helper`,
-and forwards the typed input over the existing ACP pipe. The endpoint exposes
-only `request_terminal_actions` and returns after the Helper confirms that the
-recommendation card was presented. The user confirms or cancels independently.
+`wta-master` owns one stateless Streamable HTTP endpoint on Windows loopback.
+Host Agents use it directly; WSL Agents use an on-demand loopback relay inside
+their distro, avoiding inbound Windows firewall requirements. Each ACP
+session's `McpServer::Http` configuration carries a distinct bearer
+capability. Master maps it to SessionId, resolves the current Helper through
+`session_to_helper`, and forwards the typed input over the existing ACP pipe.
+The endpoint exposes only `request_terminal_actions` and returns after the
+Helper confirms that the recommendation card was presented. The user confirms
+or cancels independently.
 
 ---
 

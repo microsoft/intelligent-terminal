@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::MasterStateInner;
+use crate::agent_source::AgentSource;
 use crate::agent_tools::action_proposal::mcp::HelperRequest;
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
 
@@ -22,6 +23,118 @@ const MAX_CONNECTIONS: usize = 32;
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const HELPER_TIMEOUT: Duration = Duration::from_secs(25);
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+const WSL_RELAY_SCRIPT: &str = r#"
+import base64
+import socketserver
+import subprocess
+import sys
+import time
+
+UPSTREAM_HOST = sys.argv[1]
+UPSTREAM_PORT = sys.argv[2]
+POWERSHELL = r'''
+__D__client = [Net.Sockets.TcpClient]::new()
+__D__client.Connect('__WTA_HOST__', [int]'__WTA_PORT__')
+__D__network = __D__client.GetStream()
+__D__stdin = [Console]::OpenStandardInput()
+__D__stdin.CopyTo(__D__network)
+__D__client.Client.Shutdown([Net.Sockets.SocketShutdown]::Send)
+__D__stdout = [Console]::OpenStandardOutput()
+__D__network.CopyTo(__D__stdout)
+'''
+POWERSHELL = POWERSHELL.replace("__D__", chr(36))
+POWERSHELL = POWERSHELL.replace("__WTA_HOST__", UPSTREAM_HOST)
+POWERSHELL = POWERSHELL.replace("__WTA_PORT__", UPSTREAM_PORT)
+POWERSHELL_ENCODED = base64.b64encode(POWERSHELL.encode("utf-16le")).decode("ascii")
+
+def forward(request):
+    process = subprocess.run(
+        ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+         "-EncodedCommand", POWERSHELL_ENCODED],
+        input=request, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=35, check=False)
+    return process.stdout if process.returncode == 0 else b""
+
+def read_request(sock):
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            return None
+        data += chunk
+        if len(data) > 32768:
+            return None
+    head, body = data.split(b"\r\n\r\n", 1)
+    lines = head.split(b"\r\n")
+    content_length = 0
+    rewritten = [lines[0]]
+    for line in lines[1:]:
+        name, separator, value = line.partition(b":")
+        lower = name.strip().lower()
+        if lower == b"content-length":
+            content_length = int(value.strip())
+            if content_length > 1048576:
+                return None
+        if lower == b"host":
+            line = b"Host: " + UPSTREAM_HOST.encode() + b":" + UPSTREAM_PORT.encode()
+        elif lower == b"origin":
+            origin = value.strip().lower()
+            if origin.startswith(b"http://127.0.0.1:") or origin.startswith(b"http://localhost:"):
+                line = b"Origin: http://" + UPSTREAM_HOST.encode() + b":" + UPSTREAM_PORT.encode()
+        rewritten.append(line)
+    while len(body) < content_length:
+        chunk = sock.recv(min(4096, content_length - len(body)))
+        if not chunk:
+            return None
+        body += chunk
+    return b"\r\n".join(rewritten) + b"\r\n\r\n" + body[:content_length]
+
+class Handler(socketserver.BaseRequestHandler):
+    def handle(self):
+        request = read_request(self.request)
+        if request is None:
+            return
+        self.request.sendall(forward(request))
+
+class Server(socketserver.ThreadingTCPServer):
+    allow_reuse_address = False
+    daemon_threads = True
+
+with Server(("127.0.0.1", 0), Handler) as server:
+    probe = ("GET /mcp HTTP/1.1\r\nHost: " + UPSTREAM_HOST + ":" +
+             UPSTREAM_PORT + "\r\nConnection: close\r\n\r\n").encode()
+    for attempt in range(50):
+        if forward(probe).startswith(b"HTTP/1.1 401"):
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError("Windows loopback bridge is unavailable")
+    print(server.server_address[1], flush=True)
+    server.serve_forever()
+"#;
+
+pub(super) struct Endpoints {
+    host: String,
+    wsl: Mutex<HashMap<String, WslRelay>>,
+}
+
+struct WslRelay {
+    endpoint: String,
+    child: tokio::process::Child,
+}
+
+impl Endpoints {
+    pub(super) fn new(host: String) -> Self {
+        Self {
+            host,
+            wsl: Mutex::new(HashMap::new()),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub(super) struct PendingCapability {
@@ -106,6 +219,89 @@ pub(super) fn server_config(
             acp::schema::v1::HttpHeader::new("Authorization", format!("Bearer {}", pending.secret)),
         ]),
     )
+}
+
+pub(super) async fn endpoint_for(
+    state: &Arc<MasterStateInner>,
+    source: &AgentSource,
+) -> Result<String> {
+    let AgentSource::Wsl { distro } = source else {
+        return Ok(state.proposal_mcp_endpoints.host.clone());
+    };
+
+    let mut relays = state.proposal_mcp_endpoints.wsl.lock().await;
+    if let Some(relay) = relays.get_mut(distro) {
+        if relay.child.try_wait()?.is_none() {
+            return Ok(relay.endpoint.clone());
+        }
+        relays.remove(distro);
+    }
+
+    let upstream = state
+        .proposal_mcp_endpoints
+        .host
+        .strip_prefix("http://")
+        .and_then(|value| value.strip_suffix(ENDPOINT_PATH))
+        .context("proposal MCP host endpoint is malformed")?;
+    let (upstream_host, upstream_port) = upstream
+        .rsplit_once(':')
+        .context("proposal MCP host endpoint has no port")?;
+    let mut command = tokio::process::Command::new("wsl.exe");
+    command
+        .arg("-d")
+        .arg(distro)
+        .arg("--")
+        .arg("python3")
+        .arg("-u")
+        .arg("-c")
+        .arg(WSL_RELAY_SCRIPT)
+        .arg(upstream_host)
+        .arg(upstream_port)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("start proposal MCP relay in WSL distro {distro}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("WSL proposal MCP relay has no stdout")?;
+    let mut stdout = tokio::io::BufReader::new(stdout);
+    let mut port = String::new();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::io::AsyncBufReadExt::read_line(&mut stdout, &mut port),
+    )
+    .await
+    .with_context(|| format!("timed out starting proposal MCP relay in {distro}"))?
+    .with_context(|| format!("read proposal MCP relay port from {distro}"))?;
+    let port = port
+        .trim()
+        .parse::<u16>()
+        .with_context(|| format!("invalid proposal MCP relay port from {distro}"))?;
+    if child.try_wait()?.is_some() {
+        anyhow::bail!("proposal MCP relay exited during startup in {distro}");
+    }
+    let endpoint = format!("http://127.0.0.1:{port}{ENDPOINT_PATH}");
+    tracing::info!(
+        target: "proposal_mcp",
+        distro = %distro,
+        endpoint = %endpoint,
+        "WSL proposal MCP loopback relay ready"
+    );
+    relays.insert(
+        distro.clone(),
+        WslRelay {
+            endpoint: endpoint.clone(),
+            child,
+        },
+    );
+    Ok(endpoint)
 }
 
 pub(super) async fn run(listener: TcpListener, state: Arc<MasterStateInner>) -> Result<()> {
@@ -600,5 +796,15 @@ mod tests {
         assert!(!origin_is_allowed(Some("https://example.com")));
         assert!(!origin_is_allowed(Some("http://localhost.example:1234")));
         assert!(!origin_is_allowed(Some("null")));
+    }
+
+    #[test]
+    fn wsl_relay_script_survives_wsl_interop_argument_expansion() {
+        assert!(
+            !WSL_RELAY_SCRIPT.contains('$'),
+            "wsl.exe expands dollar expressions before Python receives -c"
+        );
+        assert!(WSL_RELAY_SCRIPT.contains("chr(36)"));
+        assert!(WSL_RELAY_SCRIPT.contains("-EncodedCommand"));
     }
 }

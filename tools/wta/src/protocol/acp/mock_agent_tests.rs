@@ -887,7 +887,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
 }
 
 #[tokio::test]
-async fn dispatch_prompt_does_not_advertise_host_proposals_to_wsl_agents() {
+async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {

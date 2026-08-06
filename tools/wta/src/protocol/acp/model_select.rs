@@ -56,10 +56,9 @@ pub(crate) fn inject_wta_cloud_catalog(
     Ok(())
 }
 
-pub(crate) fn extract_wta_cloud_catalog(
-    meta: &mut Option<acp::schema::v1::Meta>,
+pub(crate) fn cloud_catalog_from_wta_meta(
+    wta: &crate::session_registry::WtaMeta,
 ) -> CloudModelCatalogMetadata {
-    let wta = crate::session_registry::extract_wta_meta(meta);
     let models = wta
         .cloud_models
         .as_deref()
@@ -78,7 +77,7 @@ pub(crate) fn extract_wta_cloud_catalog(
         .unwrap_or_default();
     CloudModelCatalogMetadata {
         models,
-        source: wta.cloud_models_source,
+        source: wta.cloud_models_source.clone(),
     }
 }
 
@@ -388,6 +387,25 @@ mod tests {
             "currentModelId": "gpt-5.5"
         }
     }"#;
+
+    #[test]
+    fn cloud_catalog_parsing_preserves_sibling_proposal_marker() {
+        let wta = crate::session_registry::WtaMeta {
+            cloud_models: Some(
+                r#"[{"id":"cloud-model","name":"Cloud Model","description":null}]"#.to_string(),
+            ),
+            cloud_models_source: Some("clean_probe".to_string()),
+            proposal_mcp: Some("http-v1".to_string()),
+            ..Default::default()
+        };
+
+        let catalog = cloud_catalog_from_wta_meta(&wta);
+
+        assert_eq!(catalog.models.len(), 1);
+        assert_eq!(catalog.models[0].id, "cloud-model");
+        assert_eq!(catalog.source.as_deref(), Some("clean_probe"));
+        assert_eq!(wta.proposal_mcp.as_deref(), Some("http-v1"));
+    }
 
     #[test]
     fn model_extraction_across_channels() {

@@ -125,16 +125,32 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
 
             let mut response = tokio::time::timeout(
                 std::time::Duration::from_millis(50),
-                initialize_response_for_agent(&agent),
+                initialize_response_for_agent(&agent, false),
             )
             .await
             .expect("helper initialize response must not wait for the clean probe")
             .expect("pending catalog cannot fail serialization");
+            let wta_meta = crate::session_registry::extract_wta_meta(&mut response.meta);
             assert!(
-                crate::protocol::acp::model_select::extract_wta_cloud_catalog(&mut response.meta)
+                crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta)
                     .models
                     .is_empty(),
                 "pending probe must not fabricate initialize metadata"
+            );
+            assert!(
+                wta_meta.proposal_mcp.is_none(),
+                "unavailable proposal MCP must not be advertised"
+            );
+
+            let mut response = initialize_response_for_agent(&agent, true)
+                .await
+                .expect("proposal metadata serializes");
+            assert_eq!(
+                crate::session_registry::extract_wta_meta(&mut response.meta)
+                    .proposal_mcp
+                    .as_deref(),
+                Some("http-v1"),
+                "reachable proposal MCP must be advertised to the Helper"
             );
 
             assert!(complete_tx
@@ -523,7 +539,9 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
 fn make_state() -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoint: "http://127.0.0.1:1/mcp".to_string(),
+        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(
+            "http://127.0.0.1:1/mcp".to_string(),
+        ),
         proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
@@ -2099,7 +2117,9 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
 fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoint: "http://127.0.0.1:1/mcp".to_string(),
+        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(
+            "http://127.0.0.1:1/mcp".to_string(),
+        ),
         proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,

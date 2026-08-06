@@ -145,7 +145,7 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
-    proposal_mcp_endpoint: String,
+    proposal_mcp_endpoints: proposal_mcp::Endpoints,
     proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
     /// SessionId while an omitted optional cost is retained from an
@@ -510,9 +510,19 @@ async fn inject_ready_cloud_catalog(
 
 async fn initialize_response_for_agent(
     agent: &AgentCli,
+    proposal_mcp_available: bool,
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
     inject_ready_cloud_catalog(agent, &mut response.meta).await?;
+    if proposal_mcp_available {
+        crate::session_registry::inject_wta_meta(
+            &mut response.meta,
+            &crate::session_registry::WtaMeta {
+                proposal_mcp: Some("http-v1".to_string()),
+                ..Default::default()
+            },
+        );
+    }
     Ok(response)
 }
 
@@ -1299,12 +1309,34 @@ impl HelperHandler {
             .get()
             .expect("helper agent binding is set before initialize response");
         agent.bound_helpers.lock().await.insert(self.helper_id);
+        let proposal_mcp_available = if agent
+            .cached_init_resp
+            .agent_capabilities
+            .mcp_capabilities
+            .http
+        {
+            match proposal_mcp::endpoint_for(&self.state, &agent.source).await {
+                Ok(_) => true,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "proposal_mcp",
+                        helper_id = ?self.helper_id,
+                        source = %agent.source,
+                        error = %format!("{error:#}"),
+                        "proposal MCP is unavailable for helper source"
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent).await {
+        match initialize_response_for_agent(agent, proposal_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -1351,18 +1383,23 @@ impl HelperHandler {
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let cwd_for_registry = args.cwd.clone();
         let agent = self.resolved_agent("new_session")?;
-        let proposal_mcp = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
+        let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
             && agent
                 .cached_init_resp
                 .agent_capabilities
                 .mcp_capabilities
                 .http
         {
+            proposal_mcp::endpoint_for(&self.state, &agent.source)
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
             let pending = self.state.proposal_mcp_capabilities.prepare(None).await;
-            args.mcp_servers.push(proposal_mcp::server_config(
-                &self.state.proposal_mcp_endpoint,
-                &pending,
-            ));
+            args.mcp_servers
+                .push(proposal_mcp::server_config(&endpoint, &pending));
             Some(pending)
         } else {
             None
@@ -1572,22 +1609,27 @@ impl HelperHandler {
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
-            let proposal_mcp = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
+            let proposal_endpoint = if wta_meta.proposal_mcp.as_deref() == Some("http-v1")
                 && agent
                     .cached_init_resp
                     .agent_capabilities
                     .mcp_capabilities
                     .http
             {
+                proposal_mcp::endpoint_for(&self.state, &agent.source)
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+            let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
                 let pending = self
                     .state
                     .proposal_mcp_capabilities
                     .prepare(Some(session_id.clone()))
                     .await;
-                args.mcp_servers.push(proposal_mcp::server_config(
-                    &self.state.proposal_mcp_endpoint,
-                    &pending,
-                ));
+                args.mcp_servers
+                    .push(proposal_mcp::server_config(&endpoint, &pending));
                 Some(pending)
             } else {
                 None
@@ -2311,7 +2353,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     );
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoint,
+        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(proposal_mcp_endpoint),
         proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
