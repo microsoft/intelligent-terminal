@@ -16,15 +16,17 @@
   <ItemGroup>
     <ClInclude Include="CommandRunner.h" />
     <ClInclude Include="ProviderContracts.h" />
+    <ClInclude Include="ProviderRegistry.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CommandRunner.cpp" />
     <ClCompile Include="ProviderContracts.cpp" />
+    <ClCompile Include="ProviderRegistry.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(OpenConsoleDir)src\cascadia\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <Import Project="$(OpenConsoleDir)src\common.build.post.props" />

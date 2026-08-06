@@ -7,6 +7,7 @@
 #include "Formatting.h"
 #include "CommandRunner.h"
 #include "ProviderContracts.h"
+#include "ProviderRegistry.h"
 #include "wtcli_functions.h"
 
 // Classic-COM Terminal protocol. Generated from
@@ -307,6 +308,64 @@ static std::optional<std::string> ReadBoundedFile(
     return contents;
 }
 
+static std::optional<std::filesystem::path> AbsoluteUtf8Path(
+    const std::string& value,
+    std::string& error)
+{
+    std::filesystem::path input;
+    try
+    {
+        input = std::filesystem::path{ winrt::to_hstring(value).c_str() };
+    }
+    catch (const winrt::hresult_error& conversionError)
+    {
+        char buffer[64]{};
+        sprintf_s(buffer, "Invalid UTF-8 path (0x%08X)", static_cast<uint32_t>(conversionError.code()));
+        error = buffer;
+        return std::nullopt;
+    }
+    std::error_code pathError;
+    auto absolute = std::filesystem::absolute(input, pathError);
+    if (pathError)
+    {
+        error = "Invalid path: " + std::to_string(pathError.value());
+        return std::nullopt;
+    }
+    return absolute;
+}
+
+static Json::Value RegistrationJson(
+    const Microsoft::Terminal::RichTab::Provider::Registration& registration)
+{
+    Json::Value value;
+    value["id"] = registration.manifest.id;
+    value["display_name"] = registration.manifest.displayName;
+    value["publisher"] = registration.manifest.publisher;
+    value["version"] = registration.manifest.version;
+    value["kind"] =
+        registration.kind == Microsoft::Terminal::RichTab::Provider::RegistrationKind::Managed ?
+            "managed" :
+            "development";
+    value["enabled"] = registration.enabled;
+    value["integrity_valid"] = registration.integrityValid;
+    value["payload_hash"] = registration.payloadHash;
+    value["root"] = winrt::to_string(winrt::hstring{ registration.root.c_str() });
+    return value;
+}
+
+static void PrintRegistration(
+    const Microsoft::Terminal::RichTab::Provider::Registration& registration)
+{
+    printf(
+        "%s  %s  %s  %s\n",
+        registration.enabled ? "enabled " : "disabled",
+        registration.kind == Microsoft::Terminal::RichTab::Provider::RegistrationKind::Managed ?
+            "managed    " :
+            "development",
+        registration.integrityValid ? "verified" : "CHANGED ",
+        registration.manifest.id.c_str());
+}
+
 // ── Main ──
 
 int main()
@@ -338,28 +397,17 @@ int main()
     auto* providerValidateCmd = providerCmd->add_subcommand("validate", "Validate a provider manifest");
     providerValidateCmd->add_option("manifest", providerManifestPath, "Path to provider.json")->required();
     providerValidateCmd->callback([&]() {
-        std::filesystem::path inputPath;
-        try
+        std::string pathError;
+        const auto manifestPath = AbsoluteUtf8Path(providerManifestPath, pathError);
+        if (!manifestPath)
         {
-            inputPath = std::filesystem::path{ winrt::to_hstring(providerManifestPath).c_str() };
-        }
-        catch (const winrt::hresult_error& error)
-        {
-            fprintf(stderr, "[wtcli] provider validate: invalid UTF-8 path (0x%08X)\n", static_cast<uint32_t>(error.code()));
-            exitCode = 1;
-            return;
-        }
-        std::error_code pathError;
-        const auto manifestPath = std::filesystem::absolute(inputPath, pathError);
-        if (pathError)
-        {
-            fprintf(stderr, "[wtcli] provider validate: invalid path (%d)\n", pathError.value());
+            fprintf(stderr, "[wtcli] provider validate: %s\n", pathError.c_str());
             exitCode = 1;
             return;
         }
         std::string readError;
         const auto contents = ReadBoundedFile(
-            manifestPath,
+            *manifestPath,
             Microsoft::Terminal::RichTab::Provider::MaximumManifestSize,
             readError);
         if (!contents)
@@ -371,7 +419,7 @@ int main()
 
         const auto parsed = Microsoft::Terminal::RichTab::Provider::ParseManifest(
             *contents,
-            manifestPath.parent_path());
+            manifestPath->parent_path());
         if (!parsed)
         {
             if (jsonMode)
@@ -415,6 +463,175 @@ int main()
         }
     });
 
+    std::string providerInstallManifestPath;
+    auto* providerInstallCmd = providerCmd->add_subcommand("install", "Install a managed provider");
+    providerInstallCmd->add_option("manifest", providerInstallManifestPath, "Path to provider.json")->required();
+    providerInstallCmd->callback([&]() {
+        std::string pathError;
+        const auto manifestPath = AbsoluteUtf8Path(providerInstallManifestPath, pathError);
+        if (!manifestPath)
+        {
+            fprintf(stderr, "[wtcli] provider install: %s\n", pathError.c_str());
+            exitCode = 1;
+            return;
+        }
+        const auto installed = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.Install(*manifestPath);
+        if (!installed)
+        {
+            for (const auto& error : installed.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+            PrintJson(RegistrationJson(*installed.value));
+        else
+        {
+            printf("Installed provider (disabled until explicitly enabled):\n");
+            PrintRegistration(*installed.value);
+        }
+    });
+
+    std::string providerRegisterManifestPath;
+    bool providerRegisterDevelopment = false;
+    auto* providerRegisterCmd = providerCmd->add_subcommand("register", "Register a provider source directory");
+    providerRegisterCmd->add_flag("--dev", providerRegisterDevelopment, "Register mutable development code without copying")->required();
+    providerRegisterCmd->add_option("manifest", providerRegisterManifestPath, "Path to provider.json")->required();
+    providerRegisterCmd->callback([&]() {
+        std::string pathError;
+        const auto manifestPath = AbsoluteUtf8Path(providerRegisterManifestPath, pathError);
+        if (!manifestPath)
+        {
+            fprintf(stderr, "[wtcli] provider register: %s\n", pathError.c_str());
+            exitCode = 1;
+            return;
+        }
+        const auto registered = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.RegisterDevelopment(*manifestPath);
+        if (!registered)
+        {
+            for (const auto& error : registered.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+            PrintJson(RegistrationJson(*registered.value));
+        else
+        {
+            printf("Registered mutable development provider (disabled until explicitly enabled):\n");
+            PrintRegistration(*registered.value);
+        }
+    });
+
+    auto* providerListCmd = providerCmd->add_subcommand("list", "List registered providers");
+    providerListCmd->callback([&]() {
+        const auto registrations = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.List();
+        if (!registrations)
+        {
+            for (const auto& error : registrations.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            Json::Value output;
+            output["providers"] = Json::arrayValue;
+            for (const auto& registration : *registrations.value)
+                output["providers"].append(RegistrationJson(registration));
+            output["warnings"] = Json::arrayValue;
+            for (const auto& warning : registrations.errors)
+                output["warnings"].append(warning);
+            PrintJson(output);
+        }
+        else if (registrations.value->empty())
+        {
+            printf("No Rich Tab providers are registered.\n");
+        }
+        else
+        {
+            for (const auto& registration : *registrations.value)
+                PrintRegistration(registration);
+            for (const auto& warning : registrations.errors)
+                fprintf(stderr, "[wtcli] warning: %s\n", warning.c_str());
+        }
+        if (!registrations.errors.empty())
+            exitCode = 1;
+    });
+
+    std::string providerEnableId;
+    bool providerAcceptCodeExecution = false;
+    auto* providerEnableCmd = providerCmd->add_subcommand("enable", "Enable a provider");
+    providerEnableCmd->add_option("id", providerEnableId, "Provider id")->required();
+    providerEnableCmd->add_flag(
+        "--accept-code-execution",
+        providerAcceptCodeExecution,
+        "Confirm that enabling the provider executes code as the current user");
+    providerEnableCmd->callback([&]() {
+        if (!providerAcceptCodeExecution)
+        {
+            fprintf(
+                stderr,
+                "[wtcli] Enabling a provider executes code with your user permissions. "
+                "Pass --accept-code-execution to confirm.\n");
+            exitCode = 1;
+            return;
+        }
+        const auto enabled = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.SetEnabled(providerEnableId, true);
+        if (!enabled)
+        {
+            for (const auto& error : enabled.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+            PrintJson(RegistrationJson(*enabled.value));
+        else
+            PrintRegistration(*enabled.value);
+    });
+
+    std::string providerDisableId;
+    auto* providerDisableCmd = providerCmd->add_subcommand("disable", "Disable a provider");
+    providerDisableCmd->add_option("id", providerDisableId, "Provider id")->required();
+    providerDisableCmd->callback([&]() {
+        const auto disabled = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.SetEnabled(providerDisableId, false);
+        if (!disabled)
+        {
+            for (const auto& error : disabled.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+            PrintJson(RegistrationJson(*disabled.value));
+        else
+            PrintRegistration(*disabled.value);
+    });
+
+    std::string providerRemoveId;
+    auto* providerRemoveCmd = providerCmd->add_subcommand("remove", "Remove a provider registration and managed payload");
+    providerRemoveCmd->add_option("id", providerRemoveId, "Provider id")->required();
+    providerRemoveCmd->callback([&]() {
+        const auto removed = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.Remove(providerRemoveId);
+        if (!removed)
+        {
+            for (const auto& error : removed.errors)
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            Json::Value output;
+            output["removed"] = true;
+            output["id"] = providerRemoveId;
+            PrintJson(output);
+        }
+        else
+            printf("Removed provider %s.\n", providerRemoveId.c_str());
+    });
+
     std::string providerTestManifestPath;
     std::string providerTestWorkingDirectory;
     int providerTestTimeoutSeconds = 10;
@@ -425,23 +642,19 @@ int main()
     providerTestCmd->callback([&]() {
         std::filesystem::path manifestPath;
         std::filesystem::path workingDirectory;
-        try
+        std::string pathMessage;
+        const auto resolvedManifest = AbsoluteUtf8Path(providerTestManifestPath, pathMessage);
+        if (!resolvedManifest)
+        {
+            fprintf(stderr, "[wtcli] provider test: %s\n", pathMessage.c_str());
+            exitCode = 1;
+            return;
+        }
+        manifestPath = *resolvedManifest;
+        if (providerTestWorkingDirectory.empty())
         {
             std::error_code pathError;
-            manifestPath = std::filesystem::absolute(
-                std::filesystem::path{ winrt::to_hstring(providerTestManifestPath).c_str() },
-                pathError);
-            if (pathError)
-            {
-                fprintf(stderr, "[wtcli] provider test: invalid manifest path (%d)\n", pathError.value());
-                exitCode = 1;
-                return;
-            }
-            workingDirectory = providerTestWorkingDirectory.empty() ?
-                                   std::filesystem::current_path(pathError) :
-                                   std::filesystem::absolute(
-                                       std::filesystem::path{ winrt::to_hstring(providerTestWorkingDirectory).c_str() },
-                                       pathError);
+            workingDirectory = std::filesystem::current_path(pathError);
             if (pathError)
             {
                 fprintf(stderr, "[wtcli] provider test: invalid working directory (%d)\n", pathError.value());
@@ -449,11 +662,16 @@ int main()
                 return;
             }
         }
-        catch (const winrt::hresult_error& error)
+        else
         {
-            fprintf(stderr, "[wtcli] provider test: invalid UTF-8 path (0x%08X)\n", static_cast<uint32_t>(error.code()));
-            exitCode = 1;
-            return;
+            const auto resolvedWorkingDirectory = AbsoluteUtf8Path(providerTestWorkingDirectory, pathMessage);
+            if (!resolvedWorkingDirectory)
+            {
+                fprintf(stderr, "[wtcli] provider test: %s\n", pathMessage.c_str());
+                exitCode = 1;
+                return;
+            }
+            workingDirectory = *resolvedWorkingDirectory;
         }
 
         std::string readError;

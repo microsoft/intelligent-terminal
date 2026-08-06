@@ -23,6 +23,7 @@
   <ItemGroup>
     <ClCompile Include="JsonUtilsTests.cpp" />
     <ClCompile Include="RichTabProviderContractTests.cpp" />
+    <ClCompile Include="RichTabProviderRegistryTests.cpp" />
     <ClCompile Include="FzfTests.cpp" />
     <ClCompile Include="AgentHooksStatusTests.cpp" />
     <ClCompile Include="AcpModelUtilsTests.cpp" />
