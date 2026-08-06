@@ -5,6 +5,8 @@
 #include <winrt/Windows.Foundation.h>
 
 #include "Formatting.h"
+#include "CommandRunner.h"
+#include "ProviderContracts.h"
 #include "wtcli_functions.h"
 
 // Classic-COM Terminal protocol. Generated from
@@ -23,9 +25,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 // ── EventSink — pure classic-COM event sink for `listen` ──
@@ -268,6 +273,40 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
     return true;
 }
 
+static std::optional<std::string> ReadBoundedFile(
+    const std::filesystem::path& path,
+    const size_t maximumSize,
+    std::string& error)
+{
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec)
+    {
+        error = "Could not read file size: " + std::to_string(ec.value());
+        return std::nullopt;
+    }
+    if (size == 0 || size > maximumSize)
+    {
+        error = size == 0 ? "File is empty" : "File exceeds the size limit";
+        return std::nullopt;
+    }
+
+    std::ifstream stream{ path, std::ios::binary };
+    if (!stream)
+    {
+        error = "Could not open file";
+        return std::nullopt;
+    }
+    std::string contents(static_cast<size_t>(size), '\0');
+    stream.read(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (!stream || stream.peek() != std::ifstream::traits_type::eof())
+    {
+        error = "Could not read the complete file";
+        return std::nullopt;
+    }
+    return contents;
+}
+
 // ── Main ──
 
 int main()
@@ -289,6 +328,254 @@ int main()
             exitCode = 1;
         return server;
     };
+
+    // ── provider ──
+    // Provider management is intentionally local and must never require a
+    // running Terminal or WT_COM_CLSID.
+    auto* providerCmd = app.add_subcommand("provider", "Manage Rich Tab providers");
+    providerCmd->require_subcommand(1, 1);
+    std::string providerManifestPath;
+    auto* providerValidateCmd = providerCmd->add_subcommand("validate", "Validate a provider manifest");
+    providerValidateCmd->add_option("manifest", providerManifestPath, "Path to provider.json")->required();
+    providerValidateCmd->callback([&]() {
+        std::filesystem::path inputPath;
+        try
+        {
+            inputPath = std::filesystem::path{ winrt::to_hstring(providerManifestPath).c_str() };
+        }
+        catch (const winrt::hresult_error& error)
+        {
+            fprintf(stderr, "[wtcli] provider validate: invalid UTF-8 path (0x%08X)\n", static_cast<uint32_t>(error.code()));
+            exitCode = 1;
+            return;
+        }
+        std::error_code pathError;
+        const auto manifestPath = std::filesystem::absolute(inputPath, pathError);
+        if (pathError)
+        {
+            fprintf(stderr, "[wtcli] provider validate: invalid path (%d)\n", pathError.value());
+            exitCode = 1;
+            return;
+        }
+        std::string readError;
+        const auto contents = ReadBoundedFile(
+            manifestPath,
+            Microsoft::Terminal::RichTab::Provider::MaximumManifestSize,
+            readError);
+        if (!contents)
+        {
+            fprintf(stderr, "[wtcli] provider validate: %s\n", readError.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        const auto parsed = Microsoft::Terminal::RichTab::Provider::ParseManifest(
+            *contents,
+            manifestPath.parent_path());
+        if (!parsed)
+        {
+            if (jsonMode)
+            {
+                Json::Value output;
+                output["valid"] = false;
+                output["errors"] = Json::arrayValue;
+                for (const auto& error : parsed.errors)
+                {
+                    output["errors"].append(error);
+                }
+                PrintJson(output);
+            }
+            else
+            {
+                for (const auto& error : parsed.errors)
+                {
+                    fprintf(stderr, "[wtcli] %s\n", error.c_str());
+                }
+            }
+            exitCode = 1;
+            return;
+        }
+
+        if (jsonMode)
+        {
+            Json::Value output;
+            output["valid"] = true;
+            output["id"] = parsed.value->id;
+            output["version"] = parsed.value->version;
+            output["field_count"] = static_cast<Json::UInt>(parsed.value->fields.size());
+            PrintJson(output);
+        }
+        else
+        {
+            printf(
+                "Valid provider manifest: %s (%s), %zu fields\n",
+                parsed.value->id.c_str(),
+                parsed.value->version.c_str(),
+                parsed.value->fields.size());
+        }
+    });
+
+    std::string providerTestManifestPath;
+    std::string providerTestWorkingDirectory;
+    int providerTestTimeoutSeconds = 10;
+    auto* providerTestCmd = providerCmd->add_subcommand("test", "Run one provider refresh without a Terminal");
+    providerTestCmd->add_option("manifest", providerTestManifestPath, "Path to provider.json")->required();
+    providerTestCmd->add_option("--cwd", providerTestWorkingDirectory, "Working directory passed to the provider");
+    providerTestCmd->add_option("--timeout", providerTestTimeoutSeconds, "Timeout in seconds")->check(CLI::Range(1, 300));
+    providerTestCmd->callback([&]() {
+        std::filesystem::path manifestPath;
+        std::filesystem::path workingDirectory;
+        try
+        {
+            std::error_code pathError;
+            manifestPath = std::filesystem::absolute(
+                std::filesystem::path{ winrt::to_hstring(providerTestManifestPath).c_str() },
+                pathError);
+            if (pathError)
+            {
+                fprintf(stderr, "[wtcli] provider test: invalid manifest path (%d)\n", pathError.value());
+                exitCode = 1;
+                return;
+            }
+            workingDirectory = providerTestWorkingDirectory.empty() ?
+                                   std::filesystem::current_path(pathError) :
+                                   std::filesystem::absolute(
+                                       std::filesystem::path{ winrt::to_hstring(providerTestWorkingDirectory).c_str() },
+                                       pathError);
+            if (pathError)
+            {
+                fprintf(stderr, "[wtcli] provider test: invalid working directory (%d)\n", pathError.value());
+                exitCode = 1;
+                return;
+            }
+        }
+        catch (const winrt::hresult_error& error)
+        {
+            fprintf(stderr, "[wtcli] provider test: invalid UTF-8 path (0x%08X)\n", static_cast<uint32_t>(error.code()));
+            exitCode = 1;
+            return;
+        }
+
+        std::string readError;
+        const auto contents = ReadBoundedFile(
+            manifestPath,
+            Microsoft::Terminal::RichTab::Provider::MaximumManifestSize,
+            readError);
+        if (!contents)
+        {
+            fprintf(stderr, "[wtcli] provider test: %s\n", readError.c_str());
+            exitCode = 1;
+            return;
+        }
+        const auto manifest = Microsoft::Terminal::RichTab::Provider::ParseManifest(
+            *contents,
+            manifestPath.parent_path());
+        if (!manifest)
+        {
+            for (const auto& error : manifest.errors)
+            {
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            }
+            exitCode = 1;
+            return;
+        }
+
+        Microsoft::Terminal::RichTab::Provider::Request request;
+        request.requestId = "wtcli-test-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
+        request.providerId = manifest.value->id;
+        request.processEpoch = 1;
+        request.sessionId = "wtcli-provider-test";
+        request.reason = Microsoft::Terminal::RichTab::Provider::ActivationEvent::ManualRefresh;
+        request.workingDirectory = workingDirectory;
+        request.workingDirectoryAuthoritative = true;
+        request.contextRevision = 1;
+        const auto serialized = Microsoft::Terminal::RichTab::Provider::SerializeRequest(request, *manifest.value);
+        if (!serialized)
+        {
+            for (const auto& error : serialized.errors)
+            {
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            }
+            exitCode = 1;
+            return;
+        }
+
+        const auto commandResult = Microsoft::Terminal::RichTab::Provider::CommandRunner{}.Run(
+            *manifest.value,
+            *serialized.value,
+            std::chrono::seconds{ providerTestTimeoutSeconds });
+        if (commandResult.status != Microsoft::Terminal::RichTab::Provider::CommandResult::Status::Completed ||
+            commandResult.exitCode != 0)
+        {
+            fprintf(
+                stderr,
+                "[wtcli] provider failed (status=%u, exit=%u, win32=%u)\n%s\n",
+                static_cast<unsigned>(commandResult.status),
+                commandResult.exitCode,
+                commandResult.win32Error,
+                commandResult.standardError.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        const auto snapshot = Microsoft::Terminal::RichTab::Provider::ParseSnapshot(
+            commandResult.standardOutput,
+            *manifest.value,
+            request.requestId);
+        if (!snapshot)
+        {
+            for (const auto& error : snapshot.errors)
+            {
+                fprintf(stderr, "[wtcli] %s\n", error.c_str());
+            }
+            exitCode = 1;
+            return;
+        }
+
+        if (jsonMode)
+        {
+            Json::Value output;
+            output["provider_id"] = manifest.value->id;
+            output["fields"] = Json::objectValue;
+            for (const auto& [id, value] : snapshot.value->fields)
+            {
+                std::visit([&](const auto& fieldValue) {
+                    output["fields"][id] = fieldValue;
+                }, value);
+            }
+            if (snapshot.value->tooltip)
+                output["tooltip"] = *snapshot.value->tooltip;
+            if (snapshot.value->accessibilityText)
+                output["accessibility_text"] = *snapshot.value->accessibilityText;
+            PrintJson(output);
+        }
+        else if (snapshot.value->fields.empty())
+        {
+            printf("Provider returned an empty snapshot.\n");
+        }
+        else
+        {
+            printf("%s\n", manifest.value->displayName.c_str());
+            for (const auto& field : manifest.value->fields)
+            {
+                if (const auto found = snapshot.value->fields.find(field.id); found != snapshot.value->fields.end())
+                {
+                    printf("  %s: ", field.displayName.c_str());
+                    std::visit([](const auto& value) {
+                        if constexpr (std::is_same_v<std::decay_t<decltype(value)>, std::string>)
+                            printf("%s", value.c_str());
+                        else if constexpr (std::is_same_v<std::decay_t<decltype(value)>, bool>)
+                            printf("%s", value ? "true" : "false");
+                        else if constexpr (std::is_same_v<std::decay_t<decltype(value)>, int64_t>)
+                            printf("%lld", static_cast<long long>(value));
+                        else
+                            printf("%g", value);
+                    }, found->second);
+                    printf("\n");
+                }
+            }
+        }
+    });
 
     // ── list-windows ──
     auto* listWindowsCmd = app.add_subcommand("list-windows", "List all windows")->alias("lsw");

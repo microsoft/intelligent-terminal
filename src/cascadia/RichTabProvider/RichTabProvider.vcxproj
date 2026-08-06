@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{D4B1C85B-C88B-4F37-AADB-8083C13E66A2}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>RichTabProvider</RootNamespace>
+    <ProjectName>RichTabProvider</ProjectName>
+    <TargetName>RichTabProvider</TargetName>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <SubSystem>Console</SubSystem>
+    <OpenConsoleUniversalApp>true</OpenConsoleUniversalApp>
+  </PropertyGroup>
+  <Import Project="..\..\..\common.openconsole.props" Condition="'$(OpenConsoleDir)'==''" />
+  <Import Project="$(OpenConsoleDir)src\common.nugetversions.props" />
+  <Import Project="$(OpenConsoleDir)src\common.build.pre.props" />
+  <ItemGroup>
+    <ClInclude Include="CommandRunner.h" />
+    <ClInclude Include="ProviderContracts.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CommandRunner.cpp" />
+    <ClCompile Include="ProviderContracts.cpp" />
+  </ItemGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(OpenConsoleDir)src\common.build.post.props" />
+  <Import Project="$(OpenConsoleDir)src\common.nugetversions.targets" />
+</Project>

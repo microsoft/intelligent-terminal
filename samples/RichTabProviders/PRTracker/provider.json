@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "com.microsoft.intelligent-terminal.samples.pr-tracker",
+  "displayName": "PowerShell PR Tracker Sample",
+  "publisher": "Microsoft",
+  "version": "1.0.0",
+  "protocol": {
+    "minVersion": 1,
+    "maxVersion": 1
+  },
+  "runtime": {
+    "type": "powerShellV1",
+    "entrypoint": "provider.ps1",
+    "arguments": []
+  },
+  "activationEvents": [
+    "onWorkingDirectoryChanged",
+    "onCommandFinished",
+    "onManualRefresh"
+  ],
+  "fields": [
+    {
+      "id": "pull-request",
+      "displayName": "Pull Request",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "state",
+      "displayName": "State",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "checks",
+      "displayName": "Checks",
+      "type": "string",
+      "defaultVisible": true
+    }
+  ]
+}
