@@ -198,8 +198,10 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(ShellSessionCloseActionsRespectIndependentSettings);
+        TEST_METHOD(WindowCloseAcceptanceIsOneShot);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
         TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
+        TEST_METHOD(ClosedContentFallbackWaitsForOwnerDrain);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
         TEST_METHOD(DetachShellPanesForKeepRunningStoresDurableMetadata);
@@ -373,6 +375,26 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(saveAndDetach.detach);
     }
 
+    void TabTests::WindowCloseAcceptanceIsOneShot()
+    {
+        auto closeAccepted = false;
+        auto persistCount = 0u;
+        auto eventCount = 0u;
+
+        for (auto request = 0; request < 2; ++request)
+        {
+            if (winrt::TerminalApp::implementation::TryAcceptWindowClose(closeAccepted))
+            {
+                ++persistCount;
+                ++eventCount;
+            }
+        }
+
+        VERIFY_ARE_EQUAL(1u, persistCount);
+        VERIFY_ARE_EQUAL(1u, eventCount);
+        VERIFY_IS_TRUE(closeAccepted);
+    }
+
     void TabTests::DetachedReapUsesConfiguredOwnerScheduler()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
@@ -471,6 +493,58 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
             VERIFY_IS_TRUE(endedSessions.at(0).state == L"failed");
+        });
+    }
+
+    void TabTests::ClosedContentFallbackWaitsForOwnerDrain()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        _createContentManager([](DispatcherQueueHandler) {
+            return false;
+        });
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{41414141-4242-4343-4444-454545454545}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{51515151-5252-5353-5454-555555555555}");
+        winrt::Microsoft::Terminal::Control::ControlInteractivity content{ nullptr };
+        auto contentId = 0ull;
+        std::vector<DetachedSessionEndedRecord> endedSessions;
+        winrt::event_token closeToken{};
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            content = _contentManager->CreateCore(*settings, *settings, *connection);
+            contentId = content.Id();
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+
+            closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Pending close", L"shell-session-close", 53, control));
+        });
+
+        std::thread closeThread([content]() {
+            content.Close();
+        });
+        closeThread.join();
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_NOT_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(endedSessions.size()));
+
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(endedSessions.at(0).sessionId, sessionId));
+            VERIFY_IS_TRUE(endedSessions.at(0).state == L"closed");
+
+            _contentManager->DetachedSessionClosed(closeToken);
         });
     }
 

@@ -21,6 +21,17 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
+    inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
+    {
+        if (closeAccepted)
+        {
+            return false;
+        }
+
+        closeAccepted = true;
+        return true;
+    }
+
     enum class HeadlessTrayActivationMode
     {
         SummonExistingWindow = 0,
