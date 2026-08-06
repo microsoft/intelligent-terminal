@@ -50,12 +50,12 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Spec A §5.1: move the three chrome elements out of TabView's header /
-    // footer slots. Shield + workspaces go into a horizontal StackPanel that
-    // TerminalPage hands to the titlebar (same bar as min/max/close); the
-    // new-tab split button anchors right-aligned inside TabStrip's trailing
-    // slot at the bottom of the rail. XAML forbids a UIElement having two
-    // logical parents at once, so we clear both host panels first.
+    // Spec A §5.1: move the chrome elements out of TabView's header/footer
+    // slots. The shield goes into a horizontal StackPanel that TerminalPage
+    // hands to the titlebar (same bar as min/max/close); the new-tab split
+    // button anchors right-aligned inside TabStrip's trailing slot at the
+    // bottom of the rail. XAML forbids a UIElement having two logical parents
+    // at once, so we clear both host panels first.
     void TabRowControl::_reparentChromeToVertical()
     {
         if (_chromeReparentedToVertical)
@@ -65,7 +65,6 @@ namespace winrt::TerminalApp::implementation
         _chromeReparentedToVertical = true;
 
         auto shield = ElevationShieldIcon();
-        auto workspaces = WorkspaceDropdown();
         auto newTab = NewTabButton();
 
         if (const auto headerPanel = TabView().TabStripHeader().try_as<WUX::Controls::StackPanel>())
@@ -84,7 +83,6 @@ namespace winrt::TerminalApp::implementation
         titlebarPanel.Orientation(WUX::Controls::Orientation::Horizontal);
         titlebarPanel.VerticalAlignment(WUX::VerticalAlignment::Center);
         titlebarPanel.Children().Append(shield);
-        titlebarPanel.Children().Append(workspaces);
         _verticalTitleBarContent = titlebarPanel;
 
         // Put the right-alignment on an outer Grid instead of the SplitButton

@@ -19,9 +19,6 @@ namespace winrt::TerminalApp::implementation
 
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(bool, ShowElevationShield, PropertyChanged.raise, false);
-        WINRT_OBSERVABLE_PROPERTY(bool, ShowWorkspacesButton, PropertyChanged.raise, true);
-        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, WorkspaceName, PropertyChanged.raise, L"");
-
     public:
         // PROTOTYPE — flipping this at Initialize hides the MUX TabView and
         // shows the local:TabStrip (see investigation-vertical-tabs.md).
@@ -30,9 +27,9 @@ namespace winrt::TerminalApp::implementation
         bool IsVerticalLayout() const noexcept { return _isVerticalLayout; }
         void IsVerticalLayout(bool value);
 
-        // Spec A §5.1: in vertical mode the shield + workspaces button ride
-        // in the titlebar (same bar as min/max/close). Returns the container
-        // that TerminalPage passes to SetTitleBarContent; null in horizontal.
+        // Spec A §5.1: in vertical mode the elevation shield rides in the
+        // titlebar (same bar as min/max/close). Returns the container that
+        // TerminalPage passes to SetTitleBarContent; null in horizontal.
         winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
 
     private:

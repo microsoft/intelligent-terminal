@@ -18,7 +18,5 @@ namespace TerminalApp
         Boolean IsVerticalLayout;
 
         Boolean ShowElevationShield;
-        Boolean ShowWorkspacesButton;
-        String WorkspaceName;
     }
 }
