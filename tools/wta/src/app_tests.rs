@@ -1317,6 +1317,33 @@ fn load_session_passes_through_when_owner_tab_id_unset() {
     assert_eq!(req.session_id, "sess-legacy");
 }
 
+#[test]
+fn set_agent_state_ignored_when_target_tab_differs_from_owner() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OTHER-TAB",
+            "view": "sessions",
+            "pane_open": true,
+        }),
+    });
+
+    assert!(
+        !app.tab_sessions.contains_key("OTHER-TAB"),
+        "non-owner helper must not create state or echo usage for another tab"
+    );
+    assert_eq!(app.tab_sessions["OWNER-TAB"].current_view, View::Chat);
+    assert!(!app.tab_sessions["OWNER-TAB"].pane_open);
+}
+
 // ─── SessionAttached load-target gating (Plan-C race fix) ───────────────
 
 /// After a load_session sets the replay window open, an unrelated
