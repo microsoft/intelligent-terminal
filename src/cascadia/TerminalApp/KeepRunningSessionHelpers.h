@@ -18,7 +18,7 @@ namespace winrt::TerminalApp::implementation
     {
         return {
             .save = restoreShellSessions,
-            .detach = restoreShellSessions && continueRunningCommands,
+            .detach = continueRunningCommands,
         };
     }
 
@@ -51,9 +51,9 @@ namespace winrt::TerminalApp::implementation
                                  HeadlessTrayActivationMode::OpenFreshWindow;
     }
 
-    inline constexpr bool ShouldForcePersistClosingWindowLayout(const size_t windowCount, const bool hasKeptSessions) noexcept
+    inline constexpr bool ShouldForcePersistClosingWindowLayoutForKeptSessions(const size_t windowCount, const bool hasKeptSessions) noexcept
     {
-        return windowCount == 1 && hasKeptSessions;
+        return windowCount != 0 && hasKeptSessions;
     }
 
     inline std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildKeptGroupRestoreActions(const winrt::TerminalApp::KeptGroupRestoreResult& restoredGroup)

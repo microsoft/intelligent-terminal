@@ -701,7 +701,7 @@ namespace winrt::TerminalApp::implementation
             if (!foundPane)
                 continue;
 
-            foundPane->Close();
+            _HandleClosePaneRequested(foundPane);
             co_return true;
         }
 
