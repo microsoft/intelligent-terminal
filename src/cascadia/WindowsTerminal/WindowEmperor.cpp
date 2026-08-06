@@ -283,6 +283,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
+    _deferPersistedLayoutRestore = false;
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -576,6 +577,10 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
 
+    const auto args = commandlineToArgArray(GetCommandLineW());
+    const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
+    _deferPersistedLayoutRestore = isEmbedding;
+
     _createMessageWindow(windowClassName.c_str());
     _setupGlobalHotkeys();
     _checkWindowsForNotificationIcon();
@@ -601,28 +606,14 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         const auto env = stringFromDoubleNullTerminated(envMem.get());
         const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
         const auto showCmd = gsl::narrow_cast<uint32_t>(nCmdShow);
-
-        // Restore persisted windows.
-        const auto state = ApplicationState::SharedInstance();
-        const auto layouts = state.PersistedWindowLayouts();
-        if (layouts && layouts.Size() > 0)
+        if (!isEmbedding)
         {
-            _needsPersistenceCleanup = true;
-
-            uint32_t startIdx = 0;
-            for (const auto layout : layouts)
-            {
-                hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
-                startIdx += 1;
-            }
+            _restorePersistedWindows(cwd, env, showCmd);
         }
 
-        const auto args = commandlineToArgArray(GetCommandLineW());
-
-        if (args.size() == 2 && args[1] == L"-Embedding")
+        if (isEmbedding)
         {
-            // We were launched for ConPTY handoff. We have no windows and also don't want to exit.
+            // We were launched as a COM server. We have no windows and also don't want to exit.
             //
             // TODO: Here we could start a timer and exit after, say, 5 seconds
             // if no windows are created. But that's a minor concern.
@@ -1296,7 +1287,11 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
-                    _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
+                    const auto restoredPersistedWindows = _deferPersistedLayoutRestore && _restorePersistedWindows(handoff.cwd, handoff.env, handoff.show);
+                    if (!restoredPersistedWindows || argv.size() != 1)
+                    {
+                        _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
+                    }
                 }
             }
             return 0;
@@ -1336,6 +1331,30 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
+bool WindowEmperor::_restorePersistedWindows(wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand)
+{
+    _deferPersistedLayoutRestore = false;
+    const auto previousWindowCount = _windows.size();
+
+    const auto state = ApplicationState::SharedInstance();
+    const auto layouts = state.PersistedWindowLayouts();
+    if (!layouts || layouts.Size() == 0)
+    {
+        return false;
+    }
+
+    _needsPersistenceCleanup = true;
+
+    uint32_t startIdx = 0;
+    for (const auto layout : layouts)
+    {
+        hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
+        _dispatchCommandlineCommon(args, currentDirectory, envString, showWindowCommand);
+        startIdx += 1;
+    }
+    return _windows.size() > previousWindowCount;
+}
+
 void WindowEmperor::_setupSessionPersistence(bool enabled)
 {
     if (!enabled)
@@ -1352,6 +1371,11 @@ void WindowEmperor::_setupSessionPersistence(bool enabled)
 
 void WindowEmperor::_persistState(const ApplicationState& state) const
 {
+    if (_deferPersistedLayoutRestore)
+    {
+        return;
+    }
+
     // Calling an `ApplicationState` setter triggers a write to state.json.
     // With this if condition we avoid an unnecessary write when persistence is disabled.
     if (state.PersistedWindowLayouts())
