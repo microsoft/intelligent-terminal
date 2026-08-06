@@ -28,6 +28,8 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before the autofix card suite runs'
         $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex)) }
+        $script:TurnCanceledRegex = Get-WtaLocalizedTextRegex -Key 'chat.turn_canceled'
+        if (-not $script:TurnCanceledRegex) { $script:TurnCanceledRegex = '\((?:canceled|cancelled)\)' }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -37,11 +39,11 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
         try {
             Start-Sleep -Milliseconds 400
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
-            Wait-WtEvent -Listener $listener -TimeoutSec 45 -Predicate { $_.method -eq 'agent_event' } | Out-Null
+            Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { & $script:CardShown }) |
+        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { & $script:CardShown }) |
             Should -BeTrue -Because 'Autofix must submit a valid Direct Helper Proposal for an obvious typo'
-        (& $script:CardShown) | Should -BeTrue
     }
     It 'Autofix suggests a runnable fix (AI oracle on the card)' {
         (& $script:CardShown) | Should -BeTrue -Because 'the previous case requires a Direct Helper Proposal card'
@@ -78,7 +80,8 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Insert'
         Send-AgentKey -App $script:app -Key Right | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
@@ -106,7 +109,8 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Run'
         Send-AgentKey -App $script:app -Key Left | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
@@ -237,11 +241,12 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
             Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command 'sl -la' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
-            Should -BeTrue -Because 'WSL Autofix must submit a Direct Helper Proposal'
-        Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context (Get-AgentPaneText -App $script:app -MaxLines 60)
+        $pending = Wait-TerminalActionProposal -App $script:app -TimeoutSec 30
+        $pending | Should -Not -BeNullOrEmpty -Because 'WSL Autofix must submit a Direct Helper Proposal'
+        $cardText = Wait-Until -TimeoutSec 10 -IntervalSec 1 -Because 'a visible WSL Autofix recommendation card' -Condition {
+            $text = Get-AgentPaneText -App $script:app -MaxLines 60
+            if ($text -match (Get-RecommendationCardRegex)) { $text }
+        }
+        Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context $cardText
     }
 }
-
-
-

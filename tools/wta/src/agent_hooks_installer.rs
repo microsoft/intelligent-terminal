@@ -1278,7 +1278,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     );
 
     // 1. plugin list (text — Copilot 1.0.44-2 has no --json).
-    let plugin_ok = join_or_run_plugin_cli(plugin_handle, "copilot", &["plugin", "list"])
+    let plugin_presence = join_or_run_plugin_cli(plugin_handle, "copilot", &["plugin", "list"])
         .filter(|o| o.success)
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
@@ -1286,11 +1286,9 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     .filter(|o| o.success)
     .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
-    if let (Some(p), Some(m)) = (plugin_ok, mkt_ok) {
-        out.plugin_installed = p;
-        // Copilot's `plugin list` doesn't expose enabled/disabled, so
-        // "listed" implies enabled. Disabling a plugin removes it.
-        out.plugin_enabled = p;
+    if let (Some(p), Some(m)) = (plugin_presence, mkt_ok) {
+        out.plugin_installed = p.installed;
+        out.plugin_enabled = p.enabled;
         out.marketplace_registered = m;
     } else {
         copilot_fs_fallback(&mut out, home);
@@ -1729,15 +1727,19 @@ fn classify_marketplace_source(source: Option<&Value>) -> MarketplaceInfo {
 
 // ---- output parsers --------------------------------------------------------
 
-/// Search Copilot's `plugin list` output for our entry. Looks for the
-/// substring `wt-agent-hooks@wt-local` anywhere in the output —
+/// Search Copilot's `plugin list` output for our entry and enabled state.
+/// Looks for `wt-agent-hooks@wt-local` and honors the `[disabled]` suffix —
 /// deliberately ignores the leading bullet character because Node-based
 /// CLIs on Windows often emit UTF-8 bytes that get reinterpreted as
 /// cp850/cp1252 when stdout is not connected to a TTY (so the real `•`
 /// can show up as garbage).
-fn parse_copilot_plugin_list(stdout: &str) -> bool {
+fn parse_copilot_plugin_list(stdout: &str) -> PluginPresence {
     let needle = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    stdout.contains(&needle)
+    let entry = stdout.lines().find(|line| line.contains(&needle));
+    PluginPresence {
+        installed: entry.is_some(),
+        enabled: entry.is_some_and(|line| !line.to_ascii_lowercase().contains("[disabled]")),
+    }
 }
 
 /// Search for our marketplace name in the `Registered marketplaces:`
@@ -1998,7 +2000,7 @@ fn uninstall_for(cli: CliKind, home: Option<&Path>) -> CliUninstallResult {
     }
 }
 
-fn copilot_uninstall(_home: Option<&Path>) -> CliUninstallResult {
+fn copilot_uninstall(home: Option<&Path>) -> CliUninstallResult {
     let mut out = CliUninstallResult {
         name: CliKind::Copilot.name(),
         attempted: false,
@@ -2011,12 +2013,14 @@ fn copilot_uninstall(_home: Option<&Path>) -> CliUninstallResult {
 
     if which::which("copilot").is_ok() {
         out.attempted = true;
-        out.plugin_uninstalled = Some(spawn_step(
+        let cli_removed = spawn_step(
             &mut out.messages,
             "copilot",
             &["plugin", "uninstall", &plugin_ref],
-            &[],
-        ));
+            &["is not installed"],
+        );
+        let config_clean = cleanup_copilot_plugin_config(home, &mut out.messages);
+        out.plugin_uninstalled = Some(cli_removed && config_clean);
         // `--force`: marketplace removal would otherwise refuse if
         // anything is still installed under it (e.g. previous step
         // failed). Belt-and-braces.
@@ -2030,7 +2034,7 @@ fn copilot_uninstall(_home: Option<&Path>) -> CliUninstallResult {
                 MARKETPLACE_NAME,
                 "--force",
             ],
-            &[],
+            &["is not registered"],
         ));
     } else {
         out.messages
@@ -2039,6 +2043,61 @@ fn copilot_uninstall(_home: Option<&Path>) -> CliUninstallResult {
 
     out.staging_dir_removed = sweep_legacy_staging_dirs(&mut out.messages, CliKind::Copilot);
     out
+}
+
+fn cleanup_copilot_plugin_config(home: Option<&Path>, messages: &mut Vec<String>) -> bool {
+    let Some(home) = home else {
+        messages.push("copilot config cleanup skipped: home directory unavailable".into());
+        return false;
+    };
+    let path = home.join(".copilot").join("config.json");
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(error) => {
+            messages.push(format!("failed to read {}: {}", path.display(), error));
+            return false;
+        }
+    };
+    let mut config: Value = match serde_json::from_str(&strip_jsonc_line_comments(&text)) {
+        Ok(config) => config,
+        Err(error) => {
+            messages.push(format!("failed to parse {}: {}", path.display(), error));
+            return false;
+        }
+    };
+    let Some(entries) = config
+        .get_mut("installedPlugins")
+        .and_then(Value::as_array_mut)
+    else {
+        return true;
+    };
+    let before = entries.len();
+    entries.retain(|entry| {
+        entry.get("name").and_then(Value::as_str) != Some(PLUGIN_NAME)
+            || entry.get("marketplace").and_then(Value::as_str) != Some(MARKETPLACE_NAME)
+    });
+    if entries.len() == before {
+        return true;
+    }
+    let serialized = match serde_json::to_string_pretty(&config) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            messages.push(format!("failed to encode {}: {}", path.display(), error));
+            return false;
+        }
+    };
+    if let Err(error) = fs::write(&path, serialized) {
+        messages.push(format!("failed to write {}: {}", path.display(), error));
+        return false;
+    }
+    messages.push(format!(
+        "removed stale {}@{} entry from {}",
+        PLUGIN_NAME,
+        MARKETPLACE_NAME,
+        path.display()
+    ));
+    true
 }
 
 fn claude_uninstall(home: Option<&Path>) -> CliUninstallResult {

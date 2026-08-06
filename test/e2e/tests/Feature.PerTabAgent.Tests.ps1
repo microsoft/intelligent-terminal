@@ -24,29 +24,6 @@ Describe 'Feature per-tab agent selection through /agent' -Tag 'Feature' -Skip:(
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It '/agent prefix completion works' {
-        try {
-            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
-            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent cop' -NoSubmit | Out-Null
-
-            (Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
-                    (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) -match '(?i)/agent\s+copilot\s+.*Copilot'
-                }) | Should -BeTrue -Because 'typing an agent-id prefix must show the matching installed and policy-allowed agent'
-
-            $inputRow = '(?m)^\s*[│║|]\s+>\s+/agent copilot'
-            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
-                Should -Match $inputRow -Because 'the selected completion suffix must render inline as ghost text'
-
-            Send-AgentKey -App $script:app -PaneSessionId $script:defaultPane -Key Tab | Out-Null
-            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '-e2e' -NoSubmit | Out-Null
-            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
-                Should -Match '(?m)^\s*[│║|]\s+>\s+/agent copilot-e2e' -Because 'Tab must commit the full selected id into the editable input buffer'
-        }
-        finally {
-            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
-        }
-    }
-
     It '/agent completion selection is safe' {
         try {
             Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null

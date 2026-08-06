@@ -1039,7 +1039,20 @@ Installed plugins:
   • superpowers@superpowers-marketplace (v5.1.0)
   • wt-agent-hooks@wt-local (v0.1.0)
 ";
-    assert!(parse_copilot_plugin_list(stdout));
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+}
+
+#[test]
+fn copilot_plugin_list_parser_reports_disabled() {
+    let stdout = "\
+Installed plugins:
+  • wt-agent-hooks@wt-local (v0.1.4) [disabled]
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(!presence.enabled);
 }
 
 #[test]
@@ -1048,12 +1061,57 @@ fn copilot_plugin_list_parser_returns_false_when_missing() {
 Installed plugins:
   • superpowers@superpowers-marketplace (v5.1.0)
 ";
-    assert!(!parse_copilot_plugin_list(stdout));
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(!presence.installed);
+    assert!(!presence.enabled);
 }
 
 #[test]
 fn copilot_plugin_list_parser_returns_false_when_empty() {
-    assert!(!parse_copilot_plugin_list(""));
+    let presence = parse_copilot_plugin_list("");
+    assert!(!presence.installed);
+    assert!(!presence.enabled);
+}
+
+#[test]
+fn cleanup_copilot_plugin_config_removes_only_our_entry() {
+    let home = unique_dir("copilot-uninstall-config");
+    let copilot_dir = home.join(".copilot");
+    fs::create_dir_all(&copilot_dir).unwrap();
+    let path = copilot_dir.join("config.json");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "installedPlugins": [
+                {
+                    "name": "wt-agent-hooks",
+                    "marketplace": "wt-local",
+                    "enabled": true
+                },
+                {
+                    "name": "keep-me",
+                    "marketplace": "user-marketplace",
+                    "enabled": true
+                }
+            ],
+            "model": "keep-this-too"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut messages = Vec::new();
+    assert!(cleanup_copilot_plugin_config(
+        Some(home.as_path()),
+        &mut messages
+    ));
+
+    let after: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let plugins = after["installedPlugins"].as_array().unwrap();
+    assert_eq!(plugins.len(), 1);
+    assert_eq!(plugins[0]["name"], "keep-me");
+    assert_eq!(after["model"], "keep-this-too");
+    assert!(messages.iter().any(|message| message.contains("removed stale")));
 }
 
 /// Real `copilot plugin marketplace list` output. Built-in

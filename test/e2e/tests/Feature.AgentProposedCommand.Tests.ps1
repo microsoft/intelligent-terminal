@@ -20,19 +20,14 @@ Describe 'Feature §2 Direct Helper Proposal — Insert' -Tag 'Feature' -Skip:(-
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before driving the proposed-command card'
-        # Recommendation card button labels ([ Run command ] / Insert in Terminal) are localized,
-        # so match each across all bundled locales (Get-WtaLocalizedTextRegex; en-US fallback).
-        $script:CardRunRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command')
-        if (-not $script:CardRunRegex) { $script:CardRunRegex = 'Run command' }
-        $script:CardInsertRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
-        if (-not $script:CardInsertRegex) { $script:CardInsertRegex = 'Insert in Terminal' }
         $script:GetDirectProposalCard = {
             param($marker)
             Clear-AgentInput -App $script:app | Out-Null
             Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
-            Test-Until -TimeoutSec 45 -IntervalSec 2 -Condition {
+            Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+            Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
                 $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
+                ($t -match (Get-RecommendationCardRegex)) -and ($t -match [regex]::Escape($marker))
             }
         }
     }
@@ -57,17 +52,14 @@ Describe 'Feature §2 Direct Helper Proposal — Run' -Tag 'Feature' -Skip:(-not
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before driving the proposed-command card'
-        $script:CardRunRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command')
-        if (-not $script:CardRunRegex) { $script:CardRunRegex = 'Run command' }
-        $script:CardInsertRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
-        if (-not $script:CardInsertRegex) { $script:CardInsertRegex = 'Insert in Terminal' }
         $script:GetDirectProposalCard = {
             param($marker)
             Clear-AgentInput -App $script:app | Out-Null
             Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
-            Test-Until -TimeoutSec 45 -IntervalSec 2 -Condition {
+            Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+            Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
                 $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
+                ($t -match (Get-RecommendationCardRegex)) -and ($t -match [regex]::Escape($marker))
             }
         }
     }
