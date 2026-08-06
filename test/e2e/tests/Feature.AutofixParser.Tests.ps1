@@ -40,7 +40,10 @@ Describe 'Feature: PowerShell parser errors trigger Autofix end-to-end' -Tag 'Fe
             "$($failure.params.sequence)" |
                 Should -Match '(?i)osc:133;D;(?!0(\b|;|$))' -Because 'the parser error must be corrected from stale exit code 0'
 
-            $autofix = Wait-Autofix -Listener $listener -TimeoutSec 45
+            $autofix = Wait-WtEvent -Listener $listener -TimeoutSec 45 -Predicate {
+                $_.method -eq 'agent_event' -and
+                "$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error'
+            }
             $autofix | Should -Not -BeNullOrEmpty -Because 'the parser failure mark must reach the Autofix dispatcher'
 
             Start-Sleep -Seconds 2
