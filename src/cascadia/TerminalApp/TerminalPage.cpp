@@ -919,6 +919,11 @@ namespace winrt::TerminalApp::implementation
         return SplitDirection::Right;
     }
 
+    winrt::hstring TerminalPage::_AgentPanePositionToContentPosition(const winrt::hstring& position)
+    {
+        return position == L"up" ? winrt::hstring{ L"top" } : position;
+    }
+
     // ── First-run experience ──────────────────────────────────────────────
 
     bool TerminalPage::_IsFreRequired() const
@@ -1046,7 +1051,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (const auto agentContent = tabImpl->FindAgentPaneContent())
                 {
-                    agentContent.SetAgentPanePosition(position);
+                    agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(position));
                 }
             }
         }
@@ -2456,8 +2461,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
-            agentContent.SetAgentPanePosition(
-                panePosition == L"up" ? winrt::hstring{ L"top" } : panePosition);
+            agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
         }
 
         {
@@ -5184,11 +5188,7 @@ namespace winrt::TerminalApp::implementation
             }
             if (const auto agentContent = targetTab->FindAgentPaneContent())
             {
-                // AgentPaneContent uses the settings spelling "top" for Up.
-                const auto contentPosition = panePosition == L"up" ?
-                                                 winrt::hstring{ L"top" } :
-                                                 panePosition;
-                agentContent.SetAgentPanePosition(contentPosition);
+                agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
 
                 // RepositionAgentPane rebuilds the split's XAML visual tree,
                 // which clears focus. `/move` originates in this TermControl,
