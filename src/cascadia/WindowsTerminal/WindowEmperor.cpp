@@ -1965,23 +1965,54 @@ try
         return false;
     }
 
-    // Atomic take: after this the tab is ours and is no longer listed.
-    const auto restoredGroup = manager.TryReattachKeptGroup(groupId);
+    const auto restoredGroup = manager.BeginReattachKeptGroup(groupId);
     auto actions = winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(restoredGroup);
     if (actions.empty())
     {
+        manager.CancelKeptGroupReattach(groupId);
         return false;
     }
 
-    const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+    try
+    {
+        if (_windows.empty())
+        {
+            // Startup action processing suspends between actions after the
+            // first one. Create the tab with its first pane, then attach the
+            // remaining splits synchronously so every kept pane either
+            // confirms reattach before this transaction ends or is cancelled.
+            std::vector<ActionAndArgs> firstAction;
+            firstAction.emplace_back(actions.front());
+            const auto firstContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(firstAction)));
+            CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, firstContent, nullptr });
 
-    if (_windows.empty())
-    {
-        CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, content, nullptr });
+            if (actions.size() > 1)
+            {
+                std::vector<ActionAndArgs> remainingActions{ actions.begin() + 1, actions.end() };
+                const auto remainingContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(remainingActions)));
+                _windows.back()->Logic().AttachContent(remainingContent, 0);
+            }
+        }
+        else
+        {
+            const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+            _windows.front()->Logic().AttachContent(content, 0);
+        }
     }
-    else
+    catch (...)
     {
-        _windows.front()->Logic().AttachContent(content, 0);
+        manager.CancelKeptGroupReattach(groupId);
+        throw;
+    }
+
+    // Some actions may decline to attach (for example, an invalid profile).
+    // Confirmed panes were removed individually; make every unconfirmed pane
+    // visible and claimable again.
+    manager.CancelKeptGroupReattach(groupId);
+    if (manager.KeptGroups().HasKey(groupId))
+    {
+        LOG_IF_FAILED(E_FAIL);
+        return false;
     }
     return true;
 }

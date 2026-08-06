@@ -24,6 +24,7 @@ namespace TerminalApp
     runtimeclass KeptGroupRestoreResult
     {
         Windows.Foundation.Collections.IVectorView<UInt64> ContentIds { get; };
+        Windows.Foundation.Collections.IVectorView<Microsoft.Terminal.Settings.Model.NewTerminalArgs> RestoreArgs { get; };
         String ShellSessionId { get; };
         Int64 ShellSessionRevision { get; };
     }
@@ -48,16 +49,19 @@ namespace TerminalApp
         // two indistinguishable things to restore.
         //
         // See doc/specs/keep-running-sessions.md.
-        Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Int64 shellSessionRevision, Microsoft.Terminal.Control.TermControl control);
+        Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Int64 shellSessionRevision, Microsoft.Terminal.Settings.Model.NewTerminalArgs restoreArgs, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
+        void CancelKeptSessionReattach(Guid sessionId);
+        void ConfirmReattachedContent(UInt64 contentId);
+        Boolean IsReattachPendingContent(UInt64 contentId);
         Windows.Foundation.Collections.IVectorView<DetachedSessionInfo> DetachedSessions();
         // Group id -> the tab title it was detached from.
         Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
-        // Takes a whole detached tab: returns its panes' content ids in the
-        // order they were detached together with the durable shell-session
-        // metadata that must stay in lockstep with that take. Null if the
-        // group is gone or no live panes remain.
-        KeptGroupRestoreResult TryReattachKeptGroup(Guid groupId);
+        // Begins a transactional detached-tab reattach. The group remains
+        // tracked until each content is successfully attached and confirmed.
+        // Null if the group is gone, already pending, or has no live panes.
+        KeptGroupRestoreResult BeginReattachKeptGroup(Guid groupId);
+        void CancelKeptGroupReattach(Guid groupId);
         // Ends one detached pane and lets its shell be torn down.
         Boolean DiscardKeptSession(Guid sessionId);
         // Ends every session in a detached tab and lets their shells be torn down.

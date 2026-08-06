@@ -22,6 +22,33 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
+    KeptGroupRestoreResult::KeptGroupRestoreResult(std::vector<NewTerminalArgs> restoreArgs,
+                                                   winrt::hstring shellSessionId,
+                                                   const int64_t shellSessionRevision) :
+        _shellSessionId{ std::move(shellSessionId) },
+        _shellSessionRevision{ shellSessionRevision }
+    {
+        std::vector<NewTerminalArgs> copiedRestoreArgs;
+        std::vector<uint64_t> contentIds;
+        copiedRestoreArgs.reserve(restoreArgs.size());
+        contentIds.reserve(restoreArgs.size());
+
+        for (const auto& restoreArgsForPane : restoreArgs)
+        {
+            if (!restoreArgsForPane)
+            {
+                continue;
+            }
+
+            auto copiedRestoreArgsForPane = restoreArgsForPane.Copy().try_as<NewTerminalArgs>();
+            contentIds.push_back(copiedRestoreArgsForPane.ContentId());
+            copiedRestoreArgs.emplace_back(std::move(copiedRestoreArgsForPane));
+        }
+
+        _contentIds = winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView();
+        _restoreArgs = winrt::single_threaded_vector<NewTerminalArgs>(std::move(copiedRestoreArgs)).GetView();
+    }
+
     ContentManager::ContentManager(winrt::Windows::System::DispatcherQueue ownerDispatcher) :
         _ownerDispatcher{ std::move(ownerDispatcher) },
         _ownerThreadId{ GetCurrentThreadId() }
@@ -231,6 +258,7 @@ namespace winrt::TerminalApp::implementation
                                               const winrt::hstring& title,
                                               const winrt::hstring& shellSessionId,
                                               const int64_t shellSessionRevision,
+                                              const Microsoft::Terminal::Settings::Model::NewTerminalArgs& restoreArgs,
                                               const Microsoft::Terminal::Control::TermControl& control)
     {
         if (!control || sessionId == winrt::guid{} || groupId == winrt::guid{})
@@ -246,12 +274,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto core{ content.Core() };
+        auto copiedRestoreArgs = restoreArgs ? restoreArgs.Copy().try_as<NewTerminalArgs>() : NewTerminalArgs{};
+        copiedRestoreArgs.ContentId(contentId);
         control.Detach();
 
         auto retained = false;
         _invokeOnOwnerThread([&]() {
             _drainPendingOwnerWork();
-            retained = _detachForKeepRunningOnOwner(groupId, sessionId, title, shellSessionId, shellSessionRevision, contentId, core);
+            retained = _detachForKeepRunningOnOwner(groupId, sessionId, title, shellSessionId, shellSessionRevision, contentId, copiedRestoreArgs, core);
         });
         return retained;
     }
@@ -262,6 +292,7 @@ namespace winrt::TerminalApp::implementation
                                                       const winrt::hstring& shellSessionId,
                                                       const int64_t shellSessionRevision,
                                                       const uint64_t contentId,
+                                                      const Microsoft::Terminal::Settings::Model::NewTerminalArgs& restoreArgs,
                                                       const Microsoft::Terminal::Control::ControlCore& core)
     {
         _assertIsOwnerThread();
@@ -269,6 +300,8 @@ namespace winrt::TerminalApp::implementation
         KeptSession kept;
         kept.contentId = contentId;
         kept.groupId = groupId;
+        kept.restoreArgs = restoreArgs ? restoreArgs.Copy().try_as<NewTerminalArgs>() : NewTerminalArgs{};
+        kept.restoreArgs.ContentId(contentId);
 
         // Detaching severed the only thing that was watching this connection —
         // TermControl::Detach() clears its revokers. Without our own watch, a
@@ -390,9 +423,81 @@ namespace winrt::TerminalApp::implementation
             return 0;
         }
 
-        _dropKeptSession(sessionId);
+        if (it->second.reattachPending)
+        {
+            return 0;
+        }
+
+        const auto group = _keptGroups.find(it->second.groupId);
+        if (group == _keptGroups.end() || group->second.reattachPending)
+        {
+            return 0;
+        }
+
+        it->second.reattachPending = true;
         KeptSessionsChanged.raise(*this, nullptr);
         return contentId;
+    }
+
+    void ContentManager::CancelKeptSessionReattach(const winrt::guid& sessionId)
+    {
+        _invokeOnOwnerThread([&]() {
+            _drainPendingOwnerWork();
+            _cancelKeptSessionReattachOnOwner(sessionId);
+        });
+    }
+
+    void ContentManager::_cancelKeptSessionReattachOnOwner(const winrt::guid& sessionId)
+    {
+        _assertIsOwnerThread();
+
+        if (const auto it = _keptSessions.find(sessionId);
+            it != _keptSessions.end() && it->second.reattachPending)
+        {
+            it->second.reattachPending = false;
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
+    }
+
+    void ContentManager::ConfirmReattachedContent(const uint64_t contentId)
+    {
+        _invokeOnOwnerThread([&]() {
+            _drainPendingOwnerWork();
+            _confirmReattachedContentOnOwner(contentId);
+        });
+    }
+
+    void ContentManager::_confirmReattachedContentOnOwner(const uint64_t contentId)
+    {
+        _assertIsOwnerThread();
+
+        for (const auto& [sessionId, kept] : _keptSessions)
+        {
+            if (kept.contentId == contentId && kept.reattachPending)
+            {
+                _dropKeptSession(sessionId);
+                KeptSessionsChanged.raise(*this, nullptr);
+                return;
+            }
+        }
+    }
+
+    bool ContentManager::IsReattachPendingContent(const uint64_t contentId)
+    {
+        auto isPending = false;
+        _invokeOnOwnerThread([&]() {
+            isPending = _isReattachPendingContentOnOwner(contentId);
+        });
+        return isPending;
+    }
+
+    bool ContentManager::_isReattachPendingContentOnOwner(const uint64_t contentId) const
+    {
+        _assertIsOwnerThread();
+
+        return std::any_of(_keptSessions.begin(), _keptSessions.end(), [contentId](const auto& session) {
+            return session.second.contentId == contentId && session.second.reattachPending;
+        });
     }
 
     winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> ContentManager::DetachedSessions()
@@ -414,8 +519,13 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& [sessionId, kept] : _keptSessions)
         {
+            if (kept.reattachPending)
+            {
+                continue;
+            }
+
             const auto group = _keptGroups.find(kept.groupId);
-            if (group == _keptGroups.end())
+            if (group == _keptGroups.end() || group->second.reattachPending)
             {
                 continue;
             }
@@ -469,35 +579,53 @@ namespace winrt::TerminalApp::implementation
         auto map = winrt::single_threaded_map<winrt::guid, winrt::hstring>();
         for (const auto& [groupId, group] : _keptGroups)
         {
+            if (group.reattachPending)
+            {
+                continue;
+            }
+
+            const auto hasPendingMember = std::any_of(group.sessionIds.begin(), group.sessionIds.end(), [this](const auto& sessionId) {
+                if (const auto session = _keptSessions.find(sessionId); session != _keptSessions.end())
+                {
+                    return session->second.reattachPending;
+                }
+                return false;
+            });
+            if (hasPendingMember)
+            {
+                continue;
+            }
+
             map.Insert(groupId, group.title);
         }
         return map.GetView();
     }
 
-    // Takes a whole detached tab at once. Returning the content ids together
-    // with the durable shell-session metadata keeps this class out of the
-    // business of composing tab layouts while still making the take atomic.
-    winrt::TerminalApp::KeptGroupRestoreResult ContentManager::TryReattachKeptGroup(const winrt::guid& groupId)
+    // Begins a whole detached-tab reattach without releasing the live content.
+    // Each pane remains tracked until TerminalPage confirms its new TermControl
+    // completed setup, so an interrupted dispatch can safely make remaining
+    // panes available again.
+    winrt::TerminalApp::KeptGroupRestoreResult ContentManager::BeginReattachKeptGroup(const winrt::guid& groupId)
     {
         winrt::TerminalApp::KeptGroupRestoreResult result{ nullptr };
         _invokeOnOwnerThread([&]() {
             _drainPendingOwnerWork();
-            result = _tryReattachKeptGroupOnOwner(groupId);
+            result = _beginReattachKeptGroupOnOwner(groupId);
         });
         return result;
     }
 
-    winrt::TerminalApp::KeptGroupRestoreResult ContentManager::_tryReattachKeptGroupOnOwner(const winrt::guid& groupId)
+    winrt::TerminalApp::KeptGroupRestoreResult ContentManager::_beginReattachKeptGroupOnOwner(const winrt::guid& groupId)
     {
         _assertIsOwnerThread();
 
         const auto it = _keptGroups.find(groupId);
-        if (it == _keptGroups.end())
+        if (it == _keptGroups.end() || it->second.reattachPending)
         {
             return nullptr;
         }
 
-        std::vector<uint64_t> contentIds;
+        std::vector<NewTerminalArgs> restoreArgs;
         auto changed = false;
 
         const auto shellSessionId = it->second.shellSessionId;
@@ -511,6 +639,10 @@ namespace winrt::TerminalApp::implementation
             if (session == _keptSessions.end())
             {
                 continue;
+            }
+            if (session->second.reattachPending)
+            {
+                return nullptr;
             }
             const auto contentId = session->second.contentId;
             const auto content{ _tryLookupCoreOnOwner(contentId) };
@@ -529,30 +661,70 @@ namespace winrt::TerminalApp::implementation
 
             if (!_isLiveDetachedSession(content))
             {
-                // Reattach each pane independently: dead members are reaped
-                // here, while live members still come back in the rebuilt tab.
+                // Dead members are reaped here, while live members still come
+                // back in the rebuilt tab.
                 session->second.detachedEndState = _getDetachedSessionEndedState(content);
                 content.Close();
                 continue;
             }
 
-            _dropKeptSession(sessionId);
-            changed = true;
-            contentIds.push_back(contentId);
-        }
-        if (changed)
-        {
-            KeptSessionsChanged.raise(*this, nullptr);
-        }
-        if (contentIds.empty())
-        {
-            return nullptr;
-        }
+                restoreArgs.emplace_back(session->second.restoreArgs.Copy().try_as<NewTerminalArgs>());
+            }
+            if (restoreArgs.empty())
+            {
+                if (changed)
+                {
+                    KeptSessionsChanged.raise(*this, nullptr);
+                }
+                return nullptr;
+            }
 
-        return winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
-            std::move(contentIds),
-            shellSessionId,
-            shellSessionRevision);
+            if (const auto group = _keptGroups.find(groupId); group != _keptGroups.end())
+            {
+                group->second.reattachPending = true;
+                for (const auto& sessionId : group->second.sessionIds)
+                {
+                    if (const auto session = _keptSessions.find(sessionId); session != _keptSessions.end())
+                    {
+                        session->second.reattachPending = true;
+                    }
+                }
+            }
+            KeptSessionsChanged.raise(*this, nullptr);
+
+            return winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
+                std::move(restoreArgs),
+                shellSessionId,
+                shellSessionRevision);
+    }
+
+    void ContentManager::CancelKeptGroupReattach(const winrt::guid& groupId)
+    {
+            _invokeOnOwnerThread([&]() {
+                _drainPendingOwnerWork();
+                _cancelKeptGroupReattachOnOwner(groupId);
+            });
+    }
+
+    void ContentManager::_cancelKeptGroupReattachOnOwner(const winrt::guid& groupId)
+    {
+            _assertIsOwnerThread();
+
+            const auto group = _keptGroups.find(groupId);
+            if (group == _keptGroups.end() || !group->second.reattachPending)
+            {
+                return;
+            }
+
+            group->second.reattachPending = false;
+            for (const auto& sessionId : group->second.sessionIds)
+            {
+                if (const auto session = _keptSessions.find(sessionId); session != _keptSessions.end())
+                {
+                    session->second.reattachPending = false;
+                }
+            }
+            KeptSessionsChanged.raise(*this, nullptr);
     }
 
     bool ContentManager::DiscardKeptSession(const winrt::guid& sessionId)
