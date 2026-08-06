@@ -345,9 +345,12 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
 
-    // A window exists again, so whatever we persisted when we last went
-    // headless is stale; let the normal exit path persist afresh.
-    _skipPersistence = false;
+    // Restoring one window does not finish a headless generation while other
+    // detached groups still need the complete stored layout.
+    if (!winrt::TerminalApp::implementation::ShouldPreserveForcedKeptLayoutGeneration(_forcedKeptLayoutsActive, _hasKeptSessions()))
+    {
+        _skipPersistence = false;
+    }
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -1290,7 +1293,10 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
             const auto hasKeptSessions = _hasKeptSessions();
-            const auto forcePersistClosingWindowLayout = winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(_windows.size(), hasKeptSessions);
+            const auto forcedLayoutAction = winrt::TerminalApp::implementation::ClassifyForcedKeptLayoutClose(
+                _forcedKeptLayoutsActive,
+                _windows.size(),
+                hasKeptSessions);
             // Keep the last window in the array so that we can persist it on exit.
             // We check for AllowHeadless(), as that being true prevents us from ever quitting in the first place.
             // (= If we avoided closing the last window you wouldn't be able to reach a headless state.)
@@ -1332,10 +1338,16 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // deterministic window count management.
                         const auto strong = *it;
 
-                        if (forcePersistClosingWindowLayout)
+                        if (forcedLayoutAction != winrt::TerminalApp::implementation::ForcedKeptLayoutCloseAction::None)
                         {
-                            // The last window must be captured even when the normal
-                            // firstWindowPreference is DefaultProfile.
+                            if (forcedLayoutAction == winrt::TerminalApp::implementation::ForcedKeptLayoutCloseAction::StartGeneration)
+                            {
+                                _clearForcedKeptLayouts();
+                                _forcedKeptLayoutsActive = true;
+                            }
+
+                            // Every window in this generation must be captured even
+                            // when firstWindowPreference is DefaultProfile.
                             strong->Logic().PersistState();
                             _skipPersistence = true;
                         }
@@ -1376,6 +1388,13 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             // Re-check whether we still have a reason to run, and whether the
             // notification icon should appear — without it, a windowless
             // terminal would be invisible and unquittable.
+            if (winrt::TerminalApp::implementation::ShouldCompleteForcedKeptLayoutGeneration(_forcedKeptLayoutsActive, _hasKeptSessions()))
+            {
+                // Restored windows will be persisted normally from now on. If
+                // every detached shell exited instead, this clears the stale
+                // generation before _postQuitMessageIfNeeded lets us quit.
+                _clearForcedKeptLayouts();
+            }
             _checkWindowsForNotificationIcon();
             _postQuitMessageIfNeeded();
             return 0;
@@ -1624,6 +1643,19 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 
     // Ensure to write the state.json
     state.Flush();
+}
+
+void WindowEmperor::_clearForcedKeptLayouts()
+{
+    const auto state = ApplicationState::SharedInstance();
+    if (state.PersistedWindowLayouts())
+    {
+        state.PersistedWindowLayouts(nullptr);
+    }
+    state.Flush();
+
+    _forcedKeptLayoutsActive = false;
+    _skipPersistence = false;
 }
 
 void WindowEmperor::_finalizeSessionPersistence() const

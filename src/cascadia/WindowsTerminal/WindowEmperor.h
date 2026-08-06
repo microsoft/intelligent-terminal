@@ -128,6 +128,7 @@ private:
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
     void _finalizeSessionPersistence() const;
+    void _clearForcedKeptLayouts();
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
     bool _hasKeptSessions() const;
@@ -151,6 +152,7 @@ private:
     HMENU _currentWindowMenu = nullptr;
     bool _notificationIconShown = false;
     bool _skipPersistence = false;
+    bool _forcedKeptLayoutsActive = false;
     bool _needsPersistenceCleanup = false;
     SafeDispatcherTimer _persistStateTimer;
     std::optional<bool> _currentSystemThemeIsDark;

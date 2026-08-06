@@ -196,6 +196,7 @@ namespace winrt::TerminalApp::implementation
         void _queuePendingReap(const winrt::guid& sessionId);
         void _queuePendingClosedContent(uint64_t contentId, const winrt::hstring& state);
         void _drainPendingOwnerWork();
+        Microsoft::Terminal::Control::ControlInteractivity _tryLookupCoreOnOwner(uint64_t id);
 
         bool _detachForKeepRunningOnOwner(const winrt::guid& groupId,
                                           const winrt::guid& sessionId,

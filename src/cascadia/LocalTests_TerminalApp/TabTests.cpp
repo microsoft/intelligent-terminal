@@ -201,8 +201,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(WindowCloseAcceptanceIsOneShot);
         TEST_METHOD(ContentMapOperationsUseOwnerThread);
+        TEST_METHOD(ContentAttachRejectsDeadConnections);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
         TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
+        TEST_METHOD(OwnerOperationsDoNotRedrainPendingReaps);
         TEST_METHOD(ClosedContentFallbackWaitsForOwnerDrain);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
@@ -466,6 +468,45 @@ namespace TerminalAppLocalTests
         VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
     }
 
+    void TabTests::ContentAttachRejectsDeadConnections()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+
+            const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{60606060-6161-6262-6363-646464646464}");
+            auto liveConnection = winrt::make_self<TestConnection>(
+                liveSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto liveContent = _contentManager->CreateCore(*settings, *settings, *liveConnection);
+            const auto liveControl = page->_AttachControlToContent(liveContent.Id());
+            VERIFY_IS_NOT_NULL(liveControl);
+            VERIFY_ARE_EQUAL(liveContent.Id(), liveControl.ContentId());
+
+            const auto deadSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{70707070-7171-7272-7373-747474747474}");
+            auto deadConnection = winrt::make_self<TestConnection>(
+                deadSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+            const auto deadContent = _contentManager->CreateCore(*settings, *settings, *deadConnection);
+            const auto deadContentId = deadContent.Id();
+            VERIFY_IS_NULL(page->_AttachControlToContent(deadContentId));
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(deadContentId));
+
+            const auto fallbackSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{80808080-8181-8282-8383-848484848484}");
+            auto fallbackConnection = winrt::make_self<TestConnection>(
+                fallbackSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            NewTerminalArgs args{};
+            args.ContentId(deadContentId);
+            const auto fallbackPane = page->_MakeTerminalPane(args, nullptr, *fallbackConnection);
+            VERIFY_IS_NOT_NULL(fallbackPane);
+            VERIFY_IS_TRUE(fallbackPane->GetTerminalControl().ContentId() != deadContentId);
+            VERIFY_IS_TRUE(!!::IsEqualGUID(fallbackPane->GetTerminalControl().Connection().SessionId(), fallbackSessionId));
+        });
+    }
+
     void TabTests::DetachedReapUsesConfiguredOwnerScheduler()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
@@ -565,6 +606,84 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
             VERIFY_IS_TRUE(endedSessions.at(0).state == L"failed");
         });
+    }
+
+    void TabTests::OwnerOperationsDoNotRedrainPendingReaps()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        enum class Operation
+        {
+            Reattach,
+            Discard,
+            List,
+        };
+
+        for (const auto operation : { Operation::Reattach, Operation::Discard, Operation::List })
+        {
+            _createContentManager([](DispatcherQueueHandler) {
+                return false;
+            });
+
+            const auto targetGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{91919191-9292-9393-9494-959595959595}");
+            const auto triggerGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{a1a1a1a1-a2a2-a3a3-a4a4-a5a5a5a5a5a5}");
+            const auto targetSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{b1b1b1b1-b2b2-b3b3-b4b4-b5b5b5b5b5b5}");
+            const auto triggerSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{c1c1c1c1-c2c2-c3c3-c4c4-c5c5c5c5c5c5}");
+
+            TestOnUIThread([&]() {
+                auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                auto targetConnection = winrt::make_self<TestConnection>(
+                    targetSessionId,
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                auto triggerConnection = winrt::make_self<TestConnection>(
+                    triggerSessionId,
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+
+                const auto targetContent = _contentManager->CreateCore(*settings, *settings, *targetConnection);
+                const auto triggerContent = _contentManager->CreateCore(*settings, *settings, *triggerConnection);
+                winrt::Microsoft::Terminal::Control::TermControl targetControl{ targetContent };
+                winrt::Microsoft::Terminal::Control::TermControl triggerControl{ triggerContent };
+
+                VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(targetGroupId, targetSessionId, L"Target", L"target-shell", 1, targetControl));
+                VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(triggerGroupId, triggerSessionId, L"Trigger", L"trigger-shell", 1, triggerControl));
+
+                std::vector<DetachedSessionEndedRecord> endedSessions;
+                const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                    endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
+                    if (::IsEqualGUID(endedSession.SessionId(), triggerSessionId))
+                    {
+                        // This pending reap is queued after the public method's
+                        // initial drain has swapped its work list.
+                        targetConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+                    }
+                });
+
+                triggerConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+
+                switch (operation)
+                {
+                case Operation::Reattach:
+                    VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(targetSessionId));
+                    break;
+                case Operation::Discard:
+                    VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(targetSessionId));
+                    break;
+                case Operation::List:
+                    VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+                    break;
+                }
+
+                VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+                VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+                VERIFY_IS_NULL(_contentManager->TryLookupCore(targetContent.Id()));
+                VERIFY_IS_NULL(_contentManager->TryLookupCore(triggerContent.Id()));
+                VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(endedSessions.size()));
+
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
+        }
     }
 
     void TabTests::ClosedContentFallbackWaitsForOwnerDrain()
@@ -1029,11 +1148,21 @@ namespace TerminalAppLocalTests
 
     void TabTests::DurableSessionCloseForcesLayoutForEveryClosingWindowWithKeptSessions()
     {
-        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(0, true));
-        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(1, false));
-        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(1, true));
-        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(2, false));
-        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldForcePersistClosingWindowLayoutForKeptSessions(2, true));
+        using winrt::TerminalApp::implementation::ForcedKeptLayoutCloseAction;
+
+        VERIFY_ARE_EQUAL(static_cast<int>(ForcedKeptLayoutCloseAction::None),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyForcedKeptLayoutClose(false, 0, true)));
+        VERIFY_ARE_EQUAL(static_cast<int>(ForcedKeptLayoutCloseAction::None),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyForcedKeptLayoutClose(false, 1, false)));
+        VERIFY_ARE_EQUAL(static_cast<int>(ForcedKeptLayoutCloseAction::StartGeneration),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyForcedKeptLayoutClose(false, 2, true)));
+        VERIFY_ARE_EQUAL(static_cast<int>(ForcedKeptLayoutCloseAction::AppendGeneration),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyForcedKeptLayoutClose(true, 1, true)));
+
+        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldPreserveForcedKeptLayoutGeneration(true, true));
+        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldCompleteForcedKeptLayoutGeneration(true, true));
+        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldCompleteForcedKeptLayoutGeneration(true, false));
+        VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldPreserveForcedKeptLayoutGeneration(false, false));
     }
 
     void TabTests::ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow()
