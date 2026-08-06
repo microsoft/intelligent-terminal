@@ -20,6 +20,18 @@ use crate::{
 
 use super::config::{HelperConfig, InitialView};
 
+fn log_wt_event_received(event_json: &serde_json::Value) -> &str {
+    let method = event_json
+        .get("method")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+
+    // Event bodies may contain terminal output, prompts, or hook payloads.
+    // Keep diagnostics to protocol metadata even when trace logging is enabled.
+    tracing::debug!(method, "wt_event_rx: received event");
+    method
+}
+
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
 /// named pipe and forwards ACP traffic over it.
@@ -370,39 +382,7 @@ async fn run_acp_app(
                 let wt_event_tx = event_tx.clone();
                 tokio::task::spawn_local(async move {
                     while let Some(event_json) = wt_rx.recv().await {
-                        let method = event_json
-                            .get("method")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        // The full event envelope carries `vt_sequence` (raw
-                        // terminal output/scrollback) — keep it out of debug;
-                        // log only the method there, full JSON at trace.
-                        tracing::debug!(method = %method, "wt_event_rx: received event");
-                        if method == "agent_paste_text" {
-                            let mut redacted = event_json.clone();
-                            let paste_len = redacted
-                                .get("params")
-                                .and_then(|p| p.get("text"))
-                                .and_then(|v| v.as_str())
-                                .map(str::len);
-                            if let Some(paste_len) = paste_len {
-                                if let Some(params) =
-                                    redacted.get_mut("params").and_then(|v| v.as_object_mut())
-                                {
-                                    params.insert(
-                                        "text".to_string(),
-                                        serde_json::json!(format!(
-                                            "<redacted {} bytes>",
-                                            paste_len
-                                        )),
-                                    );
-                                }
-                            }
-                            tracing::trace!(target: "wt_event.content", event = %redacted, "wt_event_rx: full event");
-                        } else {
-                            tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
-                        }
+                        let method = log_wt_event_received(&event_json).to_string();
 
                         let params = event_json
                             .get("params")
@@ -1240,4 +1220,52 @@ async fn run_acp_app(
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::Mutex;
+
+    #[derive(Clone)]
+    struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedLogWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn wt_event_log_excludes_event_body_at_trace_level() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(move || SharedLogWriter(writer.clone()))
+            .finish();
+        let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+        let event = serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "message": "SECRET_WT_EVENT_BODY_SENTINEL",
+                "tool_result": "large private payload"
+            }
+        });
+        assert_eq!(log_wt_event_received(&event), "agent_event");
+
+        let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+        assert!(logs.contains("agent_event"));
+        assert!(!logs.contains("SECRET_WT_EVENT_BODY_SENTINEL"));
+        assert!(!logs.contains("large private payload"));
+    }
 }
