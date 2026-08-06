@@ -237,26 +237,6 @@ async fn connect_to_wt_protocol(
     Ok(channel.with_debug_sender(debug_tx))
 }
 
-fn spawn_restart_agent_stack_forwarder(
-    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
-) {
-    tokio::task::spawn_local(async move {
-        while let Some(req) = restart_rx.recv().await {
-            tracing::info!(
-                target: "helper",
-                new_agent = ?req.agent_cmd,
-                "restart requested before ACP task is running; asking WT to force-restart the agent stack"
-            );
-            let evt = serde_json::json!({
-                "type": "event",
-                "method": "restart_agent_stack",
-                "params": {},
-            });
-            crate::wt_protocol_events::send(evt.to_string());
-        }
-    });
-}
-
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     config: HelperConfig,
@@ -476,9 +456,11 @@ async fn run_acp_app(
             // `load_session` broadcast.
             let initial_load_tx = load_session_tx.clone();
             // /restart channel: App emits a RestartRequest, the ACP client
-            // kills the agent child process, drops the connection, and
-            // respawns from scratch. State is cleaned up on both sides.
+            // forwards to C++ independently of the ACP connection. Keeping
+            // this receiver outside the ACP task preserves recovery after a
+            // handshake failure.
             let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
+            protocol::acp::client::spawn_restart_agent_stack_forwarder(restart_rx);
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
@@ -607,15 +589,11 @@ async fn run_acp_app(
                     failure: protocol::acp::failure::AgentFailure::TransportLost,
                     message: t!("connection.lost").into_owned(),
                 });
-                // Keep the /restart path alive even with no master: /restart
-                // doesn't talk to master, it asks the C++ side (via wtcli->COM)
-                // to force-restart the whole agent stack — which respawns
-                // master and reconnects EVERY pane. So we must keep consuming
-                // `restart_rx` and forward it as a `restart_agent_stack` event.
+                // The independent restart forwarder remains active without a
+                // master and can still ask C++ to respawn the whole stack.
                 // The other receivers (prompt/new_session/…) genuinely have no
                 // master to reach, so they're dropped; they're re-created when
                 // /restart reopens this pane fresh.
-                spawn_restart_agent_stack_forwarder(restart_rx);
                 // The remaining receivers have no master to forward to. They
                 // get re-created when /restart respawns the stack and reopens
                 // this pane fresh.
@@ -642,11 +620,9 @@ async fn run_acp_app(
                 // explicit initial ACP race and makes the startup ordering
                 // independent from tokio task polling.
                 //
-                // Keep the /restart path alive even though no ACP task is
-                // running yet. The boot App holds the sole restart sender; when
-                // LoginComplete calls `try_start_acp`, it replaces that sender
-                // with a fresh channel and this forwarder exits.
-                spawn_restart_agent_stack_forwarder(restart_rx);
+                // The independent restart forwarder remains active while no
+                // ACP task is running. LoginComplete replaces its sender with
+                // a fresh channel and starts a new forwarder.
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -688,7 +664,6 @@ async fn run_acp_app(
                         load_session_rx,
                         drop_session_rx,
                         rename_session_rx,
-                        restart_rx,
                         session_hook_rx,
                         master_ext_rx,
                         shell_mgr_for_pipe,

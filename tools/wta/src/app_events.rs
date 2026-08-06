@@ -2002,7 +2002,6 @@ impl App {
                             load_session_rx: None,
                             drop_session_rx: None,
                             rename_session_rx: None,
-                            restart_rx: None,
                             master_ext_rx: None,
                             shell_mgr: Arc::clone(&self.shell_mgr),
                             wt_connected: self.wt_connected,

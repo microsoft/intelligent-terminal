@@ -23,7 +23,6 @@ struct DeferredAcpParams {
         Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>>,
     rename_session_rx:
         Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RenameSessionRequest>>,
-    restart_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>>,
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
@@ -1276,7 +1275,6 @@ impl App {
             load_session_rx: None,
             drop_session_rx: None,
             rename_session_rx: None,
-            restart_rx: None,
             master_ext_rx: None,
             shell_mgr,
             wt_connected,
@@ -1329,6 +1327,7 @@ impl App {
                 self.drop_session_tx = dtx;
                 self.rename_session_tx = rntx;
                 self.restart_tx = rtx;
+                crate::protocol::acp::client::spawn_restart_agent_stack_forwarder(rrx);
                 self.master_request_tx = mtx;
                 params.prompt_rx = Some(prx);
                 params.cancel_rx = Some(crx);
@@ -1336,7 +1335,6 @@ impl App {
                 params.load_session_rx = Some(lrx);
                 params.drop_session_rx = Some(drx);
                 params.rename_session_rx = Some(rnrx);
-                params.restart_rx = Some(rrx);
                 params.master_ext_rx = Some(mrx);
             }
 
@@ -1347,7 +1345,6 @@ impl App {
                 Some(load_session_rx),
                 Some(drop_session_rx),
                 Some(rename_session_rx),
-                Some(restart_rx),
                 Some(master_ext_rx),
             ) = (
                 params.prompt_rx.take(),
@@ -1356,7 +1353,6 @@ impl App {
                 params.load_session_rx.take(),
                 params.drop_session_rx.take(),
                 params.rename_session_rx.take(),
-                params.restart_rx.take(),
                 params.master_ext_rx.take(),
             ) {
                 let acp_model = params.acp_model.clone();
@@ -1416,7 +1412,6 @@ impl App {
                                 load_session_rx,
                                 drop_session_rx,
                                 rename_session_rx,
-                                restart_rx,
                                 shrx,
                                 master_ext_rx,
                                 shell_mgr,
@@ -4569,9 +4564,9 @@ impl App {
     ///   new `initialize` round-trip lands.
     ///
     /// * Helper mode: master owns the agent CLI lifetime, so a
-    ///   single helper cannot restart it in-process. The helper's
-    ///   `restart_rx` arm asks the C++ side to force-restart the
-    ///   whole agent stack (`restart_agent_stack` SendEvent →
+    ///   single helper cannot restart it in-process. A helper-lifetime
+    ///   forwarder asks the C++ side to force-restart the whole agent
+    ///   stack (`restart_agent_stack` SendEvent →
     ///   TerminalPage tears down every agent pane,
     ///   `SharedWta::Restart` respawns master on the same stable
     ///   pipe name, then the active tab's pane is re-opened). The
