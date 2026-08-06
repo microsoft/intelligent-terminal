@@ -181,6 +181,12 @@
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
                 </local:SettingContainer.CurrentValue>
                 <StackPanel>
+                    <Button x:Uid="AIAgents_CustomProviderAdd"
+                            Margin="0,12,0,12"
+                            HorizontalAlignment="Right"
+                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
