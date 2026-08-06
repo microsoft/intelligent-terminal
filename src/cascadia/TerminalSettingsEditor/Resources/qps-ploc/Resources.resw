@@ -2921,7 +2921,7 @@
     <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM providers</value>
+    <value>BYOM (bring your own model) providers</value>
     <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">

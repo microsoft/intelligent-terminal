@@ -177,7 +177,7 @@ async fn serve_connection(
             .await;
         }
     };
-    let context = match manager.begin_validation(&channel, request.payload.as_bytes()) {
+    let context = match manager.begin_validation(&channel) {
         Ok(context) => context,
         Err(failure) => {
             return write_validation_failure(
@@ -432,14 +432,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn named_pipe_round_trip_returns_validation_then_final_status() {
+    async fn named_pipe_round_trip_without_permission_returns_both_phases() {
         let manager = Arc::new(ProposalChannelManager::new());
         let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run","rationale":"","actions":[{"type":"send","input":"echo ok"}]}]}"#;
         let channel = manager
             .issue("session".to_string(), 1, None, false)
-            .unwrap();
-        manager
-            .arm("session", &channel, payload.as_bytes())
             .unwrap();
         let pipe_name = manager.pipe_name();
         let security = super::super::pipe_security::build_required().unwrap();
