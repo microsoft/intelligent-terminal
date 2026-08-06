@@ -7942,6 +7942,43 @@ fn mouse_wheel_does_not_scroll_hidden_chat() {
 }
 
 #[test]
+fn mouse_wheel_moves_session_management_selection() {
+    use crate::agent_sessions::SessionOrigin;
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    let mut first = session_info_for_test("first");
+    first.origin = Some(SessionOrigin::Unknown);
+    first.last_activity_at_ms = Some(300);
+    let mut second = session_info_for_test("second");
+    second.origin = Some(SessionOrigin::Unknown);
+    second.last_activity_at_ms = Some(200);
+    let mut third = session_info_for_test("third");
+    third.origin = Some(SessionOrigin::Unknown);
+    third.last_activity_at_ms = Some(100);
+
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_view.snapshot = Some(vec![first, second, third]);
+    app.current_tab_mut().agents_list_state.select(Some(1));
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().agents_list_state.selected(), Some(2));
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().agents_list_state.selected(), Some(1));
+}
+
+#[test]
 fn input_history_navigates_newest_first_and_restores_draft() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();

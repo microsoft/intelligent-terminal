@@ -41,6 +41,18 @@ impl App {
             AppEvent::Mouse(mouse) => match mouse.kind {
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
+                    if self.current_tab().current_view == View::Agents =>
+                {
+                    self.text_selection.clear();
+                    let code = if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
+                        KeyCode::Up
+                    } else {
+                        KeyCode::Down
+                    };
+                    self.handle_key(KeyEvent::new(code, mouse.modifiers));
+                }
+                crossterm::event::MouseEventKind::ScrollUp
+                | crossterm::event::MouseEventKind::ScrollDown
                     if self.mode == AppMode::Chat
                         && self.current_tab().current_view == View::Chat =>
                 {
