@@ -1612,6 +1612,23 @@ impl App {
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| self.active_tab_key().to_string());
 
+                    // WT protocol events are window broadcasts, while each
+                    // helper owns exactly one tab. A non-owner must not
+                    // materialize a default TabSession for the target and
+                    // project it back: that races the owner's real snapshot
+                    // (notably pane_position=left vs. default null/global).
+                    if let Some(owner) = self.owner_tab_id.as_deref() {
+                        if owner != target_tab {
+                            tracing::debug!(
+                                target: "set_agent_state",
+                                owner,
+                                target_tab,
+                                "ignoring set_agent_state for non-owner tab"
+                            );
+                            return;
+                        }
+                    }
+
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
                         tracing::info!(
