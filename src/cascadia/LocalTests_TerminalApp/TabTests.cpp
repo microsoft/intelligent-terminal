@@ -197,6 +197,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(ShellSessionCloseActionsRespectIndependentSettings);
+        TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
+        TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
         TEST_METHOD(DetachShellPanesForKeepRunningStoresDurableMetadata);
@@ -253,6 +256,7 @@ namespace TerminalAppLocalTests
     private:
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                      CascadiaSettings initialSettings);
+        void _createContentManager(std::function<bool(DispatcherQueueHandler)> scheduleOnOwner = {});
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -263,6 +267,18 @@ namespace TerminalAppLocalTests
     {
         const auto result = RunOnUIThread(function);
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::_createContentManager(std::function<bool(DispatcherQueueHandler)> scheduleOnOwner)
+    {
+        TestOnUIThread([&]() {
+            const auto ownerDispatcher = DispatcherQueue::GetForCurrentThread();
+            VERIFY_IS_NOT_NULL(ownerDispatcher);
+            _contentManager = scheduleOnOwner ?
+                                  winrt::make_self<winrt::TerminalApp::implementation::ContentManager>(ownerDispatcher, std::move(scheduleOnOwner)) :
+                                  winrt::make_self<winrt::TerminalApp::implementation::ContentManager>(ownerDispatcher);
+        });
+        VERIFY_IS_NOT_NULL(_contentManager);
     }
 
     void TabTests::EnsureTestsActivate()
@@ -332,7 +348,7 @@ namespace TerminalAppLocalTests
         _windowProperties = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
         winrt::TerminalApp::WindowProperties props = *_windowProperties;
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         winrt::TerminalApp::ContentManager contentManager = *_contentManager;
 
         auto result = RunOnUIThread([&page, props, contentManager]() {
@@ -340,6 +356,122 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(page);
         });
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::ShellSessionCloseActionsRespectIndependentSettings()
+    {
+        const auto saveOnly = winrt::TerminalApp::implementation::GetShellSessionCloseActions(true, false);
+        VERIFY_IS_TRUE(saveOnly.save);
+        VERIFY_IS_FALSE(saveOnly.detach);
+
+        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(false, true);
+        VERIFY_IS_FALSE(disabled.save);
+        VERIFY_IS_FALSE(disabled.detach);
+
+        const auto saveAndDetach = winrt::TerminalApp::implementation::GetShellSessionCloseActions(true, true);
+        VERIFY_IS_TRUE(saveAndDetach.save);
+        VERIFY_IS_TRUE(saveAndDetach.detach);
+    }
+
+    void TabTests::DetachedReapUsesConfiguredOwnerScheduler()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        std::vector<DispatcherQueueHandler> queuedReaps;
+        std::atomic<uint32_t> scheduleCount{ 0 };
+        _createContentManager([&](DispatcherQueueHandler callback) {
+            ++scheduleCount;
+            queuedReaps.emplace_back(std::move(callback));
+            return true;
+        });
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{01010101-0202-0303-0404-050505050505}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-1212-1313-1414-151515151515}");
+        std::vector<DetachedSessionEndedRecord> endedSessions;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            const auto contentId = content.Id();
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+
+            const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
+            });
+            const auto closeTokenRevoker = wil::scope_exit([&]() noexcept {
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Configured owner", L"shell-session-owner", 43, control));
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+
+            VERIFY_ARE_EQUAL(1u, scheduleCount.load());
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(queuedReaps.size()));
+            VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(endedSessions.size()));
+
+            const auto queuedReap = queuedReaps.front();
+            queuedReap();
+
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
+            VERIFY_IS_TRUE(endedSessions.at(0).state == L"failed");
+        });
+    }
+
+    void TabTests::FailedDetachedReapFallsBackToPendingDrain()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        std::atomic<uint32_t> scheduleCount{ 0 };
+        _createContentManager([&](DispatcherQueueHandler) {
+            ++scheduleCount;
+            return false;
+        });
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{21212121-2222-2323-2424-252525252525}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{31313131-3232-3333-3434-353535353535}");
+        std::vector<DetachedSessionEndedRecord> endedSessions;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            const auto contentId = content.Id();
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+
+            const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
+            });
+            const auto closeTokenRevoker = wil::scope_exit([&]() noexcept {
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Pending owner reap", L"shell-session-pending", 47, control));
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
+            connection->RaiseStateChanged();
+
+            VERIFY_ARE_EQUAL(2u, scheduleCount.load());
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(endedSessions.size()));
+
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
+            VERIFY_IS_TRUE(endedSessions.at(0).state == L"failed");
+        });
     }
 
     void TabTests::DetachedSessionMetadataAndDiscard()
@@ -404,7 +536,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{99999999-8888-7777-6666-555555555555}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         TestOnUIThread([&]() {
@@ -492,7 +624,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{abababab-bcbc-cdcd-dede-efefefefefef}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{01020304-1111-2222-3333-444455556666}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         TestOnUIThread([&]() {
@@ -723,7 +855,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{fedcbafe-4444-5555-6666-777788889999}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{00112233-4455-6677-8899-aabbccddeeff}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -787,7 +919,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{12345678-1111-2222-3333-444444444444}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{87654321-aaaa-bbbb-cccc-dddddddddddd}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -853,7 +985,7 @@ namespace TerminalAppLocalTests
         const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{feedface-dddd-eeee-ffff-222222222222}");
         constexpr int64_t shellSessionRevision{ 23 };
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -941,7 +1073,7 @@ namespace TerminalAppLocalTests
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{abcdefab-cdef-1234-5678-90abcdef1234}");
         constexpr int64_t shellSessionRevision{ 29 };
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         auto contentId = 0ull;
@@ -991,7 +1123,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{0abc1234-5555-6666-7777-88889999aaaa}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{9999aaaa-bbbb-cccc-dddd-eeeeffff0000}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -1050,7 +1182,7 @@ namespace TerminalAppLocalTests
         const auto failedSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{13572468-aaaa-bbbb-cccc-111122223333}");
         const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{24681357-dddd-eeee-ffff-444455556666}");
 
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         VERIFY_IS_NOT_NULL(_contentManager);
 
         std::vector<DetachedSessionEndedRecord> endedSessions;
@@ -1610,7 +1742,7 @@ namespace TerminalAppLocalTests
 
         _windowProperties = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
         winrt::TerminalApp::WindowProperties props = *_windowProperties;
-        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        _createContentManager();
         winrt::TerminalApp::ContentManager contentManager = *_contentManager;
         Log::Comment(NoThrowString().Format(L"Construct the TerminalPage"));
         auto result = RunOnUIThread([&projectedPage, &page, initialSettings, props, contentManager]() {

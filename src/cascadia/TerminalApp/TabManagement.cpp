@@ -22,6 +22,7 @@
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
+#include "KeepRunningSessionHelpers.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -862,7 +863,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
-        if (!_settings.GlobalSettings().RestoreShellSessions())
+        const auto closeActions = GetShellSessionCloseActions(
+            _settings.GlobalSettings().RestoreShellSessions(),
+            _settings.GlobalSettings().ContinueRunningCommands());
+        if (!closeActions.save)
         {
             _agentPaneLog("_PersistShellSession: skipped — restoreShellSessions is off");
             return;
@@ -1044,7 +1048,7 @@ namespace winrt::TerminalApp::implementation
         // Only now that the record is durably saved is it sound to detach the
         // live panes: a save that failed first would leave shells running that
         // nothing could ever find its way back to.
-        if (_settings.GlobalSettings().ContinueRunningCommands())
+        if (closeActions.detach)
         {
             _DetachShellPanesForKeepRunning(tab, save.id, save.revision);
         }

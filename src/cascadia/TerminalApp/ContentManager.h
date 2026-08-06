@@ -34,6 +34,11 @@ Abstract:
 #include "KeptGroupRestoreResult.g.h"
 
 #include <inc/cppwinrt_utils.h>
+
+#include <functional>
+#include <mutex>
+#include <unordered_set>
+
 namespace winrt::TerminalApp::implementation
 {
     struct DetachedSessionInfo : DetachedSessionInfoT<DetachedSessionInfo>
@@ -108,7 +113,9 @@ namespace winrt::TerminalApp::implementation
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
-        ContentManager() = default;
+        explicit ContentManager(winrt::Windows::System::DispatcherQueue ownerDispatcher);
+        ContentManager(winrt::Windows::System::DispatcherQueue ownerDispatcher,
+                       std::function<bool(winrt::Windows::System::DispatcherQueueHandler)> scheduleOnOwner);
         Microsoft::Terminal::Control::ControlInteractivity CreateCore(const Microsoft::Terminal::Control::IControlSettings& settings,
                                                                       const Microsoft::Terminal::Control::IControlAppearance& unfocusedAppearance,
                                                                       const Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection);
@@ -128,12 +135,20 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::KeptGroupRestoreResult TryReattachKeptGroup(const winrt::guid& groupId);
         bool DiscardKeptSession(const winrt::guid& sessionId);
         void DiscardKeptGroup(const winrt::guid& groupId);
-        bool HasKeptSessions() const noexcept;
+        bool HasKeptSessions();
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::TerminalApp::DetachedSessionEndedArgs> DetachedSessionClosed;
 
     private:
+        winrt::Windows::System::DispatcherQueue _ownerDispatcher{ nullptr };
+        DWORD _ownerThreadId{ 0 };
+        std::function<bool(winrt::Windows::System::DispatcherQueueHandler)> _scheduleOnOwner;
+
+        std::mutex _pendingOwnerWorkMutex;
+        std::unordered_set<winrt::guid> _pendingReaps;
+        std::unordered_map<uint64_t, winrt::hstring> _pendingClosedContent;
+
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
 
         struct KeptSession
@@ -173,6 +188,28 @@ namespace winrt::TerminalApp::implementation
         // record.
         std::unordered_map<winrt::guid, KeptSession> _keptSessions;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
+
+        void _invokeOnOwnerThread(const std::function<void()>& callback);
+        bool _tryScheduleOnOwner(winrt::Windows::System::DispatcherQueueHandler callback) noexcept;
+        bool _isOwnerThread() const noexcept;
+        void _assertIsOwnerThread() const noexcept;
+        void _queuePendingReap(const winrt::guid& sessionId);
+        void _queuePendingClosedContent(uint64_t contentId, const winrt::hstring& state);
+        void _drainPendingOwnerWork();
+
+        bool _detachForKeepRunningOnOwner(const winrt::guid& groupId,
+                                          const winrt::guid& sessionId,
+                                          const winrt::hstring& title,
+                                          const winrt::hstring& shellSessionId,
+                                          int64_t shellSessionRevision,
+                                          uint64_t contentId,
+                                          const Microsoft::Terminal::Control::ControlCore& core);
+        uint64_t _tryReattachKeptSessionOnOwner(const winrt::guid& sessionId);
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::DetachedSessionInfo> _detachedSessionsOnOwner();
+        winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> _keptGroupsOnOwner();
+        winrt::TerminalApp::KeptGroupRestoreResult _tryReattachKeptGroupOnOwner(const winrt::guid& groupId);
+        bool _discardKeptSessionOnOwner(const winrt::guid& sessionId);
+        void _discardKeptGroupOnOwner(const winrt::guid& groupId);
 
         void _dropKeptSession(const winrt::guid& sessionId);
         void _reapDetachedSessionIfDead(const winrt::guid& sessionId);

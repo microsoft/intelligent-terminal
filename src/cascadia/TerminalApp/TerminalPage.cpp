@@ -6534,18 +6534,15 @@ namespace winrt::TerminalApp::implementation
         // close never reaches — so without this, the single most common way to
         // finish for the day ("close the terminal") would neither save the
         // sessions nor keep them running.
-        if (_settings.GlobalSettings().ContinueRunningCommands())
+        for (const auto& tab : _tabs)
         {
-            for (const auto& tab : _tabs)
+            if (const auto tabImpl = _GetTabImpl(tab))
             {
-                if (const auto tabImpl = _GetTabImpl(tab))
+                try
                 {
-                    try
-                    {
-                        _PersistShellSession(tabImpl.get());
-                    }
-                    CATCH_LOG()
+                    _PersistShellSession(tabImpl.get());
                 }
+                CATCH_LOG()
             }
         }
 
