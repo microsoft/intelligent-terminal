@@ -1317,6 +1317,42 @@ fn load_session_passes_through_when_owner_tab_id_unset() {
     assert_eq!(req.session_id, "sess-legacy");
 }
 
+#[test]
+fn set_agent_state_ignored_when_target_tab_differs_from_owner() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.tab_sessions
+        .get_mut("OWNER-TAB")
+        .unwrap()
+        .agent_pane_position = Some("left");
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OTHER-TAB",
+            "view": "sessions",
+            "pane_open": true,
+        }),
+    });
+
+    assert!(
+        !app.tab_sessions.contains_key("OTHER-TAB"),
+        "non-owner helper must not create state or echo usage for another tab"
+    );
+    assert_eq!(app.tab_sessions["OWNER-TAB"].current_view, View::Chat);
+    assert!(!app.tab_sessions["OWNER-TAB"].pane_open);
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].agent_pane_position,
+        Some("left"),
+        "non-owner helper must not overwrite the owner's pane position"
+    );
+}
+
 // ─── SessionAttached load-target gating (Plan-C race fix) ───────────────
 
 /// After a load_session sets the replay window open, an unrelated
@@ -1376,35 +1412,6 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
             .as_deref(),
         Some("sess-target"),
         "load target must persist across unrelated SessionAttached"
-    );
-}
-
-#[test]
-fn set_agent_state_ignored_when_target_tab_differs_from_owner() {
-    let mut app = test_app();
-    app.window_id = Some("window-1".into());
-    app.owner_tab_id = Some("owner-tab".into());
-    app.tab_id = Some("owner-tab".into());
-    app.tab_mut("owner-tab").agent_pane_position = Some("left");
-
-    app.handle_event(AppEvent::WtEvent {
-        method: "set_agent_state".into(),
-        pane_id: String::new(),
-        tab_id: None,
-        params: json!({
-            "window_id": "window-1",
-            "tab_id": "other-tab",
-            "pane_open": true,
-        }),
-    });
-
-    assert!(
-        !app.tab_sessions.contains_key("other-tab"),
-        "a non-owner helper must not create or project a default TabSession"
-    );
-    assert_eq!(
-        app.tab_sessions["owner-tab"].agent_pane_position,
-        Some("left")
     );
 }
 
@@ -7622,16 +7629,7 @@ fn stage_direct_proposal(
             false,
         )
         .unwrap();
-    manager
-        .arm(
-            session_id,
-            &channel,
-            TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes(),
-        )
-        .unwrap();
-    let context = manager
-        .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-        .unwrap();
+    let context = manager.begin_validation(&channel).unwrap();
     let proposal_id = context.proposal_id.clone();
     let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::DirectTerminalActionProposal {
@@ -7983,6 +7981,43 @@ fn mouse_wheel_does_not_scroll_hidden_chat() {
         modifiers: KeyModifiers::NONE,
     }));
     assert_eq!(app.current_tab().chat_scroll.offset, 0);
+}
+
+#[test]
+fn mouse_wheel_moves_session_management_selection() {
+    use crate::agent_sessions::SessionOrigin;
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    let mut first = session_info_for_test("first");
+    first.origin = Some(SessionOrigin::Unknown);
+    first.last_activity_at_ms = Some(300);
+    let mut second = session_info_for_test("second");
+    second.origin = Some(SessionOrigin::Unknown);
+    second.last_activity_at_ms = Some(200);
+    let mut third = session_info_for_test("third");
+    third.origin = Some(SessionOrigin::Unknown);
+    third.last_activity_at_ms = Some(100);
+
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_view.snapshot = Some(vec![first, second, third]);
+    app.current_tab_mut().agents_list_state.select(Some(1));
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().agents_list_state.selected(), Some(2));
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().agents_list_state.selected(), Some(1));
 }
 
 #[test]

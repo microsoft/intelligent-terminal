@@ -37,7 +37,7 @@ payloads, correlate proposal results, or acknowledge cards.
 - Have the agent session execute one canonical command directly.
 - Route the short-lived CLI directly to the owning Helper.
 - Keep session, Helper, tab, window, and pane identifiers out of proposal JSON.
-- Reject wrong-Helper, stale-turn, unapproved, modified, and replayed requests.
+- Reject wrong-Helper, stale-turn, already-consumed, and replayed requests.
 - Give the agent immediate validation feedback and final user-decision feedback.
 - Preserve the existing Run, Insert, Open, Split, and Delegate card UI.
 - Preserve exactly one visible user confirmation before terminal mutation.
@@ -59,20 +59,20 @@ payloads, correlate proposal results, or acknowledge cards.
 1. Helper starts a turn and creates one opaque channel.
 2. Helper injects the channel and canonical invocation contract into the prompt.
 3. Agent emits the exact canonical WTA command with inline proposal JSON.
-4. Before executing it, the Agent CLI sends session/request_permission over ACP.
-5. Master routes that request by trusted ACP session ownership to the Helper.
-6. Helper parses the command before creating a Permission AppEvent.
-7. For an exact current-channel invocation, Helper records the payload digest,
-   moves the channel from Issued to Armed, and silently selects AllowOnce.
-8. Agent runs the short-lived WTA CLI.
-9. The CLI derives the per-Helper pipe from the opaque channel and connects
+4. If the Agent CLI sends session/request_permission before executing it,
+   master routes that request by trusted ACP session ownership to the Helper.
+5. Helper parses an exact current-channel invocation and silently selects
+   AllowOnce. Agents that execute without a permission callback use the same
+   proposal path without this optional preflight.
+6. Agent runs the short-lived WTA CLI.
+7. The CLI derives the per-Helper pipe from the opaque channel and connects
    directly to it.
-10. Helper verifies channel state, lease, turn freshness, and payload digest,
-    then atomically consumes the armed attempt.
-11. Helper validates the typed proposal and stages the existing card.
-12. CLI receives a validation response. If accepted, it remains connected.
-13. User confirms or cancels the card, or lifecycle invalidation ends the turn.
-14. CLI receives the final response and exits.
+8. Helper verifies channel ownership and turn freshness, then atomically
+   consumes the issued attempt.
+9. Helper validates the typed proposal and stages the existing card.
+10. CLI receives a validation response. If accepted, it remains connected.
+11. User confirms or cancels the card, or lifecycle invalidation ends the turn.
+12. CLI receives the final response and exits.
 ```
 
 The permission request still crosses master because that is part of the ACP
@@ -125,23 +125,22 @@ title.
 
 The permission request must describe one execute operation with a `command`
 field and a single-entry `commands` array containing the same canonical command.
-Agent adapters that emit another permission envelope fail arming and therefore
-surface their integration gap instead of falling back to Assistant text.
+Agent adapters that emit another permission envelope are silently cancelled,
+but adapters that execute without a permission callback can submit directly.
 
 Permission policy has three outcomes:
 
 | Input | Outcome |
 |---|---|
-| Exact canonical command for the current channel and compact JSON payload, with successful arming | Silently `AllowOnce` |
+| Exact canonical command for the current channel and compact JSON payload | Silently `AllowOnce` without changing proposal state |
 | Recognizable proposal command with unsafe or non-canonical syntax | Silently cancel |
 | Any unrelated command | Use the existing Permission UI |
 
-Returning `AllowOnce` and transitioning the channel to `Armed` are one
-indivisible permission outcome. If arming fails for any reason, including a
-different or stale channel, the Helper silently cancels the permission request
-and the Agent must not launch the CLI.
-`AllowAlways` is never selected because every proposal must pass through
-per-turn arming.
+If current-channel validation fails for any reason, including a different or
+stale channel, the Helper silently cancels the permission request. The
+permission callback is an optional compatibility preflight, not a prerequisite
+for proposal submission: some agents execute tool commands without emitting
+`request_permission`. `AllowAlways` is never selected.
 
 ## CLI contract
 
@@ -196,11 +195,8 @@ Validation statuses:
 - `accepted`
 - `unknown_channel`
 - `helper_mismatch`
-- `not_armed`
 - `stale`
 - `superseded`
-- `expired`
-- `digest_mismatch`
 - `already_consumed`
 - `invalid_schema`
 - `rejected`
@@ -211,7 +207,6 @@ Final statuses:
 - `confirmed`
 - `cancelled`
 - `superseded`
-- `session_replaced`
 - `timed_out`
 - `unavailable`
 
@@ -222,11 +217,9 @@ executor. It does not claim that a target shell command finished successfully.
 
 ```text
 Issued
-  -> Armed
   -> Validating
   -> AwaitingUser
-  -> Confirmed | Cancelled | Superseded | SessionReplaced
-                  | TimedOut | Unavailable
+  -> Confirmed | Cancelled | Superseded | TimedOut | Unavailable
 ```
 
 The Helper stores:
@@ -234,32 +227,28 @@ The Helper stores:
 ```text
 ProposalChannelManager
   helper_instance_id
-  session_epoch
   active_channel
   bounded_tombstones
 ```
 
-An active channel contains its nonce, session epoch, Helper-local prompt
-identity, state, retry count, optional digest, lease deadline, and optional
-pending final responder. It does not contain model-authored target identity.
+An active channel contains its nonce, trusted Helper-local binding, state,
+retry count, and optional pending final responder. The binding records the ACP
+session, prompt, active pane target, and autofix origin. None of these values
+come from the proposal payload.
 
 Before accepting a pipe request, the Helper checks in order:
 
 1. protocol version and frame limits;
 2. Helper instance encoded in the channel;
 3. active channel or bounded tombstone;
-4. channel state is `Armed`;
-5. 30-second armed lease has not expired;
-6. session epoch and prompt identity are still current;
-7. SHA-256 of the exact payload bytes matches the armed digest;
-8. atomic one-use transition to `Validating`;
-9. strict proposal schema and origin policy;
-10. trusted active target injection by App.
+4. channel state is `Issued`;
+5. atomic one-use transition to `Validating`;
+6. strict proposal schema and origin policy;
+7. trusted active target injection by App.
 
-After schema rejection, the channel returns to `Issued` and clears its digest.
-The agent may correct the payload, request permission again, and retry up to
-two times. An accepted proposal is one-use. Lifecycle and user-decision
-terminal states are not retryable.
+After a retryable schema rejection, the channel returns to `Issued`. The agent
+may correct the payload and retry up to two times. An accepted proposal is
+one-use. Lifecycle and user-decision terminal states are not retryable.
 
 ## Proposal schema and trusted target
 
@@ -288,44 +277,41 @@ The ownership hierarchy is:
 
 ```text
 Helper process
-  -> ACP session epoch
-     -> active turn channel
+  -> active turn channel
 ```
 
-Lifecycle transitions invalidate the channel before replacing the owning
-session or process:
+Implemented lifecycle transitions are:
 
 | Event | Result |
 |---|---|
 | New prompt in same session | Previous channel becomes `superseded`; issue a new channel |
-| `/stop` | In-flight channel becomes `cancelled` |
-| `/new` or load another session | Increment epoch; old channel becomes `session_replaced`; pipe remains |
-| `/restart` | Helper and pipe are destroyed; waiting clients become unavailable |
-| Pane stash/restore | Preserve Helper, pipe, session, channel, and card |
 | Card confirm | Atomically claim the live proposal, dispatch through the existing executor, then send `confirmed` |
 | Card cancel/dismiss | Send `cancelled` |
 | User-decision timeout | Send `timed_out` after 10 minutes |
 | ACP transport lost | Send `unavailable` and refuse new channels |
-| Tab/window close or Ctrl+C twice | Destroy Helper and pipe |
+| Helper pipe shutdown | Send `unavailable` and refuse new channels |
 
 The Helper retains at most four terminal tombstones for three minutes.
 Tombstones contain only a channel hash, terminal status, and timestamp. They
-improve errors for late clients without retaining payload, digest, or target
-data. They are not persisted.
+improve errors for late clients without retaining payload or target data. They
+are not persisted.
 
 ## Security model
 
-The channel is an unguessable, short-lived bearer handle. The per-user named
-pipe ACL, Helper-instance routing, per-turn nonce, ACP-session permission
-routing, payload digest, short armed lease, and one-use transition prevent
-normal cross-tab mistakes, stale turns, payload changes, and replay.
+The channel is an unguessable, per-turn bearer handle. The per-user named pipe
+ACL, Helper-instance routing, per-turn nonce, trusted Helper-local turn
+binding, and one-use transition prevent normal cross-tab mistakes, stale turns,
+and replay.
 
-The Helper-side permission decision is essential: knowing an issued channel is
-not enough to submit a proposal; the exact payload must first be armed through
-the owning ACP session.
+The Helper-side permission decision is optional. When present it confirms that
+the canonical command references the current channel owned by the requesting
+ACP session, but agents that do not emit a permission callback can submit the
+same one-use channel directly. The channel only proposes a visible card; it
+cannot mutate the terminal.
 
-A malicious process that can read the complete armed channel and exact payload
-from the agent process and race that process can still use the bearer handle.
+A malicious process that can read the complete issued channel from the agent
+process and race that process can still use the bearer handle to choose a
+schema-valid payload.
 The direct-pipe design does not claim process attestation. This residual risk
 is bounded because the CLI only proposes a visible card and user confirmation
 is still required before mutation.
@@ -339,13 +325,12 @@ proposal path.
 
 Automated and live coverage must include:
 
-- channel parsing, uniqueness, one-use, lease, retries, tombstones, and epochs;
+- channel parsing, uniqueness, one-use, retries, and tombstones;
 - canonical rendering/parsing, quoting, extra-token rejection, and auto-policy;
 - pipe framing, size limits, disconnects, and two-phase responses;
-- wrong Helper, wrong turn, stale, unarmed, digest mismatch, and replay;
+- wrong Helper, wrong turn, stale, direct submission without permission, and replay;
 - schema and origin policy validation with trusted target injection;
 - card confirm, cancel, supersede, timeout, and Helper shutdown;
-- `/stop`, `/new`, session load, `/restart`, stash/restore, tab/window close;
 - multi-tab and multi-window isolation;
 - no Permission UI for an exact canonical proposal;
 - Assistant JSON remains visible chat text and never surfaces a card;
