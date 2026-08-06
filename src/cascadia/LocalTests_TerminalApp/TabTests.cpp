@@ -203,6 +203,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(WindowCloseAcceptanceIsOneShot);
         TEST_METHOD(ContentMapOperationsUseOwnerThread);
         TEST_METHOD(ContentAttachRejectsDeadConnections);
+        TEST_METHOD(ReattachEndEventOwnershipHandoff);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
         TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
         TEST_METHOD(OwnerOperationsDoNotRedrainPendingReaps);
@@ -593,6 +594,162 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::ReattachEndEventOwnershipHandoff()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto closeBeforeConfirmGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-aaaa-bbbb-cccc-000000000001}");
+        const auto closeBeforeConfirmSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{21111111-aaaa-bbbb-cccc-000000000001}");
+        std::vector<DispatcherQueueHandler> queuedReaps;
+        _createContentManager([&](DispatcherQueueHandler callback) {
+            queuedReaps.emplace_back(std::move(callback));
+            return true;
+        });
+
+        std::vector<DetachedSessionEndedRecord> closeBeforeConfirmEvents;
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            auto connection = winrt::make_self<TestConnection>(
+                closeBeforeConfirmSessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            winrt::Microsoft::Terminal::Control::TermControl detachedControl{ content };
+
+            const auto closeToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+                closeBeforeConfirmEvents.push_back({ endedSession.SessionId(), endedSession.State() });
+            });
+            const auto closeTokenRevoker = wil::scope_exit([&]() noexcept {
+                _contentManager->DetachedSessionClosed(closeToken);
+            });
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(
+                closeBeforeConfirmGroupId,
+                closeBeforeConfirmSessionId,
+                L"Close before confirm",
+                L"shell-session-close-before-confirm",
+                1,
+                NewTerminalArgs{},
+                detachedControl));
+            VERIFY_ARE_EQUAL(content.Id(), _contentManager->TryReattachKeptSession(closeBeforeConfirmSessionId));
+
+            auto rawControl = winrt::Microsoft::Terminal::Control::TermControl::NewControlByAttachingContent(content);
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(queuedReaps.size()));
+
+            for (size_t i = 0; i < queuedReaps.size(); ++i)
+            {
+                const auto reap = queuedReaps.at(i);
+                reap();
+            }
+
+            VERIFY_IS_FALSE(_contentManager->ConfirmReattachedContent(content.Id()));
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closeBeforeConfirmEvents.size()));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(closeBeforeConfirmEvents.at(0).sessionId, closeBeforeConfirmSessionId));
+            VERIFY_IS_TRUE(closeBeforeConfirmEvents.at(0).state == L"closed");
+            rawControl.Close();
+        });
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        std::vector<ConnectionStateEventRecord> connectionStates;
+        const auto protocolToken = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& eventJson) {
+            _recordConnectionStateEvent(eventJson, connectionStates);
+        });
+        const auto protocolTokenRevoker = wil::scope_exit([&]() noexcept {
+            page->ProtocolVtSequenceReceived(protocolToken);
+        });
+
+        std::vector<DetachedSessionEndedRecord> detachedEvents;
+        const auto detachedToken = _contentManager->DetachedSessionClosed([&](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& endedSession) {
+            detachedEvents.push_back({ endedSession.SessionId(), endedSession.State() });
+        });
+        const auto detachedTokenRevoker = wil::scope_exit([&]() noexcept {
+            _contentManager->DetachedSessionClosed(detachedToken);
+        });
+
+        const auto closeDuringConfirmGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-aaaa-bbbb-cccc-000000000002}");
+        const auto closeDuringConfirmSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{21111111-aaaa-bbbb-cccc-000000000002}");
+        const auto closeAfterSetupGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-aaaa-bbbb-cccc-000000000003}");
+        const auto closeAfterSetupSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{21111111-aaaa-bbbb-cccc-000000000003}");
+        const auto closeDuringConfirmPaneId = _formatPaneId(closeDuringConfirmSessionId);
+        const auto closeAfterSetupPaneId = _formatPaneId(closeAfterSetupSessionId);
+
+        winrt::com_ptr<TestConnection> closeDuringConfirmConnection;
+        winrt::com_ptr<TestConnection> closeAfterSetupConnection;
+        winrt::Microsoft::Terminal::Control::TermControl closeDuringConfirmControl{ nullptr };
+        winrt::Microsoft::Terminal::Control::TermControl closeAfterSetupControl{ nullptr };
+
+        TestOnUIThread([&]() {
+            auto preparePendingReattach = [&](const winrt::guid& groupId,
+                                              const winrt::guid& sessionId,
+                                              winrt::com_ptr<TestConnection>& connection) {
+                auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                connection = winrt::make_self<TestConnection>(
+                    sessionId,
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+                winrt::Microsoft::Terminal::Control::TermControl detachedControl{ content };
+                VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(
+                    groupId,
+                    sessionId,
+                    L"Reattach ownership handoff",
+                    L"shell-session-reattach-handoff",
+                    2,
+                    NewTerminalArgs{},
+                    detachedControl));
+                VERIFY_ARE_EQUAL(content.Id(), _contentManager->TryReattachKeptSession(sessionId));
+                return content;
+            };
+
+            const auto closeDuringConfirmContent = preparePendingReattach(
+                closeDuringConfirmGroupId,
+                closeDuringConfirmSessionId,
+                closeDuringConfirmConnection);
+
+            auto closeDuringConfirm = true;
+            const auto changedToken = _contentManager->KeptSessionsChanged([&](auto&&, auto&&) {
+                if (closeDuringConfirm)
+                {
+                    closeDuringConfirm = false;
+                    closeDuringConfirmConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+                }
+            });
+            closeDuringConfirmControl = page->_AttachControlToContent(closeDuringConfirmContent.Id());
+            _contentManager->KeptSessionsChanged(changedToken);
+
+            VERIFY_IS_NOT_NULL(closeDuringConfirmControl);
+            VERIFY_IS_FALSE(closeDuringConfirm);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(_statesForPane(connectionStates, closeDuringConfirmPaneId).size()));
+            closeDuringConfirmConnection->RaiseStateChanged();
+
+            const auto closeAfterSetupContent = preparePendingReattach(
+                closeAfterSetupGroupId,
+                closeAfterSetupSessionId,
+                closeAfterSetupConnection);
+            closeAfterSetupControl = page->_AttachControlToContent(closeAfterSetupContent.Id());
+            VERIFY_IS_NOT_NULL(closeAfterSetupControl);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(_statesForPane(connectionStates, closeAfterSetupPaneId).size()));
+            closeAfterSetupConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+        });
+
+        TestOnUIThread([&]() {
+            const auto closeDuringConfirmStates = _statesForPane(connectionStates, closeDuringConfirmPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closeDuringConfirmStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "closed" }, closeDuringConfirmStates.at(0));
+
+            const auto closeAfterSetupStates = _statesForPane(connectionStates, closeAfterSetupPaneId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closeAfterSetupStates.size()));
+            VERIFY_ARE_EQUAL(std::string{ "closed" }, closeAfterSetupStates.at(0));
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(detachedEvents.size()));
+
+            closeDuringConfirmControl.Close();
+            closeAfterSetupControl.Close();
+        });
+    }
+
     void TabTests::DetachedReapUsesConfiguredOwnerScheduler()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
@@ -968,7 +1125,7 @@ namespace TerminalAppLocalTests
 
             restored = _contentManager->BeginReattachKeptGroup(groupId);
             VERIFY_IS_TRUE(!!restored);
-            _contentManager->ConfirmReattachedContent(restored.ContentIds().GetAt(0));
+            VERIFY_IS_TRUE(_contentManager->ConfirmReattachedContent(restored.ContentIds().GetAt(0)));
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
         });
     }
@@ -1151,8 +1308,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, restoredSecond.AgentSessionAgent());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude --resume agent-second" }, restoredSecond.AgentResumeCommandline());
 
-            _contentManager->ConfirmReattachedContent(firstContent.Id());
-            _contentManager->ConfirmReattachedContent(secondContent.Id());
+            VERIFY_IS_TRUE(_contentManager->ConfirmReattachedContent(firstContent.Id()));
+            VERIFY_IS_TRUE(_contentManager->ConfirmReattachedContent(secondContent.Id()));
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
         });
     }
@@ -1604,7 +1761,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(!!::IsEqualGUID(endedSessions.at(0).sessionId, deadSessionId));
             VERIFY_IS_TRUE(endedSessions.at(0).state == L"failed");
 
-            _contentManager->ConfirmReattachedContent(liveContentId);
+            VERIFY_IS_TRUE(_contentManager->ConfirmReattachedContent(liveContentId));
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
         });
