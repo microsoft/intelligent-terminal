@@ -51,7 +51,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     spinner = spinner_char.to_string()
                 )
                 .into_owned(),
-                Style::new().fg(Color::Yellow),
+                    Style::new().fg(Color::Yellow),
             )]));
         } else {
             lines.push(Line::from(vec![Span::styled(
@@ -60,7 +60,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     spinner = spinner_char.to_string()
                 )
                 .into_owned(),
-                Style::new().fg(Color::Yellow),
+                    Style::new().fg(Color::Yellow),
             )]));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(

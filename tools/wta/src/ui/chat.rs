@@ -245,10 +245,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                 "● ",
                 Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                t!("chat.welcome_title").into_owned(),
-                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-            ),
+                Span::styled(
+                    t!("chat.welcome_title").into_owned(),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
         ])];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }

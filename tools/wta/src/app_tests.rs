@@ -5189,8 +5189,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-            .await
-            .expect("initialize failed");
+                .await
+                .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5256,8 +5256,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-    .await
-    .expect("initialize failed");
+        .await
+        .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5483,8 +5483,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-            .await
-            .expect("initialize failed");
+                .await
+                .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5564,8 +5564,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-    .await
-    .expect("initialize failed");
+        .await
+        .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5946,9 +5946,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-        id: "pick-1".into(),
-        name: "PickModelXYZ".into(),
-        description: None,
+            id: "pick-1".into(),
+            name: "PickModelXYZ".into(),
+            description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -5957,13 +5957,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-            },
+        },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-            },
+        },
         ],
         None,
     );
@@ -8075,7 +8075,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-        .get("another-tab")
+            .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -8485,10 +8485,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -8506,21 +8506,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key: "abc-123".to_string(),
-        cli_source: CliSource::Copilot,
-        pane_session_id: None,
-        window_id: None,
-        tab_id: None,
-        title: "t".to_string(),
-        cwd: std::path::PathBuf::from("/home/u/proj"),
-        started_at: std::time::SystemTime::UNIX_EPOCH,
+        key:              "abc-123".to_string(),
+        cli_source:       CliSource::Copilot,
+        pane_session_id:  None,
+        window_id:        None,
+        tab_id:           None,
+        title:            "t".to_string(),
+        cwd:              std::path::PathBuf::from("/home/u/proj"),
+        started_at:       std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status: AgentStatus::Historical,
-        last_error: None,
-        current_tool: None,
+        status:           AgentStatus::Historical,
+        last_error:       None,
+        current_tool:     None,
         attention_reason: None,
-        log_path: None,
-        origin: SessionOrigin::Unknown,
+        log_path:         None,
+        origin:           SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },

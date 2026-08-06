@@ -44,13 +44,13 @@ pub enum CliSource {
 impl CliSource {
     pub fn parse(s: Option<&str>) -> Self {
         match s.unwrap_or("").to_ascii_lowercase().as_str() {
-            "claude" => Self::Claude,
-            "codex" => Self::Codex,
+            "claude"  => Self::Claude,
+            "codex"   => Self::Codex,
             "copilot" => Self::Copilot,
-            "gemini" => Self::Gemini,
+            "gemini"  => Self::Gemini,
             "opencode" => Self::OpenCode,
-            "" => Self::Unknown(String::new()),
-            other => Self::Unknown(other.to_string()),
+            ""        => Self::Unknown(String::new()),
+            other     => Self::Unknown(other.to_string()),
         }
     }
 
@@ -61,10 +61,10 @@ impl CliSource {
     /// "no filter — show all rows".
     pub fn from_agent_id(agent_id: &str) -> Option<Self> {
         match agent_id.to_ascii_lowercase().as_str() {
-            "claude" => Some(Self::Claude),
-            "codex" => Some(Self::Codex),
+            "claude"  => Some(Self::Claude),
+            "codex"   => Some(Self::Codex),
             "copilot" => Some(Self::Copilot),
-            "gemini" => Some(Self::Gemini),
+            "gemini"  => Some(Self::Gemini),
             "opencode" => Some(Self::OpenCode),
             _ => None,
         }
@@ -237,8 +237,8 @@ impl OriginFilter {
     /// Predicate for `AgentSession.origin` (always populated).
     pub fn matches(self, origin: &SessionOrigin) -> bool {
         match self {
-            OriginFilter::All => true,
-            OriginFilter::ShellOnly => matches!(origin, SessionOrigin::Unknown),
+            OriginFilter::All           => true,
+            OriginFilter::ShellOnly     => matches!(origin, SessionOrigin::Unknown),
             OriginFilter::AgentPaneOnly => matches!(origin, SessionOrigin::AgentPane),
         }
     }
@@ -256,32 +256,32 @@ impl OriginFilter {
     pub fn matches_opt(self, origin: Option<&SessionOrigin>) -> bool {
         match origin {
             Some(o) => self.matches(o),
-            None => matches!(self, OriginFilter::All | OriginFilter::ShellOnly),
+            None    => matches!(self, OriginFilter::All | OriginFilter::ShellOnly),
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct AgentSession {
-    pub key: AgentKey,
-    pub cli_source: CliSource,
-    pub pane_session_id: Option<String>, // Guid as text form
-    pub window_id: Option<u64>,
-    pub tab_id: Option<u32>,
-    pub title: String,
-    pub cwd: PathBuf,
-    pub started_at: SystemTime,
-    pub last_activity_at: SystemTime,
-    pub status: AgentStatus,
-    pub last_error: Option<String>,
-    pub current_tool: Option<String>,
-    pub attention_reason: Option<String>,
-    pub log_path: Option<PathBuf>,
+    pub key:               AgentKey,
+    pub cli_source:        CliSource,
+    pub pane_session_id:   Option<String>,    // Guid as text form
+    pub window_id:         Option<u64>,
+    pub tab_id:            Option<u32>,
+    pub title:             String,
+    pub cwd:               PathBuf,
+    pub started_at:        SystemTime,
+    pub last_activity_at:  SystemTime,
+    pub status:            AgentStatus,
+    pub last_error:        Option<String>,
+    pub current_tool:      Option<String>,
+    pub attention_reason:  Option<String>,
+    pub log_path:          Option<PathBuf>,
     /// Provenance for this session — populated for historical rows from
     /// the agent-pane origin index. See [`SessionOrigin`].
-    pub origin: SessionOrigin,
+    pub origin:            SessionOrigin,
     /// Where this session's artefacts live (host vs a WSL distro).
-    pub location: SessionLocation,
+    pub location:          SessionLocation,
 }
 
 impl AgentSession {
@@ -294,9 +294,9 @@ impl AgentSession {
     /// liveness is `Live`.
     pub fn activity(&self) -> ActivityState {
         match self.status {
-            AgentStatus::Working => ActivityState::Working,
+            AgentStatus::Working   => ActivityState::Working,
             AgentStatus::Attention => ActivityState::Attention,
-            AgentStatus::Error => ActivityState::Error,
+            AgentStatus::Error     => ActivityState::Error,
             AgentStatus::Idle | AgentStatus::Ended | AgentStatus::Historical => ActivityState::Idle,
         }
     }
@@ -308,9 +308,9 @@ impl AgentSession {
             AgentStatus::Idle
             | AgentStatus::Working
             | AgentStatus::Attention
-            | AgentStatus::Error => LivenessState::Live,
-            AgentStatus::Ended => LivenessState::Ended,
-            AgentStatus::Historical => LivenessState::Historical,
+            | AgentStatus::Error      => LivenessState::Live,
+            AgentStatus::Ended        => LivenessState::Ended,
+            AgentStatus::Historical   => LivenessState::Historical,
         }
     }
 }
@@ -389,25 +389,25 @@ pub fn is_user_input_tool(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
         "ask_user"
-            | "askuser"
-            | "ask-user"
-            | "ask_question"
-            | "askquestion"
-            | "askuserquestion"
-            | "ask_user_question"
-            | "ask_for_clarification"
-            | "request_input"
-            | "request_user_input"
-            | "user_input"
-            | "prompt_user"
-            | "clarification_request"
+        | "askuser"
+        | "ask-user"
+        | "ask_question"
+        | "askquestion"
+        | "askuserquestion"
+        | "ask_user_question"
+        | "ask_for_clarification"
+        | "request_input"
+        | "request_user_input"
+        | "user_input"
+        | "prompt_user"
+        | "clarification_request"
     )
 }
 
 #[derive(Default)]
 pub struct AgentSessionRegistry {
-    sessions: HashMap<AgentKey, AgentSession>,
-    active_by_pane: HashMap<String, AgentKey>, // pane Guid (text) -> AgentKey
+    sessions:        HashMap<AgentKey, AgentSession>,
+    active_by_pane:  HashMap<String, AgentKey>,   // pane Guid (text) -> AgentKey
     /// Union of pane GUIDs ever seen in any alive-mirror snapshot
     /// (lowercased). Used by [`Self::apply_alive_pane_snapshot`] to
     /// scope its "end disappeared rows" sweep to Class A sessions
@@ -417,7 +417,7 @@ pub struct AgentSessionRegistry {
     /// the snapshot diff cares about "in this snapshot vs. some
     /// earlier snapshot", not about the union.
     known_alive_panes: HashSet<String>,
-    dirty: bool,
+    dirty:           bool,
 }
 
 impl AgentSessionRegistry {
@@ -509,11 +509,11 @@ impl AgentSessionRegistry {
                             if let Some(prev) = self.sessions.get_mut(&prev_key) {
                                 if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str())
                                 {
-                                    prev.status = AgentStatus::Ended;
-                                    prev.pane_session_id = None;
-                                    prev.current_tool = None;
-                                    prev.attention_reason = None;
-                                    prev.last_activity_at = now;
+                                    prev.status            = AgentStatus::Ended;
+                                    prev.pane_session_id   = None;
+                                    prev.current_tool      = None;
+                                    prev.attention_reason  = None;
+                                    prev.last_activity_at  = now;
                                     tracing::info!(
                                         target: "agent_session_registry",
                                         prev_key = %prev_key,
@@ -533,23 +533,23 @@ impl AgentSessionRegistry {
                     .sessions
                     .entry(key.clone())
                     .or_insert_with(|| AgentSession {
-                        key: key.clone(),
-                        cli_source: cli_source.clone(),
-                        pane_session_id: None,
-                        window_id: None,
-                        tab_id: None,
-                        title: title.clone(),
-                        cwd: cwd.clone(),
-                        started_at: now,
-                        last_activity_at: now,
-                        status: AgentStatus::Idle,
-                        last_error: None,
-                        current_tool: None,
-                        attention_reason: None,
-                        log_path: None,
-                        origin: SessionOrigin::default(),
-                        location: SessionLocation::Host,
-                    });
+                    key:               key.clone(),
+                    cli_source:        cli_source.clone(),
+                    pane_session_id:   None,
+                    window_id:         None,
+                    tab_id:            None,
+                    title:             title.clone(),
+                    cwd:               cwd.clone(),
+                    started_at:        now,
+                    last_activity_at:  now,
+                    status:            AgentStatus::Idle,
+                    last_error:        None,
+                    current_tool:      None,
+                    attention_reason:  None,
+                    log_path:          None,
+                    origin:            SessionOrigin::default(),
+                    location:          SessionLocation::Host,
+                });
                 // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
                     if old_pane != pane_session_id {
@@ -571,15 +571,15 @@ impl AgentSessionRegistry {
                         "SessionStarted assigning pane_session_id (first bind)",
                     );
                 }
-                entry.cli_source = cli_source;
+                entry.cli_source       = cli_source;
                 // Preserve an existing title (e.g. one loaded from disk by the
                 // history loader) when the new event carries no replacement.
                 // Live synth titles are sent only for genuinely new sessions
                 // (route_agent_event_to_registry passes "" for resumed ones).
                 if !title.is_empty() {
-                    entry.title = title;
+                    entry.title        = title;
                 }
-                entry.cwd = cwd;
+                entry.cwd              = cwd;
                 // Only record a pane binding for non-empty pane GUIDs.
                 // Symmetric with the skip above — an empty pane id
                 // would never be valid for `active_by_pane` lookups
@@ -587,9 +587,9 @@ impl AgentSessionRegistry {
                 // real GUID), so leave the entry's `pane_session_id`
                 // as `None` and skip the map insert.
                 if pane_known {
-                    entry.pane_session_id = Some(pane_session_id.clone());
+                    entry.pane_session_id  = Some(pane_session_id.clone());
                 } else {
-                    entry.pane_session_id = None;
+                    entry.pane_session_id  = None;
                 }
                 // Status baseline. A brand-new row starts Idle. For a row that
                 // ALREADY exists, preserve a live status instead of clobbering
@@ -606,10 +606,10 @@ impl AgentSessionRegistry {
                         AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical
                     )
                 {
-                    entry.status = AgentStatus::Idle;
-                    entry.last_error = None;
+                    entry.status           = AgentStatus::Idle;
+                    entry.last_error       = None;
                     entry.attention_reason = None;
-                    entry.current_tool = None;
+                    entry.current_tool     = None;
                 }
                 entry.last_activity_at = now;
                 if pane_known {
@@ -620,9 +620,9 @@ impl AgentSessionRegistry {
 
             SessionEvent::ToolStarting { key, tool_name } => {
                 if let Some(entry) = self.sessions.get_mut(&key) {
-                    entry.status = AgentStatus::Working;
-                    entry.current_tool = Some(tool_name);
-                    entry.last_activity_at = now;
+                    entry.status            = AgentStatus::Working;
+                    entry.current_tool      = Some(tool_name);
+                    entry.last_activity_at  = now;
                     self.dirty = true;
                 }
             }
@@ -643,20 +643,20 @@ impl AgentSessionRegistry {
                     let demotable = entry.status == AgentStatus::Working
                         || entry.status == AgentStatus::Attention;
                     if demotable {
-                        entry.status = AgentStatus::Idle;
-                        entry.attention_reason = None;
+                        entry.status            = AgentStatus::Idle;
+                        entry.attention_reason  = None;
                     }
-                    entry.current_tool = None;
-                    entry.last_activity_at = now;
+                    entry.current_tool      = None;
+                    entry.last_activity_at  = now;
                     self.dirty = true;
                 }
             }
 
             SessionEvent::Notification { key, message } => {
                 if let Some(entry) = self.sessions.get_mut(&key) {
-                    entry.status = AgentStatus::Attention;
-                    entry.attention_reason = Some(message);
-                    entry.last_activity_at = now;
+                    entry.status            = AgentStatus::Attention;
+                    entry.attention_reason  = Some(message);
+                    entry.last_activity_at  = now;
                     self.dirty = true;
                 }
             }
@@ -718,9 +718,9 @@ impl AgentSessionRegistry {
                             self.active_by_pane.remove(&pane);
                         }
                     }
-                    entry.current_tool = None;
-                    entry.attention_reason = None;
-                    entry.last_activity_at = now;
+                    entry.current_tool      = None;
+                    entry.attention_reason  = None;
+                    entry.last_activity_at  = now;
                     self.dirty = true;
                 }
             }
@@ -728,11 +728,11 @@ impl AgentSessionRegistry {
             SessionEvent::PaneClosed { pane_session_id } => {
                 if let Some(key) = self.active_by_pane.remove(&pane_session_id) {
                     if let Some(entry) = self.sessions.get_mut(&key) {
-                        entry.status = AgentStatus::Ended;
-                        entry.pane_session_id = None;
-                        entry.current_tool = None;
-                        entry.attention_reason = None;
-                        entry.last_activity_at = now;
+                        entry.status            = AgentStatus::Ended;
+                        entry.pane_session_id   = None;
+                        entry.current_tool      = None;
+                        entry.attention_reason  = None;
+                        entry.last_activity_at  = now;
                         self.dirty = true;
                     }
                 }
@@ -744,9 +744,9 @@ impl AgentSessionRegistry {
             } => {
                 if let Some(key) = self.active_by_pane.get(&pane_session_id).cloned() {
                     if let Some(entry) = self.sessions.get_mut(&key) {
-                        entry.status = AgentStatus::Error;
-                        entry.last_error = Some(reason);
-                        entry.last_activity_at = now;
+                        entry.status            = AgentStatus::Error;
+                        entry.last_error        = Some(reason);
+                        entry.last_activity_at  = now;
                         self.dirty = true;
                     }
                 }
@@ -760,8 +760,8 @@ impl AgentSessionRegistry {
                     // Guid, leave the row alone — the hook layer is the
                     // source of truth for live state.
                     if matches!(entry.status, AgentStatus::Historical | AgentStatus::Ended) {
-                        entry.status = AgentStatus::Idle;
-                        entry.last_activity_at = now;
+                        entry.status            = AgentStatus::Idle;
+                        entry.last_activity_at  = now;
                         self.dirty = true;
                     }
                 }
@@ -781,11 +781,11 @@ impl AgentSessionRegistry {
                     if prev_key != key {
                         if let Some(prev) = self.sessions.get_mut(&prev_key) {
                             if prev.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
-                                prev.status = AgentStatus::Ended;
-                                prev.pane_session_id = None;
-                                prev.current_tool = None;
-                                prev.attention_reason = None;
-                                prev.last_activity_at = now;
+                                prev.status            = AgentStatus::Ended;
+                                prev.pane_session_id   = None;
+                                prev.current_tool      = None;
+                                prev.attention_reason  = None;
+                                prev.last_activity_at  = now;
                             }
                         }
                     }
@@ -817,7 +817,7 @@ impl AgentSessionRegistry {
                             "ResumePaneAssigned binding pane_session_id (no hook bridge)",
                         );
                     }
-                    entry.pane_session_id = Some(pane_session_id.clone());
+                    entry.pane_session_id  = Some(pane_session_id.clone());
                     entry.last_activity_at = now;
                     self.active_by_pane.insert(pane_session_id, key);
                     self.dirty = true;
@@ -856,7 +856,7 @@ impl AgentSessionRegistry {
         self.iter_sorted()
             .into_iter()
             .filter(|s| match cli {
-                None => true,
+                None       => true,
                 Some(want) => &s.cli_source == want,
             })
             .filter(|s| origin.matches(&s.origin))
@@ -1048,11 +1048,11 @@ impl AgentSessionRegistry {
             if let Some(key) = self.active_by_pane.remove(pane) {
                 if let Some(entry) = self.sessions.get_mut(&key) {
                     if entry.liveness() == LivenessState::Live {
-                        entry.status = AgentStatus::Ended;
-                        entry.pane_session_id = None;
-                        entry.current_tool = None;
-                        entry.attention_reason = None;
-                        entry.last_activity_at = now;
+                        entry.status            = AgentStatus::Ended;
+                        entry.pane_session_id   = None;
+                        entry.current_tool      = None;
+                        entry.attention_reason  = None;
+                        entry.last_activity_at  = now;
                         self.dirty = true;
                         tracing::info!(
                             target: "agent_session_registry",
@@ -1107,10 +1107,10 @@ impl AgentSessionRegistry {
             return;
         }
         let pane_to_clear = entry.pane_session_id.take();
-        entry.status = AgentStatus::Ended;
-        entry.current_tool = None;
-        entry.attention_reason = None;
-        entry.last_activity_at = now;
+        entry.status            = AgentStatus::Ended;
+        entry.current_tool      = None;
+        entry.attention_reason  = None;
+        entry.last_activity_at  = now;
         self.dirty = true;
         if let Some(pane) = pane_to_clear {
             self.active_by_pane.remove(&pane);
@@ -1220,11 +1220,11 @@ impl AgentSessionRegistry {
                     );
                 }
                 LivenessState::Historical => {
-                    entry.status = AgentStatus::Idle;
-                    entry.last_activity_at = now;
-                    entry.current_tool = None;
-                    entry.attention_reason = None;
-                    entry.last_error = None;
+                    entry.status            = AgentStatus::Idle;
+                    entry.last_activity_at  = now;
+                    entry.current_tool      = None;
+                    entry.attention_reason  = None;
+                    entry.last_error        = None;
                     if let Some(pane) = pane_opt {
                         let pane_lc = pane.to_ascii_lowercase();
                         // Drop any previous binding pointing elsewhere.
@@ -1313,78 +1313,78 @@ impl AgentSessionRegistry {
 
         // 1. Working — copilot running a tool right now
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-copilot-working".to_string(),
-            cli_source: CliSource::Copilot,
+            key:             "demo-copilot-working".to_string(),
+            cli_source:      CliSource::Copilot,
             pane_session_id: "11111111-1111-1111-1111-111111111111".to_string(),
-            cwd: cwd.clone(),
-            title: "copilot — refactor agent_sessions".to_string(),
+            cwd:             cwd.clone(),
+            title:           "copilot — refactor agent_sessions".to_string(),
         });
         self.apply(SessionEvent::ToolStarting {
-            key: "demo-copilot-working".to_string(),
+            key:       "demo-copilot-working".to_string(),
             tool_name: "shell".to_string(),
         });
 
         // 2. Working — codex running a tool concurrently
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-codex-working".to_string(),
-            cli_source: CliSource::Codex,
+            key:             "demo-codex-working".to_string(),
+            cli_source:      CliSource::Codex,
             pane_session_id: "77777777-7777-7777-7777-777777777777".to_string(),
-            cwd: cwd.clone(),
-            title: "codex — implement refactor parser".to_string(),
+            cwd:             cwd.clone(),
+            title:           "codex — implement refactor parser".to_string(),
         });
         self.apply(SessionEvent::ToolStarting {
-            key: "demo-codex-working".to_string(),
+            key:       "demo-codex-working".to_string(),
             tool_name: "shell".to_string(),
         });
 
         // 3. Attention — claude waiting for tool approval
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-claude-attention".to_string(),
-            cli_source: CliSource::Claude,
+            key:             "demo-claude-attention".to_string(),
+            cli_source:      CliSource::Claude,
             pane_session_id: "22222222-2222-2222-2222-222222222222".to_string(),
-            cwd: cwd.clone(),
-            title: "claude — write tests for registry".to_string(),
+            cwd:             cwd.clone(),
+            title:           "claude — write tests for registry".to_string(),
         });
         self.apply(SessionEvent::Notification {
-            key: "demo-claude-attention".to_string(),
+            key:     "demo-claude-attention".to_string(),
             message: "Allow tool: write_file ./src/lib.rs?".to_string(),
         });
 
         // 4. Idle — gemini waiting for next prompt
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-gemini-idle".to_string(),
-            cli_source: CliSource::Gemini,
+            key:             "demo-gemini-idle".to_string(),
+            cli_source:      CliSource::Gemini,
             pane_session_id: "33333333-3333-3333-3333-333333333333".to_string(),
-            cwd: cwd.clone(),
-            title: "gemini — explain build system".to_string(),
+            cwd:             cwd.clone(),
+            title:           "gemini — explain build system".to_string(),
         });
 
         // 5. Error — copilot lost network
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-copilot-error".to_string(),
-            cli_source: CliSource::Copilot,
+            key:             "demo-copilot-error".to_string(),
+            cli_source:      CliSource::Copilot,
             pane_session_id: "44444444-4444-4444-4444-444444444444".to_string(),
-            cwd: cwd.clone(),
-            title: "copilot — fix CI failure".to_string(),
+            cwd:             cwd.clone(),
+            title:           "copilot — fix CI failure".to_string(),
         });
         self.apply(SessionEvent::ConnectionFailed {
             pane_session_id: "44444444-4444-4444-4444-444444444444".to_string(),
-            reason: "API request failed: 503 Service Unavailable".to_string(),
+            reason:          "API request failed: 503 Service Unavailable".to_string(),
         });
 
         // 6. Ended — claude finished cleanly a moment ago
         self.apply(SessionEvent::SessionStarted {
-            key: "demo-claude-ended".to_string(),
-            cli_source: CliSource::Claude,
+            key:             "demo-claude-ended".to_string(),
+            cli_source:      CliSource::Claude,
             pane_session_id: "55555555-5555-5555-5555-555555555555".to_string(),
-            cwd: cwd.clone(),
-            title: "claude — review PR diff".to_string(),
+            cwd:             cwd.clone(),
+            title:           "claude — review PR diff".to_string(),
         });
         // 6. Ended — claude finished cleanly a moment ago. Origin is the
         // default (Unknown), so SessionStopped takes the original
         // immediate-Ended path — no PaneClosed needed.
         self.apply(SessionEvent::SessionStopped {
-            key: "demo-claude-ended".to_string(),
+            key:    "demo-claude-ended".to_string(),
             reason: "end_turn".to_string(),
         });
 
@@ -1394,22 +1394,22 @@ impl AgentSessionRegistry {
         self.sessions.insert(
             key.clone(),
             AgentSession {
-                key: key,
-                cli_source: CliSource::Gemini,
-                pane_session_id: None,
-                window_id: None,
-                tab_id: None,
-                title: "gemini — earlier debug session".to_string(),
-                cwd: cwd.clone(),
-                started_at: two_hours_ago - Duration::from_secs(60 * 30),
-                last_activity_at: two_hours_ago,
-                status: AgentStatus::Historical,
-                last_error: None,
-                current_tool: None,
-                attention_reason: None,
-                log_path: Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
-                origin: SessionOrigin::default(),
-                location: SessionLocation::Host,
+            key:               key,
+            cli_source:        CliSource::Gemini,
+            pane_session_id:   None,
+            window_id:         None,
+            tab_id:            None,
+            title:             "gemini — earlier debug session".to_string(),
+            cwd:               cwd.clone(),
+            started_at:        two_hours_ago - Duration::from_secs(60 * 30),
+            last_activity_at:  two_hours_ago,
+            status:            AgentStatus::Historical,
+            last_error:        None,
+            current_tool:      None,
+            attention_reason:  None,
+            log_path:          Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
+            origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
             },
         );
         // Stagger last_activity_at so the order in the UI matches the
@@ -1534,7 +1534,7 @@ mod tests {
             key: k("s"),
             tool_name: "bash".into(),
         });
-        reg.apply(SessionEvent::ToolCompleted { key: k("s") });
+        reg.apply(SessionEvent::ToolCompleted  { key: k("s") });
         let s = reg.sessions.get("s").unwrap();
         assert_eq!(s.status, AgentStatus::Idle);
         assert!(s.current_tool.is_none());
@@ -1938,14 +1938,14 @@ mod tests {
         reg.apply(SessionEvent::SessionStarted {
             key: k("session-a"),
             cli_source: CliSource::Copilot,
-            pane_session_id: String::new(), // empty (the bug shape)
+            pane_session_id: String::new(),  // empty (the bug shape)
             cwd: PathBuf::from("/x"),
             title: "Implement Day Query Feature".into(),
         });
         reg.apply(SessionEvent::SessionStarted {
             key: k("session-b"),
             cli_source: CliSource::Copilot,
-            pane_session_id: String::new(), // empty again
+            pane_session_id: String::new(),  // empty again
             cwd: PathBuf::from("/x"),
             title: "ask me a question".into(),
         });
@@ -2160,22 +2160,22 @@ mod tests {
         // (empty status), matching Copilot/Claude behavior.
         let mut reg = AgentSessionRegistry::new();
         reg.merge_historical(vec![AgentSession {
-            key: k("g"),
-            cli_source: CliSource::Gemini,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "t".into(),
-            cwd: PathBuf::from("/x"),
-            started_at: SystemTime::UNIX_EPOCH,
-            last_activity_at: SystemTime::UNIX_EPOCH,
-            status: AgentStatus::Historical,
-            last_error: None,
-            current_tool: None,
-            attention_reason: None,
-            log_path: None,
-            origin: SessionOrigin::default(),
-            location: SessionLocation::Host,
+            key:               k("g"),
+            cli_source:        CliSource::Gemini,
+            pane_session_id:   None,
+            window_id:         None,
+            tab_id:            None,
+            title:             "t".into(),
+            cwd:               PathBuf::from("/x"),
+            started_at:        SystemTime::UNIX_EPOCH,
+            last_activity_at:  SystemTime::UNIX_EPOCH,
+            status:            AgentStatus::Historical,
+            last_error:        None,
+            current_tool:      None,
+            attention_reason:  None,
+            log_path:          None,
+            origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
         }]);
         reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
         assert_eq!(
@@ -2432,31 +2432,31 @@ mod tests {
         let mut reg = AgentSessionRegistry::new();
         // Preexisting live session.
         reg.apply(SessionEvent::SessionStarted {
-            key: "live-1".into(),
-            cli_source: CliSource::Copilot,
+            key:             "live-1".into(),
+            cli_source:      CliSource::Copilot,
             pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "live".into(),
+            cwd:             PathBuf::from("/x"),
+            title:           "live".into(),
         });
 
         let now = SystemTime::now();
         let mk_hist = |key: &str| AgentSession {
-            key: key.to_string(),
-            cli_source: CliSource::Claude,
-            pane_session_id: None,
+            key:               key.to_string(),
+            cli_source:        CliSource::Claude,
+            pane_session_id:   None,
             window_id: None,
             tab_id: None,
-            title: format!("hist {}", key),
-            cwd: PathBuf::from("/y"),
-            started_at: now,
-            last_activity_at: now,
-            status: AgentStatus::Historical,
-            last_error: None,
-            current_tool: None,
-            attention_reason: None,
-            log_path: None,
-            origin: SessionOrigin::default(),
-            location: SessionLocation::Host,
+            title:             format!("hist {}", key),
+            cwd:               PathBuf::from("/y"),
+            started_at:        now,
+            last_activity_at:  now,
+            status:            AgentStatus::Historical,
+            last_error:        None,
+            current_tool:      None,
+            attention_reason:  None,
+            log_path:          None,
+            origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
         };
 
         // Loaded set tries to overwrite live-1 + add hist-1.
@@ -2537,8 +2537,8 @@ mod tests {
             CliSource::from_agent_id("copilot"),
             Some(CliSource::Copilot)
         );
-        assert_eq!(CliSource::from_agent_id("claude"), Some(CliSource::Claude));
-        assert_eq!(CliSource::from_agent_id("gemini"), Some(CliSource::Gemini));
+        assert_eq!(CliSource::from_agent_id("claude"),  Some(CliSource::Claude));
+        assert_eq!(CliSource::from_agent_id("gemini"),  Some(CliSource::Gemini));
         assert_eq!(
             CliSource::from_agent_id("opencode"),
             Some(CliSource::OpenCode)
@@ -2555,9 +2555,9 @@ mod tests {
     fn from_agent_id_returns_none_for_untracked_or_empty() {
         // Empty / unknown are "no filter" — the session management view will
         // fall back to showing every row.
-        assert_eq!(CliSource::from_agent_id(""), None);
-        assert_eq!(CliSource::from_agent_id("unknown"), None);
-        assert_eq!(CliSource::from_agent_id("bogus"), None);
+        assert_eq!(CliSource::from_agent_id(""),         None);
+        assert_eq!(CliSource::from_agent_id("unknown"),  None);
+        assert_eq!(CliSource::from_agent_id("bogus"),    None);
     }
 
     #[test]
@@ -2717,9 +2717,9 @@ mod tests {
         let mut reg = AgentSessionRegistry::new();
         for (key, cli) in [
             ("cop-shell", CliSource::Copilot),
-            ("cop-pane", CliSource::Copilot),
+            ("cop-pane",  CliSource::Copilot),
             ("cla-shell", CliSource::Claude),
-            ("cla-pane", CliSource::Claude),
+            ("cla-pane",  CliSource::Claude),
         ] {
             reg.apply(SessionEvent::SessionStarted {
                 key: k(key),
@@ -2793,7 +2793,7 @@ mod tests {
         };
 
         let cases = [
-            (AgentStatus::Idle, ActivityState::Idle, LivenessState::Live),
+            (AgentStatus::Idle,       ActivityState::Idle,      LivenessState::Live),
             (
                 AgentStatus::Working,
                 ActivityState::Working,
@@ -2892,7 +2892,7 @@ mod tests {
         assert_eq!(
             s.liveness(),
             LivenessState::Live,
-            "standalone (Class B) row must not be ended by snapshots that never \
+                   "standalone (Class B) row must not be ended by snapshots that never \
                     contained its pane"
         );
         assert_eq!(s.status, AgentStatus::Idle);
@@ -2933,7 +2933,7 @@ mod tests {
         assert_eq!(s.status, AgentStatus::Ended);
         assert_eq!(
             s.last_activity_at, before,
-            "second branch of composite source must not retouch \
+                   "second branch of composite source must not retouch \
                     a row already ended by PaneClosed"
         );
         assert!(!reg.take_dirty(), "no second dirty bump");

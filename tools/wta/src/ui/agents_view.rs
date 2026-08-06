@@ -21,8 +21,8 @@ use crate::ui::shimmer;
 const ACCENT_GREEN: Color = Color::Green; // Active status badge
 const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
 const ACCENT_RED: Color = Color::Red; // Error
-                                      // Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
-                                      // backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
+// Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
+// backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
@@ -1062,45 +1062,45 @@ mod tests {
     #[test]
     fn cli_suffix_renders_codex_label_on_selected_row() {
         let s = AgentSession {
-            key: "k".to_string(),
-            cli_source: CliSource::Codex,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "codex — test".to_string(),
-            cwd: std::path::PathBuf::from("."),
-            started_at: SystemTime::now(),
+            key:              "k".to_string(),
+            cli_source:       CliSource::Codex,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "codex — test".to_string(),
+            cwd:              std::path::PathBuf::from("."),
+            started_at:       SystemTime::now(),
             last_activity_at: SystemTime::now(),
-            status: AgentStatus::Idle,
-            last_error: None,
-            current_tool: None,
+            status:           AgentStatus::Idle,
+            last_error:       None,
+            current_tool:     None,
             attention_reason: None,
-            log_path: None,
-            origin: SessionOrigin::default(),
-            location: crate::agent_sessions::SessionLocation::Host,
+            log_path:         None,
+            origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
         };
-        assert_eq!(cli_suffix_for(&s, true), "· codex");
+        assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());
     }
 
     #[test]
     fn origin_prefix_shows_distro_for_wsl_rows() {
         let s = AgentSession {
-            key: "abc".to_string(),
-            cli_source: CliSource::Copilot,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "hi".to_string(),
-            cwd: std::path::PathBuf::from("/home/u"),
-            started_at: std::time::SystemTime::UNIX_EPOCH,
+            key:              "abc".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "hi".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
             last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-            status: AgentStatus::Historical,
-            last_error: None,
-            current_tool: None,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
             attention_reason: None,
-            log_path: None,
-            origin: SessionOrigin::Unknown,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
             location: crate::agent_sessions::SessionLocation::Wsl {
                 distro: "Ubuntu".to_string(),
             },
@@ -1128,22 +1128,22 @@ mod tests {
         let _g = crate::test_support::lock_locale();
         set_test_locale();
         let mk = |status: AgentStatus| AgentSession {
-            key: "k".to_string(),
-            cli_source: CliSource::Copilot,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "t".to_string(),
-            cwd: std::path::PathBuf::from("."),
-            started_at: std::time::SystemTime::UNIX_EPOCH,
+            key:              "k".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("."),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
             last_activity_at: std::time::SystemTime::UNIX_EPOCH,
             status,
-            last_error: None,
-            current_tool: None,
+            last_error:       None,
+            current_tool:     None,
             attention_reason: None,
-            log_path: None,
-            origin: SessionOrigin::default(),
-            location: crate::agent_sessions::SessionLocation::Host,
+            log_path:         None,
+            origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
         assert_eq!(

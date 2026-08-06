@@ -1310,8 +1310,8 @@ impl HelperHandler {
                     %error,
                     "failed to serialize private cloud model catalog metadata"
                 );
-                Ok(agent.cached_init_resp.clone())
-            }
+        Ok(agent.cached_init_resp.clone())
+    }
         }
     }
 
@@ -2578,7 +2578,7 @@ async fn spawn_one_agent(
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
     )
-    .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
+        .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
         program = %spawn_result.resolved_program,
@@ -2955,7 +2955,7 @@ async fn serve_helper(
                     let h = h.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-                        match req {
+            match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 h.initialize(a).await.map(R::InitializeResponse),
@@ -2986,13 +2986,13 @@ async fn serve_helper(
                                 responder,
                                 h.list_sessions(a).await.map(R::ListSessionsResponse),
                             ),
-                            Q::PromptRequest(a) => h.prompt(a, responder).await,
+                Q::PromptRequest(a) => h.prompt(a, responder).await,
                             Q::ExtMethodRequest(a) => conn::respond_enum(
                                 responder,
                                 h.ext_method(a).await.map(R::ExtMethodResponse),
                             ),
-                            _ => responder.respond_with_error(acp::Error::method_not_found()),
-                        }
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
                     }
                 }
             },
@@ -3007,7 +3007,7 @@ async fn serve_helper(
                         if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
                             let _ = h.cancel(n).await;
                         }
-                        Ok(())
+            Ok(())
                     }
                 }
             },

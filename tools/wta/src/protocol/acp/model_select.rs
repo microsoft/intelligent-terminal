@@ -426,9 +426,9 @@ mod tests {
                     "options": [{"value": "haiku", "name": "Haiku"}]
                 }]
             }))
-            .expect("valid config option update");
+        .expect("valid config option update");
         let (models, current) = models_from_config_options("background", &update.config_options)
-            .expect("model selector");
+                .expect("model selector");
         assert_eq!(models[0].id, "haiku");
         assert_eq!(current.as_deref(), Some("haiku"));
         assert_eq!(
@@ -615,7 +615,7 @@ mod tests {
                         "options": [{"value": "haiku", "name": "Haiku"}]
                     }]
                 }))
-                .expect("valid load_session response");
+            .expect("valid load_session response");
             let _ = models_from_load_session("s-fallback", &loaded);
             assert_eq!(
                 channel_for("s-fallback"),

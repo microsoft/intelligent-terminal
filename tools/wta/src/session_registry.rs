@@ -675,7 +675,7 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
         match value {
             SessionHookCliSource::Known(value) => match value.as_str() {
                 "Claude" | "claude" => Self::Claude,
-                "Codex" | "codex" => Self::Codex,
+                "Codex"  | "codex"  => Self::Codex,
                 "Copilot" | "copilot" => Self::Copilot,
                 "Gemini" | "gemini" => Self::Gemini,
                 "OpenCode" | "opencode" => Self::OpenCode,
@@ -1956,8 +1956,8 @@ mod tests {
                 &acp::schema::v1::SessionId::new("missing".to_string()),
                 &|_| true
             )
-            .await
-            .is_none(),
+                .await
+                .is_none(),
             "remove_if on an absent id returns None"
         );
     }
@@ -2515,11 +2515,11 @@ mod tests {
         let reg = InMemoryRegistry::new();
         let changed = reg
             .apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
-                key: "sid-1".into(),
-                cli_source: crate::agent_sessions::CliSource::Claude,
-                pane_session_id: "Pane-A".into(),
-                cwd: PathBuf::from("C:\\work"),
-                title: "claude — work".into(),
+            key: "sid-1".into(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "Pane-A".into(),
+            cwd: PathBuf::from("C:\\work"),
+            title: "claude — work".into(),
             })
             .await;
 
@@ -2813,8 +2813,8 @@ mod tests {
 
         let changed = reg
             .apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                key: "sid".into(),
-                pane_session_id: "New-Pane".into(),
+            key: "sid".into(),
+            pane_session_id: "New-Pane".into(),
             })
             .await;
         let row = reg
@@ -3562,7 +3562,7 @@ mod tests {
                     distro: "Ubuntu".to_string()
                 }
             )
-            .await
+                .await
         );
         assert_eq!(
             reg.lookup(&sid).await.unwrap().location,
@@ -3578,7 +3578,7 @@ mod tests {
                     distro: "Ubuntu".to_string()
                 }
             )
-            .await
+                .await
         );
         // Absent id → no change.
         assert!(

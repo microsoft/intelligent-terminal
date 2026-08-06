@@ -475,13 +475,13 @@ fn spawn_wsl_agent_process(
     command.creation_flags(CREATE_NO_WINDOW);
 
     let child = command.spawn().map_err(|error| {
-        anyhow!(
-            "failed to spawn agent '{}' in WSL distro '{}': {}",
-            agent_cmd,
-            distro,
-            error
-        )
-    })?;
+            anyhow!(
+                "failed to spawn agent '{}' in WSL distro '{}': {}",
+                agent_cmd,
+                distro,
+                error
+            )
+        })?;
 
     Ok(AgentSpawn {
         child,

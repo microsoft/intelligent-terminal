@@ -810,7 +810,7 @@ async fn run_acp_app(
                         target: "custom_models",
                         agent_source = %agent_source,
                         "ignoring Host custom-provider startup metadata for WSL helper"
-                    );
+            );
                 }
                 app_state.set_custom_model_config(Vec::new(), None);
             }

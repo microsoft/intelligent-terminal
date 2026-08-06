@@ -229,12 +229,12 @@ pub fn normalize_provider_contribution(
             .metrics
             .into_iter()
             .map(|metric| UsageProviderMetric {
-                metric_id: metric.metric_id,
-                display_kind: metric.display_kind,
-                value_decimal_text: metric.value_decimal_text,
-                limit_decimal_text: metric.limit_decimal_text,
-                unit_id: metric.unit_id,
-                unit_display_text: metric.unit_display_text,
+            metric_id: metric.metric_id,
+            display_kind: metric.display_kind,
+            value_decimal_text: metric.value_decimal_text,
+            limit_decimal_text: metric.limit_decimal_text,
+            unit_id: metric.unit_id,
+            unit_display_text: metric.unit_display_text,
             })
             .collect(),
     }

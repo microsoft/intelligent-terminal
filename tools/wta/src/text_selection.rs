@@ -689,7 +689,7 @@ mod tests {
         state.snapshot_and_render(&mut rendered);
         assert!(rendered[(0, 0)].modifier.contains(Modifier::REVERSED));
         assert!(!state.buffer.as_ref().unwrap()[(0, 0)]
-            .modifier
+                .modifier
             .contains(Modifier::REVERSED));
     }
 

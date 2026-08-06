@@ -285,7 +285,7 @@ pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
     MOVE_POSITIONS.iter().find(|position| {
         position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
-    })
+        })
 }
 
 /// Prefix-match `/move` positions by full name or one-letter alias.

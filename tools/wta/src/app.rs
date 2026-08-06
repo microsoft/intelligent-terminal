@@ -542,7 +542,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                            .or_else(|| ti.get("prompt"))
+                        .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -1131,10 +1131,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude => Some("claude"),
-        CliSource::Codex => Some("codex"),
+        CliSource::Claude  => Some("claude"),
+        CliSource::Codex   => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini => Some("gemini"),
+        CliSource::Gemini  => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1473,30 +1473,30 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                            pipe_name,
-                            acp_model,
+                                pipe_name,
+                                acp_model,
                             cloud_models,
-                            agent_id_opt,
-                            agent_source,
-                            source_cwd,
-                            owner_tab_opt,
-                            None, // initial_load_session_id: already handled by the dead initial task
-                            event_tx_for_pipe.clone(),
-                            prompt_rx,
-                            cancel_rx,
-                            new_session_rx,
-                            load_session_rx,
-                            drop_session_rx,
-                            rename_session_rx,
-                            restart_rx,
-                            shrx,
-                            master_ext_rx,
-                            shell_mgr,
-                            wt_connected,
-                            post_login_auth, // only true on genuine LoginComplete reconnects
+                                agent_id_opt,
+                                agent_source,
+                                source_cwd,
+                                owner_tab_opt,
+                                None, // initial_load_session_id: already handled by the dead initial task
+                                event_tx_for_pipe.clone(),
+                                prompt_rx,
+                                cancel_rx,
+                                new_session_rx,
+                                load_session_rx,
+                                drop_session_rx,
+                                rename_session_rx,
+                                restart_rx,
+                                shrx,
+                                master_ext_rx,
+                                shell_mgr,
+                                wt_connected,
+                                post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                        )
-                        .await
+                            )
+                            .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -2149,7 +2149,7 @@ impl App {
         let idx = self.current_tab().model_picker_selected;
         let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
-            self.close_model_picker();
+        self.close_model_picker();
             self.apply_model_pick(id);
         }
     }
@@ -4374,13 +4374,13 @@ impl App {
             commands::agent_id_prefix(&self.current_tab().input)
         };
         self.available_agents.iter().filter(move |agent| {
-            prefix.is_some_and(|prefix| {
-                agent
-                    .id
-                    .get(..prefix.len())
-                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+                prefix.is_some_and(|prefix| {
+                    agent
+                        .id
+                        .get(..prefix.len())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+                })
             })
-        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4667,9 +4667,9 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-            tab_id,
-            cwd: self.source_cwd.clone(),
-        });
+                tab_id,
+                cwd: self.source_cwd.clone(),
+            });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
         }

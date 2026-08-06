@@ -624,7 +624,7 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
             // Find the closing `],` and then the next newline
             if let Some(rel_end) = normalized_copilot[start..].find("],") {
                 let mut block_end = start + rel_end + 2; // past `],`
-                                                         // Consume trailing whitespace/newline
+                // Consume trailing whitespace/newline
                 while block_end < normalized_copilot.len()
                     && matches!(normalized_copilot.as_bytes()[block_end], b'\r' | b'\n')
                 {

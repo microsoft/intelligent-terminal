@@ -639,7 +639,7 @@ impl WtaClient {
     async fn dispatch_session_notification(&self, args: acp::schema::v1::SessionNotification) {
         let usage_session_id =
             matches!(&args.update, acp::schema::v1::SessionUpdate::UsageUpdate(_))
-                .then(|| args.session_id.0.to_string());
+        .then(|| args.session_id.0.to_string());
 
         if self.session_notification(args).await.is_err() {
             if let Some(session_id) = usage_session_id {
@@ -972,17 +972,17 @@ impl WtaClient {
                     // update (e.g. Pending -> InProgress -> Completed).
                     let (location, location_is_command) =
                         if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
-                            match tool_call_location_hint(
-                                update.fields.title.as_deref().unwrap_or(""),
-                                update.fields.locations.as_deref().unwrap_or(&[]),
-                                update.fields.raw_input.as_ref(),
-                            ) {
-                                Some((text, is_command)) => (Some(text), is_command),
-                                None => (None, false),
-                            }
-                        } else {
-                            (None, false)
-                        };
+                        match tool_call_location_hint(
+                            update.fields.title.as_deref().unwrap_or(""),
+                            update.fields.locations.as_deref().unwrap_or(&[]),
+                            update.fields.raw_input.as_ref(),
+                        ) {
+                            Some((text, is_command)) => (Some(text), is_command),
+                            None => (None, false),
+                        }
+                    } else {
+                        (None, false)
+                    };
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: tool_call_id,
@@ -1726,8 +1726,8 @@ pub async fn run_acp_client_over_pipe(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-                        match req {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -1756,8 +1756,8 @@ pub async fn run_acp_client_over_pipe(
                                 responder,
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
-                            _ => responder.respond_with_error(acp::Error::method_not_found()),
-                        }
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
                     }
                 }
             },
@@ -1769,15 +1769,15 @@ pub async fn run_acp_client_over_pipe(
                 move |notif: acp::schema::v1::AgentNotification, _cx| {
                     let c = c.clone();
                     async move {
-                        use acp::schema::v1::AgentNotification as N;
-                        match notif {
-                            N::SessionNotification(n) => c.dispatch_session_notification(n).await,
+            use acp::schema::v1::AgentNotification as N;
+            match notif {
+                N::SessionNotification(n) => c.dispatch_session_notification(n).await,
                             N::ExtNotification(n) => {
                                 let _ = c.ext_notification(n).await;
                             }
-                            _ => {}
-                        }
-                        Ok(())
+                _ => {}
+            }
+            Ok(())
                     }
                 }
             },
@@ -2094,42 +2094,42 @@ pub async fn run_acp_client_over_pipe(
     let (session_id, available_models, current_model_id, has_bootstrap) = if let Some(load_sid) =
         initial_load_session_id.as_deref()
     {
-        // No bootstrap. AgentConnected fires with the to-be-loaded
-        // sid as a placeholder so the App flips to Connected (and
-        // binds session_id → owner_tab in `session_to_tab` early,
-        // so any session/update chunks arriving before the
-        // load_session response route to the right tab). The
-        // actual `load_session` is driven by the App after it
-        // processes the queued WtEvent — see `load_session_rx`
-        // arm below for success/failure handling, including the
-        // fallback-to-new-session on boot-time load failure.
-        startup_probe.log(&format!(
-            "skipping bootstrap session/new (initial_load_session_id={} set)",
-            load_sid,
-        ));
-        // Resume is intentionally silent: show the same neutral connecting
-        // stage a fresh pane would, never "Resuming session …", so a
-        // resumed pane is indistinguishable from a normal connection.
-        let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
-        (
-            acp::schema::v1::SessionId::new(load_sid.to_string()),
-            Vec::<AcpModelInfo>::new(),
-            None,
-            false,
-        )
-    } else {
-        let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
-        startup_probe.log("Creating session (over pipe)");
-        let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
-        inject_wta_pane_meta(&mut new_session_req.meta);
-        let new_session_started = std::time::Instant::now();
-        let new_session_result = conn.new_session(new_session_req).await;
-        log_acp_new_session_result(
-            "HelperPipeStartup",
-            new_session_started,
-            &new_session_result,
-        );
-        let session = new_session_result.map_err(|e| {
+            // No bootstrap. AgentConnected fires with the to-be-loaded
+            // sid as a placeholder so the App flips to Connected (and
+            // binds session_id → owner_tab in `session_to_tab` early,
+            // so any session/update chunks arriving before the
+            // load_session response route to the right tab). The
+            // actual `load_session` is driven by the App after it
+            // processes the queued WtEvent — see `load_session_rx`
+            // arm below for success/failure handling, including the
+            // fallback-to-new-session on boot-time load failure.
+            startup_probe.log(&format!(
+                "skipping bootstrap session/new (initial_load_session_id={} set)",
+                load_sid,
+            ));
+            // Resume is intentionally silent: show the same neutral connecting
+            // stage a fresh pane would, never "Resuming session …", so a
+            // resumed pane is indistinguishable from a normal connection.
+            let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
+            (
+                acp::schema::v1::SessionId::new(load_sid.to_string()),
+                Vec::<AcpModelInfo>::new(),
+                None,
+                false,
+            )
+        } else {
+            let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
+            startup_probe.log("Creating session (over pipe)");
+            let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
+            inject_wta_pane_meta(&mut new_session_req.meta);
+            let new_session_started = std::time::Instant::now();
+            let new_session_result = conn.new_session(new_session_req).await;
+            log_acp_new_session_result(
+                "HelperPipeStartup",
+                new_session_started,
+                &new_session_result,
+            );
+            let session = new_session_result.map_err(|e| {
                 let failure = AgentFailure::from_acp_error(&e);
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
@@ -2171,28 +2171,28 @@ pub async fn run_acp_client_over_pipe(
                     .context(format!("new_session over master pipe failed: {e}"))
             })?;
 
-        let session_id = session.session_id.clone();
-        startup_probe.log(&format!("Session created (over pipe): {}", session_id));
-        if is_agent_pane {
-            let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
-            let pane_for_index = if pane_session_id.is_empty() {
-                None
-            } else {
-                Some(pane_session_id.as_str())
-            };
-            tracing::info!(
-                target: "agent_pane_origin",
-                session_id = %session_id,
-                pane_session_id = %pane_session_id,
-                "recording agent-pane session origin (startup over pipe)",
-            );
-            crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
-        }
+            let session_id = session.session_id.clone();
+            startup_probe.log(&format!("Session created (over pipe): {}", session_id));
+            if is_agent_pane {
+                let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+                let pane_for_index = if pane_session_id.is_empty() {
+                    None
+                } else {
+                    Some(pane_session_id.as_str())
+                };
+                tracing::info!(
+                    target: "agent_pane_origin",
+                    session_id = %session_id,
+                    pane_session_id = %pane_session_id,
+                    "recording agent-pane session origin (startup over pipe)",
+                );
+                crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
+            }
 
-        let (available_models, current_model_id) =
-            crate::protocol::acp::model_select::models_from_new_session(&session);
-        (session_id, available_models, current_model_id, true)
-    };
+            let (available_models, current_model_id) =
+                crate::protocol::acp::model_select::models_from_new_session(&session);
+            (session_id, available_models, current_model_id, true)
+        };
 
     // Apply --acp-model if requested. Only valid when we actually have
     // a bootstrap session to mutate; for the initial-load path the
@@ -3876,8 +3876,8 @@ mod tests {
 
         // Outer future elapsed → Timeout, no ACP code.
         let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
-            .await
-            .expect_err("a zero-duration timeout over a pending future must elapse");
+        .await
+        .expect_err("a zero-duration timeout over a pending future must elapse");
         let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }

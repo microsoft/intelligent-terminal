@@ -418,7 +418,7 @@ fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
     assert_eq!(set, allow_set(&["gemini", "copilot"]));
     // Unknown ids mixed with a real id: only the real id survives.
     let mixed = normalize_allowed_agent_ids(&["custom:myapp".to_string(), "claude".to_string()])
-        .expect("one real id survives");
+    .expect("one real id survives");
     assert_eq!(mixed, allow_set(&["claude"]));
 
     // End-to-end through resolve_agent_selection:
@@ -561,7 +561,7 @@ fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
                     let m = m.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-                        match req {
+            match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 m.initialize(a).await.map(R::InitializeResponse),
@@ -574,8 +574,8 @@ fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
                                 responder,
                                 m.new_session(a).await.map(R::NewSessionResponse),
                             ),
-                            _ => responder.respond_with_error(acp::Error::method_not_found()),
-                        }
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
                     }
                 }
             },
@@ -997,47 +997,47 @@ async fn prompt_forward_survives_reentrant_permission() {
                 let (ar, aw) = tokio::io::split(mock_agent_pipe);
                 let builder =
                     acp::Agent
-                        .builder()
-                        .name("mock-reentrant-agent")
-                        .on_receive_request(
-                            move |req: ClientRequest,
-                                  responder,
-                                  cx: acp::ConnectionTo<acp::Client>| async move {
-                                match req {
-                                    ClientRequest::PromptRequest(a) => {
-                                        let sid = a.session_id.clone();
-                                        tokio::task::spawn_local(async move {
-                                            let perm = RequestPermissionRequest::new(
-                                                sid,
-                                                ToolCallUpdate::new(
-                                                    ToolCallId::new("tool-1"),
-                                                    ToolCallUpdateFields::new()
-                                                        .title("Run: echo hi"),
-                                                ),
-                                                vec![PermissionOption::new(
-                                                    PermissionOptionId::new("allow-once"),
-                                                    "Allow once",
-                                                    PermissionOptionKind::AllowOnce,
-                                                )],
-                                            );
-                                            // block_task from a spawned task is safe.
-                                            let _ = cx.send_request(perm).block_task().await;
-                                            let _ = conn::respond_enum(
-                                                responder,
-                                                Ok(AgentResponse::PromptResponse(
-                                                    PromptResponse::new(StopReason::EndTurn),
-                                                )),
-                                            );
-                                        });
-                                        Ok(())
-                                    }
+                    .builder()
+                    .name("mock-reentrant-agent")
+                    .on_receive_request(
+                        move |req: ClientRequest,
+                              responder,
+                              cx: acp::ConnectionTo<acp::Client>| async move {
+                            match req {
+                                ClientRequest::PromptRequest(a) => {
+                                    let sid = a.session_id.clone();
+                                    tokio::task::spawn_local(async move {
+                                        let perm = RequestPermissionRequest::new(
+                                            sid,
+                                            ToolCallUpdate::new(
+                                                ToolCallId::new("tool-1"),
+                                                ToolCallUpdateFields::new()
+                                                    .title("Run: echo hi"),
+                                            ),
+                                            vec![PermissionOption::new(
+                                                PermissionOptionId::new("allow-once"),
+                                                "Allow once",
+                                                PermissionOptionKind::AllowOnce,
+                                            )],
+                                        );
+                                        // block_task from a spawned task is safe.
+                                        let _ = cx.send_request(perm).block_task().await;
+                                        let _ = conn::respond_enum(
+                                            responder,
+                                            Ok(AgentResponse::PromptResponse(
+                                                PromptResponse::new(StopReason::EndTurn),
+                                            )),
+                                        );
+                                    });
+                                    Ok(())
+                                }
                                     _ => {
                                         responder.respond_with_error(acp::Error::method_not_found())
                                     }
-                                }
-                            },
-                            acp::on_receive_request!(),
-                        );
+                            }
+                        },
+                        acp::on_receive_request!(),
+                    );
                 let (_agent_link, agent_io) =
                     conn::spawn_agent(builder, conn::byte_streams(aw.compat_write(), ar.compat()));
                 tokio::task::spawn_local(async move {
@@ -1161,16 +1161,16 @@ async fn prompt_forward_survives_reentrant_permission() {
                         move |req: AgentRequest, responder, _cx| async move {
                             match req {
                                 AgentRequest::RequestPermissionRequest(_a) => conn::respond_enum(
-                                    responder,
-                                    Ok(ClientResponse::RequestPermissionResponse(
-                                        RequestPermissionResponse::new(
-                                            RequestPermissionOutcome::Selected(
-                                                SelectedPermissionOutcome::new(
-                                                    PermissionOptionId::new("allow-once"),
+                                        responder,
+                                        Ok(ClientResponse::RequestPermissionResponse(
+                                            RequestPermissionResponse::new(
+                                                RequestPermissionOutcome::Selected(
+                                                    SelectedPermissionOutcome::new(
+                                                        PermissionOptionId::new("allow-once"),
+                                                    ),
                                                 ),
                                             ),
-                                        ),
-                                    )),
+                                        )),
                                 ),
                                 _ => responder.respond_with_error(acp::Error::method_not_found()),
                             }
@@ -1887,8 +1887,8 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
         &state,
         &session_registry::SessionsListParams { rescan: false },
     )
-    .await
-    .expect("sessions/list succeeds");
+        .await
+        .expect("sessions/list succeeds");
     let parsed = session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
 
     assert_eq!(parsed.sessions, vec![row]);
@@ -1908,10 +1908,10 @@ async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
         map.insert(
             sid.clone(),
             HelperRoute {
-                helper_id: HelperId(1),
-                notif_tx,
-                forwarder: None,
-                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            helper_id: HelperId(1),
+            notif_tx,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             },
         );
     }

@@ -207,8 +207,8 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                        "Run: echo hi",
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                    "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -222,8 +222,8 @@ impl MockAgent {
                                 sid.clone(),
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                        "Run: echo hi",
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                    "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -233,9 +233,9 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCallUpdate(
                                     acp::schema::v1::ToolCallUpdate::new(
-                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                        acp::schema::v1::ToolCallUpdateFields::new()
-                                            .status(acp::schema::v1::ToolCallStatus::Completed),
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                    acp::schema::v1::ToolCallUpdateFields::new()
+                                        .status(acp::schema::v1::ToolCallStatus::Completed),
                                     ),
                                 ),
                             ))
@@ -249,16 +249,16 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(
                                     vec![
-                                        acp::schema::v1::PlanEntry::new(
-                                            "Step one",
-                                            acp::schema::v1::PlanEntryPriority::Medium,
-                                            acp::schema::v1::PlanEntryStatus::InProgress,
-                                        ),
-                                        acp::schema::v1::PlanEntry::new(
-                                            "Step two",
-                                            acp::schema::v1::PlanEntryPriority::Low,
-                                            acp::schema::v1::PlanEntryStatus::Pending,
-                                        ),
+                                    acp::schema::v1::PlanEntry::new(
+                                        "Step one",
+                                        acp::schema::v1::PlanEntryPriority::Medium,
+                                        acp::schema::v1::PlanEntryStatus::InProgress,
+                                    ),
+                                    acp::schema::v1::PlanEntry::new(
+                                        "Step two",
+                                        acp::schema::v1::PlanEntryPriority::Low,
+                                        acp::schema::v1::PlanEntryStatus::Pending,
+                                    ),
                                     ],
                                 )),
                             ))
@@ -375,8 +375,8 @@ fn spawn_mock_pair(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-                        match req {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -405,8 +405,8 @@ fn spawn_mock_pair(
                                 responder,
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
-                            _ => responder.respond_with_error(acp::Error::method_not_found()),
-                        }
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
                     }
                 }
             },
@@ -421,7 +421,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
                             c.dispatch_session_notification(n).await;
                         }
-                        Ok(())
+            Ok(())
                     }
                 }
             },
@@ -442,7 +442,7 @@ fn spawn_mock_pair(
                     let m = m.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-                        match req {
+            match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 m.initialize(a).await.map(R::InitializeResponse),
@@ -463,16 +463,16 @@ fn spawn_mock_pair(
                                 responder,
                                 m.prompt(a).await.map(R::PromptResponse),
                             ),
-                            Q::ExtMethodRequest(_) => conn::respond_enum(
-                                responder,
-                                Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                Q::ExtMethodRequest(_) => conn::respond_enum(
+                    responder,
+                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
                                     serde_json::value::to_raw_value(&serde_json::Value::Null)
                                         .unwrap()
                                         .into(),
-                                ))),
-                            ),
-                            _ => responder.respond_with_error(acp::Error::method_not_found()),
-                        }
+                    ))),
+                ),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
                     }
                 }
             },
@@ -487,7 +487,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
                             let _ = m.cancel(n).await;
                         }
-                        Ok(())
+            Ok(())
                     }
                 }
             },
@@ -2095,9 +2095,9 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
         .session_notification(notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
-                acp::schema::v1::ToolCallId::new("proposal-tool"),
-                acp::schema::v1::ToolCallUpdateFields::new()
-                    .status(acp::schema::v1::ToolCallStatus::Completed),
+                    acp::schema::v1::ToolCallId::new("proposal-tool"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await

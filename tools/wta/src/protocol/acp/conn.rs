@@ -540,20 +540,20 @@ mod transport_death_tests {
 
             let builder =
                 acp::Client
-                    .builder()
-                    .name("test-client")
-                    .on_receive_request(
+                .builder()
+                .name("test-client")
+                .on_receive_request(
                         |_req: v1::AgentRequest,
                          responder: acp::Responder<serde_json::Value>,
                          _cx| async move {
-                            responder.respond_with_error(acp::Error::method_not_found())
-                        },
-                        acp::on_receive_request!(),
-                    )
-                    .on_receive_notification(
-                        |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
-                        acp::on_receive_notification!(),
-                    );
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    },
+                    acp::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
+                    acp::on_receive_notification!(),
+                );
 
             let (_link, handle_io) = spawn_client(
                 builder,
@@ -587,20 +587,20 @@ mod transport_death_tests {
 
             let builder =
                 acp::Agent
-                    .builder()
-                    .name("test-agent")
-                    .on_receive_request(
+                .builder()
+                .name("test-agent")
+                .on_receive_request(
                         |_req: v1::ClientRequest,
                          responder: acp::Responder<serde_json::Value>,
                          _cx| async move {
-                            responder.respond_with_error(acp::Error::method_not_found())
-                        },
-                        acp::on_receive_request!(),
-                    )
-                    .on_receive_notification(
-                        |_notif: v1::ClientNotification, _cx| async move { Ok(()) },
-                        acp::on_receive_notification!(),
-                    );
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    },
+                    acp::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    |_notif: v1::ClientNotification, _cx| async move { Ok(()) },
+                    acp::on_receive_notification!(),
+                );
 
             let (_link, handle_io) = spawn_agent(
                 builder,

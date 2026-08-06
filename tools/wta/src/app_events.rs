@@ -1224,9 +1224,9 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                            tracing::info!(
-                                target: "autofix",
-                                model = raw,
+                        tracing::info!(
+                            target: "autofix",
+                            model = raw,
                                 target_agent_id,
                                 "scoped acp-model hot-update requested from settings change",
                             );
@@ -1257,7 +1257,7 @@ impl App {
                                         target: "cloud_models",
                                         %error,
                                         "invalid cloud model catalog in agent_config_changed"
-                                    );
+                        );
                                     return;
                                 }
                             }

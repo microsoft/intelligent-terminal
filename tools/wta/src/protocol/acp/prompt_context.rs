@@ -622,7 +622,7 @@ pub(super) fn command_resolver_invocation(
 
     Some(
         crate::agent_tools::command_resolution::CommandResolverInvocation::new(
-            executable, shell, cwd,
+        executable, shell, cwd,
         ),
     )
 }

@@ -192,12 +192,12 @@ impl App {
                 return DirectProposalEvaluation::Duplicate(
                     "a card is already showing for this turn".to_string(),
                 );
-            }
+                }
             TurnState::Idle => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
-                );
-            }
+                    );
+                }
             TurnState::Submitted(_) | TurnState::Streaming { .. } => {}
         }
 
@@ -310,7 +310,7 @@ impl App {
                     retryable: false,
                 }
             }
-        }
+            }
     }
 
     pub(super) fn commit_terminal_action_proposal(&mut self, proposal_id: &str) -> bool {
@@ -338,12 +338,12 @@ impl App {
                 "direct_proposal_fix",
             );
         } else {
-            self.turn_surface_recommendation(
+                self.turn_surface_recommendation(
                 &pending.session_id,
                 pending.recommendations,
                 "direct_proposal",
-            );
-        }
+                );
+            }
         self.session_tab_mut(&pending.session_id)
             .active_direct_proposal_id = Some(proposal_id.to_string());
         true
@@ -455,65 +455,65 @@ impl App {
     fn turn_close_finalize_autofix_text(&mut self, session_id: &str, buf: &str) {
         if !buf.trim().is_empty() {
             self.turn_surface_explain(session_id, String::new(), buf.to_string(), "autofix_text");
-            self.turn_release_end_pending(session_id);
+                self.turn_release_end_pending(session_id);
             return;
-        }
+            }
 
-        let target_tab = self.tab_for_session(session_id);
-        let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
-        if pane_id.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
-        }
-        let autofix = &mut self.session_tab_mut(session_id).autofix;
-        autofix.pane_id = None;
-        autofix.armed_at = None;
-        let tab = self.session_tab_mut(session_id);
-        let prompt = tab.turn.prompt().cloned().expect("prompt set");
+                let target_tab = self.tab_for_session(session_id);
+                let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
+                if pane_id.is_some() {
+                    self.emit_autofix_state_cleared(&target_tab);
+                }
+                let autofix = &mut self.session_tab_mut(session_id).autofix;
+                autofix.pane_id = None;
+                autofix.armed_at = None;
+                let tab = self.session_tab_mut(session_id);
+                let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let details = tab.current_turn_details();
-        if !details.is_empty() {
-            tab.completed_turns.push(CompletedTurn {
-                prompt: t!("chat.autofix_prompt_label").into_owned(),
-                details,
-                expanded: true,
-                trailing_marker: None,
-            });
-        }
-        tab.messages.clear();
-        tab.tool_calls.clear();
-        tab.scroll_to_bottom();
-        tab.turn = TurnState::Surfaced {
-            prompt,
-            outcome: TurnOutcome::Empty,
-            end_pending: false,
-        };
-    }
+                if !details.is_empty() {
+                    tab.completed_turns.push(CompletedTurn {
+                        prompt: t!("chat.autofix_prompt_label").into_owned(),
+                        details,
+                        expanded: true,
+                        trailing_marker: None,
+                    });
+                }
+                tab.messages.clear();
+                tab.tool_calls.clear();
+                tab.scroll_to_bottom();
+                tab.turn = TurnState::Surfaced {
+                    prompt,
+                    outcome: TurnOutcome::Empty,
+                    end_pending: false,
+                };
+            }
 
     fn turn_close_finalize_chat(&mut self, session_id: &str, buf: String) {
-        self.log_selection_phase_for(
-            session_id,
+                self.log_selection_phase_for(
+                    session_id,
             "assistant_text",
             &format!("response_chars={}", buf.chars().count()),
-        );
-        let tab = self.session_tab_mut(session_id);
-        let prompt = tab.turn.prompt().cloned().expect("prompt set");
-        let mut details = tab.current_turn_details();
-        details.push(ChatMessage::Agent(buf));
-        tab.completed_turns.push(CompletedTurn {
-            prompt: prompt.text.clone(),
-            details,
-            expanded: true,
-            trailing_marker: None,
-        });
-        tab.messages.clear();
-        tab.tool_calls.clear();
-        tab.scroll_to_bottom();
-        tab.turn = TurnState::Surfaced {
-            prompt,
-            outcome: TurnOutcome::ChatTurn,
-            end_pending: true,
-        };
-        self.turn_release_end_pending(session_id);
-    }
+                );
+                let tab = self.session_tab_mut(session_id);
+                let prompt = tab.turn.prompt().cloned().expect("prompt set");
+                let mut details = tab.current_turn_details();
+                details.push(ChatMessage::Agent(buf));
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt.text.clone(),
+                    details,
+                    expanded: true,
+                    trailing_marker: None,
+                });
+                tab.messages.clear();
+                tab.tool_calls.clear();
+                tab.scroll_to_bottom();
+                tab.turn = TurnState::Surfaced {
+                    prompt,
+                    outcome: TurnOutcome::ChatTurn,
+                    end_pending: true,
+                };
+                self.turn_release_end_pending(session_id);
+            }
 
     fn turn_commit_trailing_direct_proposal_details(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);

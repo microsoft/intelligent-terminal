@@ -690,9 +690,9 @@ mod tests {
 
     #[test]
     fn resolve_agent_id_from_cmd_falls_back_to_unknown() {
-        assert_eq!(resolve_agent_id_from_cmd(""), "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("   "), "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("npx"), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd(""),           "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
     }
 

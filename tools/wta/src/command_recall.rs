@@ -529,8 +529,8 @@ mod tests {
         assert!(is_powershell("powershell.exe"));
         assert!(is_powershell(r"C:\Program Files\PowerShell\7\pwsh.exe"));
         assert!(is_powershell("PWSH.EXE")); // case-insensitive
-                                            // OSC 9001 ShellType form (the common shell-integration case) — bare
-                                            // name, no `.exe`. Regressing this silently disables the whole feature.
+        // OSC 9001 ShellType form (the common shell-integration case) — bare
+        // name, no `.exe`. Regressing this silently disables the whole feature.
         assert!(is_powershell("pwsh"));
         assert!(is_powershell("powershell"));
         assert!(is_powershell("PowerShell")); // case-insensitive
@@ -783,9 +783,9 @@ mod tests {
         assert_eq!(
             got[0],
             CommandResolution {
-                command_type: "Alias".into(),
-                name: "which".into(),
-                target: "where.exe".into(),
+            command_type: "Alias".into(),
+            name: "which".into(),
+            target: "where.exe".into(),
             }
         );
         assert_eq!(got[1].command_type, "Application");

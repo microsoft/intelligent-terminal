@@ -105,7 +105,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
         0
     } else if s.len() >= 25 {
         // Check if last 6 characters match ±HH:MM pattern
-        let offset_part = s.get(s.len() - 6..)?;
+        let offset_part = s.get(s.len()-6..)?;
         if let Some(sign_idx) = offset_part.rfind(|c| c == '+' || c == '-') {
             if sign_idx == 0 {
                 // Parse HH:MM
@@ -141,7 +141,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     let core = if s.ends_with('Z') {
         s.strip_suffix('Z')?
     } else if offset_seconds != 0 && s.len() >= 6 {
-        s.get(..s.len() - 6)?
+        s.get(..s.len()-6)?
     } else {
         s.get(..19)?
     };
@@ -295,10 +295,10 @@ fn block_scalar_style(inline: &str) -> Option<BlockScalarStyle> {
     // Strip a trailing `#`-comment if present so `summary: |- # note` parses.
     let head = inline.split('#').next().unwrap_or("").trim_end();
     match head {
-        "|" => Some(BlockScalarStyle::LiteralClip),
+        "|"  => Some(BlockScalarStyle::LiteralClip),
         "|-" => Some(BlockScalarStyle::LiteralStrip),
         "|+" => Some(BlockScalarStyle::LiteralKeep),
-        ">" => Some(BlockScalarStyle::FoldedClip),
+        ">"  => Some(BlockScalarStyle::FoldedClip),
         ">-" => Some(BlockScalarStyle::FoldedStrip),
         ">+" => Some(BlockScalarStyle::FoldedKeep),
         _ => None,
@@ -317,9 +317,9 @@ fn block_scalar_style(inline: &str) -> Option<BlockScalarStyle> {
 /// newlines, matching YAML 1.2 §8.1.1.
 #[allow(dead_code)]
 fn read_block_scalar<'a, I>(
-    iter: &mut std::iter::Peekable<I>,
+    iter:       &mut std::iter::Peekable<I>,
     key_indent: usize,
-    style: BlockScalarStyle,
+    style:      BlockScalarStyle,
 ) -> String
 where
     I: Iterator<Item = (usize, &'a str)>,
@@ -329,7 +329,7 @@ where
 
     while let Some(&(_, line)) = iter.peek() {
         let trimmed = line.trim_start();
-        let indent = line.len() - trimmed.len();
+        let indent  = line.len() - trimmed.len();
 
         if trimmed.is_empty() {
             // Blank lines belong to the block regardless of indent.
@@ -361,7 +361,7 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
     use BlockScalarStyle::*;
     let folded = matches!(style, FoldedClip | FoldedStrip | FoldedKeep);
     let chomp_strip = matches!(style, LiteralStrip | FoldedStrip);
-    let chomp_keep = matches!(style, LiteralKeep | FoldedKeep);
+    let chomp_keep  = matches!(style, LiteralKeep  | FoldedKeep);
 
     let mut out = String::new();
     if folded {
@@ -547,7 +547,7 @@ mod tests {
     fn yaml_only_matches_full_keys_not_substrings() {
         // Robustness: a line `summary_count: 0` must not match key `summary`.
         let text = "summary: hello\nsummary_count: 0\n";
-        assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("hello"));
+        assert_eq!(parse_simple_yaml(text, "summary").as_deref(),       Some("hello"));
         assert_eq!(
             parse_simple_yaml(text, "summary_count").as_deref(),
             Some("0")
@@ -602,7 +602,7 @@ mod tests {
             parse_simple_yaml(text, "summary").as_deref(),
             Some("body line")
         );
-        assert_eq!(parse_simple_yaml(text, "name").as_deref(), Some("tail"));
+        assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("tail"));
     }
 
     #[test]
@@ -627,7 +627,7 @@ mod tests {
     fn yaml_extraction_handles_unquoted_and_quoted_values() {
         let text =
             "id: abc-123\ncwd: C:\\Users\\foo\nname: 'My session'\nsummary: \"Bug fix #42\"\n";
-        assert_eq!(parse_simple_yaml(text, "id").as_deref(), Some("abc-123"));
+        assert_eq!(parse_simple_yaml(text, "id").as_deref(),      Some("abc-123"));
         assert_eq!(
             parse_simple_yaml(text, "cwd").as_deref(),
             Some("C:\\Users\\foo")
@@ -640,7 +640,7 @@ mod tests {
             parse_simple_yaml(text, "summary").as_deref(),
             Some("Bug fix #42")
         );
-        assert_eq!(parse_simple_yaml(text, "missing"), None);
+        assert_eq!(parse_simple_yaml(text, "missing"),            None);
     }
 
     // ─── Codex tests ────────────────────────────────────────────────────
