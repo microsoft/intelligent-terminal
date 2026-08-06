@@ -10,7 +10,17 @@ $script:ItAgentOpenSelector = 'AgentLabelText'
 function Test-AgentPaneOpen {
     <# Is the agent pane currently shown? (UI detection — not a protocol pane.) #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 2)
-    process { Test-UiElementExists -App $App -Selector $script:ItAgentOpenSelector -TimeoutSec $TimeoutSec }
+    process {
+        if (Test-UiElementExists -App $App -Selector $script:ItAgentOpenSelector -TimeoutSec $TimeoutSec) {
+            return $true
+        }
+
+        # UIA can lag behind the XAML pane state under full-suite load. Use the latest
+        # product-owned state transition so a retry does not toggle a pane that is already open.
+        $log = Get-ItLogText -App $App -Name 'terminal-agent-pane.log' -SinceStart
+        $states = [regex]::Matches($log, 'OnAgentStateChanged:.*\bpane_open=(true|false)\b')
+        $states.Count -gt 0 -and $states[$states.Count - 1].Groups[1].Value -eq 'true'
+    }
 }
 
 function Open-AgentPane {

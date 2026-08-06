@@ -134,7 +134,10 @@ Describe 'Feature two tabs run different agents through one master' -Tag 'Featur
         $masterBefore | Should -Not -BeNullOrEmpty
         $script:masterPid = $masterBefore.ProcessId
         Initialize-LogOffsets -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" -NoSubmit | Out-Null
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:oldTabBPane `
+            -Pattern ('(?i)/agent\s+' + [regex]::Escape($script:targetAgent)) -TimeoutSec 15
+        Send-AgentKey -App $script:app -PaneSessionId $script:oldTabBPane -Key Enter | Out-Null
 
         $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 60
         $script:tabBPane = $newB.PaneSessionId
