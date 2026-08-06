@@ -363,6 +363,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C246` `[new]` `[E2E]` **Abandoned COM activation exits promptly:** A packaged protocol activation that receives no real window handoff exits after its bounded startup lease and releases package resources.
 - [ ] `C247` `[new]` `[E2E]` **Valid COM handoff survives the activation timeout:** A real window handoff cancels the startup lease and keeps the same Terminal process alive.
 - [ ] `C248` `[new]` `[E2E]` **Explicit headless mode survives the activation timeout:** `AllowHeadless` remains authoritative and keeps an intentionally headless Terminal process alive beyond the startup lease.
+- [ ] `C249` `[new]` `[E2E]` **`wtcli listen` exits when Terminal disconnects:** A listener exits promptly when its COM server closes so the packaged executable does not block servicing.
+- [ ] `C250` `[new]` `[E2E]` **`wta listen` exits when Terminal disconnects:** WTA propagates event-stream closure and terminates its child listener so both packaged executables release promptly.
 - [ ] `C185` `[E2E]` **WTA master starts:** One master process starts per Terminal process when needed.
 - [ ] `C186` `[E2E]` **WTA helper starts per tab/pane:** Agent pane helper starts and connects to master.
 - [ ] `C187` `[E2E]` **Master/helper crash recovery is acceptable:** Crashes or exits recover or surface an actionable error.

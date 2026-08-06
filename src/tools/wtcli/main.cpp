@@ -869,8 +869,37 @@ int main()
             return;
         }
 
-        WaitForSingleObject(s_stopEvent, INFINITE);
-        server->Unsubscribe();
+        constexpr DWORD heartbeatIntervalMs = 1000;
+        bool serverConnected = true;
+        for (;;)
+        {
+            const auto waitResult = WaitForSingleObject(s_stopEvent, heartbeatIntervalMs);
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                break;
+            }
+            if (waitResult != WAIT_TIMEOUT)
+            {
+                fprintf(stderr, "[wtcli] listen: stop wait failed (0x%08X)\n", GetLastError());
+                exitCode = 1;
+                break;
+            }
+
+            Json::Value capabilities;
+            hr = CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, capabilities);
+            if (FAILED(hr))
+            {
+                serverConnected = false;
+                if (!jsonMode)
+                    fprintf(stderr, "Terminal disconnected; stopping listener.\n");
+                break;
+            }
+        }
+
+        if (serverConnected)
+        {
+            server->Unsubscribe();
+        }
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda
         // that can only reach it via the static), so closing it would leave the

@@ -348,6 +348,8 @@ pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
     event_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<serde_json::Value>>>,
+    event_error: std::sync::Mutex<Option<String>>,
+    reader_task: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     wtcli_path: String,
 }
 
@@ -362,6 +364,8 @@ impl CliChannel {
             available: AtomicBool::new(true),
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
+            event_error: std::sync::Mutex::new(None),
+            reader_task: std::sync::Mutex::new(None),
             wtcli_path: resolve_wtcli_path(),
         })
     }
@@ -377,24 +381,52 @@ impl CliChannel {
         rx
     }
 
+    fn disconnect_event_stream(&self, error: Option<String>) {
+        if let Some(error) = error {
+            *self.event_error.lock().unwrap() = Some(error);
+        }
+        self.available.store(false, Ordering::Relaxed);
+        self.event_tx.lock().unwrap().take();
+    }
+
+    /// Take the terminal error that closed the event stream, if any.
+    pub fn take_event_error(&self) -> Option<String> {
+        self.event_error.lock().unwrap().take()
+    }
+
     /// Start background event listener (wraps `wtcli listen --json`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
     pub async fn start_reader(self: &std::sync::Arc<Self>) {
+        let mut reader_task = self.reader_task.lock().unwrap();
+        if reader_task.is_some() {
+            return;
+        }
+
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
-        tokio::spawn(async move {
-            let Ok(mut child) = tokio::process::Command::new(&wtcli)
+        *reader_task = Some(tokio::spawn(async move {
+            let mut command = tokio::process::Command::new(&wtcli);
+            command
                 .args(["--json", "listen"])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
-                .spawn()
-            else {
-                return;
+                .kill_on_drop(true);
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(error) => {
+                    if let Some(this) = weak.upgrade() {
+                        this.disconnect_event_stream(Some(format!(
+                            "failed to start wtcli listener: {error}"
+                        )));
+                    }
+                    return;
+                }
             };
 
             let stdout = child.stdout.take().unwrap();
             let mut reader = tokio::io::BufReader::new(stdout);
             let mut line = String::new();
+            let mut stream_error = None;
 
             loop {
                 line.clear();
@@ -410,10 +442,32 @@ impl CliChannel {
                             }
                         }
                     }
-                    Err(_) => break,
+                    Err(error) => {
+                        stream_error = Some(format!("failed to read wtcli event stream: {error}"));
+                        break;
+                    }
                 }
             }
-        });
+
+            drop(reader);
+            match child.wait().await {
+                Ok(status) if !status.success() => {
+                    stream_error = Some(format!(
+                        "wtcli listener exited with status {}",
+                        status
+                            .code()
+                            .map_or_else(|| "unknown".to_string(), |code| code.to_string())
+                    ));
+                }
+                Err(error) => {
+                    stream_error = Some(format!("failed to wait for wtcli listener: {error}"));
+                }
+                _ => {}
+            }
+            if let Some(this) = weak.upgrade() {
+                this.disconnect_event_stream(stream_error);
+            }
+        }));
     }
 
     /// Run a wtcli subcommand and return the parsed JSON output.
@@ -437,6 +491,14 @@ impl CliChannel {
         let val: serde_json::Value =
             serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
         Ok(val)
+    }
+}
+
+impl Drop for CliChannel {
+    fn drop(&mut self) {
+        if let Some(reader_task) = self.reader_task.lock().unwrap().take() {
+            reader_task.abort();
+        }
     }
 }
 
@@ -521,7 +583,10 @@ impl WtChannel for CliChannel {
                     .unwrap_or("");
                 let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("");
                 let cwd = params.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
-                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
+                let profile = params
+                    .get("profile")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let cmd_owned;
                 let title_owned;
                 let cwd_owned;
@@ -557,10 +622,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;
@@ -656,5 +718,51 @@ impl WtChannel for CliChannel {
 
     fn is_available(&self) -> bool {
         self.available.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disconnect_event_stream_closes_subscriber() {
+        let channel = CliChannel {
+            available: AtomicBool::new(true),
+            debug_tx: None,
+            event_tx: std::sync::Mutex::new(None),
+            event_error: std::sync::Mutex::new(None),
+            reader_task: std::sync::Mutex::new(None),
+            wtcli_path: "wtcli".to_string(),
+        };
+        let mut events = channel.subscribe_events();
+
+        channel.disconnect_event_stream(None);
+
+        assert!(!channel.is_available());
+        assert_eq!(
+            events.try_recv(),
+            Err(mpsc::error::TryRecvError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn disconnect_event_stream_preserves_error() {
+        let channel = CliChannel {
+            available: AtomicBool::new(true),
+            debug_tx: None,
+            event_tx: std::sync::Mutex::new(None),
+            event_error: std::sync::Mutex::new(None),
+            reader_task: std::sync::Mutex::new(None),
+            wtcli_path: "wtcli".to_string(),
+        };
+
+        channel.disconnect_event_stream(Some("listener failed".to_string()));
+
+        assert_eq!(
+            channel.take_event_error().as_deref(),
+            Some("listener failed")
+        );
+        assert_eq!(channel.take_event_error(), None);
     }
 }

@@ -130,9 +130,11 @@ function Get-RunnableWtaPath {
 
     $runnable = $null
     if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
-        $dir = Join-Path $env:TEMP 'ite2e-wta'
+        $packageKey = $App.PackageFullName -replace '[^A-Za-z0-9._-]', '_'
+        $sourceHash = (Get-FileHash -LiteralPath $App.WtaPath -Algorithm SHA256).Hash
+        $dir = Join-Path $env:TEMP "ite2e-wta\$packageKey\$sourceHash"
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-        $dest = Join-Path $dir ("wta-{0}.exe" -f $App.Version)
+        $dest = Join-Path $dir 'wta.exe'
         if (-not (Test-Path $dest)) {
             try { Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force; Write-ItLog -Level INFO -Message "Staged runnable wta -> $dest" }
             catch { Write-ItLog -Level WARN -Message "Could not stage packaged wta: $_" }
