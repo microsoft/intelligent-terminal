@@ -1053,18 +1053,25 @@ impl App {
             AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
+                source,
                 responder,
             } => {
-                let decision = self.evaluate_direct_terminal_action_proposal(&context, &payload);
+                let decision =
+                    self.evaluate_direct_terminal_action_proposal(&context, &payload, source);
                 let _ = responder.send(decision);
             }
-            AppEvent::DirectTerminalActionProposalCommit { proposal_id } => {
-                if !self.commit_terminal_action_proposal(&proposal_id) {
+            AppEvent::DirectTerminalActionProposalCommit {
+                proposal_id,
+                responder,
+            } => {
+                let committed = self.commit_terminal_action_proposal(&proposal_id);
+                if !committed {
                     self.proposal_channels.resolve_final(
                         &proposal_id,
                         crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
                     );
                 }
+                let _ = responder.send(committed);
             }
             AppEvent::DirectTerminalActionProposalInvalidate {
                 proposal_id,

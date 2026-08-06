@@ -27,17 +27,17 @@ terminal. WTA fills that gap:
 WTA runs as a **helper + master** pair, never as a standalone process: Windows
 Terminal spawns one **`wta-master`** singleton that owns the single connection to
 the agent CLI, and one **`wta-helper`** per agent pane that renders the TUI and
-talks ACP to master over a named pipe. A third, stateless role is the **CLI
-helpers** (`wta list-panes`, `wta capture-pane`, …) used for one-shot WT control.
+talks ACP to master over a named pipe. Stateless **CLI helpers** provide one-shot
+WT control, and a lightweight **proposal MCP sidecar** is spawned per ACP
+session to accept typed terminal action requests.
 
-> There is **no standalone agent / TUI mode and no MCP server** anymore. Bare
-> `wta` with neither `--master` nor `--connect-master` exits with an error
-> (`main.rs`). The earlier single-process "ACP TUI" and "`wta mcp`" modes were
-> removed.
+> There is no standalone agent / TUI mode. Bare `wta` with neither a role flag
+> nor a subcommand exits with an error (`main.rs`). The proposal MCP sidecar is
+> not a general WT-control server and exposes no read or execution tools.
 
 ---
 
-## Three process roles
+## Four process roles
 
 ### 1. `wta-master` — the ACP multiplexer (singleton)
 
@@ -91,13 +91,26 @@ Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit, except local
 helpers such as `resolve-command`, which inspect cwd and machine state directly. Used by
 humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
-this way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
+this way too — by shelling out to `wta` / `wtcli`. The proposal MCP sidecar is
+separate and cannot perform these operations.)
 
 Packaged builds register `wta.exe` as an App Execution Alias. WTA prepends the
 current package family's alias directory to the agent process `PATH`, so a short
 `wta.exe` invocation selects the matching Dev, Preview, or Store installation
 even when multiple variants are installed. Unpackaged builds prepend the
 running executable's directory instead.
+
+### 4. Proposal MCP sidecar — per ACP session
+
+```
+wta proposal-mcp-server --pipe <helper-pipe> --capability <opaque-capability>
+```
+
+The Agent CLI launches this hidden stdio MCP server from the session's
+`McpServer::Stdio` configuration. It exposes only
+`request_terminal_actions`, forwards typed input to the owning Helper, and
+returns after the Helper confirms that the recommendation card was presented.
+The user confirms or cancels the card independently.
 
 ---
 

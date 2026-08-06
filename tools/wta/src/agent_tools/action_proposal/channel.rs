@@ -154,14 +154,27 @@ struct Tombstone {
 
 pub struct ConfirmationClaim {
     channel_hash: [u8; 32],
-    final_responder: oneshot::Sender<ProposalFinalStatus>,
+    final_responder: Option<oneshot::Sender<ProposalFinalStatus>>,
 }
 
 struct ChannelState {
     pipe_available: bool,
     agent_transport_available: bool,
+    mcp_session: Option<McpSessionBinding>,
+    pending_mcp_capability: Option<[u8; 32]>,
     active: Option<ActiveChannel>,
     tombstones: VecDeque<Tombstone>,
+}
+
+struct McpSessionBinding {
+    capability_hash: [u8; 32],
+    session_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProposalMcpSession {
+    pub capability: String,
+    pub pipe_name: String,
 }
 
 pub struct ProposalChannelManager {
@@ -176,6 +189,8 @@ impl ProposalChannelManager {
             state: Mutex::new(ChannelState {
                 pipe_available: true,
                 agent_transport_available: true,
+                mcp_session: None,
+                pending_mcp_capability: None,
                 active: None,
                 tombstones: VecDeque::new(),
             }),
@@ -184,6 +199,40 @@ impl ProposalChannelManager {
 
     pub fn pipe_name(&self) -> String {
         format!("{PIPE_PREFIX}{:x}", self.helper_instance_id.simple())
+    }
+
+    pub fn prepare_mcp_session(&self) -> ProposalMcpSession {
+        let capability = Uuid::new_v4().simple().to_string();
+        let mut state = self.lock_state();
+        self.invalidate_active(&mut state, ProposalFinalStatus::Superseded);
+        state.pending_mcp_capability = Some(secret_hash(&capability));
+        ProposalMcpSession {
+            capability,
+            pipe_name: self.pipe_name(),
+        }
+    }
+
+    pub fn bind_mcp_session(&self, capability: &str, session_id: String) -> bool {
+        let mut state = self.lock_state();
+        let capability_hash = secret_hash(capability);
+        if state.pending_mcp_capability != Some(capability_hash) {
+            return false;
+        }
+        state.pending_mcp_capability = None;
+        state.mcp_session = Some(McpSessionBinding {
+            capability_hash,
+            session_id,
+        });
+        true
+    }
+
+    pub fn cancel_mcp_session(&self, capability: &str) -> bool {
+        let mut state = self.lock_state();
+        if state.pending_mcp_capability != Some(secret_hash(capability)) {
+            return false;
+        }
+        state.pending_mcp_capability = None;
+        true
     }
 
     pub fn issue(
@@ -258,6 +307,33 @@ impl ProposalChannelManager {
         Ok(())
     }
 
+    pub fn validate_mcp_permission(&self, session_id: &str) -> Result<(), ChannelFailure> {
+        let state = self.lock_state();
+        if !state.pipe_available || !state.agent_transport_available {
+            return Err(failure(
+                ProposalValidationStatus::Unavailable,
+                "proposal transport is unavailable",
+                false,
+            ));
+        }
+        let mcp_matches = state
+            .mcp_session
+            .as_ref()
+            .map(|binding| binding.session_id.as_str())
+            == Some(session_id);
+        let active_matches = state.active.as_ref().is_some_and(|active| {
+            active.binding.session_id == session_id && active.state == ProposalChannelState::Issued
+        });
+        if !mcp_matches || !active_matches {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "MCP proposal tool does not belong to the active turn",
+                false,
+            ));
+        }
+        Ok(())
+    }
+
     pub fn begin_validation(
         &self,
         channel: &ProposalChannel,
@@ -295,10 +371,77 @@ impl ProposalChannelManager {
         })
     }
 
+    pub fn begin_mcp_validation(
+        &self,
+        capability: &str,
+    ) -> Result<ValidationContext, ChannelFailure> {
+        let mut state = self.lock_state();
+        self.prune_tombstones(&mut state);
+        if !state.pipe_available || !state.agent_transport_available {
+            return Err(failure(
+                ProposalValidationStatus::Unavailable,
+                "proposal transport is unavailable",
+                false,
+            ));
+        }
+        let session_id = state
+            .mcp_session
+            .as_ref()
+            .filter(|binding| binding.capability_hash == secret_hash(capability))
+            .map(|binding| binding.session_id.clone())
+            .ok_or_else(|| {
+                failure(
+                    ProposalValidationStatus::UnknownChannel,
+                    "MCP proposal session is unknown or not bound",
+                    false,
+                )
+            })?;
+        let Some(active) = state.active.as_mut() else {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "no proposal-enabled turn is active",
+                false,
+            ));
+        };
+        if active.binding.session_id != session_id {
+            return Err(failure(
+                ProposalValidationStatus::Stale,
+                "MCP proposal session does not own the active turn",
+                false,
+            ));
+        }
+        if active.state != ProposalChannelState::Issued {
+            return Err(failure(
+                ProposalValidationStatus::AlreadyConsumed,
+                "a proposal is already being validated or awaiting the user",
+                false,
+            ));
+        }
+        let proposal_id = Uuid::new_v4().to_string();
+        active.state = ProposalChannelState::Validating;
+        active.proposal_id = Some(proposal_id.clone());
+        Ok(ValidationContext {
+            proposal_id,
+            binding: active.binding.clone(),
+        })
+    }
+
     pub fn accept_validation(
         &self,
         proposal_id: &str,
         final_responder: oneshot::Sender<ProposalFinalStatus>,
+    ) -> bool {
+        self.accept_validation_inner(proposal_id, Some(final_responder))
+    }
+
+    pub fn accept_validation_detached(&self, proposal_id: &str) -> bool {
+        self.accept_validation_inner(proposal_id, None)
+    }
+
+    fn accept_validation_inner(
+        &self,
+        proposal_id: &str,
+        final_responder: Option<oneshot::Sender<ProposalFinalStatus>>,
     ) -> bool {
         let mut state = self.lock_state();
         let Some(active) = state.active.as_mut() else {
@@ -310,7 +453,7 @@ impl ProposalChannelManager {
             return false;
         }
         active.state = ProposalChannelState::AwaitingUser;
-        active.final_responder = Some(final_responder);
+        active.final_responder = final_responder;
         true
     }
 
@@ -340,12 +483,11 @@ impl ProposalChannelManager {
         let active = state.active.as_ref()?;
         if active.state != ProposalChannelState::AwaitingUser
             || active.proposal_id.as_deref() != Some(proposal_id)
-            || active.final_responder.is_none()
         {
             return None;
         }
         let mut active = state.active.take()?;
-        let final_responder = active.final_responder.take()?;
+        let final_responder = active.final_responder.take();
         let channel_hash = channel_hash(&active.channel);
         state.tombstones.push_back(Tombstone {
             channel_hash,
@@ -378,7 +520,9 @@ impl ProposalChannelManager {
         }
         self.prune_tombstones(&mut state);
         drop(state);
-        let _ = claim.final_responder.send(status);
+        if let Some(responder) = claim.final_responder {
+            let _ = responder.send(status);
+        }
     }
 
     pub fn resolve_final(&self, proposal_id: &str, status: ProposalFinalStatus) -> bool {
@@ -474,9 +618,11 @@ impl ProposalChannelManager {
 
     fn prune_tombstones(&self, state: &mut ChannelState) {
         let now = Instant::now();
-        while state.tombstones.front().is_some_and(|item| {
-            now.saturating_duration_since(item.created_at) >= TOMBSTONE_TTL
-        }) {
+        while state
+            .tombstones
+            .front()
+            .is_some_and(|item| now.saturating_duration_since(item.created_at) >= TOMBSTONE_TTL)
+        {
             state.tombstones.pop_front();
         }
         while state.tombstones.len() > MAX_TOMBSTONES {
@@ -499,6 +645,10 @@ impl Default for ProposalChannelManager {
 
 fn channel_hash(channel: &ProposalChannel) -> [u8; 32] {
     Sha256::digest(channel.to_string().as_bytes()).into()
+}
+
+fn secret_hash(secret: &str) -> [u8; 32] {
+    Sha256::digest(secret.as_bytes()).into()
 }
 
 fn failure(
@@ -598,6 +748,60 @@ mod tests {
         manager.validate_permission("session", &channel).unwrap();
         assert_eq!(manager.active_state(), Some(ProposalChannelState::Issued));
         assert!(manager.begin_validation(&channel).is_ok());
+    }
+
+    #[test]
+    fn mcp_session_is_bound_without_exposing_turn_channel() {
+        let manager = ProposalChannelManager::new();
+        let mcp = manager.prepare_mcp_session();
+        assert!(manager.bind_mcp_session(&mcp.capability, "session".into()));
+        manager.issue("session".into(), 1, None, false).unwrap();
+
+        let context = manager.begin_mcp_validation(&mcp.capability).unwrap();
+        assert_eq!(context.binding.session_id, "session");
+        assert_eq!(context.binding.prompt_id, 1);
+    }
+
+    #[test]
+    fn replacing_mcp_session_invalidates_previous_capability() {
+        let manager = ProposalChannelManager::new();
+        let old = manager.prepare_mcp_session();
+        assert!(manager.bind_mcp_session(&old.capability, "old".into()));
+        let current = manager.prepare_mcp_session();
+        assert!(manager.bind_mcp_session(&current.capability, "current".into()));
+        manager.issue("current".into(), 2, None, false).unwrap();
+
+        assert_eq!(
+            manager
+                .begin_mcp_validation(&old.capability)
+                .unwrap_err()
+                .status,
+            ProposalValidationStatus::UnknownChannel
+        );
+        assert!(manager.begin_mcp_validation(&current.capability).is_ok());
+    }
+
+    #[test]
+    fn failed_mcp_session_replacement_preserves_previous_capability() {
+        let manager = ProposalChannelManager::new();
+        let old = manager.prepare_mcp_session();
+        assert!(manager.bind_mcp_session(&old.capability, "old".into()));
+        let replacement = manager.prepare_mcp_session();
+        assert!(manager.cancel_mcp_session(&replacement.capability));
+        manager.issue("old".into(), 2, None, false).unwrap();
+
+        assert!(manager.begin_mcp_validation(&old.capability).is_ok());
+        assert!(!manager.bind_mcp_session(&replacement.capability, "new".into()));
+    }
+
+    #[test]
+    fn newer_pending_mcp_session_supersedes_older_pending_capability() {
+        let manager = ProposalChannelManager::new();
+        let older = manager.prepare_mcp_session();
+        let newer = manager.prepare_mcp_session();
+
+        assert!(!manager.bind_mcp_session(&older.capability, "older".into()));
+        assert!(manager.bind_mcp_session(&newer.capability, "newer".into()));
     }
 
     #[test]

@@ -1344,6 +1344,8 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1392,6 +1394,8 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1449,6 +1453,8 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             assert!(
@@ -1499,6 +1505,8 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 false,
                 false,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1547,6 +1555,8 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 false,
                 false,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1601,6 +1611,8 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 false,
                 true,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1650,6 +1662,8 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 false,
                 false,
                 std::time::Duration::from_millis(50),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -2106,6 +2120,31 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
     assert!(
         rx.try_recv().is_err(),
         "updates for a hidden proposal ToolCall must remain hidden"
+    );
+}
+
+#[tokio::test]
+async fn session_notification_hides_proposal_mcp_tool_call() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                "intelligent_terminal/request_terminal_actions",
+            )),
+        ))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HideToolCall { session_id, id })
+            if session_id == "s1" && id == "proposal-mcp-tool"
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "proposal MCP ToolCall must not reach the chat UI"
     );
 }
 

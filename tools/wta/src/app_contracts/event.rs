@@ -192,12 +192,14 @@ pub enum AppEvent {
     DirectTerminalActionProposal {
         context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource,
         responder: tokio::sync::oneshot::Sender<
             crate::agent_tools::action_proposal::pipe::ProposalValidationDecision,
         >,
     },
     DirectTerminalActionProposalCommit {
         proposal_id: String,
+        responder: tokio::sync::oneshot::Sender<bool>,
     },
     DirectTerminalActionProposalInvalidate {
         proposal_id: String,

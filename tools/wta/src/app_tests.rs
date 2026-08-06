@@ -7635,6 +7635,8 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
+        source:
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -7660,7 +7662,12 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     submit_proposal_prompt(&mut app, session_id);
     let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
 
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
     app.turn_execute_card(session_id);
 
     assert_eq!(
@@ -7684,7 +7691,12 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
     let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
 
     app.turn_cancel(session_id);
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(!commit_rx.blocking_recv().unwrap());
 
     assert!(app.session_tab(session_id).turn.is_idle());
     assert_eq!(
