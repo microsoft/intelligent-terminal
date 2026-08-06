@@ -3,11 +3,11 @@ extern crate rust_i18n;
 
 mod agent_check;
 mod agent_hooks_installer;
-mod agent_tools;
 mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
 mod agent_source;
+mod agent_tools;
 mod app;
 mod app_contracts;
 mod cli;
@@ -15,6 +15,7 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_model_provider;
 mod cwd_util;
 mod event;
 mod helper;
@@ -42,6 +43,7 @@ mod theme;
 mod turn_context;
 mod ui;
 mod ui_trace;
+mod usage;
 mod win32;
 mod wsl;
 mod wsl_acp;
@@ -111,6 +113,10 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         allowed_agent_ids: cli.allowed_agent_ids,
         initial_auth_agent: cli.initial_auth_agent,
         acp_model: cli.acp_model,
+        follows_global_acp_model: cli.follows_global_acp_model,
+        custom_model_selection: cli.custom_model_selection,
+        custom_models: cli.custom_models,
+        cloud_models: cli.cloud_models,
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,

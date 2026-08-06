@@ -1120,6 +1120,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>启用此功能将安装集成 hooks，以跟踪跨智能体的会话。</value>
     <comment>{Locked="hooks"}</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>显示上下文用量和会话成本</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>如果有相关数据，请在终端底栏中显示上下文窗口用量和会话成本。</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>窗格位置</value>
   </data>
@@ -1313,4 +1315,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell 执行策略正在阻止脚本。错误检测已关闭。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>用量</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
+  <data name="Usage_TokensUnit" xml:space="preserve"><value>词元</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
+  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>上下文窗口</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
 </root>

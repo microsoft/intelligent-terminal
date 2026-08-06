@@ -568,6 +568,29 @@ async fn run_acp_app(
                 None => None,
             };
             let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+            let is_host_agent_source =
+                matches!(&agent_source, crate::agent_source::AgentSource::Host);
+            // This snapshot was probed by the Windows host. A WSL agent must
+            // advertise/probe its own catalog rather than inheriting Host models.
+            let cloud_models = if is_host_agent_source {
+                config
+                    .cloud_models
+                    .as_deref()
+                    .and_then(|models| match serde_json::from_str(models) {
+                        Ok(models) => Some(models),
+                        Err(error) => {
+                            tracing::error!(
+                                target: "cloud_models",
+                                %error,
+                                "invalid --cloud-models metadata"
+                            );
+                            None
+                        }
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
@@ -638,10 +661,8 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = config.acp_model.clone();
-                // Per-tab agent identity passed through to the multi-agent
-                // master via the initialize handshake. The helper receives
-                // this from the CLI boundary; pre-multi-agent it dropped it
-                // (master owned the single agent CLI).
+                let cloud_models_for_client = cloud_models.clone();
+                // Pass per-tab agent identity through the initialize handshake.
                 let agent_id = config.agent_id.clone();
                 let agent_source_for_client = agent_source.clone();
                 let source_cwd = agent_source_cwd.clone();
@@ -652,6 +673,7 @@ async fn run_acp_app(
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
                         source_cwd,
@@ -736,7 +758,42 @@ async fn run_acp_app(
                 Arc::clone(&delegate_agents),
                 config.agent.clone(),
                 config.acp_model.clone(),
+                config.follows_global_acp_model,
             );
+            app_state.set_cloud_models(cloud_models);
+            if is_host_agent_source {
+                match config.custom_models.as_deref() {
+                    Some(custom_models) => match serde_json::from_str(custom_models) {
+                        Ok(models) => app_state.set_custom_model_config(
+                            models,
+                            config.custom_model_selection.clone(),
+                        ),
+                        Err(error) => tracing::error!(
+                            target: "custom_models",
+                            %error,
+                            "invalid --custom-models metadata"
+                        ),
+                    },
+                    None => app_state.set_custom_model_config(
+                        Vec::new(),
+                        config.custom_model_selection.clone(),
+                    ),
+                }
+            } else {
+                if config.custom_models.is_some() || config.custom_model_selection.is_some() {
+                    tracing::warn!(
+                        target: "custom_models",
+                        agent_source = %agent_source,
+                        "ignoring Host custom-provider startup metadata for WSL helper"
+            );
+                }
+                app_state.set_custom_model_config(Vec::new(), None);
+            }
+            // Backward compatibility: older Terminal builds supplied the full
+            // custom catalog on argv. New builds deliver it after Connected
+            // over agent_config_changed, so the initial status requests it.
+            app_state
+                .set_host_catalog_ready(!is_host_agent_source || config.custom_models.is_some());
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial

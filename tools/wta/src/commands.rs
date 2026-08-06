@@ -47,11 +47,9 @@ pub enum CommandKind {
     Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
-    /// Bare `/model` opens an interactive picker listing the models the
-    /// connected agent advertised; `/model <id-or-name>` switches directly.
-    /// The choice is a transient per-pane override that survives `/new` for
-    /// the life of the pane but is reset by a global `acpModel` settings
-    /// change — see `App::apply_global_acp_model`.
+    /// Bare `/model` opens an interactive picker listing configured BYOM
+    /// models. Cloud/native models are intentionally omitted; model changes
+    /// are made through Settings because they require an agent restart.
     Model,
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
@@ -285,11 +283,8 @@ pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
 /// Resolve a `/move` argument from either its full name or one-letter alias.
 pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
-    MOVE_POSITIONS
-        .iter()
-        .find(|position| {
-            position.name.eq_ignore_ascii_case(value)
-                || position.alias.eq_ignore_ascii_case(value)
+    MOVE_POSITIONS.iter().find(|position| {
+        position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
         })
 }
 

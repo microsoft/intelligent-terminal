@@ -2836,6 +2836,8 @@
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>顯示內容視窗使用量和工作階段成本</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>如果有相關資料，請在終端機底部列中顯示內容視窗使用量和工作階段成本。</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>窗格位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>指定代理窗格相對於終端機的開啟位置。</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
@@ -2926,5 +2928,49 @@
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>允許 智慧終端機 將錯誤傳送給您的代理程式以自動建議修正。</value>
+  </data>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>BYOM 提供者</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+  </data>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>使用 OpenAI 相容的 Chat Completions API 端點。支援 GitHub Copilot 和 OpenCode。</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} 不支援自訂的 OpenAI 相容 Chat Completions 提供者。切換至 GitHub Copilot 或 OpenCode 後，已儲存的提供者仍可使用。</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>移除</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>基底 URL</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>模型識別碼</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>新增</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>儲存</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>取消</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
+  <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
+    <value>{} | {} | OpenAI 相容</value>
+    <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
 </root>

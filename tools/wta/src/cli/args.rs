@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
 
 use crate::{
-    agent_hooks_installer, agent_registry, agent_sessions,
-    agent_tools::command_resolution,
+    agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution,
 };
 
 #[derive(Parser, Debug)]
@@ -80,6 +79,29 @@ pub(crate) struct Cli {
     /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     pub(crate) acp_model: Option<String>,
+
+    /// This helper inherited `acp_model` from the global agent settings rather
+    /// than a per-tab/profile pin. Hidden because TerminalPage is the
+    /// authoritative source of this scope.
+    #[arg(long, hide = true)]
+    pub(crate) follows_global_acp_model: bool,
+
+    /// Model configured through an Intelligent Terminal custom provider.
+    /// Bounded helper bootstrap metadata; provider credentials remain
+    /// master-only and the full catalog arrives over the protocol.
+    #[arg(long, hide = true)]
+    pub(crate) custom_model_selection: Option<String>,
+
+    /// Legacy compatibility flag for old hosts that placed the full
+    /// credential-free custom-provider catalog on argv. New hosts deliver it
+    /// after helper connection over `agent_config_changed`.
+    #[arg(long, hide = true)]
+    pub(crate) custom_models: Option<String>,
+
+    /// Legacy compatibility flag for old hosts that placed the cloud/native
+    /// model catalog on argv. New hosts deliver it after helper connection.
+    #[arg(long, hide = true)]
+    pub(crate) cloud_models: Option<String>,
 
     /// Delegate agent CLI command (e.g. "codex")
     #[arg(long)]

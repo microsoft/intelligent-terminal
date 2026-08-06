@@ -68,6 +68,29 @@ Describe 'JSON helpers' -Tag 'Unit' {
     }
 }
 
+Describe 'Agent settings cleanup' -Tag 'Unit' {
+    It 'removes showTokenUsageAndCost while preserving profiles' {
+        $settingsPath = Join-Path $TestDrive 'settings.json'
+        @{
+            defaultProfile = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
+            profiles = @(@{
+                name = 'p0'
+                guid = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
+            })
+            acpAgent = 'copilot'
+            showTokenUsageAndCost = $true
+        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $settingsPath -Encoding utf8
+        $app = [pscustomobject]@{ SettingsPath = $settingsPath }
+
+        Clear-WtConfig -App $app
+
+        $settings = Get-WtSettingsObject -App $app
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'showTokenUsageAndCost'
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'acpAgent'
+        $settings.profiles[0].name | Should -Be 'p0'
+    }
+}
+
 Describe 'Resolve-ItApp' -Tag 'Unit' {
     It 'resolves a descriptor with the expected shape when a package is installed' {
         $installed = Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }

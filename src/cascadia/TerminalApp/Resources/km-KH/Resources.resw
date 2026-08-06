@@ -75,6 +75,8 @@
     <value>ការបើកនេះនឹងតំឡើង hooks វគ្គដើម្បីតាមដានវគ្គក្នុងភ្នាក់ងាររបស់អ្នក។</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>បង្ហាញការប្រើប្រាស់បរិបទ និងតម្លៃវគ្គ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>នៅពេលមាន សូមបង្ហាញការប្រើប្រាស់បរិបទ-បង្អួច និងតម្លៃវគ្គនៅក្នុងរបារខាងក្រោមស្ថានីយ។</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ទីតាំងផ្ទាំង</value>
   </data>
@@ -185,4 +187,7 @@
     <value>⚠ គោលនយោបាយប្រតិបត្តិរបស់ PowerShell កំពុងទប់ស្កាត់ស្គ្រីប។ ការរកឃើញកំហុសត្រូវបានបិទ។</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ការប្រើប្រាស់</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
+  <data name="Usage_TokensUnit" xml:space="preserve"><value>ថូខឹន</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
+  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>បង្អួចបរិបទ</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
 </root>

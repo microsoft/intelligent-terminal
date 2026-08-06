@@ -290,7 +290,7 @@ mod tests {
         );
         assert_eq!(
             acp_command_for(&CliSource::Claude).as_deref(),
-            Some("npx -y @agentclientprotocol/claude-agent-acp")
+            Some("npx -y @agentclientprotocol/claude-agent-acp@0.59.0")
         );
         assert_eq!(
             acp_command_for(&CliSource::Codex).as_deref(),

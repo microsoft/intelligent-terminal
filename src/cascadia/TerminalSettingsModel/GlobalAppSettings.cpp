@@ -95,6 +95,14 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_NewTabMenu->Append(get_self<NewTabMenuEntry>(entry)->Copy());
         }
     }
+    if (_CustomModelProviders)
+    {
+        globals->_CustomModelProviders = winrt::single_threaded_vector<Model::CustomModelProvider>();
+        for (const auto& provider : *_CustomModelProviders)
+        {
+            globals->_CustomModelProviders->Append(get_self<CustomModelProvider>(provider)->Copy());
+        }
+    }
     if (_DisabledProfileSources)
     {
         globals->_DisabledProfileSources = winrt::single_threaded_vector<hstring>();

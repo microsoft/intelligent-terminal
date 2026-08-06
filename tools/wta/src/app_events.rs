@@ -140,6 +140,21 @@ impl App {
                 self.state = ConnectionState::Connecting(stage);
                 self.publish_agent_status();
             }
+            AppEvent::CloudModelsAvailable(models) => {
+                if matches!(
+                    &self.current_agent_source,
+                    crate::agent_source::AgentSource::Host
+                ) {
+                    self.set_cloud_models(models);
+                    self.publish_agent_status();
+                } else {
+                    tracing::warn!(
+                        target: "cloud_models",
+                        agent_source = %self.current_agent_source,
+                        "ignoring Host cloud catalog delivery for WSL helper"
+                    );
+                }
+            }
             AppEvent::AgentConnected {
                 name,
                 model,
@@ -159,8 +174,9 @@ impl App {
                     .entry(session_id.clone())
                     .or_insert((available_models, current_model_id))
                     .clone();
-                self.available_models = available_models;
-                self.current_model_id = current_model_id;
+                self.agent_models = available_models;
+                self.agent_current_model_id = current_model_id;
+                self.rebuild_model_catalog_from_agent_state();
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -171,8 +187,7 @@ impl App {
                 // A live connection cancels the degraded latch (e.g. the
                 // post-sign-in reconnect that goes back through master).
                 self.transport_lost = false;
-                self.proposal_channels
-                    .set_agent_transport_available(true);
+                self.proposal_channels.set_agent_transport_available(true);
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
@@ -197,6 +212,10 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.usage = None;
+                    tab.usage_staleness = crate::usage::UsageStaleness::default();
+                }
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
@@ -269,8 +288,9 @@ impl App {
                     .or_insert((available_models, current_model_id))
                     .clone();
                 if is_active_tab {
-                    self.available_models = available_models;
-                    self.current_model_id = current_model_id;
+                    self.agent_models = available_models;
+                    self.agent_current_model_id = current_model_id;
+                    self.rebuild_model_catalog_from_agent_state();
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -286,6 +306,27 @@ impl App {
                 }
                 self.publish_agent_status();
             }
+            AppEvent::UsageReported {
+                session_id,
+                snapshot,
+            } => {
+                let target_tab = self.tab_for_session(&session_id);
+                let tab = self.tab_mut(&target_tab);
+                tab.usage_staleness.mark_reported(&snapshot);
+                if let Some(current) = tab.usage.as_mut() {
+                    current.merge(snapshot);
+                } else {
+                    tab.usage = Some(snapshot);
+                }
+                self.project_tab_state(&target_tab);
+            }
+            AppEvent::UsageCleared { session_id } => {
+                let target_tab = self.tab_for_session(&session_id);
+                let tab = self.tab_mut(&target_tab);
+                tab.usage = None;
+                tab.usage_staleness = crate::usage::UsageStaleness::default();
+                self.project_tab_state(&target_tab);
+            }
             AppEvent::ModelConfigUpdated {
                 session_id,
                 available_models,
@@ -296,8 +337,9 @@ impl App {
                     (available_models.clone(), current_model_id.clone()),
                 );
                 if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
-                    self.available_models = available_models;
-                    self.current_model_id = current_model_id;
+                    self.agent_models = available_models;
+                    self.agent_current_model_id = current_model_id;
+                    self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
                 }
             }
@@ -369,17 +411,38 @@ impl App {
                     return;
                 }
 
+                let session_survives = matches!(
+                    &failure,
+                    crate::protocol::acp::failure::AgentFailure::Protocol { .. }
+                );
+
                 // The transport to master is gone — latch the degraded state
                 // so the slash-command popup greys out everything but
                 // /restart (the only command that can recover without the
                 // dead pipe). Cleared on the next Connected.
-                if matches!(
-                    failure,
+                let transport_lost = matches!(
+                    &failure,
                     crate::protocol::acp::failure::AgentFailure::TransportLost
-                ) {
+                );
+                let stale_usage_tab = if transport_lost {
                     self.transport_lost = true;
-                    self.proposal_channels
-                        .set_agent_transport_available(false);
+                    self.proposal_channels.set_agent_transport_available(false);
+                    let target_tab = session_id
+                        .as_deref()
+                        .map(|sid| self.tab_for_session(sid))
+                        .unwrap_or_else(|| self.active_tab_key().to_string());
+                    let tab = self.tab_mut(&target_tab);
+                    if let Some(snapshot) = tab.usage.as_ref() {
+                        tab.usage_staleness.mark_present_stale(snapshot);
+                        Some(target_tab)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                if let Some(target_tab) = stale_usage_tab {
+                    self.project_tab_state(&target_tab);
                 }
 
                 let is_auth_error = failure.is_auth();
@@ -438,8 +501,10 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
-                    self.state = ConnectionState::Failed(message.clone());
-                    self.publish_agent_status();
+                    if !session_survives {
+                        self.state = ConnectionState::Failed(message.clone());
+                        self.publish_agent_status();
+                    }
                     let tab = match session_id.as_deref() {
                         Some(sid) => self.session_tab_mut(sid),
                         None => self.current_tab_mut(),
@@ -1116,6 +1181,15 @@ impl App {
                     // — all in place, with NO agent-pane teardown/restart.
                     // (Agent *identity* changes go through a master respawn
                     // on the C++ side, not this event.)
+                    let target_tab = params
+                        .get("tab_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+                    if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
+                        return;
+                    }
+
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
                             target: "autofix",
@@ -1142,20 +1216,101 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model: a global settings change is authoritative. It
-                    // overrides every pane's local `/model` pick, redirects the
-                    // shared current-model display, hot-swaps the model on all
-                    // live sessions, and republishes status — so every pane
-                    // visibly follows the new model (see apply_global_acp_model).
-                    // Storing it also keeps future sessions (/new, lazy-first-
-                    // prompt) on the new model via the SessionAttached re-apply.
+                    // acp-model is scoped by both the authoritative global agent
+                    // id and this helper's spawn-time follow mode. Helpers pinned
+                    // to another agent/profile, and panes with a local `/model`
+                    // override, keep their existing model.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
+                        if let Some(target_agent_id) =
+                            params.get("target_agent_id").and_then(|v| v.as_str())
+                        {
                         tracing::info!(
                             target: "autofix",
                             model = raw,
-                            "acp-model hot-update requested from settings change",
+                                target_agent_id,
+                                "scoped acp-model hot-update requested from settings change",
+                            );
+                            self.apply_global_acp_model(target_agent_id, Some(raw.to_string()));
+                        } else {
+                            tracing::warn!(
+                                target: "autofix",
+                                "ignoring acp-model hot-update without target_agent_id"
+                            );
+                        }
+                    }
+                    let host_catalog_fields_present = params.get("cloud_models").is_some()
+                        || params.get("custom_models").is_some()
+                        || params.get("custom_model_selection").is_some();
+                    let accepts_host_catalog = matches!(
+                        &self.current_agent_source,
+                        crate::agent_source::AgentSource::Host
+                    );
+                    let catalog_delivery = accepts_host_catalog
+                        && (params.get("cloud_models").is_some()
+                            || params.get("custom_models").is_some());
+                    if accepts_host_catalog {
+                        if let Some(value) = params.get("cloud_models") {
+                            match serde_json::from_value::<Vec<AcpModelInfo>>(value.clone()) {
+                                Ok(models) => self.set_cloud_models(models),
+                                Err(error) => {
+                                    tracing::error!(
+                                        target: "cloud_models",
+                                        %error,
+                                        "invalid cloud model catalog in agent_config_changed"
                         );
-                        self.apply_global_acp_model(Some(raw.to_string()));
+                                    return;
+                                }
+                            }
+                        }
+                        if params.get("custom_models").is_some()
+                            || params.get("custom_model_selection").is_some()
+                        {
+                            if crate::agent_registry::lookup_profile_by_id(&self.current_agent_id)
+                                .byok_mode
+                                == crate::agent_registry::ByokMode::Unsupported
+                            {
+                                self.set_custom_model_config(Vec::new(), None);
+                            } else {
+                                let models = match params.get("custom_models") {
+                                    Some(value) => {
+                                        match serde_json::from_value::<Vec<CustomModelCatalogEntry>>(
+                                            value.clone(),
+                                        ) {
+                                            Ok(models) => models,
+                                            Err(error) => {
+                                                tracing::error!(
+                                                    target: "custom_models",
+                                                    %error,
+                                                    "invalid custom model catalog in agent_config_changed"
+                                                );
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    None => self.custom_model_catalog.clone(),
+                                };
+                                let selection = params
+                                    .get("custom_model_selection")
+                                    .and_then(|value| value.as_str())
+                                    .map(str::to_string)
+                                    .or_else(|| self.custom_model_selection.clone());
+                                self.set_custom_model_config(models, selection);
+                            }
+                        }
+                    } else if host_catalog_fields_present {
+                        tracing::info!(
+                            target: "cloud_models",
+                            agent_source = %self.current_agent_source,
+                            "ignoring Host cloud/custom catalog hot update for WSL helper"
+                        );
+                    }
+                    if catalog_delivery {
+                        self.host_catalog_ready = true;
+                    }
+                    if catalog_delivery
+                        || (accepts_host_catalog && params.get("custom_model_selection").is_some())
+                    {
+                        self.publish_agent_status();
                     }
                     return;
                 }
@@ -1346,6 +1501,8 @@ impl App {
                         let tab = self.tab_mut(tab_id);
                         tab.current_view = View::Chat;
                         tab.clear_chat_history();
+                        tab.usage = None;
+                        tab.usage_staleness = crate::usage::UsageStaleness::default();
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
                         // Open the replay window: chunk handlers will

@@ -8,6 +8,7 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:local="using:Microsoft.Terminal.Settings.Editor"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:mtu="using:Microsoft.Terminal.UI"
       xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
       mc:Ignorable="d">
 
@@ -168,6 +169,75 @@
                 </Grid>
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="CustomModelProvidersExpander"
+                                    x:Uid="AIAgents_CustomModels"
+                                    StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <local:SettingContainer.CurrentValue>
+                    <Button x:Uid="AIAgents_CustomProviderAdd"
+                            VerticalAlignment="Center"
+                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
+                </local:SettingContainer.CurrentValue>
+                <StackPanel>
+                    <TextBlock Margin="0,12,0,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:CustomModelProviderEntry">
+                                <Border BorderThickness="0,1,0,0"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        Padding="0,16,0,16">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{x:Bind ModelsDisplayText, Mode=OneWay}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Opacity="0.6"
+                                                       Text="{x:Bind BaseUrl, Mode=OneWay}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                x:Uid="AIAgents_CustomProviderRemove"
+                                                VerticalAlignment="Center"
+                                                Click="{x:Bind Remove}"
+                                                MinWidth="120" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="0,16,0,16"
+                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                        <StackPanel Spacing="8">
+                            <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                                     Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox x:Uid="AIAgents_CustomModelId"
+                                     Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Uid="AIAgents_CustomProviderSave"
+                                        IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
+                                        Click="{x:Bind ViewModel.SaveCustomModelProvider}"
+                                        Style="{StaticResource AccentButtonStyle}" />
+                                <Button x:Uid="AIAgents_CustomProviderCancel"
+                                        Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </local:SettingContainer>
+
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
                                     x:Uid="AIAgents_PanePosition">
@@ -176,6 +246,14 @@
                           ItemsSource="{x:Bind ViewModel.AgentPanePositionList, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.CurrentAgentPanePosition, Mode=TwoWay}"
                           Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
+                        x:Uid="AIAgents_ShowTokenUsageAndCost">
+                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  Automatic error detection (parent) + Automatic error

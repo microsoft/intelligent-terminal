@@ -59,8 +59,7 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState,
-    RecommendationFocus, Scroll, TabSession, View,
+    ChatMessage, CompletedTurn, PermissionState, RecommendationFocus, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -105,8 +104,8 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
 }
 
 pub use crate::app_contracts::{
-    AcpModelInfo, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage, PermOption,
-    PlanEntry, PlanEntryStatus, PreflightResult,
+    AcpModelInfo, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage, PlanEntryStatus,
+    PreflightResult,
 };
 use crate::commands::{self, CommandKind, ParseOutcome, ParsedCommand};
 use crate::coordinator::{recommended_choice_index, RecommendationChoice, RecommendationSet};
@@ -781,9 +780,45 @@ pub fn classify_wt_event(
 
 // --- Events ---
 
-/// One entry of an ACP agent's advertised model list, mirrored into the
-/// `agent_status` event so the XAML settings page can populate a real
-/// dropdown instead of asking the user to type a free-form string.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomModelCatalogEntry {
+    pub selection_id: String,
+    #[serde(default)]
+    pub provider_id: String,
+    #[serde(default)]
+    pub provider_name: String,
+    #[serde(
+        default = "default_custom_model_api_contract",
+        deserialize_with = "deserialize_custom_model_api_contract"
+    )]
+    pub api_contract: String,
+    #[serde(default)]
+    pub location: String,
+    pub model_id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+fn default_custom_model_api_contract() -> String {
+    crate::custom_model_provider::CANONICAL_API_CONTRACT.to_string()
+}
+
+fn deserialize_custom_model_api_contract<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::custom_model_provider::normalize_api_contract(&value)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unsupported custom model API contract {value:?}; expected {:?}",
+                crate::custom_model_provider::CANONICAL_API_CONTRACT
+            ))
+        })
+}
+
 /// Test-visible record of a wtcli command the App fired through the
 /// `wt_channel::spawn_*` helpers. Captured under `cfg(test)` so we can
 /// assert the agent session view dispatches the right shape of command
@@ -870,6 +905,9 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
+    /// BYOM-only projection used by the `/model` command. Cloud/native models
+    /// remain in `available_models` for Settings but are not shown in-pane.
+    model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
     /// Latest ACP model config for each session. Notifications can race ahead
     /// of the event that attaches their session to a tab.
@@ -1002,6 +1040,29 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
+    /// Whether this helper was created from the global ACP agent/model
+    /// settings. Per-tab/profile-pinned helpers keep this false so a hot
+    /// global model update cannot inject another tab's model into their CLI.
+    follows_global_acp_model: bool,
+    /// True after the host has delivered its credential-free cloud/custom
+    /// catalogs over `agent_config_changed`. Published in `agent_status` so
+    /// C++ can send the catalog once after each helper reaches Connected.
+    host_catalog_ready: bool,
+    /// Shared-provider selection id supplied directly to this helper by WT.
+    /// Kept separate from the master-only provider environment because this
+    /// process owns the `/model` UI but never receives provider credentials.
+    custom_model_selection: Option<String>,
+    /// Credential-free provider/model metadata exposed through `/model`.
+    custom_model_catalog: Vec<CustomModelCatalogEntry>,
+    /// Last successful cloud/native model catalog supplied by Windows Terminal.
+    cloud_models: Vec<AcpModelInfo>,
+    /// Native model catalog advertised by the current ACP session. Kept
+    /// separate from the merged picker rows so hot catalog removal cannot
+    /// accidentally preserve stale custom entries.
+    agent_models: Vec<AcpModelInfo>,
+    /// Current model last reported or successfully selected for the ACP
+    /// session, before the configured custom selection is projected on top.
+    agent_current_model_id: Option<String>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -1165,6 +1226,7 @@ impl App {
             agent_model: None,
             agent_version: None,
             available_models: Vec::new(),
+            model_picker_models: Vec::new(),
             current_model_id: None,
             session_model_configs: HashMap::new(),
             prompt_name: None,
@@ -1210,6 +1272,13 @@ impl App {
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
             acp_model: None,
+            follows_global_acp_model: false,
+            host_catalog_ready: false,
+            custom_model_selection: None,
+            custom_model_catalog: Vec::new(),
+            cloud_models: Vec::new(),
+            agent_models: Vec::new(),
+            agent_current_model_id: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -1229,8 +1298,9 @@ impl App {
 
     pub fn set_proposal_channels(
         &mut self,
-        proposal_channels:
-            Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+        proposal_channels: Arc<
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager,
+        >,
     ) {
         self.proposal_channels = proposal_channels;
     }
@@ -1308,6 +1378,7 @@ impl App {
         self.needs_post_login_authenticate = false;
         tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
+        let cloud_models = self.cloud_models.clone();
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
             // Also update all sender fields on self so the App routes to the new ACP client.
@@ -1400,6 +1471,7 @@ impl App {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
                                 pipe_name,
                                 acp_model,
+                            cloud_models,
                                 agent_id_opt,
                                 agent_source,
                                 source_cwd,
@@ -1531,10 +1603,188 @@ impl App {
         delegate_agents: Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>,
         base_agent_cmd: String,
         acp_model: Option<String>,
+        follows_global_acp_model: bool,
     ) {
         self.delegate_agents = Some(delegate_agents);
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
+        self.follows_global_acp_model = follows_global_acp_model;
+    }
+
+    pub fn set_host_catalog_ready(&mut self, ready: bool) {
+        self.host_catalog_ready = ready;
+    }
+
+    pub fn set_cloud_models(&mut self, models: Vec<AcpModelInfo>) {
+        self.cloud_models = models;
+        self.rebuild_model_catalog();
+    }
+
+    pub fn set_custom_model_config(
+        &mut self,
+        models: Vec<CustomModelCatalogEntry>,
+        selection_id: Option<String>,
+    ) {
+        self.seed_agent_models_from_available_if_needed();
+        let requested_selection = selection_id
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty());
+        self.custom_model_catalog = models
+            .into_iter()
+            .filter_map(|model| {
+                let api_contract =
+                    crate::custom_model_provider::normalize_api_contract(&model.api_contract)?;
+                Some(CustomModelCatalogEntry {
+                    selection_id: model.selection_id.trim().to_string(),
+                    provider_id: model.provider_id.trim().to_string(),
+                    provider_name: model.provider_name.trim().to_string(),
+                    api_contract: api_contract.to_string(),
+                    location: model.location.trim().to_string(),
+                    model_id: model.model_id.trim().to_string(),
+                    name: model.name.trim().to_string(),
+                })
+            })
+            .filter(|model| !model.selection_id.is_empty() && !model.model_id.is_empty())
+            .collect();
+        self.custom_model_selection = requested_selection.filter(|selection| {
+            self.custom_model_catalog
+                .iter()
+                .any(|model| model.selection_id == *selection)
+        });
+        self.rebuild_model_catalog();
+    }
+
+    fn seed_agent_models_from_available_if_needed(&mut self) {
+        if self.agent_models.is_empty() && !self.available_models.is_empty() {
+            self.agent_models = self.available_models.clone();
+        }
+    }
+
+    fn merge_custom_models(&self, advertised: Vec<AcpModelInfo>) -> Vec<AcpModelInfo> {
+        let mut merged = self.cloud_models.clone();
+        for model in advertised {
+            if !merged.iter().any(|existing| existing.id == model.id) {
+                merged.push(model);
+            }
+        }
+        for custom in &self.custom_model_catalog {
+            merged.retain(|model| {
+                model.id != custom.selection_id
+                    && model.id != format!("intelligent-terminal/{}", custom.model_id)
+            });
+            merged.push(AcpModelInfo {
+                id: custom.selection_id.clone(),
+                name: format!("{} (BYOM)", custom.model_id),
+                description: None,
+            });
+        }
+        merged
+    }
+
+    fn selected_custom_model_id(&self) -> Option<&str> {
+        self.custom_model_selection.as_deref().and_then(|selected| {
+            self.custom_model_catalog
+                .iter()
+                .find(|model| model.selection_id == selected)
+                .map(|model| model.selection_id.as_str())
+        })
+    }
+
+    fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
+        self.selected_custom_model_id()
+            .map(str::to_string)
+            .or(agent_model_id)
+    }
+
+    fn capture_model_picker_selections(&self) -> HashMap<String, Option<String>> {
+        self.tab_sessions
+            .iter()
+            .map(|(tab_id, tab)| {
+                let selected = self
+                    .model_picker_models
+                    .get(tab.model_picker_selected)
+                    .map(|model| model.id.clone());
+                (tab_id.clone(), selected)
+            })
+            .collect()
+    }
+
+    fn recompute_current_model_id(&mut self) {
+        let pane_override = self.current_tab().model_override.clone();
+        let previous_current = self.current_model_id.take().filter(|id| {
+            !id.starts_with("custom:")
+                && (self.available_models.is_empty()
+                    || self.available_models.iter().any(|model| model.id == *id))
+        });
+        self.current_model_id = self.resolve_current_model_id(
+            pane_override
+                .or_else(|| self.acp_model.clone())
+                .or_else(|| self.agent_current_model_id.clone())
+                .or(previous_current),
+        );
+    }
+
+    fn reconcile_model_picker_selections(
+        &mut self,
+        old_selected_ids: HashMap<String, Option<String>>,
+    ) {
+        let selected_custom = self.selected_custom_model_id().map(str::to_string);
+        let current_model = self.current_model_id.clone();
+        let model_ids = self
+            .model_picker_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
+
+        for (tab_id, tab) in &mut self.tab_sessions {
+            if self.model_picker_models.is_empty() {
+                tab.model_picker_open = false;
+                tab.model_picker_selected = 0;
+                continue;
+            }
+
+            let effective_current = tab
+                .model_override
+                .as_deref()
+                .or(selected_custom.as_deref())
+                .or(current_model.as_deref())
+                .or(self.acp_model.as_deref());
+            let enabled = |id: &str| effective_current == Some(id);
+            let selected = old_selected_ids
+                .get(tab_id)
+                .and_then(|id| id.as_deref())
+                .and_then(|id| {
+                    model_ids
+                        .iter()
+                        .position(|candidate| *candidate == id && enabled(candidate))
+                })
+                .or_else(|| {
+                    effective_current
+                        .and_then(|id| model_ids.iter().position(|candidate| *candidate == id))
+                })
+                .or_else(|| model_ids.iter().position(|id| enabled(id)))
+                .unwrap_or(0);
+            tab.model_picker_selected = selected;
+        }
+    }
+
+    fn rebuild_model_catalog(&mut self) {
+        let old_selected_ids = self.capture_model_picker_selections();
+        self.available_models = self.merge_custom_models(self.agent_models.clone());
+        let model_picker_models = self
+            .available_models
+            .iter()
+            .filter(|model| self.is_custom_model(&model.id))
+            .cloned()
+            .collect();
+        self.model_picker_models = model_picker_models;
+        self.recompute_current_model_id();
+        self.reconcile_model_picker_selections(old_selected_ids);
+    }
+
+    fn rebuild_model_catalog_from_agent_state(&mut self) {
+        self.current_model_id = None;
+        self.rebuild_model_catalog();
     }
 
     /// Low-level: ask the ACP client task to apply `model` via
@@ -1566,42 +1816,39 @@ impl App {
             .filter(|s| !s.trim().is_empty())
     }
 
-    /// Push the global `acpModel` to *every* tab's live session. A global
-    /// settings change is authoritative — it overrides per-pane `/model`
-    /// picks too (see `apply_global_acp_model`, which clears the overrides
-    /// first), so this no longer skips overridden tabs.
+    /// Push the global `acpModel` to each live session that has not been pinned
+    /// by the pane-local `/model` picker.
     fn send_acp_model_update(&self) {
         let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) else {
             return;
         };
         for tab in self.tab_sessions.values() {
+            if tab.model_override.is_some() {
+                continue;
+            }
             if let Some(sid) = tab.session_id.clone() {
                 self.send_session_model(Some(sid), model.clone());
             }
         }
     }
 
-    /// Apply a global `acpModel` settings change. This is authoritative over
-    /// per-pane `/model` picks: it
-    ///   1. clears every tab's local override (so all panes — now and on
-    ///      their next `/new` session — follow the new global model),
-    ///   2. points the shared current-model display at the new value so the
-    ///      title bar / settings dropdown / `/model` row update on every pane,
-    ///   3. pushes the model to every live session, and
-    ///   4. republishes agent status.
-    /// An empty value means "agent default": overrides still clear and the
-    /// sessions fall back on their next attach, but we send nothing (the
-    /// default can't be expressed as `set_session_model`).
-    fn apply_global_acp_model(&mut self, new_model: Option<String>) {
+    /// Apply a global `acpModel` settings change only when this helper follows
+    /// that exact global agent. Pane/profile-pinned helpers and pane-local
+    /// `/model` overrides remain untouched. An empty value means "agent
+    /// default"; no live switch is sent because ACP has no portable reset
+    /// operation.
+    fn apply_global_acp_model(&mut self, target_agent_id: &str, new_model: Option<String>) -> bool {
+        if !self.follows_global_acp_model
+            || !self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
+        {
+            return false;
+        }
+
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
-        for tab in self.tab_sessions.values_mut() {
-            tab.model_override = None;
-        }
-        if self.acp_model.is_some() {
-            self.current_model_id = self.acp_model.clone();
-        }
+        self.recompute_current_model_id();
         self.send_acp_model_update();
         self.publish_agent_status();
+        true
     }
 
     // ── /agent picker ───────────────────────────────────────────────────
@@ -1805,12 +2052,11 @@ impl App {
         self.current_tab().model_picker_open
     }
 
-    /// `/model [id]` — switch this pane's model. With an argument, match it
-    /// against the agent's advertised list and apply directly; bare `/model`
-    /// opens the interactive picker.
+    /// `/model [id]` — show the pane's configured BYOM models. Cloud/native
+    /// models are intentionally available only through Settings.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
-        if self.available_models.is_empty() {
+        if self.model_picker_models.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages
                 .push(ChatMessage::System(t!("system.no_models").into_owned()));
@@ -1823,17 +2069,18 @@ impl App {
         }
         // Direct switch: exact id first, then case-insensitive id/name.
         let matched = self
-            .available_models
+            .model_picker_models
             .iter()
             .find(|m| m.id == arg)
             .or_else(|| {
-                self.available_models
+                self.model_picker_models
                     .iter()
                     .find(|m| m.id.eq_ignore_ascii_case(&arg) || m.name.eq_ignore_ascii_case(&arg))
             })
             .map(|m| m.id.clone());
         match matched {
-            Some(id) => self.apply_model_pick(id),
+            Some(id) if self.model_pick_enabled(&id) => self.apply_model_pick(id),
+            Some(_) => self.open_model_picker(),
             None => {
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::System(
@@ -1851,17 +2098,17 @@ impl App {
     /// the global `acpModel` (so a pane following the global value preselects
     /// it before the agent reports `current_model_id`).
     fn open_model_picker(&mut self) {
-        if self.available_models.is_empty() {
+        if self.model_picker_models.is_empty() {
             return;
         }
-        let current = self
-            .current_tab()
-            .model_override
-            .clone()
-            .or_else(|| self.current_model_id.clone())
-            .or_else(|| self.acp_model.clone());
+        let current = self.current_model_id_for_picker().map(str::to_string);
         let selected = current
-            .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
+            .and_then(|cur| self.model_picker_models.iter().position(|m| m.id == cur))
+            .or_else(|| {
+                self.model_picker_models
+                    .iter()
+                    .position(|model| self.model_pick_enabled(&model.id))
+            })
             .unwrap_or(0);
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
@@ -1874,30 +2121,53 @@ impl App {
     }
 
     fn model_picker_up(&mut self) {
-        let tab = self.current_tab_mut();
-        if tab.model_picker_selected > 0 {
-            tab.model_picker_selected -= 1;
+        let selected = self.current_tab().model_picker_selected;
+        if let Some(next) = (0..selected)
+            .rev()
+            .find(|&index| self.model_pick_enabled(&self.model_picker_models[index].id))
+        {
+            self.current_tab_mut().model_picker_selected = next;
         }
     }
 
     fn model_picker_down(&mut self) {
-        // `saturating_sub` keeps this safe if the model list is empty while
-        // the picker is somehow open (len 0 -> last index clamps to 0).
-        let last = self.available_models.len().saturating_sub(1);
-        let tab = self.current_tab_mut();
-        if tab.model_picker_selected < last {
-            tab.model_picker_selected += 1;
+        let selected = self.current_tab().model_picker_selected;
+        if let Some(next) = ((selected + 1)..self.model_picker_models.len())
+            .find(|&index| self.model_pick_enabled(&self.model_picker_models[index].id))
+        {
+            self.current_tab_mut().model_picker_selected = next;
         }
     }
 
     /// Commit the highlighted row in the open picker.
     fn commit_model_pick(&mut self) {
         let idx = self.current_tab().model_picker_selected;
-        let id = self.available_models.get(idx).map(|m| m.id.clone());
+        let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
+        if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
         self.close_model_picker();
-        if let Some(id) = id {
             self.apply_model_pick(id);
         }
+    }
+
+    fn current_model_id_for_picker(&self) -> Option<&str> {
+        self.current_tab()
+            .model_override
+            .as_deref()
+            .or_else(|| self.selected_custom_model_id())
+            .or(self.current_model_id.as_deref())
+            .or(self.acp_model.as_deref())
+    }
+
+    fn is_custom_model(&self, model_id: &str) -> bool {
+        self.custom_model_catalog
+            .iter()
+            .any(|model| model.selection_id == model_id)
+    }
+
+    /// `/model` only exposes BYOM rows. A selected BYOM model is visible as the
+    /// current row, but entering or changing BYOM still requires Settings.
+    fn model_pick_enabled(&self, model_id: &str) -> bool {
+        self.current_model_id_for_picker() == Some(model_id)
     }
 
     /// Pin the active pane to `model_id`: record the per-pane override, mirror
@@ -1906,6 +2176,13 @@ impl App {
     /// and `/model <id>`. If no session is live yet, the override is stored
     /// and `SessionAttached` applies it via `effective_model_for_tab`.
     fn apply_model_pick(&mut self, model_id: String) {
+        if self.current_model_id_for_picker() == Some(model_id.as_str()) {
+            return;
+        }
+        if !self.model_pick_enabled(&model_id) {
+            return;
+        }
+
         let name = self
             .available_models
             .iter()
@@ -1922,6 +2199,7 @@ impl App {
             tab.session_id.clone()
         };
         self.current_model_id = Some(model_id.clone());
+        self.agent_current_model_id = Some(model_id.clone());
         if let Some(sid) = session_id {
             self.send_session_model(Some(sid), model_id);
         }
@@ -3508,8 +3786,11 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
+            AppEvent::CloudModelsAvailable(_) => "cloud_models_available",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
+            AppEvent::UsageReported { .. } => "usage_reported",
+            AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
@@ -4140,26 +4421,24 @@ impl App {
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
-    /// open on the active tab. Sources the list from the agent's advertised
-    /// `available_models` and marks the pane's currently-effective model.
+    /// open on the active tab. Cloud/native models are excluded from this
+    /// in-pane surface and remain selectable through Settings.
     pub fn model_popup_state(&self) -> Option<crate::ui::ModelPopupState<'_>> {
         let tab = self.current_tab();
-        if !tab.model_picker_open || self.available_models.is_empty() {
+        if !tab.model_picker_open || self.model_picker_models.is_empty() {
             return None;
         }
-        // Same precedence as `current_model_display`: override → agent's
-        // reported model → global `acpModel`, so the picker marks the pane's
-        // effective model even before the agent reports `current_model_id`.
-        let current_id = tab
-            .model_override
-            .as_deref()
-            .or(self.current_model_id.as_deref())
-            .or(self.acp_model.as_deref());
+        let current_id = self.current_model_id_for_picker();
         Some(crate::ui::ModelPopupState {
-            models: &self.available_models,
+            models: &self.model_picker_models,
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
             current_id,
+            disabled: self
+                .model_picker_models
+                .iter()
+                .map(|model| !self.model_pick_enabled(&model.id))
+                .collect(),
         })
     }
 
@@ -4391,6 +4670,8 @@ impl App {
         }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
+        tab.usage = None;
+        tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.completed_turns.clear();
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
@@ -4581,6 +4862,8 @@ impl App {
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
+            tab.usage = None;
+            tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
             tab.selected_completed_turn_idx = None;
             tab.session_id = None;
@@ -4744,8 +5027,9 @@ impl App {
             .and_then(|session_id| self.session_model_configs.get(session_id))
             .cloned()
             .unwrap_or_default();
-        self.available_models = models;
-        self.current_model_id = current;
+        self.agent_models = models;
+        self.agent_current_model_id = current;
+        self.rebuild_model_catalog_from_agent_state();
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
@@ -4992,6 +5276,8 @@ impl App {
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
             tab.clear_chat_history();
+            tab.usage = None;
+            tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
             tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();

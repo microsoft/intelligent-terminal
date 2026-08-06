@@ -26,6 +26,14 @@ fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(!cli.follows_global_acp_model);
+}
+
+#[test]
+fn cli_parses_global_model_follow_scope() {
+    let cli = Cli::try_parse_from(["wta", "--follows-global-acp-model"])
+        .expect("global model scope flag must parse");
+    assert!(cli.follows_global_acp_model);
 }
 
 #[test]
@@ -42,10 +50,7 @@ fn cli_parses_per_tab_wsl_agent_source() {
     .expect("WSL source flags must parse");
     assert_eq!(cli.agent_source.as_deref(), Some("wsl"));
     assert_eq!(cli.agent_wsl_distro.as_deref(), Some("Ubuntu"));
-    assert_eq!(
-        cli.agent_source_cwd.as_deref(),
-        Some("/home/user/project")
-    );
+    assert_eq!(cli.agent_source_cwd.as_deref(), Some("/home/user/project"));
 }
 
 #[test]
@@ -87,7 +92,9 @@ fn sessions_list_cli_parses_json_and_master_override() {
 
     assert!(cli.json);
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { master, origin } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { master, origin },
+        }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
             // Default keeps the historical debug behavior — show
             // every origin. MVP sessions picker has its own default in
@@ -105,12 +112,11 @@ fn sessions_list_cli_parses_origin_shell() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "shell"])
         .expect("sessions list --origin shell parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::Shell);
-            assert_eq!(
-                origin.to_filter(),
-                agent_sessions::OriginFilter::ShellOnly,
-            );
+            assert_eq!(origin.to_filter(), agent_sessions::OriginFilter::ShellOnly,);
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
@@ -121,7 +127,9 @@ fn sessions_list_cli_parses_origin_agent_pane() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "agent-pane"])
         .expect("sessions list --origin agent-pane parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::AgentPane);
             assert_eq!(
                 origin.to_filter(),
@@ -222,12 +230,8 @@ fn process_label_subcommands() {
     let probe = Cli::try_parse_from(["wta", "probe-models", "--agent", "copilot"]).unwrap();
     assert_eq!(process_label(&probe), "probe");
 
-    let probe_sources = Cli::try_parse_from([
-        "wta",
-        "probe-agent-sources",
-        "--wsl-distro",
-        "Ubuntu-24.04",
-    ])
+    let probe_sources =
+        Cli::try_parse_from(["wta", "probe-agent-sources", "--wsl-distro", "Ubuntu-24.04"])
     .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());

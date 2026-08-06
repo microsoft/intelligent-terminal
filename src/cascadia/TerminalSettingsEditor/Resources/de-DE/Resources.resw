@@ -2836,6 +2836,8 @@
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Wählen Sie den Agenten aus, der für Schnellaktionen in der Befehlspalette verwendet wird.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Korrekturen für fehlgeschlagene Befehle automatisch vorschlagen</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Wenn aktiviert, analysiert der KI-Agent fehlgeschlagene Befehle automatisch und schlägt eine Korrektur vor. Wenn deaktiviert, wird für fehlgeschlagene Befehle ein anklickbarer Hinweis in der Statusleiste angezeigt — drücken Sie Ctrl+Alt+. oder klicken Sie auf den Hinweis, um eine Korrektur anzufordern.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Kontextnutzung und Sitzungskosten anzeigen</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Sofern verfügbar, Kontextfensternutzung und Sitzungskosten in der unteren Leiste des Terminals anzeigen.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Position des Agentbereichs</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Legt fest, wo der Agentbereich relativ zu Ihrem Terminal geöffnet wird.</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
@@ -2926,5 +2928,49 @@
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Erlauben Sie Intelligentes Terminal, Fehler an Ihren Agent zu senden, um automatisch Korrekturen vorzuschlagen.</value>
+  </data>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>BYOM-Anbieter</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+  </data>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>Verwenden Sie einen OpenAI-kompatiblen Chat Completions-API-Endpunkt. Unterstützt GitHub Copilot und OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} unterstützt keine benutzerdefinierten OpenAI-kompatiblen Chat Completions-Anbieter. Gespeicherte Anbieter bleiben verfügbar, wenn Sie zu GitHub Copilot oder OpenCode wechseln.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>Entfernen</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>Basis-URL</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>Modell-ID</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Neu hinzufügen</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>Speichern</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Abbrechen</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
+  <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
+    <value>{} | {} | OpenAI-kompatibel</value>
+    <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
 </root>

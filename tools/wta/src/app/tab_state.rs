@@ -195,6 +195,8 @@ pub struct TabSession {
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
     pub(crate) active_direct_proposal_id: Option<String>,
+    pub usage: Option<crate::usage::UsageSnapshot>,
+    pub usage_staleness: crate::usage::UsageStaleness,
 
     // Conversation history
     pub messages: Vec<ChatMessage>,

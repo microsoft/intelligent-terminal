@@ -2089,7 +2089,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.59.0" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -2098,7 +2098,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };

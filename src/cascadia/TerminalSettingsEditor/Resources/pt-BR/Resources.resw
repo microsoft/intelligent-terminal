@@ -2861,6 +2861,8 @@
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
     <value>Quando habilitado, o agente de IA analisa automaticamente os comandos com falha e propõe uma correção. Quando desabilitado, os comandos com falha exibem uma dica clicável na barra de status — pressione Ctrl+Alt+. ou clique na dica para solicitar uma correção.</value>
   </data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Mostrar uso do contexto e custo da sessão</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Quando disponível, mostre o uso da janela de contexto e o custo da sessão na barra inferior do terminal.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Posição do painel</value>
   </data>
@@ -2969,5 +2971,49 @@
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Permita que o Terminal Inteligente envie erros ao agente para sugerir correções automaticamente.</value>
+  </data>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>Provedores BYOM</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+  </data>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>Use um ponto de extremidade da API Chat Completions compatível com OpenAI. Dá suporte ao GitHub Copilot e ao OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} não dá suporte a provedores personalizados de Chat Completions compatíveis com OpenAI. Os provedores salvos continuam disponíveis quando você alterna para GitHub Copilot ou OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>Remover</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>URL base</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>ID do modelo</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Adicionar novo</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>Salvar</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Cancelar</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
+  <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
+    <value>{} | {} | Compatível com OpenAI</value>
+    <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
 </root>

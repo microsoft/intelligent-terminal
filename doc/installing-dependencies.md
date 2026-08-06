@@ -219,7 +219,7 @@ Intelligent Terminal launches it through the
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @agentclientprotocol/claude-agent-acp
+npx -y @agentclientprotocol/claude-agent-acp@0.59.0
 ```
 
 You do **not** need to install anything for this — the only prerequisite

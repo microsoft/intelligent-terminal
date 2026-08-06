@@ -38,6 +38,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -54,12 +55,14 @@ const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{spawn_agent_process_for_source, AgentStderrLog};
+use crate::protocol::acp::spawn::{
+    spawn_agent_process_for_source, AgentStderrLog, ChildEnvironmentPolicy,
+};
 
 pub(crate) mod config;
 
@@ -141,6 +144,13 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// Latest Usage waiting for its owning helper. Context is replaced by
+    /// SessionId while an omitted optional cost is retained from an
+    /// undelivered prior update.
+    pending_usage: Mutex<
+        HashMap<acp::schema::v1::SessionId, (HelperId, acp::schema::v1::SessionNotification)>,
+    >,
+    usage_generation: watch::Sender<u64>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
@@ -183,13 +193,15 @@ struct MasterStateInner {
     /// legacy resume path.
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The pool of agent CLI subprocesses master is multiplexing,
-    /// keyed by the agent command line (`AgentCmdKey`). Lazily
+    /// keyed by agent identity, execution source, and command line
+    /// (`AgentCmdKey`). Lazily
     /// populated: a helper declares its agent *id* in the `initialize`
     /// handshake (`_meta.wta.agent_id`), the master reconstructs the
     /// command from that id (`agent_registry::build_acp_command`), and
     /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
-    /// every later helper that resolves to the same command line. The key
-    /// is always a master-derived command, never a string off the pipe.
+    /// every later helper that resolves to the same identity, source, and
+    /// command line. The key is always master-derived, never a string off
+    /// the pipe.
     /// This is what lets one tab run Gemini while another runs Claude in
     /// the same window.
     ///
@@ -208,8 +220,7 @@ struct MasterStateInner {
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
-    pub(crate) agents:
-        Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    pub(crate) agents: Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -311,8 +322,12 @@ struct MasterStateInner {
     /// negative-cached so a burst of hook/watcher events and the 5s poll share
     /// one round-trip and don't hammer a hung agent. Both the host-history
     /// reconcile and the synthetic-title refresh derive from this one fetch.
-    host_list_cache:
-        Mutex<Option<(std::time::Instant, Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>)>>,
+    host_list_cache: Mutex<
+        Option<(
+            std::time::Instant,
+            Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
+        )>,
+    >,
     /// Last time a poll-triggered WSL title seed was dispatched. Throttles the
     /// expensive per-distro `wsl.exe` ACP scan so the 5 s `sessions/list` poll
     /// can't turn it into a scan storm while a synthetic WSL delegate row waits
@@ -326,15 +341,31 @@ struct MasterStateInner {
     wsl_seed_in_flight: std::sync::atomic::AtomicBool,
 }
 
-/// Canonical key for the agent-CLI pool: the full agent command line
-/// (e.g. `"copilot --acp --stdio"` or
-/// `"npx -y @agentclientprotocol/claude-agent-acp"`). Two tabs with the same
-/// command line share one CLI; different command lines get their own.
+async fn bind_session_route(
+    state: &MasterStateInner,
+    session_id: acp::schema::v1::SessionId,
+    route: HelperRoute,
+) -> usize {
+    let mut routes = state.session_to_helper.lock().await;
+    let mut pending_usage = state.pending_usage.lock().await;
+    pending_usage.remove(&session_id);
+    routes.insert(session_id, route);
+    routes.len()
+}
+
+/// Canonical key for the agent-CLI pool: authoritative agent identity,
+/// execution source, and full command line. Two tabs with the same identity,
+/// source, and command share one CLI; custom and built-in agents never share
+/// merely because their commands happen to match.
 /// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
 type AgentCmdKey = String;
 
-fn agent_cmd_key(command: &str, source: &crate::agent_source::AgentSource) -> AgentCmdKey {
-    format!("{source}\0{command}")
+fn agent_cmd_key(
+    command: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+) -> AgentCmdKey {
+    format!("{:?}", (source, agent_id, command))
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -362,6 +393,201 @@ struct AgentCli {
     /// crashed-and-respawned CLI under the same command line never inherits
     /// another instance's stale orphan sessions.
     cmd_key: AgentCmdKey,
+    /// Native Host cloud catalog retained independently from the BYOK session's
+    /// own ACP selector. A clean discovery probe may still be pending after the
+    /// real CLI has initialized; helpers receive the eventual result through a
+    /// private WTA notification.
+    cloud_catalog: Mutex<NativeCloudCatalogState>,
+    /// Helpers currently bound to this exact CLI instance. Used to target the
+    /// eventual clean-probe result without leaking one agent/source catalog to
+    /// unrelated helpers in the same master.
+    bound_helpers: Mutex<HashSet<HelperId>>,
+}
+
+fn update_model_switch_channel_from_load(
+    session_id: &acp::schema::v1::SessionId,
+    response: &acp::schema::v1::LoadSessionResponse,
+) -> (Vec<crate::app::AcpModelInfo>, Option<String>) {
+    crate::protocol::acp::model_select::models_from_load_session(session_id.0.as_ref(), response)
+}
+
+#[derive(Clone, Debug)]
+struct NativeCloudCatalog {
+    models: Vec<crate::app::AcpModelInfo>,
+    source: CloudCatalogSource,
+}
+
+#[derive(Debug, Default)]
+enum NativeCloudCatalogState {
+    #[default]
+    Unavailable,
+    Pending,
+    Ready(NativeCloudCatalog),
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloudCatalogSource {
+    Helper,
+    CleanProbe,
+}
+
+impl CloudCatalogSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Helper => "helper",
+            Self::CleanProbe => "clean_probe",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloudCatalogPlan {
+    None,
+    Supplied,
+    CleanProbe,
+}
+
+fn cloud_catalog_plan(
+    source: &crate::agent_source::AgentSource,
+    byok_mode: crate::agent_registry::ByokMode,
+    shared_provider_complete: bool,
+    supplied_models_empty: bool,
+) -> CloudCatalogPlan {
+    if !matches!(source, crate::agent_source::AgentSource::Host) {
+        return CloudCatalogPlan::None;
+    }
+    if !supplied_models_empty {
+        return CloudCatalogPlan::Supplied;
+    }
+    if shared_provider_complete && byok_mode != crate::agent_registry::ByokMode::Unsupported {
+        return CloudCatalogPlan::CleanProbe;
+    }
+    CloudCatalogPlan::None
+}
+
+fn prepare_native_cloud_catalog(
+    resolved_agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+    supplied_models: Vec<crate::app::AcpModelInfo>,
+) -> (NativeCloudCatalogState, bool) {
+    let profile = crate::agent_registry::lookup_profile_by_id(resolved_agent_id);
+    match cloud_catalog_plan(
+        source,
+        profile.byok_mode,
+        crate::custom_model_provider::shared_provider_is_complete(),
+        supplied_models.is_empty(),
+    ) {
+        CloudCatalogPlan::None => (NativeCloudCatalogState::Unavailable, false),
+        CloudCatalogPlan::Supplied => (
+            NativeCloudCatalogState::Ready(NativeCloudCatalog {
+                models: supplied_models,
+                source: CloudCatalogSource::Helper,
+            }),
+            false,
+        ),
+        CloudCatalogPlan::CleanProbe => (NativeCloudCatalogState::Pending, true),
+    }
+}
+
+async fn inject_ready_cloud_catalog(
+    agent: &AgentCli,
+    meta: &mut Option<acp::schema::v1::Meta>,
+) -> Result<(), serde_json::Error> {
+    let catalog = agent.cloud_catalog.lock().await;
+    let NativeCloudCatalogState::Ready(catalog) = &*catalog else {
+        return Ok(());
+    };
+    crate::protocol::acp::model_select::inject_wta_cloud_catalog(
+        meta,
+        &catalog.models,
+        catalog.source.as_str(),
+    )
+}
+
+async fn initialize_response_for_agent(
+    agent: &AgentCli,
+) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
+    let mut response = agent.cached_init_resp.clone();
+    inject_ready_cloud_catalog(agent, &mut response.meta).await?;
+    Ok(response)
+}
+
+async fn notify_bound_helpers(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+    notification: acp::schema::v1::ExtNotification,
+) {
+    let helper_ids: Vec<_> = agent.bound_helpers.lock().await.iter().copied().collect();
+    let mut subscribers = state.helper_ext_subscribers.lock().await;
+    for helper_id in helper_ids {
+        let Some(tx) = subscribers.get(&helper_id) else {
+            continue;
+        };
+        if let Err(error) = tx.send(notification.clone()) {
+            tracing::warn!(
+                target: "master",
+                helper_id = ?helper_id,
+                method = %notification.method,
+                %error,
+                "cloud catalog notification channel closed; pruning subscriber"
+            );
+            subscribers.remove(&helper_id);
+        }
+    }
+}
+
+fn start_clean_cloud_catalog_probe<F>(
+    state: Arc<MasterStateInner>,
+    agent: Arc<AgentCli>,
+    resolved_agent_id: String,
+    probe: F,
+) where
+    F: Future<Output = Result<crate::protocol::acp::probe::ProbeResult>> + 'static,
+{
+    tokio::task::spawn_local(async move {
+        match probe.await {
+            Ok(result) => {
+                let catalog = NativeCloudCatalog {
+                    models: result.available_models,
+                    source: CloudCatalogSource::CleanProbe,
+                };
+                tracing::info!(
+                    target: "master",
+                    agent_id = %resolved_agent_id,
+                    model_count = catalog.models.len(),
+                    "clean native cloud model probe completed for BYOK agent"
+                );
+                {
+                    let mut state = agent.cloud_catalog.lock().await;
+                    *state = NativeCloudCatalogState::Ready(catalog.clone());
+                }
+                if !catalog.models.is_empty() {
+                    notify_bound_helpers(
+                        &state,
+                        &agent,
+                        crate::protocol::acp::model_select::build_wta_cloud_catalog_notification(
+                            &catalog.models,
+                            catalog.source.as_str(),
+                        ),
+                    )
+                    .await;
+                }
+            }
+            Err(error) => {
+                {
+                    let mut state = agent.cloud_catalog.lock().await;
+                    *state = NativeCloudCatalogState::Failed;
+                }
+                tracing::warn!(
+                    target: "master",
+                    agent_id = %resolved_agent_id,
+                    %error,
+                    "clean native cloud model probe failed; Host helper will continue with host cache and agent-advertised models"
+                );
+            }
+        }
+    });
 }
 
 /// Per-helper recovery metadata stashed in
@@ -510,7 +736,10 @@ impl MasterClient {
         resp
     }
 
-    async fn session_notification(&self, args: acp::schema::v1::SessionNotification) -> acp::Result<()> {
+    async fn session_notification(
+        &self,
+        args: acp::schema::v1::SessionNotification,
+    ) -> acp::Result<()> {
         let sid = args.session_id.clone();
         // Discriminator for "what KIND of notification this is" — useful
         // when scrolling logs to see prompt/turn lifecycle without
@@ -544,6 +773,29 @@ impl MasterClient {
         match route {
             Some((snap_helper_id, tx, drops)) => {
                 use std::sync::atomic::Ordering;
+                if kind == "usage_update" {
+                    let mut args = args;
+                    let mut pending = self.state.pending_usage.lock().await;
+                    if let Some((pending_owner, pending_notification)) = pending.get(&sid) {
+                        if *pending_owner == snap_helper_id {
+                            if let (
+                                acp::schema::v1::SessionUpdate::UsageUpdate(previous),
+                                acp::schema::v1::SessionUpdate::UsageUpdate(incoming),
+                            ) = (&pending_notification.update, &mut args.update)
+                            {
+                                if incoming.cost.is_none() {
+                                    incoming.cost = previous.cost.clone();
+                                }
+                            }
+                        }
+                    }
+                    pending.insert(sid.clone(), (snap_helper_id, args));
+                    drop(pending);
+                    self.state
+                        .usage_generation
+                        .send_modify(|generation| *generation = generation.wrapping_add(1));
+                    return Ok(());
+                }
                 // `try_send` rather than `send().await`: a slow helper
                 // pipe must not back-pressure this trait method, which
                 // is driven by the agent CLI's I/O loop and is shared
@@ -803,6 +1055,7 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
         Plan(_) => "plan",
         CurrentModeUpdate { .. } => "current_mode_update",
         AvailableCommandsUpdate { .. } => "available_commands_update",
+        UsageUpdate(_) => "usage_update",
         _ => "other",
     }
 }
@@ -892,8 +1145,9 @@ impl HelperHandler {
                 helper_id = ?self.helper_id,
                 "helper request arrived before initialize bound an agent — protocol violation"
             );
-            acp::Error::internal_error()
-                .data(serde_json::json!("no agent bound; initialize must come first"))
+            acp::Error::internal_error().data(serde_json::json!(
+                "no agent bound; initialize must come first"
+            ))
         })
     }
 
@@ -959,6 +1213,22 @@ impl HelperHandler {
         // otherwise falls back to the trusted `--agent` default. See
         // `resolve_agent_selection` for the full policy.
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let supplied_cloud_models: Vec<crate::app::AcpModelInfo> = wta_meta
+            .cloud_models
+            .as_deref()
+            .and_then(|raw| match serde_json::from_str(raw) {
+                Ok(models) => Some(models),
+                Err(error) => {
+                    tracing::warn!(
+                        target: "master",
+                        helper_id = ?self.helper_id,
+                        %error,
+                        "helper supplied invalid cloud model catalog metadata"
+                    );
+                    None
+                }
+            })
+            .unwrap_or_default();
         let (agent_cmd, agent_id, agent_source) = resolve_agent_selection(
             &self.state.default_agent_cmd,
             self.state.default_agent_id.as_deref(),
@@ -981,33 +1251,68 @@ impl HelperHandler {
             resolved_agent_source = %agent_source,
             "resolving agent CLI for helper"
         );
+        let supplied_cloud_models =
+            if matches!(&agent_source, crate::agent_source::AgentSource::Host) {
+                supplied_cloud_models
+            } else {
+                if !supplied_cloud_models.is_empty() {
+                    tracing::warn!(
+                        target: "master",
+                        helper_id = ?self.helper_id,
+                        resolved_agent_source = %agent_source,
+                        "ignoring Host cloud model catalog metadata from WSL helper"
+                    );
+                }
+                Vec::new()
+            };
 
         let agent = get_or_spawn_agent(
             &self.state,
             &agent_cmd,
             agent_id.as_deref(),
             &agent_source,
+            supplied_cloud_models,
         )
         .await
         .map_err(|e| {
+            let error_chain = format!("{e:#}");
             tracing::error!(
                 target: "master",
                 op = "initialize",
                 helper_id = ?self.helper_id,
                 agent_cmd = %agent_cmd,
-                error = %e,
+                error = %error_chain,
                 "failed to spawn/resolve agent CLI for helper"
             );
-            acp::Error::internal_error()
-                .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
+            acp::Error::internal_error().data(serde_json::json!(format!(
+                "agent CLI unavailable: {error_chain}"
+            )))
         })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
         let _ = self.agent.set(Arc::clone(&agent));
+        let agent = self
+            .agent
+            .get()
+            .expect("helper agent binding is set before initialize response");
+        agent.bound_helpers.lock().await.insert(self.helper_id);
 
         // Replay the CLI's own initialize response (re-forwarding returns
-        // empty `agent_info` on most backends, blanking the agent bar).
+        // empty `agent_info` on most backends, blanking the agent bar), adding
+        // only our private helper-facing cloud catalog metadata. The original
+        // third-party response capabilities remain untouched.
+        match initialize_response_for_agent(agent).await {
+            Ok(response) => Ok(response),
+            Err(error) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    %error,
+                    "failed to serialize private cloud model catalog metadata"
+                );
         Ok(agent.cached_init_resp.clone())
+    }
+        }
     }
 
     async fn authenticate(
@@ -1021,7 +1326,10 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.resolved_agent("authenticate")?.conn.authenticate(args).await
+        self.resolved_agent("authenticate")?
+            .conn
+            .authenticate(args)
+            .await
     }
 
     async fn new_session(
@@ -1048,39 +1356,35 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
+        let agent = self.resolved_agent("new_session")?;
         let resp = self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
             .await?;
-        // Resolve the bound agent for `cli_source` stamping below (cheap
-        // Arc clone; the forward above already used it for the RPC).
-        let agent = self.resolved_agent("new_session")?;
+        let (available_models, current_model_id) =
+            crate::protocol::acp::model_select::models_from_new_session(&resp);
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
-        let registry_size = {
-            let mut map = self.state.session_to_helper.lock().await;
-            map.insert(
-                resp.session_id.clone(),
-                HelperRoute {
-                    helper_id: self.helper_id,
-                    notif_tx: self.notif_tx.clone(),
-                    forwarder: Some(forwarder),
-                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                },
-            );
-            map.len()
-        };
+        let registry_size = bind_session_route(
+            &self.state,
+            resp.session_id.clone(),
+            HelperRoute {
+                helper_id: self.helper_id,
+                notif_tx: self.notif_tx.clone(),
+                forwarder: Some(forwarder),
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        )
+        .await;
         // Mirror the binding into the live-session registry. Lock
         // ordering matches the doc on `MasterStateInner::registry`:
         // `session_to_helper` is no longer held here, so the upsert
         // can't deadlock against `drop_sessions_for_helper`.
-        let mut info = crate::session_registry::SessionInfo::new(
-            resp.session_id.clone(),
-            cwd_for_registry,
-        );
+        let mut info =
+            crate::session_registry::SessionInfo::new(resp.session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
         // Stamp the row as a Live agent-pane session. Without this, the
         // row lands in master's registry with status=cli_source=origin=None,
@@ -1133,9 +1437,7 @@ impl HelperHandler {
         // which model is really in effect — the acp-client current_model_id
         // line is debug-only. The explicit case is already covered by the
         // "forwarding set_session_model" log.
-        let (agent_models, agent_current_model) =
-            crate::protocol::acp::model_select::models_from_new_session(&resp);
-        let agent_model_count = agent_models.len();
+        let agent_model_count = available_models.len();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1143,7 +1445,7 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             session_id = ?resp.session_id,
             registry_size = registry_size,
-            current_model_id = ?agent_current_model,
+            current_model_id = ?current_model_id,
             available_models = agent_model_count,
             "session bound to helper"
         );
@@ -1186,18 +1488,17 @@ impl HelperHandler {
         // any peer-visible flicker.
         let agent = self.resolved_agent("load_session")?;
         let forwarder = self.forwarder_for_route("load_session")?;
-        {
-            let mut map = self.state.session_to_helper.lock().await;
-            map.insert(
-                session_id.clone(),
-                HelperRoute {
-                    helper_id: self.helper_id,
-                    notif_tx: self.notif_tx.clone(),
-                    forwarder: Some(forwarder),
-                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                },
-            );
-        }
+        bind_session_route(
+            &self.state,
+            session_id.clone(),
+            HelperRoute {
+                helper_id: self.helper_id,
+                notif_tx: self.notif_tx.clone(),
+                forwarder: Some(forwarder),
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        )
+        .await;
         // Orphan re-bind fast path: this session's previous helper
         // disconnected but the shared CLI still has it loaded (tracked in
         // `orphaned_sessions` under this agent's key). Re-attach onto the
@@ -1266,6 +1567,21 @@ impl HelperHandler {
             }
         };
 
+        let (available_models, current_model_id) =
+            update_model_switch_channel_from_load(&session_id, &resp);
+        if !available_models.is_empty() || current_model_id.is_some() {
+            tracing::info!(
+                target: "master",
+                step = "helper→agent",
+                op = "load_session",
+                helper_id = ?self.helper_id,
+                session_id = ?session_id,
+                current_model_id = ?current_model_id,
+                available_models = available_models.len(),
+                "updated model selector from load_session response"
+            );
+        }
+
         // Register the resumed row (Live + tagged) — shared by the real-load
         // and orphan-re-bind paths.
         let mut info =
@@ -1309,7 +1625,10 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::SetSessionModeRequest,
     ) -> acp::Result<acp::schema::v1::SetSessionModeResponse> {
-        self.resolved_agent("set_session_mode")?.conn.set_session_mode(args).await
+        self.resolved_agent("set_session_mode")?
+            .conn
+            .set_session_mode(args)
+            .await
     }
 
     // Forward config-option changes (incl. model selection) — the
@@ -1329,7 +1648,36 @@ impl HelperHandler {
             session_id = ?args.session_id,
             "forwarding set_session_config_option"
         );
-        self.resolved_agent("set_session_config_option")?.conn.set_session_config_option(args).await
+        self.resolved_agent("set_session_config_option")?
+            .conn
+            .set_session_config_option(args)
+            .await
+    }
+
+    /// Route the schema-1.1-dropped `session/set_model` request through this
+    /// helper's bound AgentCli. The AgentCli owns the selector metadata and its
+    /// MethodNotFound downgrade, so another pooled agent cannot overwrite it.
+    async fn set_session_model(
+        &self,
+        args: conn::SetSessionModelRequest,
+    ) -> acp::Result<conn::SetSessionModelResponse> {
+        tracing::info!(
+            target: "master",
+            step = "helper→agent",
+            op = "set_session_model",
+            helper_id = ?self.helper_id,
+            session_id = ?args.session_id,
+            model = %args.model_id,
+            "routing set_session_model for bound agent"
+        );
+        let agent = self.resolved_agent("set_session_model")?;
+        crate::protocol::acp::model_select::apply_session_model(
+            &agent.conn,
+            args.session_id,
+            args.model_id,
+        )
+        .await?;
+        Ok(conn::SetSessionModelResponse::default())
     }
 
     /// Answer `session/list` from our own registry (NOT by proxying the
@@ -1470,7 +1818,10 @@ impl HelperHandler {
     /// ACP-1.0 leading-`_` normalization lives in one place and the match below
     /// is exhaustive (a new method is a compile error until it is handled,
     /// instead of silently falling through to the agent CLI).
-    async fn ext_method(&self, args: acp::schema::v1::ExtRequest) -> acp::Result<acp::schema::v1::ExtResponse> {
+    async fn ext_method(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
         use crate::session_registry::WtaExtRequest as Req;
         tracing::debug!(
             target: "master",
@@ -1486,9 +1837,16 @@ impl HelperHandler {
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
             }
-            Req::SessionResumeDispatched(p) => handle_session_resume_dispatched(&self.state, &p).await,
+            Req::SessionResumeDispatched(p) => {
+                handle_session_resume_dispatched(&self.state, &p).await
+            }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
-            Req::ForwardToAgent(raw) => self.resolved_agent("ext_method")?.conn.ext_method(raw).await,
+            Req::ForwardToAgent(raw) => {
+                self.resolved_agent("ext_method")?
+                    .conn
+                    .ext_method(raw)
+                    .await
+            }
             Req::Malformed { method, error } => {
                 tracing::warn!(
                     target: "master",
@@ -1566,7 +1924,6 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
     }
     result
 }
-
 
 struct MasterPipeDiscoveryGuard {
     path: Option<PathBuf>,
@@ -1858,6 +2215,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
 
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_usage: Mutex::new(HashMap::new()),
+        usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
@@ -1868,7 +2227,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
         cli_source: crate::agent_sessions::CliSource::from_agent_id(
-            config.agent_id
+            config
+                .agent_id
                 .as_deref()
                 .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&config.agent)),
         ),
@@ -2110,11 +2470,7 @@ fn resolve_agent_selection(
     requested_source: Option<&str>,
     requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> (
-    String,
-    Option<String>,
-    crate::agent_source::AgentSource,
-) {
+) -> (String, Option<String>, crate::agent_source::AgentSource) {
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -2131,14 +2487,10 @@ fn resolve_agent_selection(
         let allowed = allowed_ids.map_or(true, |set| set.contains(id));
 
         if known && allowed {
-            let model = requested_model
-                .map(str::trim)
-                .filter(|s| !s.is_empty());
+            let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let cmd = crate::agent_registry::build_acp_command(id, model);
-            let source = crate::agent_source::AgentSource::from_wire(
-                requested_source,
-                requested_wsl_distro,
-            );
+            let source =
+                crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
             return (cmd, Some(id.to_string()), source);
         }
 
@@ -2171,8 +2523,9 @@ async fn get_or_spawn_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
-    let key = agent_cmd_key(agent_cmd, source);
+    let key = agent_cmd_key(agent_cmd, agent_id, source);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -2188,7 +2541,15 @@ async fn get_or_spawn_agent(
     // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
         .get_or_try_init(|| async {
-            spawn_one_agent(state, &key, agent_cmd, agent_id, source).await
+            spawn_one_agent(
+                state,
+                &key,
+                agent_cmd,
+                agent_id,
+                source,
+                supplied_cloud_models,
+            )
+            .await
         })
         .await?;
     Ok(Arc::clone(agent))
@@ -2205,8 +2566,18 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
-    let mut spawn_result = spawn_agent_process_for_source(agent_cmd, None, source)
+    let resolved_agent_id = agent_id
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
+    let mut spawn_result = spawn_agent_process_for_source(
+        agent_cmd,
+        None,
+        agent_id,
+        source,
+        ChildEnvironmentPolicy::ApplySharedProvider,
+    )
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
@@ -2380,14 +2751,9 @@ async fn spawn_one_agent(
         std::time::Duration::from_secs(init_timeout_secs),
         conn.initialize(
             acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(
-                    acp::schema::v1::ClientCapabilities::new().terminal(true),
-                )
+                .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
                 .client_info(
-                    acp::schema::v1::Implementation::new(
-                        "wta-master",
-                        env!("CARGO_PKG_VERSION"),
-                    )
+                    acp::schema::v1::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
                         .title("Windows Terminal Agent (master)"),
                 ),
         ),
@@ -2438,10 +2804,6 @@ async fn spawn_one_agent(
 
     // Prefer the host-supplied agent id (authoritative); fall back to
     // parsing the command line. Stamps each session's `cli_source`.
-    let resolved_agent_id = match agent_id {
-        Some(id) if !id.trim().is_empty() => id.to_string(),
-        _ => crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string(),
-    };
     let cli_source = crate::agent_sessions::CliSource::from_agent_id(&resolved_agent_id);
     tracing::info!(
         target: "master",
@@ -2469,13 +2831,28 @@ async fn spawn_one_agent(
         });
     }
 
-    Ok(Arc::new(AgentCli {
+    let (cloud_catalog, start_clean_probe) =
+        prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
+    let agent = Arc::new(AgentCli {
         conn,
         cached_init_resp: init_resp,
         cli_source,
         source: source.clone(),
         cmd_key: key.clone(),
-    }))
+        cloud_catalog: Mutex::new(cloud_catalog),
+        bound_helpers: Mutex::new(HashSet::new()),
+    });
+    if start_clean_probe {
+        let command = agent_cmd.to_string();
+        start_clean_cloud_catalog_probe(
+            Arc::clone(state),
+            Arc::clone(&agent),
+            resolved_agent_id,
+            async move { crate::protocol::acp::probe::probe_models(&command).await },
+        );
+    }
+
+    Ok(agent)
 }
 
 /// Remove a dead agent CLI from the pool. Helpers still holding an
@@ -2511,6 +2888,7 @@ async fn serve_helper(
 
     let (notif_tx, mut notif_rx) =
         mpsc::channel::<acp::schema::v1::SessionNotification>(NOTIF_CHANNEL_CAPACITY);
+    let mut usage_generation_rx = state.usage_generation.subscribe();
 
     // Second channel: master-originated ExtNotifications fanned out by
     // `broadcast_ext_to_helpers`. Kept separate from `notif_tx` so the
@@ -2553,25 +2931,88 @@ async fn serve_helper(
     let builder = acp::Agent
         .builder()
         .name("wta-master-helper")
-        .on_receive_request({ let h = handler.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let h = h.clone(); async move {
-            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+        .on_receive_request(
+            {
+                let h = handler.clone();
+                move |req: conn::SetSessionModelRequest,
+                      responder: acp::Responder<conn::SetSessionModelResponse>,
+                      _cx| {
+                    let h = h.clone();
+                    async move {
+                        match h.set_session_model(req).await {
+                            Ok(response) => responder.respond(response),
+                            Err(error) => responder.respond_with_error(error),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_request(
+            {
+                let h = handler.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let h = h.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
             match req {
-                Q::InitializeRequest(a) => conn::respond_enum(responder, h.initialize(a).await.map(R::InitializeResponse)),
-                Q::AuthenticateRequest(a) => conn::respond_enum(responder, h.authenticate(a).await.map(R::AuthenticateResponse)),
-                Q::NewSessionRequest(a) => conn::respond_enum(responder, h.new_session(a).await.map(R::NewSessionResponse)),
-                Q::LoadSessionRequest(a) => conn::respond_enum(responder, h.load_session(a).await.map(R::LoadSessionResponse)),
-                Q::SetSessionModeRequest(a) => conn::respond_enum(responder, h.set_session_mode(a).await.map(R::SetSessionModeResponse)),
-                Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(responder, h.set_session_config_option(a).await.map(R::SetSessionConfigOptionResponse)),
-                Q::ListSessionsRequest(a) => conn::respond_enum(responder, h.list_sessions(a).await.map(R::ListSessionsResponse)),
+                            Q::InitializeRequest(a) => conn::respond_enum(
+                                responder,
+                                h.initialize(a).await.map(R::InitializeResponse),
+                            ),
+                            Q::AuthenticateRequest(a) => conn::respond_enum(
+                                responder,
+                                h.authenticate(a).await.map(R::AuthenticateResponse),
+                            ),
+                            Q::NewSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.new_session(a).await.map(R::NewSessionResponse),
+                            ),
+                            Q::LoadSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.load_session(a).await.map(R::LoadSessionResponse),
+                            ),
+                            Q::SetSessionModeRequest(a) => conn::respond_enum(
+                                responder,
+                                h.set_session_mode(a).await.map(R::SetSessionModeResponse),
+                            ),
+                            Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.set_session_config_option(a)
+                                    .await
+                                    .map(R::SetSessionConfigOptionResponse),
+                            ),
+                            Q::ListSessionsRequest(a) => conn::respond_enum(
+                                responder,
+                                h.list_sessions(a).await.map(R::ListSessionsResponse),
+                            ),
                 Q::PromptRequest(a) => h.prompt(a, responder).await,
-                Q::ExtMethodRequest(a) => conn::respond_enum(responder, h.ext_method(a).await.map(R::ExtMethodResponse)),
+                            Q::ExtMethodRequest(a) => conn::respond_enum(
+                                responder,
+                                h.ext_method(a).await.map(R::ExtMethodResponse),
+                            ),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let h = handler.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let h = h.clone(); async move {
-            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = h.cancel(n).await; }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let h = handler.clone();
+                move |notif: acp::schema::v1::ClientNotification, _cx| {
+                    let h = h.clone();
+                    async move {
+                        if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
+                            let _ = h.cancel(n).await;
+                        }
             Ok(())
-        } } }, acp::on_receive_notification!());
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
 
     let (agent_side_conn, handle_io) =
         conn::spawn_agent(builder, conn::byte_streams(outgoing, incoming));
@@ -2611,6 +3052,34 @@ async fn serve_helper(
                     );
                 }
             }
+            changed = usage_generation_rx.changed() => {
+                if changed.is_err() {
+                    continue;
+                }
+                let pending = {
+                    let mut pending = state.pending_usage.lock().await;
+                    let session_ids = pending
+                        .iter()
+                        .filter_map(|(session_id, (owner, _))| (*owner == helper_id).then(|| session_id.clone()))
+                        .collect::<Vec<_>>();
+                    session_ids
+                        .into_iter()
+                        .filter_map(|session_id| pending.remove(&session_id).map(|(_, notification)| notification))
+                        .collect::<Vec<_>>()
+                };
+                for notification in pending {
+                    let session_id = notification.session_id.clone();
+                    if let Err(error) = agent_side_conn.session_notification(notification).await {
+                        tracing::warn!(
+                            target: "master",
+                            helper_id = ?helper_id,
+                            session_id = ?session_id,
+                            error = %error,
+                            "forwarding coalesced usage update to helper failed"
+                        );
+                    }
+                }
+            }
             Some(ext) = ext_rx.recv() => {
                 let method = ext.method.clone();
                 tracing::debug!(
@@ -2644,6 +3113,9 @@ async fn serve_helper(
     {
         let mut subs = state.helper_ext_subscribers.lock().await;
         subs.remove(&helper_id);
+    }
+    if let Some(agent) = handler.agent.get() {
+        agent.bound_helpers.lock().await.remove(&helper_id);
     }
 
     // Drop every session this helper owned so the map can't grow
@@ -2766,6 +3238,12 @@ async fn drop_sessions_for_helper(
         map.retain(|_, route| route.helper_id != helper_id);
         victims
     };
+    {
+        let mut pending_usage = state.pending_usage.lock().await;
+        for session_id in &victims {
+            pending_usage.remove(session_id);
+        }
+    }
     for sid in &victims {
         state.registry.remove(sid).await;
         // Broadcast removal so every still-attached helper drops the
@@ -2825,7 +3303,9 @@ pub(crate) async fn broadcast_ext_to_helpers(
 /// "no sessions" — the reconcile skips it so a transient error can't wipe the
 /// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
 /// share one round-trip.
-async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
+async fn host_session_list_raw(
+    state: &MasterStateInner,
+) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
     let Some(init) = state.cached_init_resp.get() else {
         return None;
     };
@@ -2958,8 +3438,10 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     // Snapshot once; compute existing ids for the add pass and reconcile the
     // terminal Class-B host rows in the same pass.
     let snapshot = state.registry.snapshot().await;
-    let existing: std::collections::HashSet<String> =
-        snapshot.iter().map(|s| s.session_id.0.to_string()).collect();
+    let existing: std::collections::HashSet<String> = snapshot
+        .iter()
+        .map(|s| s.session_id.0.to_string())
+        .collect();
 
     let mut changed = false;
 
@@ -3160,9 +3642,7 @@ fn wsl_title_seed_warranted(
 /// [`wsl_title_seed_warranted`] to tell a synthetic row the host CLI knows about
 /// apart from an in-distro (WSL) one it can never title. Empty when the host
 /// agent can't list / isn't connected.
-async fn host_session_id_set(
-    state: &MasterStateInner,
-) -> std::collections::HashSet<String> {
+async fn host_session_id_set(state: &MasterStateInner) -> std::collections::HashSet<String> {
     host_session_list_raw(state)
         .await
         .map(|rows| rows.iter().map(|r| r.session_id.to_string()).collect())
@@ -3249,7 +3729,10 @@ async fn handle_sessions_list(
     }
 
     let mut sessions = state.registry.snapshot().await;
-    if sessions.iter().any(crate::session_registry::title_is_synthetic) {
+    if sessions
+        .iter()
+        .any(crate::session_registry::title_is_synthetic)
+    {
         let titles = host_titles_via_acp(state).await;
         // Re-snapshot only when a title actually changed; the common steady-state
         // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
@@ -3371,7 +3854,9 @@ async fn handle_session_hook(
         .await;
     }
 
-    Ok(crate::session_registry::build_session_hook_response(applied))
+    Ok(crate::session_registry::build_session_hook_response(
+        applied,
+    ))
 }
 
 /// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
@@ -3422,10 +3907,7 @@ async fn handle_session_born_bound(
 ///      without touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
-async fn apply_watcher_event(
-    state: &MasterStateInner,
-    emitted: crate::session_watcher::Emitted,
-) {
+async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
 
     // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
@@ -3486,10 +3968,7 @@ async fn apply_watcher_event(
 /// the publish-from-helper path works for them today; this subscriber
 /// makes the behavior uniform across CLIs and resilient to helper
 /// teardown order.
-async fn handle_master_wt_event(
-    state: &MasterStateInner,
-    event_json: serde_json::Value,
-) {
+async fn handle_master_wt_event(state: &MasterStateInner, event_json: serde_json::Value) {
     let method = event_json
         .get("method")
         .and_then(|v| v.as_str())
@@ -3514,10 +3993,7 @@ async fn handle_master_wt_event(
     if pane_id.is_empty() {
         return;
     }
-    let pane_state = params
-        .get("state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
     let event = match pane_state {
         "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
             pane_session_id: pane_id.clone(),

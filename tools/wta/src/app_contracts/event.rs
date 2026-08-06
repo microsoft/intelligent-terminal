@@ -10,6 +10,10 @@ pub enum AppEvent {
     Resize(u16, u16),
     FocusChanged(bool),
     ConnectionStage(String),
+    /// Native cloud catalog carried over the private helper↔master channel.
+    /// Kept separate from the current session's ACP-advertised models so a
+    /// BYOK session that reports no selector cannot erase clean-probed models.
+    CloudModelsAvailable(Vec<AcpModelInfo>),
     AgentConnected {
         name: String,
         model: Option<String>,
@@ -25,6 +29,13 @@ pub enum AppEvent {
         session_id: String,
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
+    },
+    UsageReported {
+        session_id: String,
+        snapshot: crate::usage::UsageSnapshot,
+    },
+    UsageCleared {
+        session_id: String,
     },
     ModelConfigUpdated {
         session_id: String,

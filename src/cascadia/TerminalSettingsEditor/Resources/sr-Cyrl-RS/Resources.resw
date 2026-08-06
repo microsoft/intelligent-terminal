@@ -752,7 +752,9 @@
   </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
     <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
-  </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
+  </data><data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Прикажи коришћење контекста и цену сесије</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Када је доступно, прикажите употребу контекстног прозора и цену сесије на доњој траци терминала.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Позиција панела</value>
     <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>
   </data><data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
@@ -2984,5 +2986,49 @@
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
+  </data>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>Добављачи BYOM</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+  </data>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>Користите крајњу тачку API-ја Chat Completions компатибилну са OpenAI-јем. Подржава GitHub Copilot и OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} не подржава прилагођене добављаче Chat Completions компатибилне са OpenAI-јем. Сачувани добављачи остају доступни када пређете на GitHub Copilot или OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>Уклони</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>Основни URL</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>ID модела</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Додај новог добављача</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>Сачувај</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Откажи</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
+  <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
+    <value>{} | {} | Компатибилно са OpenAI</value>
+    <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
 </root>

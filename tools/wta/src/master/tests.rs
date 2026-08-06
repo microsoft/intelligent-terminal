@@ -16,7 +16,9 @@ impl PendingNewSessionAgent {
         &self,
         _args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
-        Ok(acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1))
+        Ok(acp::schema::v1::InitializeResponse::new(
+            acp::schema::ProtocolVersion::V1,
+        ))
     }
     async fn authenticate(
         &self,
@@ -42,6 +44,182 @@ impl PendingNewSessionAgent {
 // than injecting a fake spawner, which only the I/O plumbing needs).
 
 const DEFAULT_CMD: &str = "copilot --acp --stdio";
+
+#[test]
+fn fresh_host_byok_startup_uses_clean_probe_only_when_needed() {
+    use crate::agent_registry::ByokMode;
+    use crate::agent_source::AgentSource;
+
+    assert_eq!(
+        cloud_catalog_plan(
+            &AgentSource::Host,
+            ByokMode::CopilotProviderEnvironment,
+            true,
+            true,
+        ),
+        CloudCatalogPlan::CleanProbe,
+        "a fresh Host BYOK agent with no helper catalog needs one clean probe"
+    );
+    assert_eq!(
+        cloud_catalog_plan(
+            &AgentSource::Host,
+            ByokMode::CopilotProviderEnvironment,
+            true,
+            false,
+        ),
+        CloudCatalogPlan::Supplied,
+        "a non-empty supplied host snapshot avoids the extra process"
+    );
+    assert_eq!(
+        cloud_catalog_plan(
+            &AgentSource::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            ByokMode::CopilotProviderEnvironment,
+            true,
+            false,
+        ),
+        CloudCatalogPlan::None,
+        "WSL must not consume a Host cloud catalog"
+    );
+    assert_eq!(
+        cloud_catalog_plan(&AgentSource::Host, ByokMode::Unsupported, true, true),
+        CloudCatalogPlan::None,
+        "unsupported agents must not trigger a BYOK cloud probe"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(41);
+            let (ext_tx, mut ext_rx) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(helper_id, ext_tx);
+
+            let config_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let agent = Arc::new(AgentCli {
+                conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "delayed-probe-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
+                bound_helpers: Mutex::new(HashSet::from([helper_id])),
+            });
+            let (complete_tx, complete_rx) = tokio::sync::oneshot::channel();
+            start_clean_cloud_catalog_probe(
+                Arc::clone(&state),
+                Arc::clone(&agent),
+                "copilot".to_string(),
+                async move { complete_rx.await.map_err(anyhow::Error::from) },
+            );
+
+            let mut response = tokio::time::timeout(
+                std::time::Duration::from_millis(50),
+                initialize_response_for_agent(&agent),
+            )
+            .await
+            .expect("helper initialize response must not wait for the clean probe")
+            .expect("pending catalog cannot fail serialization");
+            assert!(
+                crate::protocol::acp::model_select::extract_wta_cloud_catalog(&mut response.meta)
+                    .models
+                    .is_empty(),
+                "pending probe must not fabricate initialize metadata"
+            );
+
+            assert!(complete_tx
+                .send(crate::protocol::acp::probe::ProbeResult {
+                    available_models: vec![crate::app::AcpModelInfo {
+                        id: "cloud-later".to_string(),
+                        name: "Cloud Later".to_string(),
+                        description: None,
+                    }],
+                    current_model_id: None,
+                })
+                .is_ok());
+
+            let notification =
+                tokio::time::timeout(std::time::Duration::from_secs(1), ext_rx.recv())
+                    .await
+                    .expect("completed probe should notify promptly")
+                    .expect("bound helper notification channel remains open");
+            let catalog = crate::protocol::acp::model_select::parse_wta_cloud_catalog_notification(
+                &notification,
+            )
+            .expect("notification should be the private cloud catalog method")
+            .expect("notification payload should parse");
+            assert_eq!(catalog.models.len(), 1);
+            assert_eq!(catalog.models[0].id, "cloud-later");
+            assert_eq!(catalog.source.as_deref(), Some("clean_probe"));
+            assert!(matches!(
+                *agent.cloud_catalog.lock().await,
+                NativeCloudCatalogState::Ready(_)
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(42);
+            let (ext_tx, mut ext_rx) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(helper_id, ext_tx);
+
+            let agent = Arc::new(AgentCli {
+                conn: client_connection_to_model_agent(
+                    false,
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                ),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "failed-probe-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
+                bound_helpers: Mutex::new(HashSet::from([helper_id])),
+            });
+            start_clean_cloud_catalog_probe(
+                Arc::clone(&state),
+                Arc::clone(&agent),
+                "copilot".to_string(),
+                async {
+                    Err::<crate::protocol::acp::probe::ProbeResult, _>(anyhow::anyhow!(
+                        "probe failed"
+                    ))
+                },
+            );
+            tokio::task::yield_now().await;
+
+            assert!(matches!(
+                *agent.cloud_catalog.lock().await,
+                NativeCloudCatalogState::Failed
+            ));
+            assert!(
+                ext_rx.try_recv().is_err(),
+                "a failed probe must not clear or replace the helper's existing catalog"
+            );
+        })
+        .await;
+}
 
 fn allow_set(ids: &[&str]) -> std::collections::HashSet<String> {
     ids.iter().map(|s| s.to_string()).collect()
@@ -71,7 +249,7 @@ fn known_id_with_no_allowlist_is_reconstructed_not_taken_from_pipe() {
     // No host allowlist (manual run / older host) ⇒ any known id is
     // honored, and the command is REBUILT from the id.
     let (cmd, id) = resolve(None, Some("gemini"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert_eq!(id.as_deref(), Some("gemini"));
 }
 
@@ -96,9 +274,36 @@ fn known_agent_selection_preserves_wsl_source() {
         }
     );
     assert_ne!(
-        agent_cmd_key(&command, &crate::agent_source::AgentSource::Host),
-        agent_cmd_key(&command, &source),
+        agent_cmd_key(
+            &command,
+            Some("copilot"),
+            &crate::agent_source::AgentSource::Host,
+        ),
+        agent_cmd_key(&command, Some("copilot"), &source),
         "host and WSL instances must occupy separate pool slots"
+    );
+}
+
+#[test]
+fn agent_pool_key_includes_authoritative_identity() {
+    let command = "copilot --acp --stdio";
+    let source = crate::agent_source::AgentSource::Host;
+    assert_ne!(
+        agent_cmd_key(command, Some("copilot"), &source),
+        agent_cmd_key(command, Some("custom:copilot"), &source)
+    );
+    assert_eq!(
+        agent_cmd_key(command, Some("copilot"), &source),
+        agent_cmd_key(command, Some("copilot"), &source)
+    );
+    assert_ne!(
+        agent_cmd_key("b:c", Some("a"), &source),
+        agent_cmd_key("c", Some("a:b"), &source)
+    );
+    assert!(
+        agent_cmd_key("custom\0command\n", Some("custom\0id"), &source)
+            .chars()
+            .all(|character| !character.is_control())
     );
 }
 
@@ -106,19 +311,19 @@ fn known_agent_selection_preserves_wsl_source() {
 fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
     // Native agent (gemini) takes --model on the command line.
     let (cmd, _) = resolve(None, Some("gemini"), Some("gemini-2.5-pro"));
-    assert_eq!(cmd, "gemini --experimental-acp --model gemini-2.5-pro");
+    assert_eq!(cmd, "gemini --acp --model gemini-2.5-pro");
 
     // Adapter agent (claude via npx) ignores the model here — it's
     // applied later via setSessionModel — so the command is stable.
     let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
-    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp");
+    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp@0.59.0");
     assert_eq!(id.as_deref(), Some("claude"));
 }
 
 #[test]
 fn id_is_case_insensitive() {
     let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert_eq!(id.as_deref(), Some("gemini"));
 }
 
@@ -143,8 +348,17 @@ fn every_known_agent_id_is_honored_not_conflated_with_default_fallback() {
     for profile in crate::agent_registry::KNOWN_AGENTS {
         let (cmd, id) = resolve(None, Some(profile.id), None);
         let expected = crate::agent_registry::build_acp_command(profile.id, None);
-        assert_eq!(cmd, expected, "agent {} must be honored, not fall back", profile.id);
-        assert_eq!(id.as_deref(), Some(profile.id), "id stamp for {}", profile.id);
+        assert_eq!(
+            cmd, expected,
+            "agent {} must be honored, not fall back",
+            profile.id
+        );
+        assert_eq!(
+            id.as_deref(),
+            Some(profile.id),
+            "id stamp for {}",
+            profile.id
+        );
     }
 }
 
@@ -164,7 +378,11 @@ fn unknown_or_custom_id_falls_back_to_trusted_default() {
 fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
     // The flag being *absent* (clap yields `[]`) is the only "no host
     // policy" case → `None` → accept any known id.
-    assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv ⇒ no policy");
+    assert_eq!(
+        normalize_allowed_agent_ids(&[]),
+        None,
+        "no argv ⇒ no policy"
+    );
 
     // The flag being *present* but filtering down to nothing is honored
     // fail-closed → `Some({})` → block every helper-selected id (all tabs
@@ -199,10 +417,7 @@ fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
     .expect("non-empty allowlist");
     assert_eq!(set, allow_set(&["gemini", "copilot"]));
     // Unknown ids mixed with a real id: only the real id survives.
-    let mixed = normalize_allowed_agent_ids(&[
-        "custom:myapp".to_string(),
-        "claude".to_string(),
-    ])
+    let mixed = normalize_allowed_agent_ids(&["custom:myapp".to_string(), "claude".to_string()])
     .expect("one real id survives");
     assert_eq!(mixed, allow_set(&["claude"]));
 
@@ -262,7 +477,7 @@ fn gpo_allowlist_blocks_known_but_unlisted_ids() {
     let allowed = allow_set(&["gemini"]);
     // gemini is listed ⇒ honored.
     let (cmd, _) = resolve(Some(&allowed), Some("gemini"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     // copilot is a *known* agent but NOT in the GPO-filtered set ⇒
     // refused, fall back to default. (Defends against a peer helper
     // selecting a policy-blocked agent.)
@@ -288,7 +503,7 @@ fn agent_cmd_from_the_pipe_is_never_executed() {
     );
     let wta = crate::session_registry::extract_wta_meta(&mut meta);
     let (cmd, _) = resolve(None, wta.agent_id.as_deref(), wta.model.as_deref());
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert!(!cmd.contains("calc.exe"), "pipe command must never appear");
 }
 
@@ -308,6 +523,8 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
 fn make_state() -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_usage: Mutex::new(HashMap::new()),
+        usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
@@ -337,26 +554,256 @@ fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
     let agent_builder = acp::Agent
         .builder()
         .name("pending-agent")
-        .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
-            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+        .on_receive_request(
+            {
+                let m = mock.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let m = m.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
             match req {
-                Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
-                Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
-                Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
+                            Q::InitializeRequest(a) => conn::respond_enum(
+                                responder,
+                                m.initialize(a).await.map(R::InitializeResponse),
+                            ),
+                            Q::AuthenticateRequest(a) => conn::respond_enum(
+                                responder,
+                                m.authenticate(a).await.map(R::AuthenticateResponse),
+                            ),
+                            Q::NewSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.new_session(a).await.map(R::NewSessionResponse),
+                            ),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
-        } } }, acp::on_receive_request!());
-    let (_agent_conn, agent_io) =
-        conn::spawn_agent(agent_builder, conn::byte_streams(agent_write.compat_write(), agent_read.compat()));
-    tokio::task::spawn_local(async move { let _ = agent_io.await; });
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
 
     let (client_conn, client_io) = conn::spawn_client(
         acp::Client.builder().name("noop-client"),
         conn::byte_streams(client_write.compat_write(), client_read.compat()),
     );
-    tokio::task::spawn_local(async move { let _ = client_io.await; });
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
 
     client_conn
+}
+
+fn client_connection_to_model_agent(
+    config_method_not_found: bool,
+    config_hit: Arc<std::sync::atomic::AtomicBool>,
+    legacy_hit: Arc<std::sync::atomic::AtomicBool>,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+    let agent_builder = acp::Agent
+        .builder()
+        .name("model-agent")
+        .on_receive_request(
+            move |_req: acp::schema::v1::SetSessionConfigOptionRequest,
+                  responder: acp::Responder<acp::schema::v1::SetSessionConfigOptionResponse>,
+                  _cx| {
+                let config_hit = Arc::clone(&config_hit);
+                async move {
+                    config_hit.store(true, std::sync::atomic::Ordering::SeqCst);
+                    if config_method_not_found {
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    } else {
+                        responder.respond(acp::schema::v1::SetSessionConfigOptionResponse::new(
+                            Vec::new(),
+                        ))
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_request(
+            move |_req: conn::SetSessionModelRequest,
+                  responder: acp::Responder<conn::SetSessionModelResponse>,
+                  _cx| {
+                let legacy_hit = Arc::clone(&legacy_hit);
+                async move {
+                    legacy_hit.store(true, std::sync::atomic::Ordering::SeqCst);
+                    responder.respond(conn::SetSessionModelResponse::default())
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("model-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+
+    client_conn
+}
+
+fn model_handler(agent: Arc<AgentCli>, helper_id: u64) -> HelperHandler {
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let slot = Arc::new(OnceLock::new());
+    let _ = slot.set(agent);
+    HelperHandler {
+        helper_id: HelperId(helper_id),
+        agent: slot,
+        state: make_state(),
+        notif_tx,
+        agent_side_slot: Arc::new(OnceLock::new()),
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pooled_agents_keep_model_switch_channels_isolated() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            use std::sync::atomic::{AtomicBool, Ordering};
+
+            let a_config_hit = Arc::new(AtomicBool::new(false));
+            let a_legacy_hit = Arc::new(AtomicBool::new(false));
+            let agent_a = Arc::new(AgentCli {
+                conn: client_connection_to_model_agent(
+                    true,
+                    Arc::clone(&a_config_hit),
+                    Arc::clone(&a_legacy_hit),
+                ),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: None,
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "agent-a".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+
+            let b_config_hit = Arc::new(AtomicBool::new(false));
+            let b_legacy_hit = Arc::new(AtomicBool::new(false));
+            let agent_b = Arc::new(AgentCli {
+                conn: client_connection_to_model_agent(
+                    false,
+                    Arc::clone(&b_config_hit),
+                    Arc::clone(&b_legacy_hit),
+                ),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: None,
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "agent-b".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+
+            for (session_id, config_id) in [("session-a", "model-a"), ("session-b", "model-b")] {
+                let response: acp::schema::v1::NewSessionResponse =
+                    serde_json::from_value(serde_json::json!({
+                        "sessionId": session_id,
+                        "configOptions": [{
+                            "id": config_id,
+                            "name": "Model",
+                            "category": "model",
+                            "type": "select",
+                            "currentValue": "default",
+                            "options": [{"value": "default", "name": "Default"}]
+                        }]
+                    }))
+                    .expect("valid model response");
+                let _ = crate::protocol::acp::model_select::models_from_new_session(&response);
+            }
+
+            model_handler(Arc::clone(&agent_a), 1)
+                .set_session_model(conn::SetSessionModelRequest::new("session-a", "alpha"))
+                .await
+                .expect("agent A should fall back to legacy set_model");
+            model_handler(Arc::clone(&agent_b), 2)
+                .set_session_model(conn::SetSessionModelRequest::new("session-b", "beta"))
+                .await
+                .expect("agent B should keep using its config selector");
+
+            assert!(a_config_hit.load(Ordering::SeqCst));
+            assert!(a_legacy_hit.load(Ordering::SeqCst));
+            assert!(b_config_hit.load(Ordering::SeqCst));
+            assert!(!b_legacy_hit.load(Ordering::SeqCst));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn direct_resume_updates_model_switch_channel_from_load_response() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            use std::sync::atomic::{AtomicBool, Ordering};
+
+            let config_hit = Arc::new(AtomicBool::new(false));
+            let legacy_hit = Arc::new(AtomicBool::new(false));
+            let agent = Arc::new(AgentCli {
+                conn: client_connection_to_model_agent(
+                    false,
+                    Arc::clone(&config_hit),
+                    Arc::clone(&legacy_hit),
+                ),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: None,
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "resume-only-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let response: acp::schema::v1::LoadSessionResponse = serde_json::from_str(
+                r#"{
+                    "configOptions": [{
+                        "id": "resume-model",
+                        "name": "Model",
+                        "category": "model",
+                        "type": "select",
+                        "currentValue": "sonnet",
+                        "options": [{"value": "sonnet", "name": "Sonnet"}]
+                    }]
+                }"#,
+            )
+            .expect("valid load_session response");
+
+            let resumed_session = acp::schema::v1::SessionId::new("resumed-session");
+            let (_, current_model_id) =
+                update_model_switch_channel_from_load(&resumed_session, &response);
+            assert_eq!(current_model_id.as_deref(), Some("sonnet"));
+
+            model_handler(Arc::clone(&agent), 1)
+                .set_session_model(conn::SetSessionModelRequest::new(
+                    "resumed-session",
+                    "sonnet",
+                ))
+                .await
+                .expect("direct resume should switch through config options");
+
+            assert!(config_hit.load(Ordering::SeqCst));
+            assert!(!legacy_hit.load(Ordering::SeqCst));
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -378,6 +825,8 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 cli_source: None,
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "copilot --acp --stdio".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
                 helper_id: HelperId(1),
@@ -428,9 +877,8 @@ fn cloned_helper_handlers_share_the_lazy_agent_binding() {
 #[tokio::test]
 async fn request_permission_for_orphaned_session_returns_cancelled_not_error() {
     use acp::schema::v1::{
-        PermissionOption, PermissionOptionId, PermissionOptionKind,
-        RequestPermissionOutcome, RequestPermissionRequest, ToolCallId, ToolCallUpdate,
-        ToolCallUpdateFields,
+        PermissionOption, PermissionOptionId, PermissionOptionKind, RequestPermissionOutcome,
+        RequestPermissionRequest, ToolCallId, ToolCallUpdate, ToolCallUpdateFields,
     };
     let state = make_state();
     let client = MasterClient {
@@ -532,8 +980,7 @@ async fn prompt_forward_survives_reentrant_permission() {
         AgentRequest, AgentResponse, ClientRequest, ClientResponse, PermissionOption,
         PermissionOptionId, PermissionOptionKind, PromptRequest, PromptResponse,
         RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-        SelectedPermissionOutcome, StopReason, ToolCallId, ToolCallUpdate,
-        ToolCallUpdateFields,
+        SelectedPermissionOutcome, StopReason, ToolCallId, ToolCallUpdate, ToolCallUpdateFields,
     };
 
     tokio::task::LocalSet::new()
@@ -548,7 +995,8 @@ async fn prompt_forward_survives_reentrant_permission() {
             // task so the mock's own dispatch loop stays free), then EndTurn.
             {
                 let (ar, aw) = tokio::io::split(mock_agent_pipe);
-                let builder = acp::Agent
+                let builder =
+                    acp::Agent
                     .builder()
                     .name("mock-reentrant-agent")
                     .on_receive_request(
@@ -583,16 +1031,15 @@ async fn prompt_forward_survives_reentrant_permission() {
                                     });
                                     Ok(())
                                 }
-                                _ => responder
-                                    .respond_with_error(acp::Error::method_not_found()),
+                                    _ => {
+                                        responder.respond_with_error(acp::Error::method_not_found())
+                                    }
                             }
                         },
                         acp::on_receive_request!(),
                     );
-                let (_agent_link, agent_io) = conn::spawn_agent(
-                    builder,
-                    conn::byte_streams(aw.compat_write(), ar.compat()),
-                );
+                let (_agent_link, agent_io) =
+                    conn::spawn_agent(builder, conn::byte_streams(aw.compat_write(), ar.compat()));
                 tokio::task::spawn_local(async move {
                     let _ = agent_io.await;
                 });
@@ -618,24 +1065,21 @@ async fn prompt_forward_survives_reentrant_permission() {
                                         AgentRequest::RequestPermissionRequest(a) => {
                                             conn::respond_enum(
                                                 responder,
-                                                c.request_permission(a).await.map(
-                                                    ClientResponse::RequestPermissionResponse,
-                                                ),
+                                                c.request_permission(a)
+                                                    .await
+                                                    .map(ClientResponse::RequestPermissionResponse),
                                             )
                                         }
-                                        _ => responder.respond_with_error(
-                                            acp::Error::method_not_found(),
-                                        ),
+                                        _ => responder
+                                            .respond_with_error(acp::Error::method_not_found()),
                                     }
                                 }
                             }
                         },
                         acp::on_receive_request!(),
                     );
-                let (link, io) = conn::spawn_client(
-                    builder,
-                    conn::byte_streams(cw.compat_write(), cr.compat()),
-                );
+                let (link, io) =
+                    conn::spawn_client(builder, conn::byte_streams(cw.compat_write(), cr.compat()));
                 tokio::task::spawn_local(async move {
                     let _ = io.await;
                 });
@@ -653,6 +1097,8 @@ async fn prompt_forward_survives_reentrant_permission() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "copilot --acp --stdio".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
                 helper_id: HelperId(1),
@@ -677,19 +1123,16 @@ async fn prompt_forward_survives_reentrant_permission() {
                                         ClientRequest::PromptRequest(a) => {
                                             h.prompt(a, responder).await
                                         }
-                                        _ => responder.respond_with_error(
-                                            acp::Error::method_not_found(),
-                                        ),
+                                        _ => responder
+                                            .respond_with_error(acp::Error::method_not_found()),
                                     }
                                 }
                             }
                         },
                         acp::on_receive_request!(),
                     );
-                let (link, io) = conn::spawn_agent(
-                    builder,
-                    conn::byte_streams(mw.compat_write(), mr.compat()),
-                );
+                let (link, io) =
+                    conn::spawn_agent(builder, conn::byte_streams(mw.compat_write(), mr.compat()));
                 tokio::task::spawn_local(async move {
                     let _ = io.await;
                 });
@@ -717,8 +1160,7 @@ async fn prompt_forward_survives_reentrant_permission() {
                     .on_receive_request(
                         move |req: AgentRequest, responder, _cx| async move {
                             match req {
-                                AgentRequest::RequestPermissionRequest(_a) => {
-                                    conn::respond_enum(
+                                AgentRequest::RequestPermissionRequest(_a) => conn::respond_enum(
                                         responder,
                                         Ok(ClientResponse::RequestPermissionResponse(
                                             RequestPermissionResponse::new(
@@ -729,18 +1171,14 @@ async fn prompt_forward_survives_reentrant_permission() {
                                                 ),
                                             ),
                                         )),
-                                    )
-                                }
-                                _ => responder
-                                    .respond_with_error(acp::Error::method_not_found()),
+                                ),
+                                _ => responder.respond_with_error(acp::Error::method_not_found()),
                             }
                         },
                         acp::on_receive_request!(),
                     );
-                let (link, io) = conn::spawn_client(
-                    builder,
-                    conn::byte_streams(hw.compat_write(), hr.compat()),
-                );
+                let (link, io) =
+                    conn::spawn_client(builder, conn::byte_streams(hw.compat_write(), hr.compat()));
                 tokio::task::spawn_local(async move {
                     let _ = io.await;
                 });
@@ -788,6 +1226,13 @@ fn make_notif(sid: &SessionId) -> SessionNotification {
     SessionNotification::new(
         sid.clone(),
         SessionUpdate::AgentMessageChunk(ContentChunk::new("hi".into())),
+    )
+}
+
+fn make_usage_notif(sid: &SessionId, used: u64) -> SessionNotification {
+    SessionNotification::new(
+        sid.clone(),
+        SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(used, 100)),
     )
 }
 
@@ -995,6 +1440,94 @@ async fn session_notification_drops_on_full_channel() {
     assert!(
         map.contains_key(&sid),
         "Full (not Closed) must NOT remove the routing entry"
+    );
+}
+
+#[tokio::test]
+async fn session_notification_coalesces_context_without_dropping_pending_cost() {
+    let state = make_state();
+    let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
+    let sid = SessionId::new("slow-usage-helper");
+    {
+        let mut map = state.session_to_helper.lock().await;
+        map.insert(
+            sid.clone(),
+            HelperRoute {
+                helper_id: HelperId(10),
+                notif_tx: tx.clone(),
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        );
+    }
+    tx.try_send(make_notif(&sid)).unwrap();
+
+    route(
+        &state,
+        SessionNotification::new(
+            sid.clone(),
+            SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(10, 100)
+                    .cost(acp::schema::v1::Cost::new(0.004, "USD")),
+            ),
+        ),
+    )
+    .await;
+    route(&state, make_usage_notif(&sid, 25)).await;
+
+    assert_eq!(tx.capacity(), 0);
+    let pending = state.pending_usage.lock().await;
+    let (owner, notification) = pending.get(&sid).expect("latest usage retained");
+    assert_eq!(*owner, HelperId(10));
+    match &notification.update {
+        SessionUpdate::UsageUpdate(update) => {
+            assert_eq!(update.used, 25);
+            assert_eq!(
+                update.cost.as_ref(),
+                Some(&acp::schema::v1::Cost::new(0.004, "USD"))
+            );
+        }
+        other => panic!("expected usage update, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn rebinding_session_clears_previous_helpers_pending_usage() {
+    let state = make_state();
+    let sid = SessionId::new("rebound-usage-session");
+    let (tx_a, _rx_a) = mpsc::channel::<SessionNotification>(1);
+    let (tx_b, _rx_b) = mpsc::channel::<SessionNotification>(1);
+
+    bind_session_route(
+        &state,
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(1),
+            notif_tx: tx_a,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+    route(&state, make_usage_notif(&sid, 25)).await;
+    assert!(state.pending_usage.lock().await.contains_key(&sid));
+
+    bind_session_route(
+        &state,
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(2),
+            notif_tx: tx_b,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+
+    assert!(!state.pending_usage.lock().await.contains_key(&sid));
+    assert_eq!(
+        state.session_to_helper.lock().await[&sid].helper_id,
+        HelperId(2)
     );
 }
 
@@ -1327,16 +1860,16 @@ async fn master_client_create_terminal_unknown_session_returns_internal_error() 
     let client = MasterClient {
         state: Arc::clone(&state),
     };
-    let req =
-        acp::schema::v1::CreateTerminalRequest::new(SessionId::new("nobody-home"), "echo".to_string());
+    let req = acp::schema::v1::CreateTerminalRequest::new(
+        SessionId::new("nobody-home"),
+        "echo".to_string(),
+    );
     let err = client
         .create_terminal(req)
         .await
         .expect_err("create_terminal on unknown session must fail");
     assert_eq!(err.code, acp::ErrorCode::InternalError);
 }
-
-
 
 #[tokio::test]
 async fn sessions_list_handler_returns_registry_snapshot_payload() {
@@ -1350,11 +1883,13 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
     row.last_activity_at_ms = Some(42);
     state.registry.upsert(row.clone()).await;
 
-    let resp = handle_sessions_list(&state, &session_registry::SessionsListParams { rescan: false })
+    let resp = handle_sessions_list(
+        &state,
+        &session_registry::SessionsListParams { rescan: false },
+    )
         .await
         .expect("sessions/list succeeds");
-    let parsed = session_registry::parse_sessions_list_response(&resp.0)
-        .expect("response parses");
+    let parsed = session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
 
     assert_eq!(parsed.sessions, vec![row]);
 }
@@ -1370,14 +1905,20 @@ async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
     let sid = SessionId::new("removed-a");
     {
         let mut map = state.session_to_helper.lock().await;
-        map.insert(sid.clone(), HelperRoute {
+        map.insert(
+            sid.clone(),
+            HelperRoute {
             helper_id: HelperId(1),
             notif_tx,
             forwarder: None,
             consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        });
+            },
+        );
     }
-    state.registry.upsert(SessionInfo::new(sid, PathBuf::from("C:\\repo"))).await;
+    state
+        .registry
+        .upsert(SessionInfo::new(sid, PathBuf::from("C:\\repo")))
+        .await;
     {
         let mut subs = state.helper_ext_subscribers.lock().await;
         subs.insert(HelperId(2), ext_tx);
@@ -1489,11 +2030,15 @@ async fn session_focus_without_pane_returns_no_pane() {
     assert!(mock.calls().is_empty());
 }
 
-fn session_resume_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionResumeDispatchedParams {
+fn session_resume_params_for(
+    sid: &acp::schema::v1::SessionId,
+) -> crate::session_registry::SessionResumeDispatchedParams {
     crate::session_registry::SessionResumeDispatchedParams { sid: sid.clone() }
 }
 
-fn session_focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionFocusParams {
+fn session_focus_params_for(
+    sid: &acp::schema::v1::SessionId,
+) -> crate::session_registry::SessionFocusParams {
     crate::session_registry::SessionFocusParams { sid: sid.clone() }
 }
 
@@ -1549,11 +2094,11 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
     }
 }
 
-fn make_state_with_wt(
-    wt: Arc<dyn crate::shell::wt_channel::WtChannel>,
-) -> Arc<MasterStateInner> {
+fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_usage: Mutex::new(HashMap::new()),
+        usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
@@ -1574,8 +2119,12 @@ fn make_state_with_wt(
     })
 }
 
-fn focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::FocusSessionParams {
-    crate::session_registry::FocusSessionParams { session_id: sid.clone() }
+fn focus_params_for(
+    sid: &acp::schema::v1::SessionId,
+) -> crate::session_registry::FocusSessionParams {
+    crate::session_registry::FocusSessionParams {
+        session_id: sid.clone(),
+    }
 }
 
 /// Happy path: sid in registry with pane_session_id, WtChannel present.
@@ -1702,7 +2251,11 @@ async fn focus_session_wraps_wt_failure_as_internal_error() {
 async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
     let state = make_state();
     let (tx, mut rx) = mpsc::unbounded_channel();
-    state.helper_ext_subscribers.lock().await.insert(HelperId(7), tx);
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(7), tx);
 
     // Use SessionStarted because it unconditionally upserts a row,
     // so the reducer returns true and the broadcast fires. PaneClosed
@@ -1767,7 +2320,10 @@ async fn refresh_synthetic_titles_from_upgrades_known_placeholder_titles_only() 
     let titles = HashMap::from([
         ("sid-empty".to_string(), "Empty Real Title".to_string()),
         ("sid-base".to_string(), "Basename Real Title".to_string()),
-        ("sid-placeholder".to_string(), "OpenCode Real Title".to_string()),
+        (
+            "sid-placeholder".to_string(),
+            "OpenCode Real Title".to_string(),
+        ),
         ("sid-real".to_string(), "Should Not Overwrite".to_string()),
     ]);
 
@@ -1827,8 +2383,7 @@ async fn refresh_synthetic_titles_from_skips_when_id_absent() {
     state.registry.upsert(row).await;
 
     assert!(
-        !refresh_synthetic_titles_from(&*state.registry, &std::collections::HashMap::new())
-            .await
+        !refresh_synthetic_titles_from(&*state.registry, &std::collections::HashMap::new()).await
     );
     assert_eq!(
         state
@@ -1918,35 +2473,53 @@ fn wsl_title_seed_warranted_only_for_live_pane_bound_non_host_synthetic() {
     // and its id is NOT in the host session/list → warrants a WSL scan.
     let wsl_row = live_synthetic_pane_row("wsl-sid");
     let no_host: HashSet<String> = HashSet::new();
-    assert!(wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &no_host));
+    assert!(wsl_title_seed_warranted(
+        std::slice::from_ref(&wsl_row),
+        &no_host
+    ));
 
     // Same row, but the host CLI lists it (a host delegate not yet titled) →
     // the host title refresh owns it, no WSL scan.
     let host_ids: HashSet<String> = ["wsl-sid".to_string()].into_iter().collect();
-    assert!(!wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &host_ids));
+    assert!(!wsl_title_seed_warranted(
+        std::slice::from_ref(&wsl_row),
+        &host_ids
+    ));
 
     // A Host-located row with the same live/synthetic/pane-bound shape must
     // NOT warrant a scan, even when the host list is empty (temporarily
     // unavailable) — only in-distro rows can be titled by a WSL scan.
     let mut host_row = live_synthetic_pane_row("host-sid");
     host_row.location = SessionLocation::Host;
-    assert!(!wsl_title_seed_warranted(std::slice::from_ref(&host_row), &no_host));
+    assert!(!wsl_title_seed_warranted(
+        std::slice::from_ref(&host_row),
+        &no_host
+    ));
 
     // A non-synthetic row never warrants a scan.
     let mut titled = live_synthetic_pane_row("titled-sid");
     titled.title = Some("Real Title".to_string());
-    assert!(!wsl_title_seed_warranted(std::slice::from_ref(&titled), &no_host));
+    assert!(!wsl_title_seed_warranted(
+        std::slice::from_ref(&titled),
+        &no_host
+    ));
 
     // Historical / ended synthetic rows are excluded so an untitled old row
     // can't drive perpetual scans.
     let mut ended = live_synthetic_pane_row("ended-sid");
     ended.status = Some(AgentStatus::Ended);
-    assert!(!wsl_title_seed_warranted(std::slice::from_ref(&ended), &no_host));
+    assert!(!wsl_title_seed_warranted(
+        std::slice::from_ref(&ended),
+        &no_host
+    ));
 
     // A synthetic live row with no pane binding (not born-bound) is excluded.
     let mut unbound = live_synthetic_pane_row("unbound-sid");
     unbound.pane_session_id = None;
-    assert!(!wsl_title_seed_warranted(std::slice::from_ref(&unbound), &no_host));
+    assert!(!wsl_title_seed_warranted(
+        std::slice::from_ref(&unbound),
+        &no_host
+    ));
 }
 
 #[tokio::test]
@@ -1992,12 +2565,21 @@ fn row_refreshable_skips_only_definitively_cross_cli() {
     );
     // Same known cli → refreshable.
     row.cli_source = Some(CliSource::Copilot);
-    assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+    assert!(row_refreshable_by_connected_agent(
+        &row,
+        Some(&CliSource::Copilot)
+    ));
     // Different known cli → skipped (the connected agent can't enumerate it).
-    assert!(!row_refreshable_by_connected_agent(&row, Some(&CliSource::Claude)));
+    assert!(!row_refreshable_by_connected_agent(
+        &row,
+        Some(&CliSource::Claude)
+    ));
     // Unknown cli on either side → attempt (never skip).
     row.cli_source = None;
-    assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+    assert!(row_refreshable_by_connected_agent(
+        &row,
+        Some(&CliSource::Copilot)
+    ));
     row.cli_source = Some(CliSource::Copilot);
     assert!(row_refreshable_by_connected_agent(&row, None));
 }
@@ -2030,7 +2612,9 @@ fn is_stale_host_history_row_reconcile_rules() {
     assert!(!is_stale_host_history_row(&pane, &listed));
     // WSL row → host can't authoritatively list distro sessions.
     let mut wsl = mk("gone");
-    wsl.location = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
+    wsl.location = SessionLocation::Wsl {
+        distro: "Ubuntu".to_string(),
+    };
     assert!(!is_stale_host_history_row(&wsl, &listed));
 }
 
@@ -2171,7 +2755,9 @@ async fn watcher_event_dropped_for_agent_pane_session() {
 
     let row = state
         .registry
-        .lookup(&acp::schema::v1::SessionId::new("sid-agent-pane".to_string()))
+        .lookup(&acp::schema::v1::SessionId::new(
+            "sid-agent-pane".to_string(),
+        ))
         .await
         .unwrap();
     // Still Idle — the watcher's ToolStarting (Working) was dropped.
@@ -2266,7 +2852,9 @@ async fn born_bound_wsl_stamps_wsl_location() {
     let sid = acp::schema::v1::SessionId::new("bb-wsl-loc".to_string());
     assert_eq!(
         state.registry.lookup(&sid).await.unwrap().location,
-        crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        crate::agent_sessions::SessionLocation::Wsl {
+            distro: "Ubuntu".to_string()
+        },
         "WSL born-bound row must be stamped Wsl {{ distro }}"
     );
     // Still binding-only, like any born-bound row.
@@ -2303,8 +2891,10 @@ async fn born_bound_session_gets_watcher_activity_without_rebinding() {
     let state = make_state();
     let sid = acp::schema::v1::SessionId::new("bb-activity".to_string());
 
-    let mut info =
-        crate::session_registry::SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\repo"));
+    let mut info = crate::session_registry::SessionInfo::new(
+        sid.clone(),
+        std::path::PathBuf::from("C:\\repo"),
+    );
     info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
     info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
     info.status = Some(crate::agent_sessions::AgentStatus::Idle);

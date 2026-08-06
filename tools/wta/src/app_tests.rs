@@ -5,6 +5,8 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
+use crate::app::tab_state::collapsed_prompt_preview;
+use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
@@ -1258,10 +1260,7 @@ fn load_session_applied_when_target_tab_matches_owner() {
     app.owner_tab_id = Some("OWNER-TAB".to_string());
     app.tab_sessions
         .insert("OWNER-TAB".to_string(), TabSession::default());
-    app.tab_sessions
-        .get_mut("OWNER-TAB")
-        .unwrap()
-        .session_id = Some("old-session".into());
+    app.tab_sessions.get_mut("OWNER-TAB").unwrap().session_id = Some("old-session".into());
     app.session_model_configs.insert(
         "old-session".into(),
         (vec![model_info("gpt-5.6-sol")], Some("gpt-5.6-sol".into())),
@@ -1998,7 +1997,7 @@ fn sessions_changed_with_closed_agents_view_is_noop() {
     assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
 }
 
-// ─── /model per-pane override ───────────────────────────────────────────
+// ─── /model and Settings model updates ──────────────────────────────────
 
 fn model_info(id: &str) -> AcpModelInfo {
     AcpModelInfo {
@@ -2008,19 +2007,31 @@ fn model_info(id: &str) -> AcpModelInfo {
     }
 }
 
+fn custom_model_info(id: &str) -> CustomModelCatalogEntry {
+    CustomModelCatalogEntry {
+        selection_id: id.to_string(),
+        model_id: id.to_string(),
+        ..Default::default()
+    }
+}
+
 #[test]
 fn model_config_update_refreshes_active_session_picker() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("sid-1".into());
     app.available_models = vec![model_info("claude-sonnet-5")];
     app.current_model_id = Some("claude-sonnet-5".into());
+    app.set_custom_model_config(
+        vec![
+            custom_model_info("claude-sonnet-5"),
+            custom_model_info("gpt-5.6-sol"),
+        ],
+        None,
+    );
 
     app.handle_event(AppEvent::ModelConfigUpdated {
         session_id: "sid-1".into(),
-        available_models: vec![
-            model_info("claude-sonnet-5"),
-            model_info("gpt-5.6-sol"),
-        ],
+        available_models: vec![model_info("claude-sonnet-5"), model_info("gpt-5.6-sol")],
         current_model_id: Some("gpt-5.6-sol".into()),
     });
 
@@ -2088,7 +2099,10 @@ fn session_attach_prunes_replaced_session_model_config() {
         .insert("sid-old".into(), DEFAULT_TAB_ID.into());
     app.session_model_configs.insert(
         "sid-old".into(),
-        (vec![model_info("claude-sonnet-5")], Some("claude-sonnet-5".into())),
+        (
+            vec![model_info("claude-sonnet-5")],
+            Some("claude-sonnet-5".into()),
+        ),
     );
 
     app.handle_event(AppEvent::SessionAttached {
@@ -2155,73 +2169,184 @@ fn new_session_prunes_previous_model_config() {
 
 /// `/model <id>` records a per-pane override and hot-applies it to *that*
 /// tab's live session (a targeted `SetSessionModel`, not a fan-out).
+/// Cloud/native models remain available to Settings but are not exposed
+/// through `/model`, so the command cannot create a live pane override.
 #[test]
-fn model_pick_overrides_and_applies_to_live_session() {
-    use crate::protocol::acp::client::MasterExtRequest;
+fn slash_model_does_not_apply_cloud_model_to_live_session() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
-    app.available_models = vec![model_info("gpt-5.5"), model_info("gpt-5.4")];
+    app.set_cloud_models(vec![model_info("gpt-5.5"), model_info("gpt-5.4")]);
     app.current_tab_mut().session_id = Some("sid-1".into());
 
     app.cmd_model("gpt-5.4".into());
 
+    assert!(
+        app.current_tab().model_override.is_none(),
+        "cloud models must not create a pane-local override"
+    );
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the command must not send SetSessionModel for a hidden cloud model"
+    );
+}
+
+/// A pane-local `/model` pick remains authoritative when the matching global
+/// agent changes its default model.
+#[test]
+fn global_settings_change_preserves_local_pick() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_agent_id = "copilot".into();
+    app.follows_global_acp_model = true;
+    app.available_models = vec![model_info("local"), model_info("globalv2")];
+    app.current_tab_mut().session_id = Some("sid-1".into());
+
+    // Preserve a preexisting pane override while applying a Settings update.
+    app.current_tab_mut().model_override = Some("local".into());
+    app.current_model_id = Some("local".into());
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+
+    app.apply_global_acp_model("copilot", Some("globalv2".into()));
+
     assert_eq!(
         app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4"),
-        "the pane records its per-pane override"
+        Some("local"),
+        "a global change must preserve the per-pane override"
     );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("local"),
+        "the visible current model remains the pane override"
+    );
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the global model must not be sent to a locally overridden pane"
+    );
+}
+
+#[test]
+fn fresh_session_model_replaces_stale_agent_default() {
+    let mut app = test_app();
+    app.current_model_id = Some("stale".into());
+    app.agent_current_model_id = Some("stale".into());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("stale"), model_info("fresh")],
+        current_model_id: Some("fresh".into()),
+    });
+
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("fresh"),
+        "a fresh agent-reported default must replace stale state when no override applies"
+    );
+}
+
+#[test]
+fn fresh_agent_connection_model_replaces_stale_agent_default() {
+    let mut app = test_app();
+    app.current_model_id = Some("stale".into());
+    app.agent_current_model_id = Some("stale".into());
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".into(),
+        model: None,
+        version: None,
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("stale"), model_info("fresh")],
+        current_model_id: Some("fresh".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("fresh"));
+}
+
+#[test]
+fn fresh_session_model_does_not_replace_global_override() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.acp_model = Some("global".into());
+    app.current_model_id = Some("global".into());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("agent-default"), model_info("global")],
+        current_model_id: Some("agent-default".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("global"));
     match master_rx
         .try_recv()
-        .expect("a live session gets set_session_model")
+        .expect("the global override must be re-applied to the fresh session")
     {
         MasterExtRequest::SetSessionModel { session_id, model } => {
-            assert_eq!(model, "gpt-5.4");
-            assert_eq!(
-                session_id.expect("targets just this session").0.to_string(),
-                "sid-1"
-            );
+            assert_eq!(session_id.unwrap().0.to_string(), "sid-fresh");
+            assert_eq!(model, "global");
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
 }
 
-/// A global `acpModel` settings change is authoritative: it overrides a
-/// pane's local `/model` pick — clearing the override, redirecting the
-/// shared current model, and pushing the new model to the pane's session.
 #[test]
-fn global_settings_change_overrides_local_pick() {
+fn fresh_session_model_does_not_replace_pane_override_on_new() {
     use crate::protocol::acp::client::MasterExtRequest;
+
     let (mut app, mut master_rx) = test_app_with_master_rx();
-    app.available_models = vec![model_info("local"), model_info("globalv2")];
-    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.current_tab_mut().model_override = Some("pane-picked".into());
+    app.current_model_id = Some("pane-picked".into());
 
-    // Pane pins a local model first.
-    app.cmd_model("local".into());
-    let _ = master_rx.try_recv(); // drain the pick's own apply
-    assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-new".into(),
+        available_models: vec![model_info("agent-default"), model_info("pane-picked")],
+        current_model_id: Some("agent-default".into()),
+    });
 
-    // Global settings change to a different model — authoritative.
-    app.apply_global_acp_model(Some("globalv2".into()));
-
+    assert_eq!(app.current_model_id.as_deref(), Some("pane-picked"));
     assert_eq!(
-        app.current_tab().model_override,
-        None,
-        "a global change clears the per-pane override"
-    );
-    assert_eq!(
-        app.current_model_id.as_deref(),
-        Some("globalv2"),
-        "the shared current model follows the new global value"
+        app.current_tab().model_override.as_deref(),
+        Some("pane-picked"),
+        "/new must retain the pane's explicit model override"
     );
     match master_rx
         .try_recv()
-        .expect("the previously-overridden pane still gets the new global model")
+        .expect("the pane override must be re-applied to the /new session")
     {
         MasterExtRequest::SetSessionModel { session_id, model } => {
-            assert_eq!(model, "globalv2");
-            assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            assert_eq!(session_id.unwrap().0.to_string(), "sid-new");
+            assert_eq!(model, "pane-picked");
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
+}
+
+#[test]
+fn fresh_session_model_does_not_replace_custom_selection() {
+    let mut app = test_app();
+    app.set_custom_model_config(
+        vec![CustomModelCatalogEntry {
+            selection_id: "custom:provider:model".into(),
+            provider_id: "provider".into(),
+            model_id: "model".into(),
+            ..Default::default()
+        }],
+        Some("custom:provider:model".into()),
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("agent-default")],
+        current_model_id: Some("agent-default".into()),
+    });
+
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider:model")
+    );
 }
 
 /// A pane with no local pick follows the global `acpModel` on hot-reload.
@@ -2244,6 +2369,428 @@ fn non_overridden_pane_follows_global_model() {
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
+}
+
+#[test]
+fn global_model_hot_update_is_scoped_to_matching_global_followers() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_agent_id = "gemini".into();
+    app.follows_global_acp_model = true;
+    app.current_tab_mut().session_id = Some("gemini-session".into());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(app.acp_model.is_none());
+    assert!(master_rx.try_recv().is_err());
+
+    app.current_agent_id = "copilot".into();
+    app.follows_global_acp_model = false;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(
+        app.acp_model.is_none(),
+        "a per-profile/per-tab pinned helper must not follow the global model"
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.follows_global_acp_model = true;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert_eq!(app.acp_model.as_deref(), Some("copilot-only-model"));
+    match master_rx
+        .try_recv()
+        .expect("matching global-following helper should receive the model")
+    {
+        MasterExtRequest::SetSessionModel { session_id, model } => {
+            assert_eq!(session_id.unwrap().0.to_string(), "gemini-session");
+            assert_eq!(model, "copilot-only-model");
+        }
+        other => panic!("expected SetSessionModel, got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".into(),
+        model: None,
+        version: None,
+        session_id: "sid-1".into(),
+        available_models: vec![model_info("cloud")],
+        current_model_id: Some("cloud".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+    app.set_custom_model_config(
+        vec![
+            CustomModelCatalogEntry {
+                selection_id: "custom:selected:model-a".into(),
+                provider_name: "Selected Provider".into(),
+                model_id: "model-a".into(),
+                name: "Selected Model".into(),
+                ..Default::default()
+            },
+            CustomModelCatalogEntry {
+                selection_id: "custom:old:model-b".into(),
+                provider_name: "Old Provider".into(),
+                model_id: "model-b".into(),
+                name: "Old Model".into(),
+                ..Default::default()
+            },
+        ],
+        Some("custom:selected:model-a".into()),
+    );
+    app.open_model_picker();
+    let stale_index = app.model_picker_models.len() - 1;
+    app.current_tab_mut().model_picker_selected = stale_index;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:selected:model-a",
+            "custom_models": [
+                {
+                    "selection_id": "custom:selected:model-a",
+                    "provider_id": "selected",
+                    "provider_name": "Selected Provider",
+                    "api_contract": "openai-compatible",
+                    "location": "cloud",
+                    "model_id": "model-a",
+                    "name": "Selected Model"
+                },
+                {
+                    "selection_id": "custom:new:model-c",
+                    "provider_id": "new",
+                    "provider_name": "Renamed Provider",
+                    "api_contract": "openai-compatible",
+                    "location": "local",
+                    "model_id": "model-c",
+                    "name": "Renamed Model"
+                }
+            ]
+        }),
+    });
+
+    assert_eq!(
+        app.custom_model_selection.as_deref(),
+        Some("custom:selected:model-a")
+    );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:selected:model-a")
+    );
+    assert!(app
+        .available_models
+        .iter()
+        .all(|model| model.id != "custom:old:model-b"));
+    assert!(app.available_models.iter().any(|model| {
+        model.id == "custom:new:model-c"
+            && model.name == "model-c (BYOM)"
+            && model.description.is_none()
+    }));
+    let new_provider = app
+        .custom_model_catalog
+        .iter()
+        .find(|model| model.selection_id == "custom:new:model-c")
+        .expect("hot update retains full provider metadata");
+    assert_eq!(new_provider.api_contract, "openai-compatible");
+    assert_eq!(new_provider.location, "local");
+    assert!(app.current_tab().model_picker_selected < app.model_picker_models.len());
+    assert_eq!(
+        app.model_picker_models[app.current_tab().model_picker_selected].id,
+        "custom:selected:model-a"
+    );
+}
+
+#[test]
+fn targeted_catalog_delivery_recomputes_stashed_helper_picker() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.owner_tab_id = Some("tab-stashed".into());
+    app.current_tab_mut().pane_open = false;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "tab_id": "other-tab",
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"ignored","name":"Ignored"}],
+            "custom_models": []
+        }),
+    });
+    assert!(app.available_models.is_empty());
+    assert!(!app.host_catalog_ready);
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "tab_id": "tab-stashed",
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"cloud","name":"Cloud"}],
+            "custom_model_selection": "custom:provider:byok",
+            "custom_models": [{
+                "selection_id": "custom:provider:byok",
+                "provider_id": "provider",
+                "provider_name": "Provider",
+                "api_contract": "openai-compatible",
+                "location": "cloud",
+                "model_id": "byok",
+                "name": "BYOK"
+            }]
+        }),
+    });
+
+    assert!(app.host_catalog_ready);
+    assert!(
+        !app.current_tab().pane_open,
+        "catalog delivery must not unstash the pane"
+    );
+    assert_eq!(
+        app.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cloud", "custom:provider:byok"]
+    );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider:byok")
+    );
+}
+
+#[test]
+fn custom_model_catalog_contract_parsing_normalizes_legacy_and_rejects_unsupported() {
+    let missing: Vec<CustomModelCatalogEntry> = serde_json::from_value(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "model_id": "model-a"
+    }]))
+    .expect("legacy metadata without api_contract should remain valid");
+    assert_eq!(
+        missing[0].api_contract,
+        crate::custom_model_provider::CANONICAL_API_CONTRACT
+    );
+
+    let blank: Vec<CustomModelCatalogEntry> = serde_json::from_value(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": " \t ",
+        "model_id": "model-a"
+    }]))
+    .expect("blank legacy api_contract should normalize");
+    assert_eq!(
+        blank[0].api_contract,
+        crate::custom_model_provider::CANONICAL_API_CONTRACT
+    );
+
+    let unsupported = serde_json::from_value::<Vec<CustomModelCatalogEntry>>(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": "openai-responses",
+        "model_id": "model-a"
+    }]));
+    assert!(unsupported.is_err());
+
+    let padded = serde_json::from_value::<Vec<CustomModelCatalogEntry>>(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": " openai-compatible ",
+        "model_id": "model-a"
+    }]));
+    assert!(padded.is_err());
+}
+
+#[test]
+fn unsupported_custom_model_contract_cannot_be_selected() {
+    let mut app = test_app();
+    app.set_custom_model_config(
+        vec![CustomModelCatalogEntry {
+            selection_id: "custom:provider:model-a".into(),
+            api_contract: "openai-responses".into(),
+            model_id: "model-a".into(),
+            ..Default::default()
+        }],
+        Some("custom:provider:model-a".into()),
+    );
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
+    assert!(app.selected_custom_model_id().is_none());
+}
+
+#[test]
+fn same_agent_host_and_wsl_keep_host_catalogs_isolated() {
+    let connect = |app: &mut App| {
+        app.current_agent_id = "copilot".into();
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".into(),
+            model: None,
+            version: None,
+            session_id: "sid".into(),
+            available_models: vec![model_info("agent-advertised")],
+            current_model_id: Some("agent-advertised".into()),
+            load_session_supported: false,
+            image_supported: false,
+        });
+    };
+    let host_catalog = || AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"host-cloud","name":"Host Cloud"}],
+            "custom_model_selection": "custom:provider:byok",
+            "custom_models": [{
+                "selection_id": "custom:provider:byok",
+                "provider_id": "provider",
+                "provider_name": "Provider",
+                "api_contract": "openai-compatible",
+                "location": "cloud",
+                "model_id": "byok",
+                "name": "BYOK"
+            }]
+        }),
+    };
+
+    let mut host = test_app();
+    host.current_agent_source = crate::agent_source::AgentSource::Host;
+    connect(&mut host);
+    host.handle_event(host_catalog());
+    assert_eq!(
+        host.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["host-cloud", "agent-advertised", "custom:provider:byok"]
+    );
+    assert!(host.host_catalog_ready);
+    host.handle_event(AppEvent::CloudModelsAvailable(vec![AcpModelInfo {
+        id: "probe-cloud".into(),
+        name: "Probe Cloud".into(),
+        description: None,
+    }]));
+    assert_eq!(
+        host.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["probe-cloud", "agent-advertised", "custom:provider:byok"],
+        "the asynchronous clean probe must recompute cloud+agent+BYOK rows"
+    );
+
+    let mut wsl = test_app();
+    wsl.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    connect(&mut wsl);
+    wsl.handle_event(host_catalog());
+    wsl.handle_event(AppEvent::CloudModelsAvailable(vec![AcpModelInfo {
+        id: "probe-cloud".into(),
+        name: "Probe Cloud".into(),
+        description: None,
+    }]));
+    assert_eq!(
+        wsl.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["agent-advertised"],
+        "the WSL helper for the same agent must retain only its own ACP catalog"
+    );
+    assert!(wsl.cloud_models.is_empty());
+    assert!(wsl.custom_model_catalog.is_empty());
+    assert!(wsl.custom_model_selection.is_none());
+    assert!(!wsl.host_catalog_ready);
+}
+
+#[test]
+fn custom_model_hot_update_is_ignored_for_unsupported_profile_backend() {
+    let mut app = test_app();
+    app.current_agent_id = "claude".into();
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Claude".into(),
+        model: None,
+        version: None,
+        session_id: "sid-1".into(),
+        available_models: vec![model_info("cloud")],
+        current_model_id: Some("cloud".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:provider:model",
+            "custom_models": [{
+                "selection_id": "custom:provider:model",
+                "model_id": "model"
+            }]
+        }),
+    });
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
+    assert_eq!(
+        app.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cloud"]
+    );
+}
+
+#[test]
+fn custom_model_hot_update_rejects_credential_fields() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:provider:model",
+            "custom_models": [{
+                "selection_id": "custom:provider:model",
+                "model_id": "model",
+                "credential_id": "must-not-enter-helper-contract"
+            }]
+        }),
+    });
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
 }
 
 /// `/model` with an unrecognized argument warns and changes nothing.
@@ -3895,7 +4442,7 @@ fn transport_lost_latch_arms_on_transport_loss() {
 /// A non-transport failure (a one-off protocol error) must NOT arm the
 /// latch — the session is still alive, so commands stay enabled.
 #[test]
-fn protocol_error_does_not_arm_degraded_latch() {
+fn protocol_error_ends_turn_without_failing_connection() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
 
@@ -3912,6 +4459,12 @@ fn protocol_error_does_not_arm_degraded_latch() {
         !app.transport_lost,
         "a non-transport protocol error must not degrade the pane"
     );
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message == "protocol error"
+    ));
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
 }
 
 /// An auth failure routes to sign-in, not the dead-transport path, so it
@@ -3942,8 +4495,7 @@ fn auth_failure_does_not_arm_degraded_latch() {
 fn agent_connected_clears_degraded_latch() {
     let mut app = test_app();
     app.transport_lost = true;
-    app.proposal_channels
-        .set_agent_transport_available(false);
+    app.proposal_channels.set_agent_transport_available(false);
 
     app.handle_event(AppEvent::AgentConnected {
         name: "Copilot".to_string(),
@@ -4627,7 +5179,6 @@ fn submit_test_prompt(app: &mut App, text: &str) {
 async fn mock_agent_reply_streams_into_app_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
     use agent_client_protocol as acp;
-    
 
     let local = tokio::task::LocalSet::new();
     local
@@ -4635,7 +5186,9 @@ async fn mock_agent_reply_streams_into_app_chat() {
             // Borrow the acp-module harness: deterministic mock wired to a
             // real WtaClient over an in-memory duplex.
             let (conn, mut event_rx, _seen) = connect_mock_agent();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
                 .await
                 .expect("initialize failed");
             let session = conn
@@ -4698,10 +5251,11 @@ async fn mock_agent_reply_streams_into_app_chat() {
 async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
     use agent_client_protocol as acp;
-    
 
     let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+    conn.initialize(acp::schema::v1::InitializeRequest::new(
+        acp::schema::ProtocolVersion::LATEST,
+    ))
         .await
         .expect("initialize failed");
     let session = conn
@@ -4921,13 +5475,14 @@ fn permission_request_keeps_thinking_until_turn_ends() {
 async fn tool_call_surfaces_card_in_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
     use agent_client_protocol as acp;
-    
 
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
                 .await
                 .expect("initialize failed");
             let session = conn
@@ -5003,12 +5558,12 @@ async fn pump_until(
 /// leaving an in-flight turn whose streamed notifications the caller pumps
 /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
 /// owns the `App`.
-async fn app_after_prompt(
-    conn: &crate::protocol::acp::conn::ClientLink,
-) {
+async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     use agent_client_protocol as acp;
-    
-    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+
+    conn.initialize(acp::schema::v1::InitializeRequest::new(
+        acp::schema::ProtocolVersion::LATEST,
+    ))
         .await
         .expect("initialize failed");
     let session = conn
@@ -5384,30 +5939,46 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: the `/model` picker must list the advertised models. Lifts
+/// Render: the `/model` picker must list BYOM model IDs and omit cloud models. Lifts
 /// `ui/model_popup.rs`.
 #[test]
 fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.available_models = vec![
-        AcpModelInfo {
+    app.set_cloud_models(vec![AcpModelInfo {
             id: "pick-1".into(),
             name: "PickModelXYZ".into(),
             description: None,
+    }]);
+    app.set_custom_model_config(
+        vec![
+            CustomModelCatalogEntry {
+                selection_id: "custom:provider-one:shared-model".into(),
+                model_id: "shared-model".into(),
+                name: "shared-model".into(),
+                ..Default::default()
         },
-        AcpModelInfo {
-            id: "pick-2".into(),
-            name: "OtherModel".into(),
-            description: None,
+            CustomModelCatalogEntry {
+                selection_id: "custom:provider-two:shared-model".into(),
+                model_id: "shared-model".into(),
+                name: "shared-model".into(),
+                ..Default::default()
         },
-    ];
+        ],
+        None,
+    );
     app.current_tab_mut().model_picker_open = true;
 
-    let text = render_to_text(&mut app, 80, 24);
+    let text = render_to_text(&mut app, 120, 24);
     assert!(
-        text.contains("PickModelXYZ"),
-        "the model picker must list the advertised models; rendered:\n{text}"
+        !text.contains("PickModelXYZ"),
+        "the model picker must omit cloud models; rendered:\n{text}"
+    );
+    assert!(
+        text.contains("shared-model (BYOM)")
+            && !text.contains("custom:provider-one")
+            && !text.contains("custom:provider-two"),
+        "custom models must show only modelId (BYOM); rendered:\n{text}"
     );
 }
 
@@ -6991,9 +7562,7 @@ const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"t
 
 fn stage_direct_proposal(
     app: &mut App,
-    manager: &std::sync::Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    manager: &std::sync::Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     session_id: &str,
 ) -> (
     String,
@@ -7983,5 +8552,263 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     assert!(
         !argv.contains(" -d /home"),
         "WSL row must not pass Windows -d cwd"
+    );
+}
+
+fn usage_snapshot() -> crate::usage::UsageSnapshot {
+    crate::usage::UsageSnapshot {
+        context: Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100,
+        }),
+        context_display: None,
+        cost: None,
+        provider_metrics: Vec::new(),
+    }
+}
+
+#[test]
+fn usage_reported_updates_only_the_session_owner_tab() {
+    let mut app = test_app();
+    app.tab_id = Some("ACTIVE-TAB".to_string());
+    app.tab_sessions
+        .insert("ACTIVE-TAB".to_string(), TabSession::default());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.session_to_tab
+        .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+    let snapshot = usage_snapshot();
+
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: snapshot.clone(),
+    });
+
+    assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
+    assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+}
+
+#[test]
+fn usage_reported_merges_independent_metrics_for_the_same_session() {
+    let mut app = test_app();
+    app.session_to_tab
+        .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: usage_snapshot(),
+    });
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: crate::usage::UsageSnapshot {
+            context: None,
+            context_display: None,
+            cost: Some(crate::usage::UsageCost {
+                amount_decimal_text: "0.004".to_string(),
+                currency: "USD".to_string(),
+            }),
+            provider_metrics: Vec::new(),
+        },
+    });
+
+    let snapshot = app.current_tab().usage.as_ref().expect("merged usage");
+    assert_eq!(
+        snapshot.context,
+        Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100
+        })
+    );
+    assert_eq!(snapshot.cost.as_ref().expect("cost").currency, "USD");
+}
+
+#[test]
+fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
+    let mut app = test_app();
+    let snapshot = usage_snapshot();
+    app.state = ConnectionState::Connected;
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            messages: vec![ChatMessage::System("keep this message".to_string())],
+            usage: Some(snapshot.clone()),
+            ..Default::default()
+        },
+    );
+    app.tab_sessions.insert(
+        "OTHER-TAB".to_string(),
+        TabSession {
+            usage: Some(snapshot.clone()),
+            ..Default::default()
+        },
+    );
+    app.session_to_tab
+        .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+    app.handle_event(AppEvent::UsageCleared {
+        session_id: "usage-session".to_string(),
+    });
+
+    assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].messages,
+        vec![ChatMessage::System("keep this message".to_string())]
+    );
+    assert_eq!(app.tab_sessions["OTHER-TAB"].usage, Some(snapshot));
+    assert_eq!(app.state, ConnectionState::Connected);
+}
+
+#[test]
+fn usage_lifecycle_clear_preserves_but_session_boundaries_clear() {
+    let mut app = test_app();
+    let snapshot = usage_snapshot();
+    app.current_tab_mut().usage = Some(snapshot.clone());
+    app.cmd_clear();
+    assert_eq!(app.current_tab().usage, Some(snapshot));
+
+    app.cmd_new(false);
+    assert!(app.current_tab().usage.is_none());
+
+    app.current_tab_mut().usage = Some(usage_snapshot());
+    app.cmd_restart();
+    assert!(app.current_tab().usage.is_none());
+
+    app.current_tab_mut().usage = Some(usage_snapshot());
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    assert!(app.current_tab().usage.is_none());
+}
+
+#[test]
+fn usage_lifecycle_load_and_new_connection_clear_but_model_change_preserves() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            usage: Some(usage_snapshot()),
+            ..Default::default()
+        },
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "loaded-session",
+            "cwd": "",
+        }),
+    });
+    assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+
+    app.tab_id = Some("OWNER-TAB".to_string());
+    let snapshot = usage_snapshot();
+    app.current_tab_mut().usage = Some(snapshot.clone());
+    let agent_id = app.current_agent_id.clone();
+    app.apply_global_acp_model(&agent_id, Some("new-model".to_string()));
+    assert_eq!(app.current_tab().usage, Some(snapshot));
+
+    app.current_tab_mut().session_id = Some("old-session".to_string());
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".to_string(),
+        model: None,
+        version: None,
+        session_id: "new-session".to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
+    assert!(app.current_tab().usage.is_none());
+}
+
+#[test]
+fn usage_projection_contains_context_cost_and_explicit_null() {
+    let tab = TabSession {
+        usage: Some(crate::usage::UsageSnapshot {
+            context: Some(crate::usage::UsageContext {
+                used: 1_024,
+                size: 8_192,
+            }),
+            context_display: None,
+            cost: Some(crate::usage::UsageCost {
+                amount_decimal_text: "0.004".to_string(),
+                currency: "USD".to_string(),
+            }),
+            provider_metrics: Vec::new(),
+        }),
+        ..Default::default()
+    };
+    let event = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    let items = event["params"]["usage"]["items"]
+        .as_array()
+        .expect("usage items");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["metric_id"], "acp.context.window");
+    assert_eq!(items[0]["display_kind"], "context");
+    assert_eq!(items[1]["metric_id"], "acp.billing.cost");
+    assert_eq!(items[1]["display_kind"], "billing");
+    assert_eq!(items[1]["unit_display_text"], "USD");
+    assert!(items.iter().all(|item| item["stale"] == false));
+
+    let cleared = super::app_status_projection::build_agent_state_changed_event(
+        "TAB-1",
+        &TabSession::default(),
+    );
+    assert!(cleared["params"]["usage"].is_null());
+}
+
+#[test]
+fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("usage-session".to_string());
+    app.session_to_tab
+        .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
+    app.current_tab_mut().usage = Some(crate::usage::UsageSnapshot {
+        context: Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100,
+        }),
+        context_display: None,
+        cost: Some(crate::usage::UsageCost {
+            amount_decimal_text: "0.004".to_string(),
+            currency: "USD".to_string(),
+        }),
+        provider_metrics: Vec::new(),
+    });
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("usage-session".to_string()),
+        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+        message: t!("connection.lost").into_owned(),
+    });
+    assert_eq!(
+        app.current_tab().usage_staleness,
+        crate::usage::UsageStaleness {
+            context: true,
+            cost: true,
+            provider_metrics: false,
+        }
+    );
+
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: crate::usage::UsageSnapshot {
+            context: Some(crate::usage::UsageContext {
+                used: 25,
+                size: 100,
+            }),
+            context_display: None,
+            cost: None,
+            provider_metrics: Vec::new(),
+        },
+    });
+    assert_eq!(
+        app.current_tab().usage_staleness,
+        crate::usage::UsageStaleness {
+            context: false,
+            cost: true,
+            provider_metrics: false,
+        }
     );
 }

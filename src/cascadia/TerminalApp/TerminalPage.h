@@ -19,6 +19,7 @@
 #include "Toast.h"
 
 #include "WindowsPackageManagerFactory.h"
+#include "../inc/CustomModelProviderUtils.h"
 
 #define DECLARE_ACTION_HANDLER(action) void _Handle##action(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::ActionEventArgs& args);
 
@@ -415,18 +416,14 @@ namespace winrt::TerminalApp::implementation
         // of the agent pane.
         //
         // Agent identity changes (global acpAgent/acpCustomCommand or an
-        // effective per-profile backend) rebuild affected helpers. Only a
-        // custom global command forces a master respawn; built-ins and profile
-        // backends are selected over the trusted helper/master metadata path.
-        // Model + delegate config are hot-updated over the event channel.
+        // effective per-profile backend) rebuild affected helpers. A custom
+        // global command or selected provider launch configuration forces a
+        // master respawn; unselected provider catalog changes are hot-updated.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
-            std::wstring acpModel;
             std::wstring acpCustomCommand;
-            std::wstring delegateAgent;
-            std::wstring delegateModel;
-            std::wstring delegateCustomCommand;
+            std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
         };
         AgentSettingsSnapshot _lastAgentSettings{};
@@ -435,14 +432,17 @@ namespace winrt::TerminalApp::implementation
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (autofix gate, acp-model,
-        // delegate agent/model). `delegateAgent` holds the *resolved effective*
-        // value (custom-command ids already expanded).
+        // agent setting that can be hot-reloaded (autofix gate, scoped
+        // acp-model, delegate agent/model, credential-free model catalogs).
+        // `delegateAgent` holds the resolved effective value (custom-command
+        // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
             std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
+            std::wstring customModelSelection;
+            std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
@@ -532,6 +532,7 @@ namespace winrt::TerminalApp::implementation
         // (first acquire) and `_RebuildAgentStack` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
         std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
