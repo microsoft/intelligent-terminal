@@ -193,7 +193,7 @@ namespace winrt::TerminalApp::implementation
         // captured terminal state before a pending reap observes that absence.
         for (const auto& [contentId, state] : pendingClosedContent)
         {
-            _forgetKeptSession(contentId, state);
+            _processClosedContent(contentId, state);
         }
         for (const auto& sessionId : pendingReaps)
         {
@@ -730,20 +730,34 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void ContentManager::_processClosedContent(const uint64_t contentId, const winrt::hstring& detachedEndState)
+    {
+        _assertIsOwnerThread();
+
+        // The Closed event can be queued more than once when a dispatcher
+        // callback and fallback owner work race. The map is the authoritative
+        // lifetime record, so only the invocation that removes it may emit
+        // the corresponding detached-session events.
+        if (_content.erase(contentId) != 0)
+        {
+            _forgetKeptSession(contentId, detachedEndState);
+        }
+    }
+
     void ContentManager::_closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
                                         const winrt::Windows::Foundation::IInspectable&)
     {
         if (const auto& content{ sender.try_as<winrt::Microsoft::Terminal::Control::ControlInteractivity>() })
         {
-            const auto& contentId{ content.Id() };
+            const auto contentId{ content.Id() };
             const auto detachedEndState = _getDetachedSessionEndedState(content);
-            _content.erase(contentId);
 
             // A kept session whose shell just exited stops being a reason to
-            // keep this process alive.
+            // keep this process alive. `content` is agile, but the manager's
+            // maps and events are owned by its configured dispatcher thread.
             if (_isOwnerThread())
             {
-                _forgetKeptSession(contentId, detachedEndState);
+                _processClosedContent(contentId, detachedEndState);
             }
             else
             {
@@ -751,8 +765,8 @@ namespace winrt::TerminalApp::implementation
                 if (!_tryScheduleOnOwner([weakThis, contentId, detachedEndState]() {
                         if (const auto self{ weakThis.get() })
                         {
-                            self->_forgetKeptSession(contentId, detachedEndState);
                             self->_drainPendingOwnerWork();
+                            self->_processClosedContent(contentId, detachedEndState);
                         }
                     }))
                 {

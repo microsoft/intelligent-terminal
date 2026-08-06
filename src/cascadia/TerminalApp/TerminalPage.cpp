@@ -26,6 +26,7 @@
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
+#include "KeepRunningSessionHelpers.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
 #include "ScratchpadContent.h"
@@ -3415,7 +3416,10 @@ namespace winrt::TerminalApp::implementation
         // have a tab yet, but will once we're initialized.
         if (_tabs.Size() == 0 && !_IsFreRequired())
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             co_return;
         }
         else
@@ -6493,11 +6497,19 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        if (_windowCloseAccepted || _displayingCloseDialog)
+        {
+            co_return;
+        }
+
         // During FRE, tabs are deferred (zero tabs). No warning needed;
         // just close the window immediately.
         if (_tabs.Size() == 0)
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             co_return;
         }
 
@@ -6527,6 +6539,11 @@ namespace winrt::TerminalApp::implementation
             {
                 co_return;
             }
+        }
+
+        if (!TryAcceptWindowClose(_windowCloseAccepted))
+        {
+            co_return;
         }
 
         // Closing the window has to do what closing each tab would have done.
