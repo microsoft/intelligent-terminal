@@ -3086,17 +3086,18 @@ async fn reap_agent(
         // `session/load` (reloading from disk) instead of re-binding to a
         // session the new CLI never had. Other agents' orphans are untouched.
         state.orphaned_sessions.lock().await.remove(key);
-        let capabilities_removed = state
-            .proposal_mcp_capabilities
-            .remove_owner(instance_id)
-            .await;
-        tracing::info!(
-            target: "master",
-            agent = %key,
-            capabilities_removed,
-            "dead agent removed from pool; next pane for this agent will respawn it"
-        );
     }
+    let capabilities_removed = state
+        .proposal_mcp_capabilities
+        .remove_owner(instance_id)
+        .await;
+    tracing::info!(
+        target: "master",
+        agent = %key,
+        pool_entry_removed = removed,
+        capabilities_removed,
+        "dead agent reaped; replacement pool entry preserved when present"
+    );
 }
 
 /// Per-helper-connection task. Wraps the named pipe in an

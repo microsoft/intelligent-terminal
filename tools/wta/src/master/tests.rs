@@ -1004,6 +1004,59 @@ async fn reap_agent_drops_only_its_own_orphans() {
     );
 }
 
+/// A stale reaper must revoke its dead CLI instance's capabilities without
+/// disturbing the replacement CLI that now occupies the same pool key.
+#[tokio::test]
+async fn stale_reaper_revokes_only_dead_agent_capabilities() {
+    let state = make_state();
+    let key = "copilot --acp --stdio".to_string();
+    let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+    let replacement_cell = {
+        let mut agents = state.agents.lock().await;
+        let cell = Arc::new(tokio::sync::OnceCell::new());
+        agents.insert(key.clone(), Arc::clone(&cell));
+        cell
+    };
+    let dead_instance = AgentInstanceId::new_v4();
+    let replacement_instance = AgentInstanceId::new_v4();
+    state
+        .proposal_mcp_capabilities
+        .prepare(dead_instance, None)
+        .await;
+    state
+        .proposal_mcp_capabilities
+        .prepare(replacement_instance, None)
+        .await;
+
+    reap_agent(&state, &key, &stale_cell, dead_instance).await;
+
+    assert!(
+        state
+            .agents
+            .lock()
+            .await
+            .get(&key)
+            .is_some_and(|cell| Arc::ptr_eq(cell, &replacement_cell)),
+        "a stale reaper must preserve the replacement pool entry"
+    );
+    assert_eq!(
+        state
+            .proposal_mcp_capabilities
+            .remove_owner(dead_instance)
+            .await,
+        0,
+        "the dead instance's capabilities must already be revoked"
+    );
+    assert_eq!(
+        state
+            .proposal_mcp_capabilities
+            .remove_owner(replacement_instance)
+            .await,
+        1,
+        "the replacement instance's capabilities must remain valid"
+    );
+}
+
 /// Regression for the reentrant-permission deadlock: a `prompt` in flight
 /// must NOT block the master's helper-side ACP dispatch loop. If it does, a
 /// `request_permission` the agent issues *mid-turn* deadlocks the shared
