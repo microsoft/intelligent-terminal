@@ -542,7 +542,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                        .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -1131,10 +1131,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude  => Some("claude"),
-        CliSource::Codex   => Some("codex"),
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini  => Some("gemini"),
+        CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1473,30 +1473,30 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                                pipe_name,
-                                acp_model,
+                            pipe_name,
+                            acp_model,
                             cloud_models,
-                                agent_id_opt,
-                                agent_source,
-                                source_cwd,
-                                owner_tab_opt,
-                                None, // initial_load_session_id: already handled by the dead initial task
-                                event_tx_for_pipe.clone(),
-                                prompt_rx,
-                                cancel_rx,
-                                new_session_rx,
-                                load_session_rx,
-                                drop_session_rx,
-                                rename_session_rx,
-                                restart_rx,
-                                shrx,
-                                master_ext_rx,
-                                shell_mgr,
-                                wt_connected,
-                                post_login_auth, // only true on genuine LoginComplete reconnects
+                            agent_id_opt,
+                            agent_source,
+                            source_cwd,
+                            owner_tab_opt,
+                            None, // initial_load_session_id: already handled by the dead initial task
+                            event_tx_for_pipe.clone(),
+                            prompt_rx,
+                            cancel_rx,
+                            new_session_rx,
+                            load_session_rx,
+                            drop_session_rx,
+                            rename_session_rx,
+                            restart_rx,
+                            shrx,
+                            master_ext_rx,
+                            shell_mgr,
+                            wt_connected,
+                            post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                            )
-                            .await
+                        )
+                        .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -2156,7 +2156,7 @@ impl App {
         let idx = self.current_tab().model_picker_selected;
         let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
-        self.close_model_picker();
+            self.close_model_picker();
             self.apply_model_pick(id);
         }
     }
@@ -2930,6 +2930,71 @@ impl App {
         tab.agents_view.search_query.clear();
         tab.agents_view.search_focused = false;
         tab.agents_view_prev_pane_open = None;
+    }
+
+    pub(crate) fn open_shell_sessions_view_for_tab(&mut self, tab_id: String) {
+        {
+            let tab = self.tab_mut(&tab_id);
+            tab.current_view = View::ShellSessions;
+            tab.shell_sessions_loading = true;
+            tab.shell_sessions_error = None;
+        }
+        self.load_shell_sessions(tab_id);
+    }
+
+    fn close_shell_sessions_view_for_tab(&mut self, tab_id: &str) {
+        let tab = self.tab_mut(tab_id);
+        tab.current_view = View::Chat;
+        tab.shell_sessions_loading = false;
+        tab.shell_sessions_error = None;
+        tab.shell_session_delete_confirmation = None;
+        tab.shell_session_delete_in_flight = false;
+        tab.shell_sessions_search_focused = false;
+    }
+
+    fn load_shell_sessions(&mut self, tab_id: String) {
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionsList {
+            tab_id: tab_id.clone(),
+            elevated: crate::shell_session_store::current_process_is_elevated(),
+        };
+        if self.master_request_tx.send(request).is_err() {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_loading = false;
+            tab.shell_sessions_error =
+                Some("Shell-session master connection is unavailable".to_string());
+        }
+    }
+
+    fn restore_shell_session(&mut self, tab_id: String, id: String) {
+        self.tab_mut(&tab_id).shell_sessions_error = None;
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+            tab_id: tab_id.clone(),
+            id,
+            window_id: self.window_id.clone(),
+        };
+        if self.master_request_tx.send(request).is_err() {
+            self.tab_mut(&tab_id).shell_sessions_error =
+                Some("Shell-session master connection is unavailable".to_string());
+        }
+    }
+
+    fn delete_shell_session(&mut self, tab_id: String, id: String) {
+        {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_error = None;
+            tab.shell_session_delete_in_flight = true;
+        }
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+            tab_id: tab_id.clone(),
+            id,
+            elevated: crate::shell_session_store::current_process_is_elevated(),
+        };
+        if self.master_request_tx.send(request).is_err() {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_session_delete_in_flight = false;
+            tab.shell_sessions_error =
+                Some("Shell-session master connection is unavailable".to_string());
+        }
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
@@ -3832,6 +3897,9 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
+            AppEvent::ShellSessionRestored { .. } => "shell_session_restored",
+            AppEvent::ShellSessionDeleted { .. } => "shell_session_deleted",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
@@ -4372,13 +4440,13 @@ impl App {
             commands::agent_id_prefix(&self.current_tab().input)
         };
         self.available_agents.iter().filter(move |agent| {
-                prefix.is_some_and(|prefix| {
-                    agent
-                        .id
-                        .get(..prefix.len())
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
-                })
+            prefix.is_some_and(|prefix| {
+                agent
+                    .id
+                    .get(..prefix.len())
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
             })
+        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4604,6 +4672,7 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::ShellSessions => self.cmd_shell_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
@@ -4665,9 +4734,9 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-                tab_id,
-                cwd: self.source_cwd.clone(),
-            });
+            tab_id,
+            cwd: self.source_cwd.clone(),
+        });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
         }
@@ -4822,6 +4891,12 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
+        self.project_active_tab_state();
+    }
+
+    fn cmd_shell_sessions(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        self.open_shell_sessions_view_for_tab(tab_id);
         self.project_active_tab_state();
     }
 

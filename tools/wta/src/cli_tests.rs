@@ -232,7 +232,7 @@ fn process_label_subcommands() {
 
     let probe_sources =
         Cli::try_parse_from(["wta", "probe-agent-sources", "--wsl-distro", "Ubuntu-24.04"])
-    .unwrap();
+            .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());
 

@@ -13,10 +13,12 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "SharedWta.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <wil/resource.h>
+#include <json/json.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
@@ -699,7 +701,7 @@ namespace winrt::TerminalApp::implementation
             if (!foundPane)
                 continue;
 
-            foundPane->Close();
+            _HandleClosePaneRequested(foundPane);
             co_return true;
         }
 
@@ -837,6 +839,175 @@ namespace winrt::TerminalApp::implementation
         }
 
         co_return false;
+    }
+
+    IAsyncOperation<hstring> TerminalPage::ListProtocolShellSessions()
+    {
+        co_await wil::resume_foreground(Dispatcher());
+
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            if (!temporaryAcquire)
+            {
+                THROW_HR(E_FAIL);
+            }
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::Value params;
+        params["elevated"] = IsRunningElevated();
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/list",
+            Json::writeString(writer, params));
+        if (!result)
+        {
+            THROW_HR(E_FAIL);
+        }
+
+        Json::Value response;
+        std::string errors;
+        std::istringstream stream{ *result };
+        if (!Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors) ||
+            !response["sessions"].isArray())
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+        co_return winrt::to_hstring(Json::writeString(writer, response["sessions"]));
+    }
+
+    IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring id)
+    {
+        co_await wil::resume_foreground(Dispatcher());
+
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            if (!temporaryAcquire)
+            {
+                co_return false;
+            }
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::Value params;
+        params["id"] = winrt::to_string(id);
+        params["elevated"] = IsRunningElevated();
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/get",
+            Json::writeString(writer, params));
+        if (!result)
+        {
+            THROW_HR(E_FAIL);
+        }
+
+        Json::Value response;
+        std::string errors;
+        std::istringstream stream{ *result };
+        if (!Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors))
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+
+        const auto& session = response["session"];
+        if (!session.isObject() || !session["layout_json"].isString())
+        {
+            co_return false;
+        }
+
+        std::unordered_map<std::string, hstring> restorePaths;
+        for (const auto& buffer : response["buffers"])
+        {
+            if (buffer["pane_key"].isString() && buffer["path"].isString())
+            {
+                restorePaths.emplace(buffer["pane_key"].asString(), winrt::to_hstring(buffer["path"].asString()));
+            }
+        }
+
+        const auto layout = WindowLayout::FromJson(winrt::to_hstring(session["layout_json"].asString()));
+        if (!layout || !layout.TabLayout())
+        {
+            co_return false;
+        }
+
+        auto actions = wil::to_vector(layout.TabLayout());
+        bool firstTerminal = true;
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (action.Action() == ShortcutAction::NewTab)
+            {
+                if (const auto args = action.Args().try_as<NewTabArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+            }
+            else if (action.Action() == ShortcutAction::SplitPane)
+            {
+                if (const auto args = action.Args().try_as<SplitPaneArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (const auto sessionId = terminalArgs.SessionId(); sessionId != winrt::guid{})
+                {
+                    const auto paneKey = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                    if (const auto path = restorePaths.find(paneKey); path != restorePaths.end())
+                    {
+                        // Kept alive or not, hand the snapshot along: if the
+                        // session dies between here and the pane actually being
+                        // made, the reattach misses and this is what the restore
+                        // falls back to.
+                        terminalArgs.ShellSessionRestorePath(path->second);
+                    }
+
+                    // Restoring from a snapshot builds a brand new shell, so it
+                    // gets a brand new identity — unconditionally, exactly as
+                    // before. Whether the session is instead still detached and
+                    // can be reattached is decided in one atomic step when the
+                    // pane is actually built; deciding it here would leave a
+                    // window in which two restores of the same record could
+                    // both believe they own this id.
+                    terminalArgs.KeptSessionId(sessionId);
+                    terminalArgs.SessionId(::Microsoft::Console::Utils::CreateGuid());
+
+                    if (firstTerminal)
+                    {
+                        terminalArgs.DurableShellSessionId(id);
+                        terminalArgs.DurableShellSessionRevision(session["revision"].asInt64());
+                        firstTerminal = false;
+                    }
+                }
+            }
+        }
+
+        ProcessStartupActions(std::move(actions));
+        co_return true;
     }
 
 }

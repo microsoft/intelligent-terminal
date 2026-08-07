@@ -53,7 +53,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), CenterOnLaunch);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialRows);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialCols);
-
         bool StartOnUserLoginAvailable();
         safe_void_coroutine PrepareStartOnUserLoginSettings();
         bool StartOnUserLoginConfigurable();

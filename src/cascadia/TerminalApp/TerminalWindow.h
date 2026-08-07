@@ -72,6 +72,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetWindowLayout() const;
         void PersistState();
+        void PersistWorkspace();
 
         void UpdateSettings(winrt::TerminalApp::SettingsLoadEventArgs args);
 

@@ -67,15 +67,19 @@ Before creating or loading a session:
 4. master discards the pending capability on failure.
 
 Helper disconnect preserves the committed capability while the same Agent CLI
-still owns an orphaned ACP session, allowing direct rebind without
-`session/load`. When that Agent CLI instance dies, master revokes every
-capability owned by that exact instance. Reapers compare the pool cell identity
-before removal, so a late reaper from an old process cannot revoke or remove a
-replacement process using the same command.
+still owns an orphaned ACP session. On resume, agents that advertise
+`sessionCapabilities.close` close that resident session and reload it on the
+same ACP connection so the new Helper receives history replay. A successful
+close retires the old capability; a successful load binds its replacement.
+Agents without `session/close` retain the legacy direct rebind and its existing
+capability.
 
-A failed replacement leaves the prior session capability valid. A successful
-replacement retires it. Orphan Helper rebinds preserve the existing capability
-because the Agent CLI session and MCP client are still alive.
+When an Agent CLI instance dies, master revokes every capability owned by that
+exact instance. Reapers compare the pool cell identity before removal, so a
+late reaper from an old process cannot revoke or remove a replacement process
+using the same command. A failed close leaves the prior session capability
+valid; after close succeeds, the prior capability stays retired even if the
+subsequent load fails.
 
 The model never receives or supplies a Helper, session, prompt, tab, window,
 pane, channel, capability, origin, schema version, or choice ID. The Helper

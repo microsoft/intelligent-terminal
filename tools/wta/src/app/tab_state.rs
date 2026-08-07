@@ -302,6 +302,14 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
+    pub shell_sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+    pub shell_sessions_query: String,
+    pub shell_sessions_search_focused: bool,
+    pub shell_sessions_list_state: ratatui::widgets::ListState,
+    pub shell_sessions_loading: bool,
+    pub shell_sessions_error: Option<String>,
+    pub shell_session_delete_confirmation: Option<String>,
+    pub shell_session_delete_in_flight: bool,
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     pub pane_open: bool,
@@ -314,6 +322,43 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn matching_shell_session_count(&self) -> usize {
+        self.shell_sessions
+            .iter()
+            .filter(|session| {
+                crate::ui::shell_sessions_view::matches_query(session, &self.shell_sessions_query)
+            })
+            .count()
+    }
+
+    pub(crate) fn matching_shell_session(
+        &self,
+        index: usize,
+    ) -> Option<&crate::shell_session_store::ShellSessionSummary> {
+        self.shell_sessions
+            .iter()
+            .filter(|session| {
+                crate::ui::shell_sessions_view::matches_query(session, &self.shell_sessions_query)
+            })
+            .nth(index)
+    }
+
+    pub(crate) fn reset_shell_session_selection(&mut self) {
+        self.shell_sessions_list_state
+            .select((self.matching_shell_session_count() > 0).then_some(0));
+    }
+
+    pub(crate) fn begin_selected_shell_session_delete(&mut self) {
+        let selected_id = self
+            .shell_sessions_list_state
+            .selected()
+            .and_then(|index| self.matching_shell_session(index))
+            .map(|session| session.id.clone());
+        if let Some(id) = selected_id {
+            self.shell_session_delete_confirmation = Some(id);
+        }
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
@@ -482,6 +527,7 @@ impl TabSession {
 pub enum View {
     Chat,
     Agents,
+    ShellSessions,
 }
 
 impl Default for View {

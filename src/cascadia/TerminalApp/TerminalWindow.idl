@@ -65,6 +65,7 @@ namespace TerminalApp
 
         Microsoft.Terminal.Settings.Model.WindowLayout GetWindowLayout();
         void PersistState();
+        void PersistWorkspace();
 
         Windows.UI.Xaml.UIElement GetRoot();
         IVector<IPaneContent> Panes { get; };

@@ -2226,15 +2226,9 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(
-        app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4")
-    );
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-            session_id,
-            model,
-        } => {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
         }
@@ -5242,8 +5236,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5309,8 +5303,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5536,8 +5530,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5617,8 +5611,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5999,9 +5993,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -6010,13 +6004,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -7635,8 +7629,7 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        source:
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -8166,7 +8159,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -8576,10 +8569,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -8597,21 +8590,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },
@@ -8901,5 +8894,125 @@ fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
             cost: true,
             provider_metrics: false,
         }
+    );
+}
+
+fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::ShellSessionSummary {
+    crate::shell_session_store::ShellSessionSummary {
+        id: id.to_string(),
+        name: name.to_string(),
+        active_pane_cwd: r"C:\repo".to_string(),
+        last_used_at: 1,
+    }
+}
+
+#[test]
+fn shell_session_delete_requires_confirmation_and_dispatches_to_master() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    assert_eq!(
+        app.current_tab()
+            .shell_session_delete_confirmation
+            .as_deref(),
+        Some(id)
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT));
+    assert!(app.current_tab().shell_session_delete_in_flight);
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+            tab_id,
+            id: dispatched_id,
+            ..
+        }) if tab_id == DEFAULT_TAB_ID && dispatched_id == id
+    ));
+}
+
+#[test]
+fn shell_session_delete_confirmation_can_be_cancelled() {
+    let mut app = test_app();
+    let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().current_view, View::ShellSessions);
+    assert!(app
+        .current_tab()
+        .shell_session_delete_confirmation
+        .is_none());
+    assert!(!app.current_tab().shell_session_delete_in_flight);
+}
+
+#[test]
+fn shell_session_search_filters_navigation_and_restore() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let powershell_id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    let empower_id = "b5671763-0c71-46bb-9374-d966751c9a00";
+    let cwd_id = "ef8e974d-ff11-407c-8372-a4742a2f6fa3";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        let mut powershell = shell_session_record(powershell_id, "PowerShell");
+        powershell.active_pane_cwd = r"C:\Windows".to_string();
+        let mut empower = shell_session_record(empower_id, "empower");
+        empower.active_pane_cwd = r"C:\Windows".to_string();
+        let mut unrelated =
+            shell_session_record("1ee9352a-bd66-4353-bf88-cdf67d6089ce", "unrelated");
+        unrelated.active_pane_cwd = r"C:\Windows".to_string();
+        tab.shell_sessions = vec![
+            powershell,
+            empower,
+            crate::shell_session_store::ShellSessionSummary {
+                id: cwd_id.to_string(),
+                name: "cmd".to_string(),
+                active_pane_cwd: r"C:\repos\portal".to_string(),
+                last_used_at: 1,
+            },
+            unrelated,
+        ];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().shell_sessions_query, "po");
+    assert_eq!(app.current_tab().matching_shell_session_count(), 3);
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+            id,
+            ..
+        }) if id == cwd_id
+    ));
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().shell_sessions_query, "p");
+    assert_eq!(
+        app.current_tab().shell_sessions_list_state.selected(),
+        Some(0)
     );
 }

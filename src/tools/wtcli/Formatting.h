@@ -13,6 +13,7 @@ void PrintJson(const Json::Value& val);
 void FormatWindowsHuman(const Json::Value& windows);    // array of window objects
 void FormatTabsHuman(const Json::Value& tabs);          // array of tab objects
 void FormatPanesHuman(const Json::Value& panes);        // array of pane objects
+void FormatDetachedSessionsHuman(const Json::Value& detachedSessions); // array of detached-session objects
 void FormatActivePaneHuman(const Json::Value& info);    // pane object
 void FormatPaneStatusHuman(const Json::Value& status);  // process-status object
 void FormatCreatedTabHuman(const Json::Value& result);  // tab-creation-result object

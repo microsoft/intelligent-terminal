@@ -1071,16 +1071,22 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if config.setup.is_none()
-                && !start_in_initial_auth
-                && config.initial_view == InitialView::Sessions
-            {
-                tracing::info!(target: "initial_view", "starting in agent session view");
+            if config.setup.is_none() && !start_in_initial_auth {
                 let tab_id = app_state
                     .tab_id
                     .clone()
                     .unwrap_or_else(|| app::DEFAULT_TAB_ID.to_string());
-                app_state.open_agents_view_for_tab(tab_id);
+                match config.initial_view {
+                    InitialView::Sessions => {
+                        tracing::info!(target: "initial_view", "starting in agent session view");
+                        app_state.open_agents_view_for_tab(tab_id);
+                    }
+                    InitialView::ShellSessions => {
+                        tracing::info!(target: "initial_view", "starting in shell sessions view");
+                        app_state.open_shell_sessions_view_for_tab(tab_id);
+                    }
+                    InitialView::Chat => {}
+                }
             }
 
             // Project the initial active-tab state to C++ once, after the

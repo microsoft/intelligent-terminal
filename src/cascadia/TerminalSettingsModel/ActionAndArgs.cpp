@@ -68,6 +68,7 @@ static constexpr std::string_view MoveTabKey{ "moveTab" };
 static constexpr std::string_view BreakIntoDebuggerKey{ "breakIntoDebugger" };
 static constexpr std::string_view FindMatchKey{ "findMatch" };
 static constexpr std::string_view TogglePaneReadOnlyKey{ "toggleReadOnlyMode" };
+static constexpr std::string_view TogglePaneKeepRunningKey{ "togglePaneKeepRunning" };
 static constexpr std::string_view EnablePaneReadOnlyKey{ "enableReadOnlyMode" };
 static constexpr std::string_view DisablePaneReadOnlyKey{ "disableReadOnlyMode" };
 static constexpr std::string_view NewWindowKey{ "newWindow" };

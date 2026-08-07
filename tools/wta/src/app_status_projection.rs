@@ -141,6 +141,7 @@ pub(super) fn build_agent_state_changed_event(
 ) -> serde_json::Value {
     let view = match tab.current_view {
         View::Agents => "sessions",
+        View::ShellSessions => "shell_sessions",
         View::Chat => "chat",
     };
     let usage = tab.usage.as_ref().map(|snapshot| {

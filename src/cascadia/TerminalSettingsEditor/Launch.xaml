@@ -316,6 +316,7 @@
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                 </Grid>
             </local:SettingContainer>
+
         </StackPanel>
     </StackPanel>
 </Page>

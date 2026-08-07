@@ -37,6 +37,7 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    ShellSessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
@@ -113,6 +114,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
+    },
+    CommandSpec {
+        name: "shell-sessions",
+        summary_key: "commands.sessions.summary",
+        kind: CommandKind::ShellSessions,
     },
     CommandSpec {
         name: "agent",
@@ -285,7 +291,7 @@ pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
     MOVE_POSITIONS.iter().find(|position| {
         position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
-        })
+    })
 }
 
 /// Prefix-match `/move` positions by full name or one-letter alias.
@@ -368,6 +374,14 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn shell_sessions_parses() {
+        assert_eq!(
+            parse("/shell-sessions").unwrap().kind,
+            CommandKind::ShellSessions
+        );
     }
 
     #[test]

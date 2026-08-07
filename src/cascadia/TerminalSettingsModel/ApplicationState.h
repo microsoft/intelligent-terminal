@@ -12,6 +12,9 @@ Abstract:
 --*/
 #pragma once
 
+#include <atomic>
+#include <mutex>
+
 #include "ApplicationState.g.h"
 #include "WindowLayout.g.h"
 
@@ -82,6 +85,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool BadgeDismissed(const hstring& badgeId) const;
 
         void SaveWorkspace(const hstring& name, const Model::WindowLayout& layout);
+        bool SaveWorkspaceAndFlush(const hstring& name, const Model::WindowLayout& layout);
         bool RemoveWorkspace(const hstring& name);
         bool RenameWorkspace(const hstring& oldName, const hstring& newName);
         Model::WindowLayout TakeWorkspace(const hstring& name);
@@ -105,7 +109,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         std::filesystem::path _sharedPath;
         std::filesystem::path _elevatedPath;
         til::throttled_func<> _throttler;
+        mutable std::mutex _throttlerMutex;
+        mutable std::atomic<bool> _lastWriteSucceeded{ true };
 
+        void _scheduleWrite();
         void _write() const noexcept;
         void _read() const noexcept;
 

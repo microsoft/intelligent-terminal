@@ -128,7 +128,6 @@ namespace SettingsModelUnitTests
                 "theme": "system",
                 "snapToGridOnResize": true,
                 "disableAnimations": false,
-
                 "trimPaste": true,
 
                 "warning.confirmOnClose": "automatic",
@@ -1393,7 +1392,6 @@ namespace SettingsModelUnitTests
         // Verify initial values
         VERIFY_ARE_EQUAL(30, settings->GlobalSettings().InitialRows());
         VERIFY_ARE_EQUAL(false, settings->GlobalSettings().AlwaysOnTop());
-
         // Modify global settings
         settings->GlobalSettings().InitialRows(50);
         settings->GlobalSettings().AlwaysOnTop(true);

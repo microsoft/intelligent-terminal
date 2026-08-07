@@ -3,7 +3,26 @@
 
 #include "Formatting.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <string>
+#include <vector>
+
+namespace
+{
+    struct DetachedSessionRow
+    {
+        std::string sessionId;
+        std::string pid;
+        std::string tabTitle;
+        std::string shellSessionId;
+    };
+
+    std::string DetachedSessionPidString(const Json::Value& detachedSession)
+    {
+        return std::to_string(static_cast<unsigned long long>(detachedSession["pid"].asUInt64()));
+    }
+}
 
 void PrintJson(const Json::Value& val)
 {
@@ -64,6 +83,67 @@ void FormatPanesHuman(const Json::Value& panes)
                p["is_active"].asBool() ? "*" : "",
                p["size"]["rows"].asInt(),
                p["size"]["columns"].asInt());
+    }
+}
+
+void FormatDetachedSessionsHuman(const Json::Value& detachedSessions)
+{
+    if (!detachedSessions.isArray() || detachedSessions.empty())
+    {
+        return;
+    }
+
+    constexpr char sessionIdHeader[] = "SESSION_ID";
+    constexpr char pidHeader[] = "PID";
+    constexpr char tabHeader[] = "TAB";
+    constexpr char shellSessionIdHeader[] = "SHELL_SESSION_ID";
+
+    size_t sessionIdWidth = std::char_traits<char>::length(sessionIdHeader);
+    size_t pidWidth = std::char_traits<char>::length(pidHeader);
+    size_t tabWidth = std::char_traits<char>::length(tabHeader);
+    size_t shellSessionIdWidth = std::char_traits<char>::length(shellSessionIdHeader);
+
+    std::vector<DetachedSessionRow> rows;
+    rows.reserve(detachedSessions.size());
+
+    for (const auto& detachedSession : detachedSessions)
+    {
+        DetachedSessionRow row{
+            detachedSession["session_id"].asString(),
+            DetachedSessionPidString(detachedSession),
+            detachedSession["tab_title"].asString(),
+            detachedSession["shell_session_id"].asString(),
+        };
+
+        sessionIdWidth = std::max(sessionIdWidth, row.sessionId.size());
+        pidWidth = std::max(pidWidth, row.pid.size());
+        tabWidth = std::max(tabWidth, row.tabTitle.size());
+        shellSessionIdWidth = std::max(shellSessionIdWidth, row.shellSessionId.size());
+
+        rows.emplace_back(row);
+    }
+
+    printf("%-*s %-*s %-*s %-*s\n",
+           static_cast<int>(sessionIdWidth),
+           sessionIdHeader,
+           static_cast<int>(pidWidth),
+           pidHeader,
+           static_cast<int>(tabWidth),
+           tabHeader,
+           static_cast<int>(shellSessionIdWidth),
+           shellSessionIdHeader);
+
+    for (const auto& row : rows)
+    {
+        printf("%-*s %-*s %-*s %-*s\n",
+               static_cast<int>(sessionIdWidth),
+               row.sessionId.c_str(),
+               static_cast<int>(pidWidth),
+               row.pid.c_str(),
+               static_cast<int>(tabWidth),
+               row.tabTitle.c_str(),
+               static_cast<int>(shellSessionIdWidth),
+               row.shellSessionId.c_str());
     }
 }
 

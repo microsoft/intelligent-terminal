@@ -74,7 +74,7 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<LanguageProfileNotifier> _languageProfileNotifier;
         wil::unique_folder_change_reader_nothrow _reader;
 
-        TerminalApp::ContentManager _contentManager{ winrt::make<implementation::ContentManager>() };
+        TerminalApp::ContentManager _contentManager{ nullptr };
 
         void _ApplyLanguageSettingChange() noexcept;
 
