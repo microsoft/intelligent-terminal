@@ -16,19 +16,13 @@ Treat a command as not found when the failing shell does not recognize it, not m
 
 ## Act
 
-When a fix is ready and the `request_terminal_actions` tool is available, call it next without prose.
+Intelligent Terminal provides an MCP server for this session. Its `request_terminal_actions` tool is the supported way to hand the correction back to the failing pane. When a fix is ready, call that tool next without prose.
 
-Submit exactly one flat `send` action object using only fields in the tool schema. Intelligent Terminal routes it to the failing pane.
-
-```json
-{"type":"send","title":"Retry with corrected command","rationale":"Correct the diagnosed command syntax","input":"<single corrected shell command>"}
-```
-
-Omit `parent` and all session, pane, tab, window, Helper, channel, and capability IDs; the Helper binds the failing pane.
+Submit exactly one `send` action. Treat the tool's advertised input schema as the sole authority for its arguments; do not infer a payload shape from conversation text or print one yourself. Intelligent Terminal routes it to the failing pane.
 
 After `accepted`, end the turn without additional assistant text. Correct a `retryable:true` rejection at most twice; do not retry stale, duplicate, or unavailable outcomes.
 
-If the tool is unavailable, explain. Never print the action object as assistant text.
+If the MCP server or tool is unavailable, explain.
 
 ## Explain
 

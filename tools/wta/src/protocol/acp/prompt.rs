@@ -266,33 +266,17 @@ mod tests {
     }
 
     #[test]
-    fn embedded_prompts_describe_the_flat_mcp_action_schema() {
-        let planner_sample = r#"{"type":"send","title":"Show repository status","rationale":"Inspect the current working tree","input":"git status --short"}"#;
-        assert!(EMBEDDED_DEFAULT_PROMPT.contains("exactly one flat action object"));
-        assert!(EMBEDDED_DEFAULT_PROMPT.contains(planner_sample));
-        assert!(!EMBEDDED_DEFAULT_PROMPT
-            .contains("Submit one object with `recommended_choice` and `choices`"));
-        assert!(!EMBEDDED_DEFAULT_PROMPT.contains("Provide 1-3 choices"));
-        assert!(
-            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(
-                planner_sample.as_bytes(),
-                false,
-            )
-            .is_ok()
-        );
-
-        let autofix_sample = r#"{"type":"send","title":"Retry with corrected command","rationale":"Correct the diagnosed command syntax","input":"<single corrected shell command>"}"#;
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("exactly one flat `send` action object"));
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains(autofix_sample));
-        assert!(!EMBEDDED_AUTOFIX_PROMPT
-            .contains("Submit exactly one choice containing exactly one `send` action"));
-        assert!(
-            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(
-                autofix_sample.as_bytes(),
-                true,
-            )
-            .is_ok()
-        );
+    fn embedded_prompts_use_the_mcp_tool_schema_as_authority() {
+        for prompt in [EMBEDDED_DEFAULT_PROMPT, EMBEDDED_AUTOFIX_PROMPT] {
+            assert!(prompt.contains("provides an MCP server for this session"));
+            assert!(prompt.contains("`request_terminal_actions`"));
+            assert!(prompt.contains("advertised input schema as the sole authority"));
+            assert!(!prompt.contains(r#"{"type""#));
+            assert!(!prompt.contains("recommended_choice"));
+            assert!(!prompt.contains("```json"));
+        }
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Submit exactly one `send` action"));
     }
 
     #[test]
