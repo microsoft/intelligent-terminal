@@ -25,7 +25,9 @@ bare `wta` with neither a role flag nor a subcommand exits with an error.
   the CLI. Dispatched in `src/main.rs`.
 - **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
   listener owned by `wta-master`, plus an on-demand loopback relay per WSL
-  distro) -- exposes only `request_terminal_actions`. A per-session bearer
+  distro) -- exposes only `request_terminal_actions`. Each session receives an
+  independent public server name plus a bearer capability, preventing
+  name-keyed Agent caches from overwriting another session's header. The
   capability resolves to ACP SessionId, then `session_to_helper` routes the
   request over the existing master/helper pipe. Relays are bounded
   master-lifetime services and exit when their master-owned stdin pipe closes.
@@ -204,7 +206,8 @@ subfolder keyed by the package version:
 Per-process logs in the helper+master architecture:
 
 - `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
-  per-helper routing, `session_to_helper` updates, agent CLI exit detection
+  per-helper routing, `session_to_helper` updates, proposal MCP call
+  receipt/routing/validation results, agent CLI exit detection
 - `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
   connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle
 - `wta-cli.log` -- short-lived CLI helpers (`list-*`, `capture-pane`, `listen`,

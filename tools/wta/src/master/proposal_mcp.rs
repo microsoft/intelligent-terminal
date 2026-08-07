@@ -13,7 +13,9 @@ use uuid::Uuid;
 
 use super::{AgentInstanceId, MasterStateInner};
 use crate::agent_source::AgentSource;
-use crate::agent_tools::action_proposal::mcp::HelperRequest;
+use crate::agent_tools::action_proposal::mcp::{
+    HelperRequest, SERVER_ID_HEX_LEN, SERVER_NAME_PREFIX,
+};
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
 
 const ENDPOINT_PATH: &str = "/mcp";
@@ -219,6 +221,7 @@ impl Endpoints {
 pub(super) struct PendingCapability {
     secret: String,
     hash: [u8; 32],
+    server_name: String,
 }
 
 #[derive(Default)]
@@ -244,6 +247,9 @@ impl CapabilityRegistry {
         owner: AgentInstanceId,
         session_id: Option<acp::schema::v1::SessionId>,
     ) -> PendingCapability {
+        let mut server_id = Uuid::new_v4().simple().to_string();
+        server_id.truncate(SERVER_ID_HEX_LEN);
+        let server_name = format!("{SERVER_NAME_PREFIX}{server_id}");
         let secret = Uuid::new_v4().simple().to_string();
         let hash = hash_secret(&secret);
         let mut routes = self.routes.lock().await;
@@ -251,7 +257,11 @@ impl CapabilityRegistry {
             .by_capability
             .insert(hash, CapabilityRoute { session_id, owner });
         routes.by_owner.entry(owner).or_default().insert(hash);
-        PendingCapability { secret, hash }
+        PendingCapability {
+            secret,
+            hash,
+            server_name,
+        }
     }
 
     pub(super) async fn bind(
@@ -344,7 +354,7 @@ pub(super) fn server_config(
     pending: &PendingCapability,
 ) -> acp::schema::v1::McpServer {
     acp::schema::v1::McpServer::Http(
-        acp::schema::v1::McpServerHttp::new("intelligent_terminal", endpoint).headers(vec![
+        acp::schema::v1::McpServerHttp::new(pending.server_name.clone(), endpoint).headers(vec![
             acp::schema::v1::HttpHeader::new("Authorization", format!("Bearer {}", pending.secret)),
         ]),
     )
@@ -723,6 +733,20 @@ async fn serve_connection(
                     return Ok(());
                 }
             };
+            if message.get("method").and_then(Value::as_str) == Some("tools/call") {
+                let session_id = match &capability {
+                    CapabilityResolution::Bound(session_id) => Some(session_id.to_string()),
+                    CapabilityResolution::Pending | CapabilityResolution::Unknown => None,
+                };
+                tracing::info!(
+                    target: "proposal_mcp",
+                    step = "agent→master",
+                    op = "tools/call",
+                    session_id = session_id.as_deref(),
+                    capability_bound = session_id.is_some(),
+                    "received terminal action MCP call"
+                );
+            }
             let response =
                 crate::agent_tools::action_proposal::mcp::dispatch(message, |arguments| {
                     submit_to_helper(&state, capability, arguments)
@@ -754,19 +778,57 @@ async fn submit_to_helper(
     capability: CapabilityResolution,
     arguments: Value,
 ) -> Result<ProposalValidationResponse> {
+    let started = std::time::Instant::now();
     let session_id = match capability {
         CapabilityResolution::Bound(session_id) => session_id,
-        CapabilityResolution::Pending => anyhow::bail!("ACP session is not bound yet"),
-        CapabilityResolution::Unknown => anyhow::bail!("MCP capability is unknown"),
+        CapabilityResolution::Pending => {
+            tracing::warn!(
+                target: "proposal_mcp",
+                step = "master→helper",
+                op = "request_terminal_actions",
+                stage = "resolve_capability",
+                "terminal action MCP call rejected because its ACP session is not bound"
+            );
+            anyhow::bail!("ACP session is not bound yet");
+        }
+        CapabilityResolution::Unknown => {
+            tracing::warn!(
+                target: "proposal_mcp",
+                step = "master→helper",
+                op = "request_terminal_actions",
+                stage = "resolve_capability",
+                "terminal action MCP call rejected because its capability is unknown"
+            );
+            anyhow::bail!("MCP capability is unknown");
+        }
     };
     let route = {
         let routes = state.session_to_helper.lock().await;
         routes.get(&session_id).cloned()
-    }
-    .context("owning Helper is disconnected")?;
-    let forwarder = route
-        .forwarder
-        .context("owning Helper route has no forwarder")?;
+    };
+    let Some(route) = route else {
+        tracing::warn!(
+            target: "proposal_mcp",
+            step = "master→helper",
+            op = "request_terminal_actions",
+            stage = "resolve_helper",
+            session_id = %session_id,
+            "terminal action MCP call rejected because its owning Helper is disconnected"
+        );
+        anyhow::bail!("owning Helper is disconnected");
+    };
+    let Some(forwarder) = route.forwarder else {
+        tracing::error!(
+            target: "proposal_mcp",
+            step = "master→helper",
+            op = "request_terminal_actions",
+            stage = "resolve_helper",
+            helper_id = ?route.helper_id,
+            session_id = %session_id,
+            "terminal action MCP route has no Helper forwarder"
+        );
+        anyhow::bail!("owning Helper route has no forwarder");
+    };
     let params = serde_json::value::to_raw_value(&HelperRequest {
         session_id: session_id.to_string(),
         arguments,
@@ -778,15 +840,71 @@ async fn submit_to_helper(
     );
     tracing::info!(
         target: "proposal_mcp",
+        step = "master→helper",
+        op = "request_terminal_actions",
         helper_id = ?route.helper_id,
         session_id = %session_id,
         "routing terminal action request to owning Helper"
     );
-    let response = tokio::time::timeout(HELPER_TIMEOUT, forwarder.ext_method(request))
-        .await
-        .context("timed out waiting for owning Helper")?
-        .context("owning Helper rejected terminal action request")?;
-    serde_json::from_str(response.0.get()).context("decode Helper proposal response")
+    let response = match tokio::time::timeout(HELPER_TIMEOUT, forwarder.ext_method(request)).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                target: "proposal_mcp",
+                step = "helper→master",
+                op = "request_terminal_actions",
+                stage = "helper_rpc",
+                helper_id = ?route.helper_id,
+                session_id = %session_id,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                error_code = ?error.code,
+                "owning Helper rejected terminal action request"
+            );
+            return Err(anyhow::Error::new(error)
+                .context("owning Helper rejected terminal action request"));
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "proposal_mcp",
+                step = "helper→master",
+                op = "request_terminal_actions",
+                stage = "helper_rpc",
+                helper_id = ?route.helper_id,
+                session_id = %session_id,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "timed out waiting for owning Helper"
+            );
+            anyhow::bail!("timed out waiting for owning Helper");
+        }
+    };
+    let response: ProposalValidationResponse = match serde_json::from_str(response.0.get()) {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::warn!(
+                target: "proposal_mcp",
+                step = "helper→master",
+                op = "request_terminal_actions",
+                stage = "decode_response",
+                helper_id = ?route.helper_id,
+                session_id = %session_id,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "failed to decode Helper terminal action response"
+            );
+            return Err(error).context("decode Helper proposal response");
+        }
+    };
+    tracing::info!(
+        target: "proposal_mcp",
+        step = "helper→master",
+        op = "request_terminal_actions",
+        helper_id = ?route.helper_id,
+        session_id = %session_id,
+        status = ?response.status,
+        retryable = response.retryable,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "terminal action MCP call completed"
+    );
+    Ok(response)
 }
 
 struct HttpRequest {
@@ -967,14 +1085,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn server_config_is_http_and_carries_only_its_session_capability() {
+    async fn server_configs_isolate_session_identity_and_capability() {
         let registry = CapabilityRegistry::default();
         let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        let other = registry.prepare(AgentInstanceId::new_v4(), None).await;
         let config = server_config("http://127.0.0.1:4321/mcp", &pending);
         let acp::schema::v1::McpServer::Http(config) = config else {
             panic!("proposal MCP must use HTTP");
         };
-        assert_eq!(config.name, "intelligent_terminal");
+        let other_config = server_config("http://127.0.0.1:4321/mcp", &other);
+        let acp::schema::v1::McpServer::Http(other_config) = other_config else {
+            panic!("proposal MCP must use HTTP");
+        };
+        let repeated = server_config("http://127.0.0.1:4321/mcp", &pending);
+        let acp::schema::v1::McpServer::Http(repeated) = repeated else {
+            panic!("proposal MCP must use HTTP");
+        };
+        assert_ne!(config.name, other_config.name);
+        assert_eq!(config.name, repeated.name);
+        let server_id = config
+            .name
+            .strip_prefix("intellterm_")
+            .expect("proposal MCP server name must use the reserved prefix");
+        assert_eq!(server_id.len(), 20);
+        assert!(
+            server_id
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
+        );
+        assert!(format!("mcp__{}__request_terminal_actions", config.name).len() <= 64);
+        assert!(!config.name.contains(&pending.secret));
         assert_eq!(config.url, "http://127.0.0.1:4321/mcp");
         assert_eq!(config.headers.len(), 1);
         assert_eq!(config.headers[0].name, "Authorization");

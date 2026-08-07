@@ -577,16 +577,25 @@ fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&
     raw_input?.as_object()?.get("command")?.as_str()
 }
 
+fn is_proposal_mcp_server_name(name: &str) -> bool {
+    crate::agent_tools::action_proposal::mcp::server_name_matches(name)
+}
+
 fn is_proposal_mcp_tool_title(title: Option<&str>) -> bool {
-    matches!(
-        title.map(str::trim),
-        Some(
-            "intelligent_terminal/request_terminal_actions"
-                | "Use MCP tool: intelligent_terminal/request_terminal_actions"
-                | "intelligent_terminal-request_terminal_actions"
-                | "mcp__intelligent_terminal__request_terminal_actions"
-        )
-    )
+    let Some(title) = title.map(str::trim) else {
+        return false;
+    };
+    let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
+    if let Some(server_name) = title.strip_suffix("/request_terminal_actions") {
+        return is_proposal_mcp_server_name(server_name);
+    }
+    if let Some(server_name) = title.strip_suffix("-request_terminal_actions") {
+        return is_proposal_mcp_server_name(server_name);
+    }
+    title
+        .strip_prefix("mcp__")
+        .and_then(|title| title.strip_suffix("__request_terminal_actions"))
+        .is_some_and(is_proposal_mcp_server_name)
 }
 
 fn is_proposal_mcp_tool_call(title: Option<&str>, raw_input: Option<&serde_json::Value>) -> bool {
@@ -4066,11 +4075,24 @@ mod tests {
 
     #[test]
     fn proposal_mcp_tool_title_accepts_copilot_http_permission_shape() {
+        let dynamic = "intellterm_0123456789abcdefabcd";
         assert!(is_proposal_mcp_tool_title(Some(
             "Use MCP tool: intelligent_terminal/request_terminal_actions"
         )));
         assert!(is_proposal_mcp_tool_title(Some(
             "intelligent_terminal-request_terminal_actions"
+        )));
+        assert!(is_proposal_mcp_tool_title(Some(&format!(
+            "Use MCP tool: {dynamic}/request_terminal_actions"
+        ))));
+        assert!(is_proposal_mcp_tool_title(Some(&format!(
+            "mcp__{dynamic}__request_terminal_actions"
+        ))));
+        assert!(!is_proposal_mcp_tool_title(Some(
+            "intellterm_0123456789abcdef/request_terminal_actions"
+        )));
+        assert!(!is_proposal_mcp_tool_title(Some(
+            "intellterm_0123456789ABCDEFABCD/request_terminal_actions"
         )));
         assert!(!is_proposal_mcp_tool_title(Some(
             "Use MCP tool: other/request_terminal_actions"

@@ -13,7 +13,7 @@ and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intelligent_terminal/request_terminal_actions
+  -> HTTP MCP: intellterm_<public-id>/request_terminal_actions
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
@@ -37,8 +37,11 @@ processes, keyed by Agent identity, command, and Host/WSL source, while every
 ACP `session/new` or `session/load` request includes a distinct
 `McpServer::Http` entry. Host entries point directly to master's ephemeral
 Windows `127.0.0.1` endpoint. WSL entries point to an ephemeral
-`127.0.0.1` relay inside that Agent's distro. All entries carry different
-`Authorization` headers.
+`127.0.0.1` relay inside that Agent's distro. Every entry has an independent,
+non-sensitive server name and a different `Authorization` header. The public
+name prevents Agent implementations that cache MCP configuration globally by
+server name from overwriting another ACP session's header; it is not used for
+authorization or routing.
 
 The WSL relay exists because NAT-mode WSL cannot reliably reach an inbound
 Windows listener without a Hyper-V firewall rule. Master starts one relay per
@@ -184,8 +187,9 @@ execution path.
 Permission remains an optional compatibility preflight. Some agents call MCP
 without requesting permission.
 
-When an adapter requests permission for the exact
-`intelligent_terminal/request_terminal_actions` tool, the Helper:
+When an adapter requests permission for either the current
+`intellterm_<public-id>/request_terminal_actions` tool or the legacy
+`intelligent_terminal/request_terminal_actions` name, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
 2. silently selects `AllowOnce`; and
