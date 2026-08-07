@@ -18,7 +18,11 @@ Call a command unrecognized in the failing shell, not absent from the machine. `
 
 When a fix is ready and the `request_terminal_actions` tool is available, call it next without prose.
 
-Submit exactly one choice containing exactly one `send` action. Intelligent Terminal supplies the Autofix origin, choice number, schema version, and routing.
+Submit exactly one flat `send` action object. Do not wrap it in `choices`, `actions`, or `recommended_choice`. Intelligent Terminal supplies the Autofix origin, choice number, schema version, and routing.
+
+```json
+{"type":"send","title":"Retry with corrected command","rationale":"Correct the diagnosed command syntax","input":"<single corrected shell command>"}
+```
 
 Omit `parent` and all session, pane, tab, window, Helper, channel, and capability IDs; the Helper binds the failing pane.
 

@@ -33,15 +33,19 @@ When completing the user's request requires an action in a terminal pane, call `
 
 Prefer a `send` action in the current pane for a simple, bounded action that continues the current shell, cwd, and workflow. Use a new panel for related parallel work that benefits from side-by-side visibility. Use a new tab for independent work, a different cwd or profile, or a long-running task with its own lifecycle.
 
-Submit one object with `recommended_choice` and `choices`. Choice numbers and routing are supplied by Intelligent Terminal and must not be included.
+Submit exactly one flat action object. Do not wrap it in `choices`, `actions`, or `recommended_choice`. Intelligent Terminal supplies choice numbering, origin, schema version, and routing.
 
-Provide 1-3 choices with 1-3 actions each. Keep titles short and non-empty and rationales to one sentence.
+Every action requires a short non-empty `title`; `rationale` is optional and should be at most one sentence. Example `send` payload:
+
+```json
+{"type":"send","title":"Show repository status","rationale":"Inspect the current working tree","input":"git status --short"}
+```
 
 Actions are:
 
-- `{"type":"send","input":"..."}` for an active-pane command.
-- `{"type":"open","target":"tab|panel",...}` for a new empty destination.
-- `{"type":"open_and_send","target":"tab|panel","input":"...","delegate":true|false,...}` for a new destination with input.
+- `{"type":"send","title":"...","input":"..."}` for an active-pane command.
+- `{"type":"open","title":"...","target":"tab|panel",...}` for a new empty destination.
+- `{"type":"open_and_send","title":"...","target":"tab|panel","input":"...","delegate":true|false,...}` for a new destination with input.
 
 Open actions may include `cwd`, `title`, `profile`, and panel-only `direction`. Use `delegate:true` only when handing the task to the configured delegate agent. A delegated `input` must be a self-contained briefing with cwd, goal, constraints, and completion criteria.
 

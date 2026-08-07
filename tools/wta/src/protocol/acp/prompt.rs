@@ -230,7 +230,8 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
+        load_planner_prompt_template_from_root, merge_runtime_sections,
+        DEFAULT_PROMPT_FILE_NAME, EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT,
         RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
@@ -262,6 +263,36 @@ mod tests {
             merge_runtime_sections("before", &[String::from("first"), String::from("second")]);
 
         assert_eq!(merged, "before\n\nfirst\n\nsecond");
+    }
+
+    #[test]
+    fn embedded_prompts_describe_the_flat_mcp_action_schema() {
+        let planner_sample = r#"{"type":"send","title":"Show repository status","rationale":"Inspect the current working tree","input":"git status --short"}"#;
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("exactly one flat action object"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains(planner_sample));
+        assert!(!EMBEDDED_DEFAULT_PROMPT
+            .contains("Submit one object with `recommended_choice` and `choices`"));
+        assert!(!EMBEDDED_DEFAULT_PROMPT.contains("Provide 1-3 choices"));
+        assert!(
+            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(
+                planner_sample.as_bytes(),
+                false,
+            )
+            .is_ok()
+        );
+
+        let autofix_sample = r#"{"type":"send","title":"Retry with corrected command","rationale":"Correct the diagnosed command syntax","input":"<single corrected shell command>"}"#;
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("exactly one flat `send` action object"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains(autofix_sample));
+        assert!(!EMBEDDED_AUTOFIX_PROMPT
+            .contains("Submit exactly one choice containing exactly one `send` action"));
+        assert!(
+            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(
+                autofix_sample.as_bytes(),
+                true,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
