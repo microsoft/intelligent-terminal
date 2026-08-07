@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "ProviderBroker.h"
+#include "BuiltInProviderCatalog.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -162,13 +163,24 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     void ProviderBroker::ReloadProviders()
     {
+        auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
         auto listed = _registry.List();
         std::vector<Registration> providers;
+        if (builtIns.value)
+        {
+            providers = std::move(*builtIns.value);
+        }
         if (listed.value)
         {
             for (auto& provider : *listed.value)
             {
-                if (provider.enabled && provider.integrityValid)
+                const auto duplicatesBuiltIn = std::any_of(
+                    providers.begin(),
+                    providers.end(),
+                    [&](const auto& current) {
+                        return current.manifest.id == provider.manifest.id;
+                    });
+                if (provider.enabled && provider.integrityValid && !duplicatesBuiltIn)
                 {
                     providers.emplace_back(std::move(provider));
                 }
@@ -222,6 +234,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         AttachmentId attachment = 0;
         std::optional<BrokerUpdate> existing;
+        bool contextChanged = false;
         auto initialCallback = callback;
         {
             std::lock_guard lock{ _mutex };
@@ -235,18 +248,26 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             else if (
                 session.context.workingDirectory != context.workingDirectory ||
-                session.context.workingDirectoryAuthoritative != context.workingDirectoryAuthoritative)
+                session.context.workingDirectoryAuthoritative != context.workingDirectoryAuthoritative ||
+                session.context.shellType != context.shellType)
             {
+                contextChanged = true;
                 session.context.workingDirectory = std::move(context.workingDirectory);
                 session.context.workingDirectoryAuthoritative = context.workingDirectoryAuthoritative;
+                session.context.shellType = std::move(context.shellType);
                 ++session.contextRevision;
+                for (auto& [_, provider] : session.providers)
+                {
+                    provider.snapshot.reset();
+                }
+                ++session.updateSequence;
             }
             session.callbacks.emplace(attachment, std::move(callback));
             _attachmentSessions.emplace(attachment, session.context.sessionId);
             existing = _UpdateFor(session.context.sessionId, session);
         }
 
-        if (existing->presentation)
+        if (contextChanged || existing->presentation)
         {
             initialCallback(*existing);
         }
@@ -282,10 +303,13 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::UpdateContext(
         const AttachmentId attachment,
         std::filesystem::path workingDirectory,
-        const bool authoritative)
+        const bool authoritative,
+        std::optional<std::string> shellType)
     {
         _ReloadProvidersIfChanged();
         std::string sessionId;
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -295,14 +319,31 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             auto& session = _sessions.at(attached->second);
             if (session.context.workingDirectory == workingDirectory &&
-                session.context.workingDirectoryAuthoritative == authoritative)
+                session.context.workingDirectoryAuthoritative == authoritative &&
+                session.context.shellType == shellType)
             {
                 return;
             }
             session.context.workingDirectory = std::move(workingDirectory);
             session.context.workingDirectoryAuthoritative = authoritative;
+            session.context.shellType = std::move(shellType);
             ++session.contextRevision;
+            for (auto& [_, provider] : session.providers)
+            {
+                provider.snapshot.reset();
+            }
+            ++session.updateSequence;
             sessionId = session.context.sessionId;
+            update = _UpdateFor(sessionId, session);
+            callbacks.reserve(session.callbacks.size());
+            for (const auto& [_, callback] : session.callbacks)
+            {
+                callbacks.emplace_back(callback);
+            }
+        }
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
         }
         _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false);
     }
@@ -376,6 +417,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.workingDirectory = session.context.workingDirectory;
                 request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
                 request.contextRevision = session.contextRevision;
+                request.shellType = session.context.shellType;
                 if (providerState.running)
                 {
                     providerState.pending = PendingRequest{ std::move(request), generation };

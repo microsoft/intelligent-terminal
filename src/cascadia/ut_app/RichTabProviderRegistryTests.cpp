@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../RichTabProvider/ProviderRegistry.h"
+#include "../RichTabProvider/BuiltInProviderCatalog.h"
 
 #include <fstream>
 
@@ -27,6 +28,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ManagedRegistrationCannotEscapeRegistry);
         TEST_METHOD(BrokenProviderCanBeDisabled);
         TEST_METHOD(FailedDevelopmentRegistrationIsNotCommitted);
+        TEST_METHOD(MissingBuiltInCatalogIsEmpty);
+        TEST_METHOD(LoadsTrustedBuiltInProvider);
+        TEST_METHOD(RejectsUnexpectedBuiltInProviderId);
 
         struct TestDirectories
         {
@@ -87,6 +91,50 @@ namespace TerminalAppUnitTests
 
         std::ofstream provider{ root / L"provider.ps1", std::ios::binary | std::ios::trunc };
         provider << script;
+    }
+
+    void RichTabProviderRegistryTests::MissingBuiltInCatalogIsEmpty()
+    {
+        TestDirectories directories;
+        const auto loaded = BuiltInProviderCatalog::Load(directories.root);
+
+        VERIFY_IS_TRUE(loaded.value.has_value());
+        VERIFY_IS_TRUE(loaded.value->empty());
+        VERIFY_IS_TRUE(loaded.errors.empty());
+    }
+
+    void RichTabProviderRegistryTests::LoadsTrustedBuiltInProvider()
+    {
+        TestDirectories directories;
+        WriteProvider(
+            directories.root / L"RichTabProviders" / L"GitStatus",
+            "com.microsoft.intelligent-terminal.git-status",
+            "Write-Output '{}'");
+
+        const auto loaded = BuiltInProviderCatalog::Load(directories.root);
+        VERIFY_IS_TRUE(loaded.value.has_value());
+        VERIFY_IS_TRUE(loaded.errors.empty());
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), loaded.value->size());
+
+        const auto& registration = loaded.value->front();
+        VERIFY_ARE_EQUAL(std::string{ "com.microsoft.intelligent-terminal.git-status" }, registration.manifest.id);
+        VERIFY_ARE_EQUAL(RegistrationKind::Managed, registration.kind);
+        VERIFY_IS_TRUE(registration.enabled);
+        VERIFY_IS_TRUE(registration.integrityValid);
+    }
+
+    void RichTabProviderRegistryTests::RejectsUnexpectedBuiltInProviderId()
+    {
+        TestDirectories directories;
+        WriteProvider(
+            directories.root / L"RichTabProviders" / L"GitStatus",
+            "sample.git-status",
+            "Write-Output '{}'");
+
+        const auto loaded = BuiltInProviderCatalog::Load(directories.root);
+        VERIFY_IS_TRUE(loaded.value.has_value());
+        VERIFY_IS_TRUE(loaded.value->empty());
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), loaded.errors.size());
     }
 
     void RichTabProviderRegistryTests::ManagedProviderLifecycleAndIntegrity()

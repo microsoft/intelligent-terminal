@@ -6110,7 +6110,13 @@ namespace winrt::TerminalApp::implementation
         }
         const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(control));
         const auto workingDirectory = std::filesystem::path{ control.WorkingDirectory().c_str() };
-        constexpr bool authoritative = false;
+        const auto authoritative = control.WorkingDirectoryReportedByShell();
+        const auto shellName = control.ShellName();
+        std::optional<std::string> shellType;
+        if (!shellName.empty())
+        {
+            shellType = winrt::to_string(shellName);
+        }
         auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
 
         std::lock_guard lock{ _richTabAttachmentsMutex };
@@ -6118,7 +6124,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (found->second.sessionId == sessionId)
             {
-                broker.UpdateContext(found->second.id, workingDirectory, authoritative);
+                broker.UpdateContext(found->second.id, workingDirectory, authoritative, shellType);
                 return;
             }
             broker.Detach(found->second.id);
@@ -6129,6 +6135,7 @@ namespace winrt::TerminalApp::implementation
                 sessionId,
                 workingDirectory,
                 authoritative,
+                shellType,
             },
             [weakThis = get_weak()](const auto& update) {
                 if (const auto page = weakThis.get())

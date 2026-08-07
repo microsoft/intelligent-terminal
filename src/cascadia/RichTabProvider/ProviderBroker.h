@@ -31,6 +31,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string sessionId;
         std::filesystem::path workingDirectory;
         bool workingDirectoryAuthoritative{ false };
+        std::optional<std::string> shellType;
     };
 
     struct BrokerUpdate
@@ -55,7 +56,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         void UpdateContext(
             AttachmentId attachment,
             std::filesystem::path workingDirectory,
-            bool authoritative);
+            bool authoritative,
+            std::optional<std::string> shellType);
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();

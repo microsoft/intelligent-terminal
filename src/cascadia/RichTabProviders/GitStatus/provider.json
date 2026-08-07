@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "com.microsoft.intelligent-terminal.git-status",
+  "displayName": "Git Status",
+  "publisher": "Microsoft",
+  "version": "1.0.0",
+  "protocol": {
+    "minVersion": 1,
+    "maxVersion": 1
+  },
+  "runtime": {
+    "type": "powerShellV1",
+    "entrypoint": "provider.ps1",
+    "arguments": []
+  },
+  "activationEvents": [
+    "onWorkingDirectoryChanged",
+    "onCommandFinished",
+    "onTabActivated",
+    "onManualRefresh"
+  ],
+  "fields": [
+    {
+      "id": "repository",
+      "displayName": "Repository",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "branch",
+      "displayName": "Branch",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "status",
+      "displayName": "Status",
+      "type": "string",
+      "defaultVisible": true
+    },
+    {
+      "id": "sync",
+      "displayName": "Sync",
+      "type": "string",
+      "defaultVisible": true
+    }
+  ]
+}

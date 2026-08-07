@@ -156,10 +156,12 @@ namespace TerminalAppUnitTests
         request.workingDirectory = LR"(C:\repo)";
         request.workingDirectoryAuthoritative = true;
         request.contextRevision = 2;
+        request.shellType = "pwsh";
         const auto serialized = SerializeRequest(request, *manifest.value);
         VERIFY_IS_TRUE(serialized.value.has_value());
         VERIFY_IS_TRUE(serialized.value->find(R"("processEpoch":7)") != std::string::npos);
         VERIFY_IS_TRUE(serialized.value->find(R"("sessionId":"session-id")") != std::string::npos);
+        VERIFY_IS_TRUE(serialized.value->find(R"("type":"pwsh")") != std::string::npos);
     }
 
     void RichTabProviderContractTests::QuotesWindowsArguments()
