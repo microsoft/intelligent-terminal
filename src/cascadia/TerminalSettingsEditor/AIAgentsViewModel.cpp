@@ -12,6 +12,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/CustomModelCredential.h"
 #include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::Foundation;
@@ -354,6 +355,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::NewCustomModelProviderApiKey(const winrt::hstring& value)
+    {
+        _newCustomModelProviderApiKey = value;
+    }
+
     void AIAgentsViewModel::IsCustomModelProvidersExpanded(const bool value)
     {
         if (_isCustomModelProvidersExpanded != value)
@@ -418,6 +424,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
 
+        winrt::hstring credentialId;
+        if (!_newCustomModelProviderApiKey.empty())
+        {
+            credentialId = ::Microsoft::Terminal::CustomModels::StoreApiKey(
+                {},
+                _newCustomModelProviderApiKey);
+            provider.ApiKeyCredential(credentialId);
+            provider.ApiKeyRequired(true);
+        }
+        auto removeUncommittedCredential = wil::scope_exit([&]() noexcept {
+            if (!credentialId.empty())
+            {
+                LOG_IF_FAILED(wil::ResultFromException([&]() {
+                    ::Microsoft::Terminal::CustomModels::RemoveApiKey(credentialId);
+                }));
+            }
+        });
+
         auto weakThis = get_weak();
         _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
             provider,
@@ -428,6 +452,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }));
         _CommitCustomModelProviders();
+        removeUncommittedCredential.release();
         CancelCustomModelProvider();
     }
 
@@ -436,10 +461,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _isAddingCustomModelProvider = false;
         _newCustomModelProviderBaseUrl.clear();
         _newCustomModelId.clear();
+        _newCustomModelProviderApiKey.clear();
         _NotifyChanges(
             L"IsAddingCustomModelProvider",
             L"NewCustomModelProviderBaseUrl",
             L"NewCustomModelId",
+            L"NewCustomModelProviderApiKey",
             L"CanSaveCustomModelProvider");
     }
 
