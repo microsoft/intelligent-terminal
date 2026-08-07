@@ -76,10 +76,11 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
 
 /// Resolve a native Linux executable inside one WSL distro.
 ///
-/// A login shell is required for npm-global, snap, and `~/.local/bin`
-/// installations. Windows executables leaked through WSL's appended Windows
-/// PATH are rejected so a source is never advertised when it cannot run with
-/// Linux dependencies.
+/// An interactive login shell is required for npm-global, snap,
+/// `~/.local/bin`, and version managers such as nvm that initialize from
+/// `.bashrc`. Windows executables leaked through WSL's appended Windows PATH
+/// are rejected so a source is never advertised when it cannot run with Linux
+/// dependencies.
 pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
     if distro.trim().is_empty() || executable.trim().is_empty() {
         return None;
@@ -92,7 +93,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
             .arg(distro)
             .arg("--")
             .arg("bash")
-            .arg("-lc")
+            .arg("-lic")
             .arg(wsl_agent_probe_script(executable))
             .stdin(std::process::Stdio::null())
             .kill_on_drop(true);
@@ -182,14 +183,14 @@ pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
 
 pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
     format!(
-        "printf '__WTA_PROBE_BEGIN__\\n'; command -v {} 2>/dev/null; \
+        "printf '__WTA_PROBE_BEGIN__\\n'; type -P {} 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'",
         crate::coordinator::sh_quote(executable)
     )
 }
 
 fn is_native_wsl_resolution(resolved: &str) -> bool {
-    !resolved.is_empty() && !resolved.starts_with("/mnt/")
+    resolved.starts_with('/') && !resolved.starts_with("/mnt/")
 }
 
 /// Build the login command for an agent, resolving the full executable path.
@@ -570,6 +571,19 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_wsl_resolution_requires_absolute_non_windows_path() {
+        assert!(is_native_wsl_resolution(
+            "/home/user/.nvm/versions/node/v24/bin/copilot"
+        ));
+        assert!(is_native_wsl_resolution("/snap/bin/copilot"));
+        assert!(!is_native_wsl_resolution(""));
+        assert!(!is_native_wsl_resolution("copilot"));
+        assert!(!is_native_wsl_resolution(
+            "/mnt/c/Users/user/AppData/Roaming/npm/copilot"
+        ));
+    }
 
     #[test]
     fn merge_paths_prefers_fresh_and_removes_duplicates_case_insensitively() {
