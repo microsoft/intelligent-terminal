@@ -1086,8 +1086,6 @@
     <value>Durch Aktivieren werden Integrations-hooks installiert, um Sitzungen über Ihre Agenten hinweg zu verfolgen.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Kontextnutzung und Sitzungskosten anzeigen</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Sofern verfügbar, Kontextfensternutzung und Sitzungskosten in der unteren Leiste des Terminals anzeigen.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Bereichsposition</value>
   </data>
@@ -1276,9 +1274,6 @@
     <value>⚠ Die PowerShell-Ausführungsrichtlinie blockiert Skripts. Fehlererkennung deaktiviert.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
-  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Nutzung</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
-  <data name="Usage_TokensUnit" xml:space="preserve"><value>Token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
-  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Kontextfenster</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
   <data name="CmdAppHelpFooter" xml:space="preserve">
     <value>Hinweis: Nicht erkannte Argumente werden automatisch an den Unterbefehl „new-tab“ übergeben.
 Beispielsweise entspricht 'wt -p "Ubuntu" -d C:\' 'wt new-tab -p "Ubuntu" -d C:\'.
