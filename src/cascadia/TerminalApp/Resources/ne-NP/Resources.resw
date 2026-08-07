@@ -189,8 +189,6 @@
     <value>यो सक्षम गर्दा तपाईँका एजेन्टहरूमा सत्रहरू ट्र्याक गर्न एकीकरण hooks स्थापना हुनेछ।</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>सन्दर्भ प्रयोग र सत्र लागत देखाउनुहोस्</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>उपलब्ध हुँदा, टर्मिनल तलको पट्टीमा सन्दर्भ-सञ्झ्याल प्रयोग र सत्र लागत देखाउनुहोस्।</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>पेन स्थान</value>
   </data>
@@ -372,7 +370,4 @@
     <value>PowerShell कार्यान्वयन नीतिले स्क्रिप्टहरू रोक्दैछ।</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
-  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>प्रयोग</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
-  <data name="Usage_TokensUnit" xml:space="preserve"><value>टोकन</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
-  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>सन्दर्भ-विन्डो</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
 </root>
