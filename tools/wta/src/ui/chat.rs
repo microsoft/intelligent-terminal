@@ -667,11 +667,9 @@ fn push_prefixed_lines<'a>(
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
             if first_row {
-                lines.push(Line::from(Span::styled(format!("{marker} "), style)));
-                first_row = false;
-            } else {
-                lines.push(Line::default());
+                continue;
             }
+            lines.push(Line::default());
             continue;
         }
 
@@ -816,6 +814,15 @@ mod tests {
             );
             assert!(line_text(lines.last().expect("trailing row")).is_empty());
         }
+    }
+
+    #[test]
+    fn notice_prefix_skips_leading_blank_lines() {
+        let message = ChatMessage::info("\n\nNotice text");
+        let lines = build_message_lines(&message, false, false, None, 0, 20);
+
+        assert_eq!(line_text(&lines[0]), "i Notice text");
+        assert_eq!(lines.len(), message_height(&message, 20));
     }
 
     fn assert_tool_call(
