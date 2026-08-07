@@ -13,7 +13,7 @@ authenticated ACP agents. Current status (run on the Store package):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
-| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
+| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. bounded COM activation lifetime and WT_COM_CLSID injection) + §10 logging + log retention/cleanup | 22 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |

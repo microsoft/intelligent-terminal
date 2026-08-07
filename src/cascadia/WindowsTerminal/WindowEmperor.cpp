@@ -262,6 +262,15 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 {
     _assertIsMainThread();
 
+    // AppHost initialization can pump messages. Mark the handoff first so a
+    // timeout already queued before KillTimer cannot quit during initialization.
+    _handoffWindowCreationCount += 1;
+    KillTimer(_window.get(), HandoffTimeoutTimerId);
+    auto resetHandoff = wil::scope_exit([this]() noexcept {
+        _handoffWindowCreationCount -= 1;
+        _postQuitMessageIfNeeded();
+    });
+
     uint64_t id = args.Id();
     bool needsNewId = id == 0;
     uint64_t newId = 0;
@@ -283,6 +292,8 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
+    _handoffWindowCreationCount -= 1;
+    resetHandoff.release();
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -622,10 +633,18 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
         if (args.size() == 2 && args[1] == L"-Embedding")
         {
-            // We were launched for ConPTY handoff. We have no windows and also don't want to exit.
-            //
-            // TODO: Here we could start a timer and exit after, say, 5 seconds
-            // if no windows are created. But that's a minor concern.
+            // DCOM may activate us for a ConPTY handoff that never arrives.
+            // Give the client a short lease to create a window, then apply the
+            // normal quit policy so AllowHeadless (and other explicit
+            // headless reasons) remain authoritative.
+            if (_windows.empty())
+            {
+                if (!SetTimer(_window.get(), HandoffTimeoutTimerId, 5000, nullptr))
+                {
+                    LOG_LAST_ERROR();
+                    _postQuitMessageIfNeeded();
+                }
+            }
         }
         else
         {
@@ -1096,6 +1115,7 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
     if (
         _messageBoxCount <= 0 &&
         _windowCount <= 0 &&
+        _handoffWindowCreationCount <= 0 &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
         PostQuitMessage(0);
@@ -1208,6 +1228,17 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
             return 0;
+        case WM_TIMER:
+            if (wParam == HandoffTimeoutTimerId)
+            {
+                KillTimer(window, HandoffTimeoutTimerId);
+                if (_handoffWindowCreationCount <= 0)
+                {
+                    _postQuitMessageIfNeeded();
+                }
+                return 0;
+            }
+            break;
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {
