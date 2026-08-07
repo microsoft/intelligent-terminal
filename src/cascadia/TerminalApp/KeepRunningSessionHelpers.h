@@ -12,14 +12,24 @@ namespace winrt::TerminalApp::implementation
     {
         bool save{ false };
         bool detach{ false };
+        bool persistScrollback{ false };
     };
 
-    inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(const bool restoreShellSessions, const bool continueRunningCommands) noexcept
+    inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(
+        const winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference preference) noexcept
     {
-        return {
-            .save = restoreShellSessions,
-            .detach = continueRunningCommands,
-        };
+        using winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference;
+
+        switch (preference)
+        {
+        case FirstWindowPreference::PersistedLayout:
+            return { true, true, false };
+        case FirstWindowPreference::PersistedLayoutAndContent:
+            return { true, true, true };
+        case FirstWindowPreference::DefaultProfile:
+        default:
+            return {};
+        }
     }
 
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept

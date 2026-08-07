@@ -197,7 +197,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
-        TEST_METHOD(ShellSessionCloseActionsRespectIndependentSettings);
+        TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
         TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
@@ -371,23 +371,22 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
-    void TabTests::ShellSessionCloseActionsRespectIndependentSettings()
+    void TabTests::ShellSessionCloseActionsFollowStartupPreference()
     {
-        const auto saveOnly = winrt::TerminalApp::implementation::GetShellSessionCloseActions(true, false);
-        VERIFY_IS_TRUE(saveOnly.save);
-        VERIFY_IS_FALSE(saveOnly.detach);
-
-        const auto detachOnly = winrt::TerminalApp::implementation::GetShellSessionCloseActions(false, true);
-        VERIFY_IS_FALSE(detachOnly.save);
-        VERIFY_IS_TRUE(detachOnly.detach);
-
-        const auto saveAndDetach = winrt::TerminalApp::implementation::GetShellSessionCloseActions(true, true);
-        VERIFY_IS_TRUE(saveAndDetach.save);
-        VERIFY_IS_TRUE(saveAndDetach.detach);
-
-        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(false, false);
+        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile);
         VERIFY_IS_FALSE(disabled.save);
         VERIFY_IS_FALSE(disabled.detach);
+        VERIFY_IS_FALSE(disabled.persistScrollback);
+
+        const auto layout = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayout);
+        VERIFY_IS_TRUE(layout.save);
+        VERIFY_IS_TRUE(layout.detach);
+        VERIFY_IS_FALSE(layout.persistScrollback);
+
+        const auto layoutAndContent = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent);
+        VERIFY_IS_TRUE(layoutAndContent.save);
+        VERIFY_IS_TRUE(layoutAndContent.detach);
+        VERIFY_IS_TRUE(layoutAndContent.persistScrollback);
     }
 
     void TabTests::ReattachKeptSessionWhenKeepRunningIsDisabled()
@@ -414,7 +413,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(control);
             VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Reattach", L"", 0, NewTerminalArgs{}, control));
 
-            page->_settings.GlobalSettings().ContinueRunningCommands(false);
+            page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::DefaultProfile);
 
             NewTerminalArgs args{};
             args.SessionId(sessionId);
@@ -2497,8 +2496,7 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
             VERIFY_IS_NOT_NULL(tab);
             tab->SetDurableShellSession(L"existing-session", 8);
-            page->_settings.GlobalSettings().RestoreShellSessions(false);
-            page->_settings.GlobalSettings().ContinueRunningCommands(true);
+            page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
         });
 
         VERIFY_IS_TRUE(page->CloseProtocolPane(sessionId).get());

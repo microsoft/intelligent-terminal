@@ -868,9 +868,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
-        const auto closeActions = GetShellSessionCloseActions(
-            _settings.GlobalSettings().RestoreShellSessions(),
-            _settings.GlobalSettings().ContinueRunningCommands());
+        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference());
         if (!closeActions.save && !closeActions.detach)
         {
             _agentPaneLog("_PersistShellSession: skipped — saving and keep-running are off");
@@ -943,47 +941,50 @@ namespace winrt::TerminalApp::implementation
 
                 _AddDurableSessionMetadata(tab, actions);
 
-                tab->GetRootPane()->WalkTree([&](const auto& pane) {
-                    if (pane->IsAgentPane())
-                    {
-                        return;
-                    }
-
-                    std::filesystem::path path;
-                    try
-                    {
-                        if (const auto control = pane->GetTerminalControl())
+                if (closeActions.persistScrollback)
+                {
+                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (pane->IsAgentPane())
                         {
-                            if (const auto connection = control.Connection())
-                            {
-                                const auto sessionId = connection.SessionId();
-                                if (sessionId != winrt::guid{})
-                                {
-                                    const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
-                                    path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
-                                    wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
-                                    THROW_LAST_ERROR_IF(!file);
-                                    control.PersistTo(reinterpret_cast<int64_t>(file.get()));
-                                    persistedPaths.emplace_back(path);
+                            return;
+                        }
 
-                                    Json::Value buffer;
-                                    buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
-                                    buffer["staging_path"] = til::u16u8(path.wstring());
-                                    buffers.append(std::move(buffer));
+                        std::filesystem::path path;
+                        try
+                        {
+                            if (const auto control = pane->GetTerminalControl())
+                            {
+                                if (const auto connection = control.Connection())
+                                {
+                                    const auto sessionId = connection.SessionId();
+                                    if (sessionId != winrt::guid{})
+                                    {
+                                        const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
+                                        path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
+                                        wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                                        THROW_LAST_ERROR_IF(!file);
+                                        control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                                        persistedPaths.emplace_back(path);
+
+                                        Json::Value buffer;
+                                        buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                                        buffer["staging_path"] = til::u16u8(path.wstring());
+                                        buffers.append(std::move(buffer));
+                                    }
                                 }
                             }
                         }
-                    }
-                    catch (...)
-                    {
-                        if (!path.empty())
+                        catch (...)
                         {
-                            std::error_code error;
-                            std::filesystem::remove(path, error);
+                            if (!path.empty())
+                            {
+                                std::error_code error;
+                                std::filesystem::remove(path, error);
+                            }
+                            throw;
                         }
-                        throw;
-                    }
-                });
+                    });
+                }
 
                 WindowLayout layout;
                 layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
