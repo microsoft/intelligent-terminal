@@ -27,8 +27,8 @@ The human-readable list is one row per pane:
 
 ```text
 SESSION_ID                             PID     TAB          SHELL_SESSION_ID
-84DD76D9-830F-4649-A77C-F649559CE96A  21908   tmuxtest     4367e91d-0706-4374-8edc-73bdf1a01f0d
-AA52A683-4977-4D49-9704-F2CB4144B2BB  27776   tmuxtest     4367e91d-0706-4374-8edc-73bdf1a01f0d
+84DD76D9-830F-4649-A77C-F649559CE96A  21908   tmux test    4367e91d-0706-4374-8edc-73bdf1a01f0d
+AA52A683-4977-4D49-9704-F2CB4144B2BB  27776   tmux test    4367e91d-0706-4374-8edc-73bdf1a01f0d
 ```
 
 JSON output:
@@ -39,7 +39,7 @@ JSON output:
     {
       "session_id": "84dd76d9-830f-4649-a77c-f649559ce96a",
       "pid": 21908,
-      "tab_title": "tmuxtest",
+      "tab_title": "tmux test",
       "group_id": "859e9c8c-fec9-4f92-b9b8-b50bd4ca55d8",
       "shell_session_id": "4367e91d-0706-4374-8edc-73bdf1a01f0d"
     }
@@ -68,7 +68,7 @@ JSON output:
   notification-area menu.
 - The command exits nonzero when the GUID is invalid or is not currently
   detached.
-- Closing the final detached session allows a windowless, otherwise idle
+- Closing the final detached session allows an otherwise idle, windowless
   `WindowEmperor` to exit.
 
 ## Data flow
