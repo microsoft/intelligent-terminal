@@ -373,20 +373,25 @@ namespace TerminalAppLocalTests
 
     void TabTests::ShellSessionCloseActionsFollowStartupPreference()
     {
-        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile);
+        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile, false);
         VERIFY_IS_FALSE(disabled.save);
         VERIFY_IS_FALSE(disabled.detach);
         VERIFY_IS_FALSE(disabled.persistScrollback);
 
-        const auto layout = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayout);
+        const auto layout = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayout, false);
         VERIFY_IS_TRUE(layout.save);
-        VERIFY_IS_TRUE(layout.detach);
+        VERIFY_IS_FALSE(layout.detach);
         VERIFY_IS_FALSE(layout.persistScrollback);
 
-        const auto layoutAndContent = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent);
+        const auto layoutAndContent = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent, true);
         VERIFY_IS_TRUE(layoutAndContent.save);
         VERIFY_IS_TRUE(layoutAndContent.detach);
         VERIFY_IS_TRUE(layoutAndContent.persistScrollback);
+
+        const auto keepRunning = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile, true);
+        VERIFY_IS_FALSE(keepRunning.save);
+        VERIFY_IS_TRUE(keepRunning.detach);
+        VERIFY_IS_FALSE(keepRunning.persistScrollback);
     }
 
     void TabTests::ReattachKeptSessionWhenKeepRunningIsDisabled()
@@ -1162,6 +1167,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(tab);
 
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+
+            tab->GetActivePane()->KeepRunning(true);
+            page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
 
             const auto keptGroups = _contentManager->KeptGroups();
             VERIFY_ARE_EQUAL(1u, keptGroups.Size());
@@ -1243,8 +1252,12 @@ namespace TerminalAppLocalTests
 
     void TabTests::BuildKeptGroupRestoreActionsPreservesRestoreArguments()
     {
+        const auto firstSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-aaaa-bbbb-cccc-111111111111}");
+        const auto secondSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{22222222-aaaa-bbbb-cccc-222222222222}");
+
         NewTerminalArgs firstRestoreArgs{};
         firstRestoreArgs.ContentId(101);
+        firstRestoreArgs.SessionId(firstSessionId);
         firstRestoreArgs.Profile(L"{11111111-2222-3333-4444-555555555555}");
         firstRestoreArgs.StartingDirectory(L"C:\\first");
         firstRestoreArgs.Commandline(L"first-command");
@@ -1255,6 +1268,7 @@ namespace TerminalAppLocalTests
 
         NewTerminalArgs secondRestoreArgs{};
         secondRestoreArgs.ContentId(202);
+        secondRestoreArgs.SessionId(secondSessionId);
         secondRestoreArgs.Profile(L"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}");
         secondRestoreArgs.StartingDirectory(L"C:\\second");
         secondRestoreArgs.Commandline(L"second-command");
@@ -1284,6 +1298,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(firstRestoreArgs.AgentSessionId(), firstTerminalArgs.AgentSessionId());
         VERIFY_ARE_EQUAL(firstRestoreArgs.AgentSessionAgent(), firstTerminalArgs.AgentSessionAgent());
         VERIFY_ARE_EQUAL(firstRestoreArgs.AgentResumeCommandline(), firstTerminalArgs.AgentResumeCommandline());
+        VERIFY_IS_TRUE(!!::IsEqualGUID(firstTerminalArgs.KeptSessionId(), firstSessionId));
         VERIFY_IS_TRUE(firstTerminalArgs.DurableShellSessionId() == L"shell-session-restored");
         VERIFY_ARE_EQUAL(55LL, firstTerminalArgs.DurableShellSessionRevision());
 
@@ -1300,6 +1315,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(secondRestoreArgs.AgentSessionId(), secondTerminalArgs.AgentSessionId());
         VERIFY_ARE_EQUAL(secondRestoreArgs.AgentSessionAgent(), secondTerminalArgs.AgentSessionAgent());
         VERIFY_ARE_EQUAL(secondRestoreArgs.AgentResumeCommandline(), secondTerminalArgs.AgentResumeCommandline());
+        VERIFY_IS_TRUE(!!::IsEqualGUID(secondTerminalArgs.KeptSessionId(), secondSessionId));
         VERIFY_IS_TRUE(secondTerminalArgs.DurableShellSessionId().empty());
         VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
     }
@@ -2369,6 +2385,7 @@ namespace TerminalAppLocalTests
             expectedPaneId = _formatPaneId(sessionId);
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
 
+            tab->GetActivePane()->KeepRunning(true);
             page->_DetachShellPanesForKeepRunning(tab.get(), winrt::hstring{}, 0);
 
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
@@ -2432,6 +2449,7 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
+            tab->GetActivePane()->KeepRunning(true);
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, 41);
 
             VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
@@ -2496,6 +2514,7 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
             VERIFY_IS_NOT_NULL(tab);
             tab->SetDurableShellSession(L"existing-session", 8);
+            tab->GetActivePane()->KeepRunning(true);
             page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
         });
 

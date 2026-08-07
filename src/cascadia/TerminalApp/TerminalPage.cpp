@@ -8628,6 +8628,10 @@ namespace winrt::TerminalApp::implementation
             }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
+            if (newTerminalArgs.KeptSessionId() != winrt::guid{})
+            {
+                resultPane->KeepRunning(true);
+            }
 
             // Cross-window agent-pane drag: if the source tab stashed an
             // original StableId for this ContentId, the migrating pane was
@@ -8876,7 +8880,9 @@ namespace winrt::TerminalApp::implementation
                     {
                         cancelReattach.release();
                         auto keptContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, keptControl) };
-                        return std::make_shared<Pane>(keptContent);
+                        auto keptPane = std::make_shared<Pane>(keptContent);
+                        keptPane->KeepRunning(true);
+                        return keptPane;
                     }
                 }
             }

@@ -16,19 +16,20 @@ namespace winrt::TerminalApp::implementation
     };
 
     inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(
-        const winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference preference) noexcept
+        const winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference preference,
+        const bool keepRunning) noexcept
     {
         using winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference;
 
         switch (preference)
         {
         case FirstWindowPreference::PersistedLayout:
-            return { true, true, false };
+            return { true, keepRunning, false };
         case FirstWindowPreference::PersistedLayoutAndContent:
-            return { true, true, true };
+            return { true, keepRunning, true };
         case FirstWindowPreference::DefaultProfile:
         default:
-            return {};
+            return { false, keepRunning, false };
         }
     }
 
@@ -96,6 +97,7 @@ namespace winrt::TerminalApp::implementation
             auto terminalArgs = storedArgs.Copy().try_as<NewTerminalArgs>();
             terminalArgs.DurableShellSessionId(L"");
             terminalArgs.DurableShellSessionRevision(0);
+            terminalArgs.KeptSessionId(terminalArgs.SessionId());
 
             if (actions.empty())
             {

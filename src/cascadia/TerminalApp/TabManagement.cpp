@@ -872,7 +872,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
-        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference());
+        bool hasKeepRunningPane = false;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            hasKeepRunningPane = hasKeepRunningPane || pane->KeepRunning();
+        });
+        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference(), hasKeepRunningPane);
         if (!closeActions.save && !closeActions.detach)
         {
             _agentPaneLog("_PersistShellSession: skipped — saving and keep-running are off");
@@ -889,7 +893,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-        if (!hasUserInput && tab->DurableShellSessionId().empty())
+        if (!hasUserInput && tab->DurableShellSessionId().empty() && !hasKeepRunningPane)
         {
             // Intentional Durable Sessions boundary: profile startup commands alone do not qualify until the user sends input.
             _agentPaneLog("_PersistShellSession: skipped — no user input and no durable id");
@@ -1075,13 +1079,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Detaches every shell pane's live content so the commands they are running
-    // survive this tab — and, if it was the last one, this whole window —
-    // closing. The content keeps its connection and its buffer; only the
-    // TermControl is severed. Restoring the session reattaches to the very same
-    // content, so a pane that could not be detached simply falls back to the
-    // ordinary "fresh shell plus replayed scrollback" restore.
-    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision)
+    // Detaches opted-in shell panes so the commands they are running survive
+    // closing. The content keeps its connection and buffer; only the
+    // TermControl is severed. Restoring the session reattaches to the same
+    // content.
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision, const std::shared_ptr<Pane>& subtree)
     {
         // One group per tab, so a multi-pane tab is offered back as the one
         // thing the user closed rather than as N indistinguishable panes.
@@ -1089,8 +1091,9 @@ namespace winrt::TerminalApp::implementation
         const auto title = tab->Title();
         auto detached = 0;
 
-        tab->GetRootPane()->WalkTree([&](const auto& pane) {
-            if (pane->IsAgentPane())
+        const auto root = subtree ? subtree : tab->GetRootPane();
+        root->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane() || !pane->KeepRunning())
             {
                 return;
             }
@@ -1662,6 +1665,10 @@ namespace winrt::TerminalApp::implementation
                 _PersistShellSession(owningTab.get());
             }
             CATCH_LOG()
+        }
+        else if (owningTab && pane->KeepRunning())
+        {
+            _DetachShellPanesForKeepRunning(owningTab.get(), owningTab->DurableShellSessionId(), owningTab->DurableShellSessionRevision(), pane);
         }
 
         // If this is the last pane on the last tab of a named window, persist

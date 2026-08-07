@@ -356,6 +356,20 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleTogglePaneKeepRunning(const IInspectable& sender,
+                                                    const ActionEventArgs& args)
+    {
+        if (const auto activeTab{ _senderOrFocusedTab(sender) })
+        {
+            if (const auto pane = activeTab->GetActivePane(); pane && !pane->IsAgentPane())
+            {
+                pane->ToggleKeepRunning();
+            }
+        }
+
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleEnablePaneReadOnly(const IInspectable& sender,
                                                  const ActionEventArgs& args)
     {
