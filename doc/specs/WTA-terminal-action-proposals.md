@@ -13,7 +13,7 @@ and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intelligent_terminal/request_terminal_actions
+  -> HTTP MCP: intellterm_<public-id>/request_terminal_actions
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
@@ -37,8 +37,11 @@ processes, keyed by Agent identity, command, and Host/WSL source, while every
 ACP `session/new` or `session/load` request includes a distinct
 `McpServer::Http` entry. Host entries point directly to master's ephemeral
 Windows `127.0.0.1` endpoint. WSL entries point to an ephemeral
-`127.0.0.1` relay inside that Agent's distro. All entries carry different
-`Authorization` headers.
+`127.0.0.1` relay inside that Agent's distro. Every entry has an independent,
+non-sensitive server name and a different `Authorization` header. The public
+name prevents Agent implementations that cache MCP configuration globally by
+server name from overwriting another ACP session's header; it is not used for
+authorization or routing.
 
 The WSL relay exists because NAT-mode WSL cannot reliably reach an inbound
 Windows listener without a Hyper-V firewall rule. Master starts one relay per
@@ -46,7 +49,14 @@ distro with `wsl.exe`; the relay invokes a fixed, encoded Windows PowerShell
 byte forwarder for each HTTP request, which reaches master's Windows-loopback
 endpoint. The bearer header remains in the forwarded bytes and never enters a
 process command line. If Python 3 or Windows interop is unavailable in a
-distro, master does not advertise proposal MCP to that Helper.
+distro, master does not advertise proposal MCP to that Helper. The relay is
+cached for that master's lifetime, but its stdin remains connected to an
+ownership pipe: normal child cleanup or unexpected master termination closes
+the pipe and makes the Python relay exit. Each distro has an independent
+startup lock, so a slow distro does not block endpoint selection for another.
+Master also supervises the relay and restarts it on the same loopback port
+after an unexpected relay failure, preserving URLs already stored by ACP
+sessions.
 
 Before creating or loading a session:
 
@@ -55,6 +65,13 @@ Before creating or loading a session:
    to the Agent CLI;
 3. master binds the capability to the returned ACP SessionId on success; or
 4. master discards the pending capability on failure.
+
+Helper disconnect preserves the committed capability while the same Agent CLI
+still owns an orphaned ACP session, allowing direct rebind without
+`session/load`. When that Agent CLI instance dies, master revokes every
+capability owned by that exact instance. Reapers compare the pool cell identity
+before removal, so a late reaper from an old process cannot revoke or remove a
+replacement process using the same command.
 
 A failed replacement leaves the prior session capability valid. A successful
 replacement retires it. Orphan Helper rebinds preserve the existing capability
@@ -69,7 +86,7 @@ injects these trusted values.
 Server name:
 
 ```text
-intelligent_terminal
+intellterm_<public-id>
 ```
 
 Tool:
@@ -87,35 +104,26 @@ Input:
 
 ```json
 {
-  "recommended_choice": 1,
-  "choices": [
-    {
-      "title": "Run tests",
-      "rationale": "Verify the current change.",
-      "actions": [
-        {
-          "type": "send",
-          "input": "cargo test"
-        }
-      ]
-    }
-  ]
+  "type": "send",
+  "title": "Run tests",
+  "rationale": "Verify the current change.",
+  "input": "cargo test"
 }
 ```
 
-There are one to three choices and one to three actions per choice. Supported
-actions are:
+Each MCP call proposes exactly one action. Supported actions are:
 
 - `send`: submit input to the trusted active pane;
 - `open`: open an empty tab or panel;
 - `open_and_send`: open a tab or panel and submit input there.
 
-Open actions may include `cwd`, `title`, `profile`, and panel `direction`.
+Open actions may include `cwd`, `profile`, and panel `direction`. The
+user-facing `title` also becomes the requested destination title.
 `open_and_send` may set `delegate: true`; the Helper substitutes the configured
 delegate agent. A model cannot name an arbitrary agent.
 
 Autofix uses the same tool but the Helper supplies the trusted Autofix origin
-and requires exactly one choice with exactly one `send` action.
+and requires a `send` action.
 
 Tool result statuses:
 
@@ -170,8 +178,9 @@ execution path.
 Permission remains an optional compatibility preflight. Some agents call MCP
 without requesting permission.
 
-When an adapter requests permission for the exact
-`intelligent_terminal/request_terminal_actions` tool, the Helper:
+When an adapter requests permission for either the current
+`intellterm_<public-id>/request_terminal_actions` tool or the legacy
+`intelligent_terminal/request_terminal_actions` name, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
 2. silently selects `AllowOnce`; and
@@ -186,7 +195,9 @@ user-facing representation.
 The HTTP server binds only to an ephemeral IPv4 Windows-loopback port. WSL
 relays bind only to ephemeral loopback ports inside their distro and rewrite
 loopback Host/Origin authorities to the upstream loopback authority before
-byte-forwarding. The master server requires the session bearer capability,
+byte-forwarding. A relay limits concurrent handlers, applies a request read
+timeout and the same header/body size ceilings, and returns explicit HTTP
+errors when request parsing or the Windows bridge fails. The master server requires the session bearer capability,
 validates Host and any Origin header, rejects duplicate or oversized headers,
 rejects transfer encoding, and caps request bodies. Capabilities are stored
 hashed and are never logged.

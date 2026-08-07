@@ -577,16 +577,25 @@ fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&
     raw_input?.as_object()?.get("command")?.as_str()
 }
 
+fn is_proposal_mcp_server_name(name: &str) -> bool {
+    crate::agent_tools::action_proposal::mcp::server_name_matches(name)
+}
+
 fn is_proposal_mcp_tool_title(title: Option<&str>) -> bool {
-    matches!(
-        title.map(str::trim),
-        Some(
-            "intelligent_terminal/request_terminal_actions"
-                | "Use MCP tool: intelligent_terminal/request_terminal_actions"
-                | "intelligent_terminal-request_terminal_actions"
-                | "mcp__intelligent_terminal__request_terminal_actions"
-        )
-    )
+    let Some(title) = title.map(str::trim) else {
+        return false;
+    };
+    let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
+    if let Some(server_name) = title.strip_suffix("/request_terminal_actions") {
+        return is_proposal_mcp_server_name(server_name);
+    }
+    if let Some(server_name) = title.strip_suffix("-request_terminal_actions") {
+        return is_proposal_mcp_server_name(server_name);
+    }
+    title
+        .strip_prefix("mcp__")
+        .and_then(|title| title.strip_suffix("__request_terminal_actions"))
+        .is_some_and(is_proposal_mcp_server_name)
 }
 
 fn is_proposal_mcp_tool_call(title: Option<&str>, raw_input: Option<&serde_json::Value>) -> bool {
@@ -1864,7 +1873,6 @@ pub async fn run_acp_client_over_pipe(
         .as_ref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let mut proposal_commands_supported = true;
 
     // Connect to the master singleton over the named pipe. The C++
     // SharedWta side spawns the master and the helper basically back
@@ -2190,7 +2198,7 @@ pub async fn run_acp_client_over_pipe(
         family_id: usage_family_id,
         reporter_id: init_resp.agent_info.as_ref().map(|info| info.name.clone()),
     };
-    proposal_commands_supported &= init_resp.agent_capabilities.mcp_capabilities.http
+    let proposal_commands_supported = init_resp.agent_capabilities.mcp_capabilities.http
         && wta_meta.proposal_mcp.as_deref() == Some("http-v1");
     // Connection milestone at info so a clean handshake is visible in release.
     tracing::info!(
@@ -3739,10 +3747,9 @@ mod tests {
                 ToolCallUpdateFields::new()
                     .title("request_terminal_actions")
                     .raw_input(serde_json::json!({
-                        "choices": [{
-                            "title": "Run test",
-                            "actions": [{"type": "send", "input": "cargo test"}]
-                        }]
+                        "type": "send",
+                        "title": "Run test",
+                        "input": "cargo test"
                     })),
             ),
             vec![PermissionOption::new(
@@ -3864,10 +3871,9 @@ mod tests {
             &crate::agent_tools::action_proposal::mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
                 arguments: serde_json::json!({
-                    "choices": [{
-                        "title": "Run test",
-                        "actions": [{"type": "send", "input": "cargo test"}]
-                    }]
+                    "type": "send",
+                    "title": "Run test",
+                    "input": "cargo test"
                 }),
             },
         )
@@ -4067,11 +4073,24 @@ mod tests {
 
     #[test]
     fn proposal_mcp_tool_title_accepts_copilot_http_permission_shape() {
+        let dynamic = "intellterm_01234567890123456789";
         assert!(is_proposal_mcp_tool_title(Some(
             "Use MCP tool: intelligent_terminal/request_terminal_actions"
         )));
         assert!(is_proposal_mcp_tool_title(Some(
             "intelligent_terminal-request_terminal_actions"
+        )));
+        assert!(is_proposal_mcp_tool_title(Some(&format!(
+            "Use MCP tool: {dynamic}/request_terminal_actions"
+        ))));
+        assert!(is_proposal_mcp_tool_title(Some(&format!(
+            "mcp__{dynamic}__request_terminal_actions"
+        ))));
+        assert!(!is_proposal_mcp_tool_title(Some(
+            "intellterm_0123456789abcdef/request_terminal_actions"
+        )));
+        assert!(!is_proposal_mcp_tool_title(Some(
+            "intellterm_0123456789012345678A/request_terminal_actions"
         )));
         assert!(!is_proposal_mcp_tool_title(Some(
             "Use MCP tool: other/request_terminal_actions"

@@ -10,6 +10,8 @@ const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SUPPORTED_MCP_PROTOCOL_VERSIONS: &[&str] =
     &["2024-11-05", "2025-03-26", MCP_PROTOCOL_VERSION];
 const TOOL_NAME: &str = "request_terminal_actions";
+pub const SERVER_NAME_PREFIX: &str = "intellterm_";
+pub const SERVER_ID_HEX_LEN: usize = 20;
 pub const HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_terminal_actions";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,6 +24,20 @@ pub struct HelperRequest {
 pub fn helper_method_matches(method: &str) -> bool {
     method.trim_start_matches('_') == HELPER_REQUEST_METHOD.trim_start_matches('_')
 }
+
+pub fn server_name_matches(name: &str) -> bool {
+    if name == "intelligent_terminal" {
+        return true;
+    }
+    name.strip_prefix(SERVER_NAME_PREFIX)
+        .is_some_and(|server_id| {
+            server_id.len() == SERVER_ID_HEX_LEN
+                && server_id
+                    .chars()
+                    .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
+        })
+}
+
 pub async fn dispatch<F, Fut>(request: Value, submit: F) -> Option<Value>
 where
     F: FnOnce(Value) -> Fut,
@@ -53,7 +69,7 @@ where
         "tools/list" => json!({
             "tools": [{
                 "name": TOOL_NAME,
-                "description": "Request terminal actions in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
+                "description": "Request one terminal action in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
                 "inputSchema": super::schema::mcp_input_schema()
             }]
         }),
@@ -164,7 +180,9 @@ mod tests {
             "method": "initialize",
             "params": { "protocolVersion": "unsupported" }
         });
-        let response = dispatch(request, |_| async { unreachable!() }).await.unwrap();
+        let response = dispatch(request, |_| async { unreachable!() })
+            .await
+            .unwrap();
 
         assert_eq!(
             response
@@ -173,5 +191,4 @@ mod tests {
             Some(MCP_PROTOCOL_VERSION)
         );
     }
-
 }

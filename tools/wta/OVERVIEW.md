@@ -104,10 +104,15 @@ running executable's directory instead.
 
 `wta-master` owns one stateless Streamable HTTP endpoint on Windows loopback.
 Host Agents use it directly; WSL Agents use an on-demand loopback relay inside
-their distro, avoiding inbound Windows firewall requirements. Each ACP
-session's `McpServer::Http` configuration carries a distinct bearer
-capability. Master maps it to SessionId, resolves the current Helper through
-`session_to_helper`, and forwards the typed input over the existing ACP pipe.
+their distro, avoiding inbound Windows firewall requirements. Relays are
+master-lifetime services with bounded request handling and a master-owned stdin
+pipe that terminates the distro process if master exits; unexpected relay
+failure is restarted on the same port so existing sessions recover. Each ACP
+session's `McpServer::Http` configuration carries an independent public server
+name and a distinct bearer capability, so name-keyed Agent caches cannot
+overwrite another session's header. Master maps the capability to SessionId,
+resolves the current Helper through `session_to_helper`, and forwards the typed
+input over the existing ACP pipe.
 The endpoint exposes only `request_terminal_actions` and returns after the
 Helper confirms that the recommendation card was presented. The user confirms
 or cancels independently.
