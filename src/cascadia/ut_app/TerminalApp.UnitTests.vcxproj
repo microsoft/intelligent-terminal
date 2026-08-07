@@ -22,6 +22,9 @@
   <!-- ========================= Cpp Files ======================== -->
   <ItemGroup>
     <ClCompile Include="JsonUtilsTests.cpp" />
+    <ClCompile Include="RichTabProviderContractTests.cpp" />
+    <ClCompile Include="RichTabProviderBrokerTests.cpp" />
+    <ClCompile Include="RichTabProviderRegistryTests.cpp" />
     <ClCompile Include="FzfTests.cpp" />
     <ClCompile Include="AgentHooksStatusTests.cpp" />
     <ClCompile Include="AcpModelUtilsTests.cpp" />
@@ -37,6 +40,7 @@
 
   <!-- ========================= Project References ======================== -->
   <ItemGroup>
+    <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\RichTabProvider\RichTabProvider.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalApp\TerminalAppLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj" />
     <ProjectReference Include="$(OpenConsoleDir)\src\types\lib\types.vcxproj" />

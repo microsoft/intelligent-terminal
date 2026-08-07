@@ -2557,6 +2557,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _core.WorkingDirectory();
     }
 
+    bool TermControl::WorkingDirectoryReportedByShell() const
+    {
+        return _core.WorkingDirectoryReportedByShell();
+    }
+
     hstring TermControl::ShellName() const
     {
         return _core.ShellName();

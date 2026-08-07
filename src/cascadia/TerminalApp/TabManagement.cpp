@@ -719,6 +719,7 @@ namespace winrt::TerminalApp::implementation
                 });
             }
         }
+        _ReleaseRichTabAttachments(rootPaneForClose);
 
         // Notify wta of every terminal pane in this tab BEFORE
         // `tab.Shutdown()` destroys their controls. Tab shutdown goes
@@ -1089,6 +1090,7 @@ namespace winrt::TerminalApp::implementation
         // happen before `pane->Close()` since Close destroys the
         // TermControl and the SessionId becomes unresolvable.
         _NotifyPanesClosing(pane);
+        _ReleaseRichTabAttachments(pane);
 
         // If this is the last pane on the last tab of a named window, persist
         // the workspace layout now while the pane content is still alive.
@@ -1478,6 +1480,10 @@ namespace winrt::TerminalApp::implementation
             {
                 const auto tab{ _tabs.GetAt(selectedIndex) };
                 _UpdatedSelectedTab(tab);
+                if (const auto tabImpl = _GetTabImpl(tab))
+                {
+                    _RefreshRichTabForTab(*tabImpl, true);
+                }
             }
             // Flush any deferred agent-stack rebuild now that a real
             // terminal tab is active. Per-tab model — no shared pane

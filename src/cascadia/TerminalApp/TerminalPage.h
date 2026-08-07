@@ -327,6 +327,24 @@ namespace winrt::TerminalApp::implementation
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
 
         void _UpdateTabIndices();
+        void _AttachOrUpdateRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _DetachRichTabControl(const Microsoft::Terminal::Control::TermControl& control);
+        void _NotifyRichTabControl(
+            const Microsoft::Terminal::Control::TermControl& control,
+            ::Microsoft::Terminal::RichTab::Provider::ActivationEvent reason);
+        void _ReleaseRichTabAttachments(const std::shared_ptr<Pane>& rootPane);
+        void _RefreshRichTabForTab(Tab& tab, bool activate);
+        void _ApplyRichTabUpdate(const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update);
+
+        struct RichTabAttachment
+        {
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId id{ 0 };
+            std::string sessionId;
+        };
+        std::mutex _richTabAttachmentsMutex;
+        std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
+        std::unordered_map<std::string, std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>> _richTabPresentations;
+        std::unordered_map<std::string, uint64_t> _richTabUpdateSequences;
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };

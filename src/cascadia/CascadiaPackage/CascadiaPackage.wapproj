@@ -146,6 +146,18 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <!-- First-party Rich Tab providers are trusted package content and are
+       discovered without a user registry entry. -->
+  <ItemGroup>
+    <Content Include="$(SolutionDir)src\cascadia\RichTabProviders\GitStatus\provider.json">
+      <Link>RichTabProviders\GitStatus\provider.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)src\cascadia\RichTabProviders\GitStatus\provider.ps1">
+      <Link>RichTabProviders\GitStatus\provider.ps1</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
   <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
        wta resolves <exe-dir>/wt-agent-hooks/ at runtime via
        agent_hooks_installer::bundle::candidate_roots(), feeds the per-CLI

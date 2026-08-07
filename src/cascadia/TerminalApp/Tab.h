@@ -4,6 +4,7 @@
 #pragma once
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
+#include "../RichTabProvider/ProviderBroker.h"
 #include "Tab.h"
 #include "Tab.g.h"
 
@@ -63,6 +64,7 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
+        void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
 
         void Close();
         void Shutdown();
@@ -311,6 +313,9 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _stableId{};
 
         winrt::hstring _runtimeTabText{};
+        std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
+        winrt::hstring _richTabTooltipText{};
+        winrt::hstring _richTabAccessibilityText{};
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
@@ -350,6 +355,8 @@ namespace winrt::TerminalApp::implementation
         void _EnableMenuItems();
         void _UpdateSwitchToTabKeyChord();
         void _UpdateToolTip();
+        void _UpdateRichTabPresentation();
+        void _UpdateAutomationName();
 
         void _RecalculateAndApplyTabColor();
         void _ApplyTabColorOnUIThread(const winrt::Windows::UI::Color& color);

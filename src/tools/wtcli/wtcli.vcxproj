@@ -29,7 +29,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <!-- Pick up the MIDL-generated classic-COM header ITerminalProtocol.h
            that OpenConsoleProxy emits into its sibling IntDir. -->
-      <AdditionalIncludeDirectories>$(IntDir)..\OpenConsoleProxy;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir)..\OpenConsoleProxy;$(OpenConsoleDir)src\cascadia\RichTabProvider;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -37,6 +37,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ProjectReference Include="$(OpenConsoleDir)src\cascadia\RichTabProvider\RichTabProvider.vcxproj">
+      <Project>{D4B1C85B-C88B-4F37-AADB-8083C13E66A2}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <!-- Build dependency — OpenConsoleProxy must build first so
          ITerminalProtocol.h exists before we compile. Build-order only; the
          proxy/stub itself is loaded at runtime via the package manifest. -->
