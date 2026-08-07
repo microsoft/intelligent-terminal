@@ -9,13 +9,12 @@ issue id: durable-sessions (bucket 2)
 
 ## Abstract
 
-Durable Sessions has two independent halves. Bucket 1 — *saving sessions for
-restore* — is implemented: closing a tab persists its layout, cwd and scrollback,
-and restoring re-creates the tab and replays the saved buffer into a **fresh**
-shell. This spec covers bucket 2 — *keeping sessions running*. With
-`continueRunningCommands` enabled, closing a tab no longer kills the shell. Its
-content is detached with no window, the terminal process stays alive with nothing
-on screen, and restoring the session reattaches to that same still-running shell.
+Durable Sessions combines saving sessions for restore with keeping their shells
+running. When "When Terminal starts" is set to either restore option, closing a
+tab persists its layout and cwd, preserves its shell and agent sessions, and
+detaches the live shell content so the terminal process can stay alive with
+nothing on screen. "Restore window layout and content" additionally persists
+scrollback for fallback restoration after the live session is unavailable.
 A build that was halfway through when the last window closed is still halfway
 through when the terminal comes back.
 
@@ -123,12 +122,12 @@ any pane unconfirmed.
 
 ### Ordering with bucket 1
 
-Saving a snapshot and keeping a process alive are independent decisions.
-`restoreShellSessions` controls the database snapshot; `continueRunningCommands`
-controls detachment. When both are enabled, a successful save supplies the
-durable database id and revision stored beside the detached group. If saving is
-disabled or fails, a qualifying live shell can still remain detached, but it has
-no new snapshot id to display or fall back to.
+Saving the session metadata and keeping a process alive are both enabled by
+either restore value of `firstWindowPreference`. A successful save supplies the
+durable database id and revision stored beside the detached group. Only
+`PersistedLayoutAndContent` writes scrollback into the snapshot;
+`PersistedLayout` restores the same shell sessions, agent panes, and agent
+sessions without replaying saved terminal content.
 
 `_PersistShellSession` is normally reached from `_HandleCloseTabRequested`, which
 a window close never goes through. Since "close the terminal" is the whole point
@@ -180,12 +179,13 @@ multi-pane group are currently rebuilt with equal splits.
 
 ## Settings
 
-`continueRunningCommands` (global, default `true`,
-Settings → Startup → "Continue running commands when terminal relaunches"). The
-setting was already defined and surfaced in the Settings UI by bucket 1 but had
-no consumer; this is that consumer. It controls future detach decisions only.
-Turning it off does not prevent an already-detached live session from being
-reattached.
+The existing `firstWindowPreference` setting under Settings → Startup → "When
+Terminal starts" controls durable sessions. Both "Restore window layout" and
+"Restore window layout and content" restore shell sessions, agent panes, and
+agent sessions and keep running commands alive while detached. The latter also
+restores persisted scrollback. "Open a new tab with the default profile"
+disables future save-and-detach decisions but does not prevent an
+already-detached live session from being reattached.
 
 ## Capabilities and limitations
 
