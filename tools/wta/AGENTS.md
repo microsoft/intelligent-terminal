@@ -232,7 +232,9 @@ For normal local WTA development, always produce the binary at `tools/wta/target
 - Before running `cargo build` for WTA, kill any active `wta.exe` processes first. A live shared-host session can keep `target/debug/wta.exe` locked and make the build fail with `Access is denied`.
 - Preferred PowerShell sequence:
   - `Get-Process wta -ErrorAction SilentlyContinue | Stop-Process -Force`
-  - `cargo build --manifest-path tools/wta/Cargo.toml`
+  - `Push-Location tools/wta`
+  - `cargo build`
+  - `Pop-Location`
 - Do not switch to an alternate `--target-dir` just to work around a locked `wta.exe` unless that is explicitly the task. The default expectation is to refresh `tools/wta/target/debug/wta.exe`.
 
 ## Test Rule
@@ -242,9 +244,11 @@ For any WTA change that is covered by — or should be covered by — unit tests
 the C++ F5 / `bcz` flow do **not** compile or run the `#[cfg(test)]` code, so a
 green build says nothing about the tests.
 
-- Kill any live `wta.exe` first (same as the Build Rule), then run from the repo
-  root so the manifest's toolchain pin doesn't force the unavailable channel:
-  - `cargo test --manifest-path tools/wta/Cargo.toml`
+- Kill any live `wta.exe` first (same as the Build Rule), then run from
+  `tools/wta` so rustup discovers the pinned public toolchain:
+  - `Push-Location tools/wta`
+  - `cargo test`
+  - `Pop-Location`
 - All tests must pass before you push. CI runs the same `cargo test` and fails
   the build on any failure
   (`build/pipelines/templates-v2/job-build-project.yml`), so a local run just
@@ -282,7 +286,6 @@ next to `Generate-ThirdPartyNotices.ps1` (the existing MD-to-HTML converter
 the build pipeline runs):
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = 'stable'   # bypass the repo's rust-toolchain.toml pin
 pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 ```
 

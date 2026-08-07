@@ -43,10 +43,12 @@ Add or update tests for:
 - invalid or empty delegate executable rejection;
 - policy filtering or settings serialization when those paths changed.
 
-Run the WTA suite from the repository root:
+Run the WTA suite from its crate directory so Cargo uses the pinned toolchain:
 
 ```powershell
-cargo test --manifest-path tools\wta\Cargo.toml
+Push-Location tools\wta
+cargo test
+Pop-Location
 ```
 
 Do not treat a successful build as a substitute for tests; WTA test-only code
@@ -59,7 +61,9 @@ Resolve and stop only the specific live WTA process IDs before rebuilding:
 ```powershell
 Get-Process wta -ErrorAction SilentlyContinue |
     ForEach-Object { Stop-Process -Id $_.Id -Force }
-cargo build --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+Push-Location tools\wta
+cargo build --target x86_64-pc-windows-msvc
+Pop-Location
 ```
 
 Always use the explicit target for a package-validation cycle because

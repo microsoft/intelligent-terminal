@@ -11,16 +11,17 @@ The repo contains multiple Rust crates (e.g. `installer/bootstrap/`); this file'
 
 ## Toolchain & Build
 
-- **Toolchain is pinned.** `tools/wta/rust-toolchain.toml` pins the channel to `ms-prod-1.93` for CI reproducibility. Do not bump it casually.
+- **Toolchain is pinned.** `tools/wta/rust-toolchain.toml` pins the public channel to `1.93` for local development and GitHub automation. Azure DevOps explicitly overrides it with the matching `ms-prod-1.93` channel. Do not bump either version casually or let them drift.
 - **Static CRT on Windows.** The repo-root `.cargo/config.toml` forces `+crt-static` rustflags for all Windows MSVC targets (`x86_64`, `i686`, `aarch64`). Avoid dependencies that break under static CRT.
 - **Two supported build invocations — don't mix them.** Both of these are valid for WTA local dev:
 
   ```bash
-  cargo build --manifest-path tools/wta/Cargo.toml                              # host target (bare target/)
-  cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml   # explicit target
+  cd tools/wta
+  cargo build                                      # host target (bare target/)
+  cargo build --target x86_64-pc-windows-msvc     # explicit target
   ```
 
-  Pick one and stay with it within a single dev session. The `CascadiaPackage.wapproj` deploy step prefers `tools/wta/target/x86_64-pc-windows-msvc/<profile>/wta.exe` over the bare `tools/wta/target/<profile>/wta.exe`, so if you build once with `--target` and later iterate with plain `cargo build`, the wapproj will silently keep deploying the stale explicit-target binary. See `tools/wta/README.md` and `tools/wta/AGENTS.md` for the host-target workflow.
+  Run Cargo from `tools/wta` so rustup discovers `rust-toolchain.toml`. Pick one invocation and stay with it within a single dev session. The `CascadiaPackage.wapproj` deploy step prefers `tools/wta/target/x86_64-pc-windows-msvc/<profile>/wta.exe` over the bare `tools/wta/target/<profile>/wta.exe`, so if you build once with `--target` and later iterate with plain `cargo build`, the wapproj will silently keep deploying the stale explicit-target binary. See `tools/wta/README.md` and `tools/wta/AGENTS.md` for the host-target workflow.
 
 ## Localization
 
@@ -47,7 +48,6 @@ User-facing strings go through `t!(...)` (rust-i18n) — see `rust-localization.
 `tools/wta/cgmanifest.json` (Component Governance manifest) and the `<!-- BEGIN wta-rust-deps -->` block in `/NOTICE.md` are **generated** from `cargo metadata`. Whenever you change the dependency graph — add/remove/upgrade a direct dep in `tools/wta/Cargo.toml`, run a `cargo update` that substantially shifts `Cargo.lock`, or flip a feature flag that pulls in/drops transitive crates — regenerate both and commit the diff alongside the Cargo change:
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = 'stable'   # bypass the rust-toolchain.toml pin
 pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 ```
 
