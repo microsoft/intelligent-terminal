@@ -4075,7 +4075,7 @@ mod tests {
 
     #[test]
     fn proposal_mcp_tool_title_accepts_copilot_http_permission_shape() {
-        let dynamic = "intellterm_0123456789abcdefabcd";
+        let dynamic = "intellterm_01234567890123456789";
         assert!(is_proposal_mcp_tool_title(Some(
             "Use MCP tool: intelligent_terminal/request_terminal_actions"
         )));
@@ -4092,7 +4092,7 @@ mod tests {
             "intellterm_0123456789abcdef/request_terminal_actions"
         )));
         assert!(!is_proposal_mcp_tool_title(Some(
-            "intellterm_0123456789ABCDEFABCD/request_terminal_actions"
+            "intellterm_0123456789012345678A/request_terminal_actions"
         )));
         assert!(!is_proposal_mcp_tool_title(Some(
             "Use MCP tool: other/request_terminal_actions"
