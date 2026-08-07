@@ -15,11 +15,13 @@
   <Import Project="$(OpenConsoleDir)src\common.build.pre.props" />
   <ItemGroup>
     <ClInclude Include="CommandRunner.h" />
+    <ClInclude Include="ProviderBroker.h" />
     <ClInclude Include="ProviderContracts.h" />
     <ClInclude Include="ProviderRegistry.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CommandRunner.cpp" />
+    <ClCompile Include="ProviderBroker.cpp" />
     <ClCompile Include="ProviderContracts.cpp" />
     <ClCompile Include="ProviderRegistry.cpp" />
   </ItemGroup>

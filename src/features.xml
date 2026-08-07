@@ -2,6 +2,16 @@
 <featureStaging xmlns="http://microsoft.com/TilFeatureStaging-Schema.xsd">
     <!-- See doc/feature_flags.md for more info.  -->
     <feature>
+        <name>Feature_RichTabProviders</name>
+        <description>Enables external Rich Tab providers and structured tab metadata.</description>
+        <stage>AlwaysEnabled</stage>
+        <alwaysDisabledBrandingTokens>
+            <brandingToken>Release</brandingToken>
+            <brandingToken>WindowsInbox</brandingToken>
+        </alwaysDisabledBrandingTokens>
+    </feature>
+
+    <feature>
         <name>Feature_ReceiveIncomingHandoff</name>
         <description>OpenConsole should be able to receive incoming connections</description>
         <stage>AlwaysEnabled</stage>
