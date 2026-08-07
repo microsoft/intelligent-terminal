@@ -61,6 +61,9 @@
     <Page Include="TabHeaderControl.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="TabStrip.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="HighlightedTextControlStyle.xaml">
       <Type>DefaultStyle</Type>
       <SubType>Designer</SubType>
@@ -132,6 +135,10 @@
     <ClInclude Include="TabHeaderControl.h">
       <DependentUpon>TabHeaderControl.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="TabStrip.h">
+      <DependentUpon>TabStrip.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="TabStripAutomationPeer.h" />
     <ClInclude Include="HighlightedTextControl.h">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
     </ClInclude>
@@ -255,6 +262,10 @@
     <ClCompile Include="TabHeaderControl.cpp">
       <DependentUpon>TabHeaderControl.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="TabStrip.cpp">
+      <DependentUpon>TabStrip.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="TabStripAutomationPeer.cpp" />
     <ClCompile Include="HighlightedTextControl.cpp">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
     </ClCompile>
@@ -371,6 +382,13 @@
     </Midl>
     <Midl Include="TabHeaderControl.idl">
       <DependentUpon>TabHeaderControl.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="TabStrip.idl">
+      <DependentUpon>TabStrip.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="TabStripAutomationPeer.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="HighlightedTextControl.idl">
