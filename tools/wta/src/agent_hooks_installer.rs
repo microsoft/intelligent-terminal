@@ -26,7 +26,7 @@
 //         .claude-plugin/plugin.json
 //         hooks/{hooks.json,send-event.ps1}
 //     copilot/                             <- passed to `copilot plugin marketplace add`
-//       (same shape; only hooks.json differs from claude/ — `-CliSource copilot`)
+//       (adds send-event.cmd to bypass the bridge in WTA-owned ACP sessions)
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
 //       hooks/{hooks.json,send-event.ps1}

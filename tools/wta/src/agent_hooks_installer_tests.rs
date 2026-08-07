@@ -517,6 +517,8 @@ const CLAUDE_SEND_EVENT_PS1: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/send-event.ps1");
 const COPILOT_SEND_EVENT_PS1: &str =
     include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1");
+const COPILOT_SEND_EVENT_CMD: &str =
+    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.cmd");
 const CODEX_SEND_EVENT_PS1: &str =
     include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/send-event.ps1");
 const GEMINI_SEND_EVENT_PS1: &str =
@@ -538,6 +540,7 @@ fn bundle_files_are_well_formed() {
 
     assert!(!CLAUDE_SEND_EVENT_PS1.is_empty());
     assert!(!COPILOT_SEND_EVENT_PS1.is_empty());
+    assert!(COPILOT_SEND_EVENT_CMD.contains("WTA_COPILOT_ACP"));
     assert!(!GEMINI_SEND_EVENT_PS1.is_empty());
 }
 
@@ -601,8 +604,12 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
     let normalized_claude = CLAUDE_HOOKS_JSON.replace("-CliSource claude", "-CliSource <CLI>");
     // Strip the copilot-only tool-use hook blocks before comparing.
     // Each block is a top-level key with its JSON array value + trailing comma.
-    let mut normalized_copilot =
-        COPILOT_HOOKS_JSON.replace("-CliSource copilot", "-CliSource <CLI>");
+    let mut normalized_copilot = COPILOT_HOOKS_JSON
+        .replace(
+            r#"cmd.exe /d /c call \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.cmd\""#,
+            r#"powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\""#,
+        )
+        .replace("-CliSource copilot", "-CliSource <CLI>");
     for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
         // Remove the block: `"<Event>": [ ... ],\r\n` (with possible \r\n or \n)
         if let Some(start) = normalized_copilot.find(&format!("\"{event}\"")) {
@@ -630,18 +637,42 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
     );
 }
 
-/// Claude and Copilot share the same `plugin.json`, `marketplace.json`,
-/// and `send-event.ps1` content; assert byte-equality so future edits
-/// stay in sync.
+/// Claude and Copilot share static manifests modulo independently bumped
+/// bundle versions, and keep the PowerShell bridge byte-identical.
 #[test]
 fn claude_and_copilot_share_static_manifests() {
+    fn without_versions(json: &str) -> serde_json::Value {
+        fn strip(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(object) => {
+                    object.remove("version");
+                    for child in object.values_mut() {
+                        strip(child);
+                    }
+                }
+                serde_json::Value::Array(array) => {
+                    for child in array {
+                        strip(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut value: serde_json::Value = serde_json::from_str(json).unwrap();
+        strip(&mut value);
+        value
+    }
+
     assert_eq!(
-        CLAUDE_PLUGIN_JSON, COPILOT_PLUGIN_JSON,
-        "claude/ and copilot/ plugin.json must match byte-for-byte"
+        without_versions(CLAUDE_PLUGIN_JSON),
+        without_versions(COPILOT_PLUGIN_JSON),
+        "claude/ and copilot/ plugin.json must match modulo version"
     );
     assert_eq!(
-        CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON,
-        "claude/ and copilot/ marketplace.json must match byte-for-byte"
+        without_versions(CLAUDE_MARKETPLACE_JSON),
+        without_versions(COPILOT_MARKETPLACE_JSON),
+        "claude/ and copilot/ marketplace.json must match modulo version"
     );
     assert_eq!(
         CLAUDE_SEND_EVENT_PS1, COPILOT_SEND_EVENT_PS1,
