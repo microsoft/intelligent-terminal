@@ -1312,7 +1312,7 @@ pub(crate) fn sh_quote(s: &str) -> String {
 ///   the prompt would be Windows-expanded — base64 has no `%`.
 /// * the `wsl.exe` interop performs one round of double-quote-context expansion
 ///   (`$(…)`, backtick, `$…`) — even inside single quotes — before the inner
-///   `bash -lc` runs. base64 triggers none of it.
+///   `bash -lic` runs. base64 triggers none of it.
 ///
 /// The agent invocation and the fixed decode wrapper are escaped for that
 /// `wsl.exe` expansion pass via [`escape_for_intermediate_shell`], so the inner
@@ -1321,7 +1321,7 @@ pub(crate) fn sh_quote(s: &str) -> String {
 /// `ExpandEnvironmentStringsW` + `CreateProcessW` probe (issue #404).
 ///
 /// Callers wrap the result with `quote_windows_commandline_arg`, embed in
-/// `bash -lc <escaped>`, then `wsl -d <distro> --cd "<cwd>" -- <full>` before
+/// `bash -lic <escaped>`, then `wsl -d <distro> --cd "<cwd>" -- <full>` before
 /// `CreateProcessW`.
 pub(crate) fn build_wsl_delegate_commandline(
     runtime: &DelegateAgentRuntime,
@@ -1386,7 +1386,7 @@ pub(crate) fn build_wsl_delegate_commandline(
 }
 
 /// Escape a bash command so it survives the single round of double-quote-context
-/// shell expansion the `wsl.exe` interop applies to `bash -lc "<cmd>"` before the
+/// shell expansion the `wsl.exe` interop applies to `bash -lic "<cmd>"` before the
 /// inner login bash sees it.
 ///
 /// That pass performs command substitution (`$(…)`, backtick) and parameter

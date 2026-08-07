@@ -73,13 +73,13 @@ pub(crate) async fn run(
 /// Whether the delegate agent CLI is actually available inside `distro`.
 ///
 /// Explicit WSL delegation launches the agent inside the selected distro
-/// (`wsl -d <distro> -- bash -lc "<agent> …"`). Re-probe immediately before
+/// (`wsl -d <distro> -- bash -lic "<agent> …"`). Re-probe immediately before
 /// launch because an agent discovered when settings were loaded may since
-/// have been removed. The probe uses a **login** shell because common CLI
-/// installs (npm-global, snap, `~/.local/bin`) only put the agent on the login
-/// PATH; a non-login `bash -c` would miss them. Only a native Linux install is
-/// accepted — a Windows CLI leaking in through `appendWindowsPath` and
-/// resolving under `/mnt/…` is rejected (see
+/// have been removed. The probe uses an **interactive login** shell because
+/// common CLI installs use either login profiles (npm-global, snap,
+/// `~/.local/bin`) or interactive startup files (nvm). Only a native Linux
+/// install is accepted — a Windows CLI leaking in through `appendWindowsPath`
+/// and resolving under `/mnt/…` is rejected (see
 /// [`crate::agent_check::wsl_agent_probe_script`]).
 /// This only gates an explicit `--delegate-source wsl` selection: an
 /// unavailable agent keeps WSL as the source (see
@@ -371,7 +371,7 @@ async fn delegate_with_context(
             pinned_session_id.as_deref(),
         )?;
         let escaped = crate::coordinator::quote_windows_commandline_arg(&wsl_agent_cmd);
-        let login_invocation = format!("bash -lc {}", escaped);
+        let login_invocation = format!("bash -lic {}", escaped);
         let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
         let active_pane_cwd = active
             .as_ref()
