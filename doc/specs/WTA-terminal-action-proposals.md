@@ -86,7 +86,7 @@ injects these trusted values.
 Server name:
 
 ```text
-intelligent_terminal
+intellterm_<public-id>
 ```
 
 Tool:
@@ -104,35 +104,26 @@ Input:
 
 ```json
 {
-  "recommended_choice": 1,
-  "choices": [
-    {
-      "title": "Run tests",
-      "rationale": "Verify the current change.",
-      "actions": [
-        {
-          "type": "send",
-          "input": "cargo test"
-        }
-      ]
-    }
-  ]
+  "type": "send",
+  "title": "Run tests",
+  "rationale": "Verify the current change.",
+  "input": "cargo test"
 }
 ```
 
-There are one to three choices and one to three actions per choice. Supported
-actions are:
+Each MCP call proposes exactly one action. Supported actions are:
 
 - `send`: submit input to the trusted active pane;
 - `open`: open an empty tab or panel;
 - `open_and_send`: open a tab or panel and submit input there.
 
-Open actions may include `cwd`, `title`, `profile`, and panel `direction`.
+Open actions may include `cwd`, `profile`, and panel `direction`. The
+user-facing `title` also becomes the requested destination title.
 `open_and_send` may set `delegate: true`; the Helper substitutes the configured
 delegate agent. A model cannot name an arbitrary agent.
 
 Autofix uses the same tool but the Helper supplies the trusted Autofix origin
-and requires exactly one choice with exactly one `send` action.
+and requires a `send` action.
 
 Tool result statuses:
 

@@ -69,7 +69,7 @@ where
         "tools/list" => json!({
             "tools": [{
                 "name": TOOL_NAME,
-                "description": "Request terminal actions in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
+                "description": "Request one terminal action in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
                 "inputSchema": super::schema::mcp_input_schema()
             }]
         }),
@@ -180,7 +180,9 @@ mod tests {
             "method": "initialize",
             "params": { "protocolVersion": "unsupported" }
         });
-        let response = dispatch(request, |_| async { unreachable!() }).await.unwrap();
+        let response = dispatch(request, |_| async { unreachable!() })
+            .await
+            .unwrap();
 
         assert_eq!(
             response
@@ -189,5 +191,4 @@ mod tests {
             Some(MCP_PROTOCOL_VERSION)
         );
     }
-
 }

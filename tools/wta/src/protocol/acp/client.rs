@@ -3747,10 +3747,9 @@ mod tests {
                 ToolCallUpdateFields::new()
                     .title("request_terminal_actions")
                     .raw_input(serde_json::json!({
-                        "choices": [{
-                            "title": "Run test",
-                            "actions": [{"type": "send", "input": "cargo test"}]
-                        }]
+                        "type": "send",
+                        "title": "Run test",
+                        "input": "cargo test"
                     })),
             ),
             vec![PermissionOption::new(
@@ -3872,10 +3871,9 @@ mod tests {
             &crate::agent_tools::action_proposal::mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
                 arguments: serde_json::json!({
-                    "choices": [{
-                        "title": "Run test",
-                        "actions": [{"type": "send", "input": "cargo test"}]
-                    }]
+                    "type": "send",
+                    "title": "Run test",
+                    "input": "cargo test"
                 }),
             },
         )
