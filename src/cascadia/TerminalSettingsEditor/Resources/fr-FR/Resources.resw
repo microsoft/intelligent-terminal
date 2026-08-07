@@ -2954,6 +2954,10 @@
     <value>ID du modèle</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>Clé API (facultative)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Ajouter nouveau</value>
     <comment>Button that starts adding a custom model provider.</comment>

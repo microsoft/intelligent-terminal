@@ -224,6 +224,8 @@
                                      Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBox x:Uid="AIAgents_CustomModelId"
                                      Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                         Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button x:Uid="AIAgents_CustomProviderSave"
                                         IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
