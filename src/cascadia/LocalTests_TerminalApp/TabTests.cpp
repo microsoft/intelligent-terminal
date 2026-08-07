@@ -207,7 +207,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ReattachEndEventOwnershipHandoff);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
         TEST_METHOD(FailedDetachedReapFallsBackToPendingDrain);
-        TEST_METHOD(OwnerOperationsDoNotRedrainPendingReaps);
+        TEST_METHOD(OwnerOperationsDoNotRepeatPendingReapDrain);
         TEST_METHOD(ClosedContentFallbackWaitsForOwnerDrain);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
@@ -916,7 +916,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::OwnerOperationsDoNotRedrainPendingReaps()
+    void TabTests::OwnerOperationsDoNotRepeatPendingReapDrain()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
             TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
