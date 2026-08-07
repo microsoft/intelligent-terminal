@@ -748,6 +748,145 @@ fn client_connection_to_model_agent(
     client_conn
 }
 
+fn client_connection_to_resume_agent(
+    events: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    first_load_already_loaded: bool,
+    close_fails: bool,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let load_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let close_events = Arc::clone(&events);
+    let load_events = events;
+    let agent_builder = acp::Agent
+        .builder()
+        .name("resume-agent")
+        .on_receive_request(
+            move |_req: acp::schema::v1::CloseSessionRequest,
+                  responder: acp::Responder<acp::schema::v1::CloseSessionResponse>,
+                  _cx| {
+                let events = Arc::clone(&close_events);
+                async move {
+                    events
+                        .lock()
+                        .expect("resume events lock poisoned")
+                        .push("close");
+                    if close_fails {
+                        responder.respond_with_error(
+                            acp::Error::internal_error().data("mock session/close failure"),
+                        )
+                    } else {
+                        responder.respond(acp::schema::v1::CloseSessionResponse::new())
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_request(
+            move |_req: acp::schema::v1::LoadSessionRequest,
+                  responder: acp::Responder<acp::schema::v1::LoadSessionResponse>,
+                  _cx| {
+                let events = Arc::clone(&load_events);
+                let load_count = Arc::clone(&load_count);
+                async move {
+                    events
+                        .lock()
+                        .expect("resume events lock poisoned")
+                        .push("load");
+                    let attempt = load_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if first_load_already_loaded && attempt == 0 {
+                        responder.respond_with_error(acp::Error::new(
+                            -32602,
+                            "Session is already loaded",
+                        ))
+                    } else {
+                        responder.respond(acp::schema::v1::LoadSessionResponse::new())
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("resume-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+
+    client_conn
+}
+
+fn agent_link_to_noop_helper() -> conn::AgentLink {
+    let (master_pipe, helper_pipe) = tokio::io::duplex(4096);
+    let (master_read, master_write) = tokio::io::split(master_pipe);
+    let (helper_read, helper_write) = tokio::io::split(helper_pipe);
+
+    let (agent_link, agent_io) = conn::spawn_agent(
+        acp::Agent.builder().name("master-helper-side"),
+        conn::byte_streams(master_write.compat_write(), master_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (_helper_link, helper_io) = conn::spawn_client(
+        acp::Client.builder().name("noop-helper"),
+        conn::byte_streams(helper_write.compat_write(), helper_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = helper_io.await;
+    });
+
+    agent_link
+}
+
+fn resume_handler(
+    state: Arc<MasterStateInner>,
+    connection: conn::ClientLink,
+    supports_session_close: bool,
+) -> HelperHandler {
+    let mut init_response =
+        acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+    if supports_session_close {
+        init_response.agent_capabilities.session_capabilities.close =
+            Some(acp::schema::v1::SessionCloseCapabilities::new());
+    }
+    let agent = Arc::new(AgentCli {
+        instance_id: AgentInstanceId::new_v4(),
+        conn: connection,
+        cached_init_resp: init_response,
+        cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+        source: crate::agent_source::AgentSource::Host,
+        cmd_key: "resume-agent".to_string(),
+        cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+        bound_helpers: Mutex::new(HashSet::new()),
+    });
+    let agent_slot = Arc::new(OnceLock::new());
+    let _ = agent_slot.set(agent);
+    let agent_side_slot = Arc::new(OnceLock::new());
+    let _ = agent_side_slot.set(agent_link_to_noop_helper());
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    HelperHandler {
+        helper_id: HelperId(1),
+        client_elevated: false,
+        agent: agent_slot,
+        state,
+        notif_tx,
+        agent_side_slot,
+    }
+}
+
 fn model_handler(agent: Arc<AgentCli>, helper_id: u64) -> HelperHandler {
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let slot = Arc::new(OnceLock::new());
@@ -893,6 +1032,154 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
 
             assert!(config_hit.load(Ordering::SeqCst));
             assert!(!legacy_hit.load(Ordering::SeqCst));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn orphan_resume_closes_then_loads_on_existing_connection() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let session_id = SessionId::new("orphan-session");
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry("resume-agent".to_string())
+                .or_default()
+                .insert(session_id.clone());
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let handler = resume_handler(
+                Arc::clone(&state),
+                client_connection_to_resume_agent(Arc::clone(&events), false, false),
+                true,
+            );
+
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    session_id,
+                    PathBuf::from(r"C:\repo"),
+                ))
+                .await
+                .expect("orphan resume should close and reload");
+
+            assert_eq!(
+                *events.lock().expect("resume events lock poisoned"),
+                ["close", "load"],
+                "resume must reuse the ACP connection and reload history after close"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn untracked_loaded_session_closes_then_retries_load() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let handler = resume_handler(
+                state,
+                client_connection_to_resume_agent(Arc::clone(&events), true, false),
+                true,
+            );
+
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    SessionId::new("untracked-session"),
+                    PathBuf::from(r"C:\repo"),
+                ))
+                .await
+                .expect("already-loaded resume should close and retry");
+
+            assert_eq!(
+                *events.lock().expect("resume events lock poisoned"),
+                ["load", "close", "load"]
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn orphan_resume_without_close_capability_keeps_legacy_rebind() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let session_id = SessionId::new("legacy-orphan-session");
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry("resume-agent".to_string())
+                .or_default()
+                .insert(session_id.clone());
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let handler = resume_handler(
+                state,
+                client_connection_to_resume_agent(Arc::clone(&events), false, false),
+                false,
+            );
+
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    session_id,
+                    PathBuf::from(r"C:\repo"),
+                ))
+                .await
+                .expect("legacy agent should retain route-only rebind");
+
+            assert!(
+                events
+                    .lock()
+                    .expect("resume events lock poisoned")
+                    .is_empty(),
+                "legacy rebind must not call unsupported lifecycle methods"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn orphan_resume_close_failure_rolls_back_route() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let session_id = SessionId::new("close-failure-session");
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry("resume-agent".to_string())
+                .or_default()
+                .insert(session_id.clone());
+            let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let handler = resume_handler(
+                Arc::clone(&state),
+                client_connection_to_resume_agent(Arc::clone(&events), false, true),
+                true,
+            );
+
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    session_id.clone(),
+                    PathBuf::from(r"C:\repo"),
+                ))
+                .await
+                .expect_err("session/close failure must fail resume");
+
+            assert_eq!(
+                *events.lock().expect("resume events lock poisoned"),
+                ["close"]
+            );
+            assert!(
+                !state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .contains_key(&session_id),
+                "failed close must remove the tentative helper route"
+            );
         })
         .await;
 }
