@@ -804,9 +804,8 @@ conductor injects an MCP server into each `session/new` via
 tools the agent calls **in-band** over the ACP connection.
 
 **What changes:**
-- `session/new` carries a master-published MCP server (the same hook
-  `inject_wta_mcp_servers` already prepares for HTTP-capable agents — Phase 3
-  generalizes it to the ACP-native `with_mcp_server` path).
+- `session/new` would carry a conductor-published MCP server through the
+  ACP-native `with_mcp_server` path.
 - Each `wtcli` verb becomes an MCP tool with a JSON schema; the agent discovers
   them via the MCP tool list instead of being told to shell out.
 - No per-call process spawn; the agent issues a tool call and gets a typed result

@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} நிறுவப்பட்டுள்ள�
 
 # ── ஏஜெண்ட்கள் காட்சி (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ஏற்றப்படுகிறது..."
-# {Locked="Enter","Esc","F5","↑","↓"} - விசைச் சேர்க்கைகள், மொழிபெயர்க்க வேண்டாம்
-agents.footer_hint: "(↑ ↓ வழிசெலுத்து • Enter அமர்வைத் தொடங்கு • Esc வெளியேறு • F5 புதுப்பி)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - விசைச் சேர்க்கைகள், மொழிபெயர்க்க வேண்டாம்
+agents.footer_hint: "(↑ ↓ வழிசெலுத்து • Enter அமர்வைத் தொடங்கு • Esc வெளியேறு • F5 புதுப்பி • / தேடு)"
 agents.status.active: "செயலில்"
 agents.status.waiting_for_input: "உள்ளீட்டுக்காகக் காத்திருக்கிறது"
 agents.status.error: "பிழை"
@@ -131,6 +131,8 @@ connection.connecting_activity: "ஏஜெண்டுடன் இணைக்�
 connection.lost: "ஏஜெண்டுடனான இணைப்பு துண்டிக்கப்பட்டது. மீண்டும் இணைக்க /restart என தட்டச்சு செய்யவும்."  # {Locked="/restart"}
 
 # ── கணினி செய்திகள் (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "பலகத்தை மூட Ctrl+C ஐ மீண்டும் அழுத்தவும்."  # {Locked="Ctrl+C"}
+system.selection_copied: "நகலெடுக்கப்பட்டது"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ரத்துசெய்யப்பட்டது."
 system.no_prompt_in_flight: "நிலுவையில் எந்தப் பிராம்ப்ட்டும் இல்லை."
 system.authentication_failed: "அங்கீகாரம் தோல்வியடைந்தது"

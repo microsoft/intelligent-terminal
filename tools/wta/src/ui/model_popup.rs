@@ -1,9 +1,10 @@
 //! `/model` picker modal.
 //!
 //! Opened by the `/model` slash command (`App::cmd_model`), this overlay
-//! lists the models the connected ACP agent advertised for the session and
-//! lets the user pin *this pane* to one of them — a per-pane override that
-//! wins over the global `acpModel` setting. Modeled on the slash-command
+//! lists the configured BYOM models. Cloud/native models are intentionally
+//! omitted; restart-required choices remain visible but dimmed and must be
+//! changed in Settings. Modeled on the
+//! slash-command
 //! autocomplete popup (`command_popup.rs`): anchored above the input box,
 //! arrow keys move the highlight, Enter commits, Esc dismisses (all handled
 //! in `App::handle_key`).
@@ -24,9 +25,12 @@ const CURRENT_PAD: &str = "  ";
 pub struct ModelPopupState<'a> {
     pub models: &'a [AcpModelInfo],
     pub selected: usize,
+    pub pane_focused: bool,
     /// Id of the model the pane is currently effectively on, if any — drawn
     /// with a leading marker so the user can see "where we are".
     pub current_id: Option<&'a str>,
+    /// Rows that require an agent restart and can only be changed in Settings.
+    pub disabled: Vec<bool>,
 }
 
 /// Render the model picker just above `input_area`, falling back to below
@@ -44,27 +48,35 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
     let items: Vec<ListItem> = state
         .models
         .iter()
-        .map(|m| {
+        .enumerate()
+        .map(|(index, m)| {
             let is_current = state.current_id == Some(m.id.as_str());
-            let marker = if is_current { CURRENT_MARKER } else { CURRENT_PAD };
-            let mut spans = vec![
-                Span::styled(format!(" {}{}", marker, m.name), theme::INPUT_TEXT),
-            ];
-            // Show the raw id when it differs from the display name, plus the
-            // optional one-line description, both dimmed.
-            if m.id != m.name {
-                spans.push(Span::styled(format!("  ({})", m.id), theme::DIM));
-            }
-            if let Some(desc) = m.description.as_deref().filter(|d| !d.is_empty()) {
-                spans.push(Span::styled(format!("  — {}", desc), theme::DIM));
-            }
+            let disabled = state.disabled.get(index).copied().unwrap_or(false);
+            let marker = if is_current {
+                CURRENT_MARKER
+            } else {
+                CURRENT_PAD
+            };
+            let spans = vec![Span::styled(
+                format!(" {marker}{}", m.name),
+                if disabled {
+                    theme::DIM
+                } else {
+                    theme::INPUT_TEXT
+                },
+            )];
             ListItem::new(Line::from(spans))
         })
         .collect();
 
+    let selected_style = if state.pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let list = List::new(items)
         .block(popup::block(t!("model_picker.title").into_owned()))
-        .highlight_style(theme::SELECTED)
+        .highlight_style(selected_style)
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default();

@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Gakktu úr skugga um að %{name} sé uppsett og á PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Hleð..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta • F5 til að endurnýja)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta • F5 til að endurnýja • / til að leita)"
 agents.status.active: "Virk"
 agents.status.waiting_for_input: "Bíður eftir inntaki"
 agents.status.error: "Villa"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Tengist agent…"
 connection.lost: "Tengingin við agent rofnaði. Sláðu inn /restart til að tengjast aftur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Ýttu aftur á Ctrl+C til að loka spjaldinu"  # {Locked="Ctrl+C"}
+system.selection_copied: "Afritað"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Hætt við."
 system.no_prompt_in_flight: "Engin fyrirspurn í gangi."
 system.authentication_failed: "Auðkenning mistókst"

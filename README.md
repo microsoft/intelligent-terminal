@@ -80,9 +80,9 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
-3. If you aren't already authenticated, the agent pane walks you through sign-in.
-4. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
+1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
+2. If you aren't already authenticated, the agent pane walks you through sign-in.
+3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
 
 > [!TIP]
 > If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:
@@ -159,7 +159,18 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 | `/restart` | Restart the agent with a clean session |
 | `/stop` | Cancel the in-flight prompt |
 | `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
+| `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
+
+Profiles use the global Windows-hosted agent by default. In a profile's
+**General** settings, **Agent pane agent** can instead select an ACP agent
+installed in that profile's WSL distro. The picker only lists the Windows host
+and that one distro. An explicit profile selection is strict: if that agent
+cannot start, the pane reports the failure without switching to another agent.
+**Command palette agent** independently selects the agent used by `?<prompt>`
+and the interactive delegate action for that profile. Its host or WSL selection
+is also strict: if the selected agent is unavailable, delegation reports that
+error instead of falling back to another agent or execution environment.
 
 ### Agent Management
 
@@ -256,6 +267,9 @@ Intelligent Terminal ships as a separate app and installs next to your existing 
 We are excited to work alongside you, our amazing community, to build and enhance Intelligent Terminal!
 
 **Before you start work on a feature/fix**, please read & follow the [Windows Terminal Contributor's Guide](https://github.com/microsoft/terminal/blob/main/CONTRIBUTING.md). The contribution process is the same.
+
+For local dev/build of this repo, see:
+[quick-start-local-dev](doc/quick-start-local-dev.md)
 
 ---
 

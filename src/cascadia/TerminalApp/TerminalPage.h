@@ -19,6 +19,7 @@
 #include "Toast.h"
 
 #include "WindowsPackageManagerFactory.h"
+#include "../inc/CustomModelProviderUtils.h"
 
 #define DECLARE_ACTION_HANDLER(action) void _Handle##action(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::ActionEventArgs& args);
 
@@ -418,19 +419,18 @@ namespace winrt::TerminalApp::implementation
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
         //
-        // Only the agent-CLI *identity* (acpAgent / acpCustomCommand, which
-        // resolve --agent + --agent-id = the actual agent binary) forces a
-        // master respawn via _RebuildAgentStack. Model + delegate config are
-        // hot-updated over the event channel (see AgentRuntimeConfigSnapshot
-        // + _EmitAgentRuntimeConfigIfChanged) and must NOT restart the pane.
+        // Agent identity changes (global acpAgent/acpCustomCommand, the
+        // effective model selection, or an effective per-profile backend)
+        // rebuild affected helpers. Model changes force a master respawn so
+        // the agent CLI starts with a clean model-provider environment;
+        // unselected provider catalog changes are hot-updated.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
-            std::wstring acpModel;
             std::wstring acpCustomCommand;
-            std::wstring delegateAgent;
-            std::wstring delegateModel;
-            std::wstring delegateCustomCommand;
+            std::wstring acpModel;
+            std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
+            std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -438,14 +438,16 @@ namespace winrt::TerminalApp::implementation
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (autofix gate, acp-model,
-        // delegate agent/model). `delegateAgent` holds the *resolved effective*
-        // value (custom-command ids already expanded).
+        // agent setting that can be hot-reloaded (autofix gate, delegate
+        // agent/model, credential-free model catalogs).
+        // `delegateAgent` holds the resolved effective value (custom-command
+        // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
-            std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
+            std::wstring customModelSelection;
+            std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
@@ -561,6 +563,7 @@ namespace winrt::TerminalApp::implementation
         // (first acquire) and `_RebuildAgentStack` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
         std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
@@ -874,6 +877,7 @@ namespace winrt::TerminalApp::implementation
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
+        static winrt::hstring _AgentPanePositionToContentPosition(const winrt::hstring& position);
 
         // First-run experience
         bool _IsFreRequired() const;

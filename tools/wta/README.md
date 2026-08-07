@@ -30,8 +30,17 @@ settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent
 
 When the agent pane is connected to Windows Terminal, the agent-facing contract is
 the local `wta` CLI: the agent shells out to commands like `wta active-pane --json`,
-`wta list-panes --json`, and `wta capture-pane --json`, which talk to Windows
-Terminal over the COM protocol.
+`wta list-panes --json`, `wta capture-pane --json`, and
+`wta resolve-command <name> --cwd <active-pane-cwd> --json`. Terminal-control commands talk to Windows
+Terminal over the COM protocol; `resolve-command` inspects the user's real,
+shell-context-selected sources (active working directory, host PATH and, for
+PowerShell, the profile-loaded command environment).
+
+The packaged app registers `wta.exe` as an App Execution Alias. Before spawning
+the host agent, WTA puts the current package family's alias directory first on
+`PATH`; unpackaged builds use the running binary's directory. Agent prompts can
+therefore use short `wta.exe` commands without selecting another installed
+branding or reproducing a protected package path.
 
 ### tmux-like CLI
 
@@ -48,6 +57,7 @@ wta capture-pane -t 3 -l 50              # read last 50 lines from pane 3
 wta kill-pane -t 3                        # close pane 3
 wta pane-status -t 3                      # check if running
 wta wait-for -t 3 --timeout 30           # wait for pane 3 to exit
+wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 wta list-windows --json                   # raw JSON output
 ```
 
@@ -109,7 +119,11 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 | Key | Action |
 |-----|--------|
 | Type + Enter | Send prompt to agent |
-| Ctrl+C | Cancel streaming / quit |
+| Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
+| Up / Down | Browse prompt input history |
+| Mouse wheel | Scroll chat (hold Alt to scroll one line) |
+| Mouse drag | Select a continuous text range |
+| Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |
 | F12 | Toggle debug panel (pipe traffic viewer) |
 | Shift+PageUp/Down | Scroll debug panel |

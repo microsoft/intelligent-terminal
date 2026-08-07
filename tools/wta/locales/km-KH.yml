@@ -110,8 +110,8 @@ agent.custom.auth_hint: "សូមប្រាកដថា %{name} ត្រូ�
 
 # ── Agents view (src/ui/agents_view.rs) ───────────────────────────────────────────────────────────────
 agents.loading: "កំពុងផ្ទុក..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គ • Esc ដើម្បីចាកចេញ • F5 ដើម្បីផ្ទុកឡើងវិញ)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គ • Esc ដើម្បីចាកចេញ • F5 ដើម្បីផ្ទុកឡើងវិញ • / ដើម្បីស្វែងរក)"
 # Status badge when agent session is actively processing
 agents.status.active: "សកម្ម"
 agents.status.waiting_for_input: "រង់ចាំការបញ្ចូល"
@@ -132,6 +132,8 @@ connection.connecting_activity: "កំពុងភ្ជាប់ទៅ AI អ�
 connection.lost: "ការតភ្ជាប់ទៅ AI អេជេន្ត់បានបាត់បង់។ វាយ /restart ដើម្បីភ្ជាប់ឡើងវិញ។"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────────
+system.close_pane_hint: "ចុច Ctrl+C ម្តងទៀត ដើម្បីបិទផ្តាំង"  # {Locked="Ctrl+C"}
+system.selection_copied: "បានចម្លង"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "បានបោះបង់។"
 system.no_prompt_in_flight: "គ្មានសំណើកំពុងដំណើរការ។"
 system.authentication_failed: "ការផ្ទៀងផ្ទាត់បរាជ័យ"

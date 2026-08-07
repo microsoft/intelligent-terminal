@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} इन्स्टॉल आसा आनी �
 
 # ── एजेंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "लोड जाता..."
-# {Locked="Enter","Esc","F5","↑","↓"} - की संयोजन, अणकार करूं नाका
-agents.footer_hint: "(↑ ↓ नेव्हिगेट करात • Enter सत्र सुरू करात • Esc भायर वचात • F5 रिफ्रेश करात)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - की संयोजन, अणकार करूं नाका
+agents.footer_hint: "(↑ ↓ नेव्हिगेट करात • Enter सत्र सुरू करात • Esc भायर वचात • F5 रिफ्रेश करात • / सोदात)"
 agents.status.active: "सक्रिय"
 agents.status.waiting_for_input: "इनपुटाची वाट"
 agents.status.error: "चूक"
@@ -131,6 +131,8 @@ connection.connecting_activity: "एजेंटाक जोडटा…"
 connection.lost: "एजेंटाशी जोडणी तुटली. परतून जोडपाक /restart टायप करात."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बंद करपाक परत एक फावट Ctrl+C दामात."  # {Locked="Ctrl+C"}
+system.selection_copied: "प्रत काडली"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "रद्द केलें."
 system.no_prompt_in_flight: "प्रगतींत कसलोच प्रॉम्प्ट ना."
 system.authentication_failed: "प्रमाणीकरण अपेशी"

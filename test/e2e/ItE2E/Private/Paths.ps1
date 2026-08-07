@@ -130,12 +130,21 @@ function Get-RunnableWtaPath {
 
     $runnable = $null
     if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
-        $dir = Join-Path $env:TEMP 'ite2e-wta'
+        $dir = Join-Path $env:TEMP "ite2e-wta\$($App.Version)"
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-        $dest = Join-Path $dir ("wta-{0}.exe" -f $App.Version)
+        $dest = Join-Path $dir 'wta.exe'
         if (-not (Test-Path $dest)) {
             try { Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force; Write-ItLog -Level INFO -Message "Staged runnable wta -> $dest" }
             catch { Write-ItLog -Level WARN -Message "Could not stage packaged wta: $_" }
+        }
+        $bundleSource = Join-Path $App.InstallLocation 'wt-agent-hooks'
+        $bundleDest = Join-Path $dir 'wt-agent-hooks'
+        if ((Test-Path $bundleSource) -and -not (Test-Path $bundleDest)) {
+            try {
+                Copy-Item -LiteralPath $bundleSource -Destination $bundleDest -Recurse -Force
+                Write-ItLog -Level INFO -Message "Staged hook bundle -> $bundleDest"
+            }
+            catch { Write-ItLog -Level WARN -Message "Could not stage packaged hook bundle: $_" }
         }
         if (Test-Path $dest) { $runnable = $dest }
     }

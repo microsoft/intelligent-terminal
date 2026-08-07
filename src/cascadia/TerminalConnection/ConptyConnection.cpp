@@ -64,6 +64,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // The profile Guid does include the enclosing '{}'
             environment.as_map().insert_or_assign(L"WT_PROFILE_ID", Utils::GuidToString(_profileGuid));
 
+            // Shell integration is installed in user-wide profile files, so it
+            // needs an explicit host marker to avoid emitting our OSC sequences
+            // in other terminals that launch the same shell.
+            environment.as_map().insert_or_assign(L"INTELLIGENT_TERMINAL", L"1");
+
             // Protocol server credentials — read from the Terminal process env
             // (set by WindowEmperor::_initializeProtocolServer). These must be
             // injected here because regenerate() builds _initialEnv from the
@@ -118,6 +123,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                 L"WT_SESSION",
                 L"WT_PROFILE_ID",
                 L"WT_COM_CLSID",
+                L"INTELLIGENT_TERMINAL",
             };
             // Misdiagnosis in MSVC 14.44.35207. No pointer arithmetic in sight.
 #pragma warning(suppress : 26481) // Don't use pointer arithmetic. Use span instead (bounds.1).

@@ -24,36 +24,65 @@
 // FilteredDelegateAgents() — always prefer these over the raw arrays.
 namespace Microsoft::Terminal::Settings::Model::AgentRegistry
 {
+    enum class ByokMode
+    {
+        Unsupported,
+        CopilotProviderEnvironment,
+        OpenCodeConfigContent,
+    };
+
     struct BuiltinAgent
     {
         std::wstring_view id;
         // Fallback display name (English). UI consumers should prefer the
         // localized name from .resw resources (e.g. "AgentName_Copilot").
         std::wstring_view displayName;
+        // Describes whether and how the agent consumes the shared BYOK
+        // provider selected in settings.
+        ByokMode byokMode;
     };
 
     // ACP-capable agents. Either the CLI itself speaks the Agent Control
-    // Protocol (copilot, gemini), or an npm-distributed adapter does
+    // Protocol (copilot, gemini, opencode), or an npm-distributed adapter does
     // (claude via @agentclientprotocol/claude-agent-acp, codex via
-    // @zed-industries/codex-acp).
+    // @agentclientprotocol/codex-acp).
     // Only these agents can be hosted in an agent pane.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinAcpAgents{ {
-        { L"copilot", L"GitHub Copilot" },
-        { L"claude", L"Claude" },
-        { L"codex", L"Codex" },
-        { L"gemini", L"Gemini" },
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinAcpAgents{ {
+        { L"copilot", L"GitHub Copilot", ByokMode::CopilotProviderEnvironment },
+        { L"claude", L"Claude", ByokMode::Unsupported },
+        { L"codex", L"Codex", ByokMode::Unsupported },
+        { L"gemini", L"Gemini", ByokMode::Unsupported },
+        { L"opencode", L"OpenCode", ByokMode::OpenCodeConfigContent },
     } };
 
     // Delegate agents. Invoked for `?<prompt>` background delegation and
     // similar flows. The set is broader than ACP because delegation doesn't
     // require an ACP-speaking agent — any CLI agent that accepts a prompt
     // as input works.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinDelegateAgents{ {
-        { L"copilot", L"GitHub Copilot" },
-        { L"claude", L"Claude" },
-        { L"codex", L"Codex" },
-        { L"gemini", L"Gemini" },
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinDelegateAgents{ {
+        { L"copilot", L"GitHub Copilot", ByokMode::CopilotProviderEnvironment },
+        { L"claude", L"Claude", ByokMode::Unsupported },
+        { L"codex", L"Codex", ByokMode::Unsupported },
+        { L"gemini", L"Gemini", ByokMode::Unsupported },
+        { L"opencode", L"OpenCode", ByokMode::OpenCodeConfigContent },
     } };
+
+    inline constexpr ByokMode GetByokMode(const std::wstring_view agentId) noexcept
+    {
+        for (const auto& agent : BuiltinAcpAgents)
+        {
+            if (agent.id == agentId)
+            {
+                return agent.byokMode;
+            }
+        }
+        return ByokMode::Unsupported;
+    }
+
+    inline constexpr bool SupportsByok(const std::wstring_view agentId) noexcept
+    {
+        return GetByokMode(agentId) != ByokMode::Unsupported;
+    }
 
     // Return only agents whose IDs are permitted by GPO policy.
     // When AllowedAgents is not configured, returns all agents.

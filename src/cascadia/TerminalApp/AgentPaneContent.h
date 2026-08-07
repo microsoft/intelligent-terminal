@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <optional>
+
 #include "AgentPaneContent.g.h"
+#include "AgentUsage.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
 
@@ -20,7 +23,8 @@ namespace winrt::TerminalApp::implementation
         void UpdateAgentStatus(const winrt::hstring& name,
                                const winrt::hstring& version,
                                const winrt::hstring& model,
-                               const winrt::hstring& state);
+                               const winrt::hstring& state,
+                               const winrt::hstring& backend);
 
         void SetSessionsView(bool active);
         void SetShellSessionsView(bool active);
@@ -82,6 +86,13 @@ namespace winrt::TerminalApp::implementation
             _pendingRenameFromTabId = {};
             return v;
         }
+        void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
+        std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
+        {
+            const auto value = _pendingAgentSourceProfileGuid;
+            _pendingAgentSourceProfileGuid.reset();
+            return value;
+        }
 
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
@@ -102,6 +113,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetSuggestionTitle() const noexcept { return _suggestionTitle; }
         winrt::hstring GetDetectedSummary() const noexcept { return _detectedSummary; }
         winrt::hstring GetAgentPanePosition() const noexcept { return _agentPanePosition; }
+        [[nodiscard]] bool ApplyAgentUsage(const Json::Value& usage);
+        const std::vector<::TerminalApp::AgentUsage::Item>& GetAgentUsage() const noexcept { return _agentUsage; }
 
         // Fired whenever cached bottom-bar-relevant state changes (autofix
         // state, sessions view, agent pane position). The outer page
@@ -141,6 +154,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentVersion{};
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
+        winrt::hstring _agentBackend{};
 
         // When true, the bar replaces "<agent> <version>" with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
@@ -156,8 +170,10 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _hotkeyHint{};
         winrt::hstring _suggestionTitle{};
         winrt::hstring _detectedSummary{};
-        // Current AgentPanePosition for icon orientation. Set by
-        // TerminalPage on creation + on settings change.
+        std::vector<::TerminalApp::AgentUsage::Item> _agentUsage;
+        // Effective per-tab AgentPanePosition for icon orientation.
+        // TerminalPage updates it from the Tab runtime override or global
+        // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
 
         // Source-tab StableId stashed during a cross-window agent-pane drag
@@ -165,6 +181,7 @@ namespace winrt::TerminalApp::implementation
         // post-Tab-construction in `_InitializeTab`). Empty when no rename
         // is pending. See SetPendingRenameFromTabId / TakePendingRenameFromTabId.
         winrt::hstring _pendingRenameFromTabId{};
+        std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

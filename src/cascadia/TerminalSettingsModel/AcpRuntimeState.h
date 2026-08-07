@@ -33,10 +33,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
         static Microsoft::Terminal::Settings::Model::AcpRuntimeState Current();
 
-        winrt::Windows::Foundation::Collections::IVectorView<Model::AcpModelInfo> AvailableModels();
-        winrt::hstring CurrentModelId();
-        void SetAvailableModels(const winrt::Windows::Foundation::Collections::IVectorView<Model::AcpModelInfo>& models,
+        winrt::Windows::Foundation::Collections::IVectorView<Model::AcpModelInfo> AvailableModels(const winrt::hstring& agentId);
+        winrt::hstring CurrentModelId(const winrt::hstring& agentId);
+        uint64_t Revision(const winrt::hstring& agentId);
+        void SetAvailableModels(const winrt::hstring& agentId,
+                                const winrt::Windows::Foundation::Collections::IVectorView<Model::AcpModelInfo>& models,
                                 const winrt::hstring& currentId);
+        bool TrySetAvailableModels(const winrt::hstring& agentId,
+                                   uint64_t expectedRevision,
+                                   const winrt::Windows::Foundation::Collections::IVectorView<Model::AcpModelInfo>& models,
+                                   const winrt::hstring& currentId);
 
         winrt::event_token Changed(const winrt::Windows::Foundation::TypedEventHandler<
             Model::AcpRuntimeState,
@@ -44,9 +50,15 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void Changed(const winrt::event_token& token) noexcept;
 
     private:
+        struct AgentModelCatalog
+        {
+            std::vector<Model::AcpModelInfo> models;
+            winrt::hstring currentId;
+            uint64_t revision{ 0 };
+        };
+
         std::mutex _mutex;
-        std::vector<Model::AcpModelInfo> _models;
-        winrt::hstring _currentId;
+        std::unordered_map<std::wstring, AgentModelCatalog> _catalogs;
         winrt::event<winrt::Windows::Foundation::TypedEventHandler<
             Model::AcpRuntimeState,
             winrt::Windows::Foundation::IInspectable>> _changedEvent;

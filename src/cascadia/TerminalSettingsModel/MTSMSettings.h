@@ -75,10 +75,13 @@ Author(s):
     X(bool, ShowTabsFullscreen, "showTabsFullscreen", false)                                                                                                                                            \
     X(hstring, AcpAgent, "acpAgent", L"copilot")                                                                                                                                                        \
     X(hstring, AcpModel, "acpModel", L"")                                                                                                                                                               \
+    X(hstring, CustomModelSelection, "customModelSelection", L"")                                                                                                                                       \
+    X(winrt::Windows::Foundation::Collections::IVector<Model::CustomModelProvider>, CustomModelProviders, "customModelProviders", winrt::single_threaded_vector<Model::CustomModelProvider>())             \
     X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
     X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
+    X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", false)                                                                                                                                      \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \
@@ -104,6 +107,8 @@ Author(s):
     X(Microsoft::Terminal::Control::ScrollbarState, ScrollState, "scrollbarState", Microsoft::Terminal::Control::ScrollbarState::Visible)                      \
     X(Microsoft::Terminal::Control::TextAntialiasingMode, AntialiasingMode, "antialiasingMode", Microsoft::Terminal::Control::TextAntialiasingMode::Grayscale) \
     X(hstring, StartingDirectory, "startingDirectory")                                                                                                         \
+    X(hstring, AgentPaneBackend, "agentPaneBackend", L"")                                                                                                      \
+    X(hstring, CommandPaletteAgent, "commandPaletteAgent", L"")                                                                                                \
     X(IMediaResource, Icon, "icon", implementation::MediaResource::FromString(L"\uE756"))                                                                      \
     X(bool, SuppressApplicationTitle, "suppressApplicationTitle", false)                                                                                       \
     X(guid, ConnectionType, "connectionType")                                                                                                                  \

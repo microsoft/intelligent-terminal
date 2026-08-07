@@ -2558,10 +2558,11 @@
         },
         "firstWindowPreference": {
           "default": "defaultProfile",
-          "description": "Defines what behavior the terminal takes when it starts. \"defaultProfile\" will have the terminal launch with one tab of the default profile, and \"persistedWindowLayout\" will cause the terminal to save its layout on close and reload it on open.",
+          "description": "Defines how the terminal behaves when it starts. \"defaultProfile\" launches one tab using the default profile. \"persistedWindowLayout\" saves the window layout on close and restores it on open. \"persistedLayoutAndContent\" saves both the layout and the tab content on close and restores them on open.",
           "enum": [
             "defaultProfile",
-            "persistedWindowLayout"
+            "persistedWindowLayout",
+            "persistedLayoutAndContent"
           ],
           "type": "string"
         },
@@ -3194,6 +3195,22 @@
             "string",
             "null"
           ]
+        },
+        "agentPaneBackend": {
+          "description": "Selects an optional profile-specific agent pane agent. An empty value uses the global Windows-hosted agent. WSL values identify an agent installed in the profile's own distro.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(|host:[^:]+|wsl:[^:]+:[^:]+)$"
+        },
+        "commandPaletteAgent": {
+          "description": "Selects the agent used for command palette delegation from this profile. An empty value uses the global Windows-hosted delegate agent. An explicit host or WSL selection is strict and never falls back to another agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(|host:[^:]+|wsl:[^:]+:[^:]+)$"
         },
         "suppressApplicationTitle": {
           "description": "When set to true, tabTitle overrides the default title of the tab and any title change messages from the application will be suppressed. When set to false, tabTitle behaves as normal.",

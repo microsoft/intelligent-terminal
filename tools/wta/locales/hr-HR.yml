@@ -110,8 +110,8 @@ agent.custom.auth_hint: "Provjerite je li %{name} instaliran i nalazi li se u PA
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Učitavanje..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za navigaciju • Enter za pokretanje sesije • Esc za izlaz • F5 za osvježavanje)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za navigaciju • Enter za pokretanje sesije • Esc za izlaz • F5 za osvježavanje • / za pretraživanje)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čeka unos"
 agents.status.error: "Pogreška"
@@ -127,6 +127,8 @@ connection.connecting_activity: "Povezivanje s agentom…"
 connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Ponovno pritisnite Ctrl+C da biste zatvorili okno"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopirano"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog upita."
 system.authentication_failed: "Provjera autentičnosti nije uspjela"

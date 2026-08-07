@@ -70,10 +70,17 @@ function Start-WtEventListener {
         Listener object: @{ Process; Events; Reg; App }
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$EventFilter, [string]$SessionId)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [string]$EventFilter,
+        [string]$SessionId,
+        [switch]$SkipAuthenticate
+    )
     process {
         if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
-        $args = @('--json', 'listen')
+        $args = @('--json')
+        if ($SkipAuthenticate) { $args += '--skip-authenticate' }
+        $args += 'listen'
         if ($SessionId) { $args += @('-t', $SessionId) }
         if ($EventFilter) { $args += @('--event', $EventFilter) }
 

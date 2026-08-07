@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 
 # ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Á luchtú..."
-# {Locked="Enter","Esc","F5","↑","↓"} - teaglamaí eochracha, ná haistrigh
-agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor • F5 chun athnuachan)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - teaglamaí eochracha, ná haistrigh
+agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor • F5 chun athnuachan • / chun cuardach)"
 agents.status.active: "Gníomhach"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
 agents.status.error: "Earráid"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Ag ceangal leis an ngníomhaire…"
 connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /restart chun athcheangal."  # {Locked="/restart"}
 
 # ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
+system.close_pane_hint: "Brúigh Ctrl+C arís chun an pána a dhúnadh"  # {Locked="Ctrl+C"}
+system.selection_copied: "Cóipeáladh"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"

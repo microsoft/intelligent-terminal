@@ -194,6 +194,7 @@
     <ClInclude Include="AgentPaneContent.h">
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="AgentUsage.h" />
     <ClInclude Include="FreOverlay.h">
       <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
@@ -321,6 +322,7 @@
       <DependentUpon>AgentPaneContent.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="AgentUsage.cpp" />
     <ClCompile Include="FreOverlay.cpp">
       <DependentUpon>FreOverlay.xaml</DependentUpon>
       <SubType>Code</SubType>

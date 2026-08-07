@@ -26,6 +26,7 @@ namespace winrt::TerminalApp::implementation
             Claude,
             Gemini,
             Codex,
+            OpenCode,
         };
 
         // Map the agent's display name (case-insensitive substring) to its
@@ -40,6 +41,7 @@ namespace winrt::TerminalApp::implementation
             if (lower.find(L"openai") != std::wstring::npos) return AgentLogoKind::Codex;
             if (lower.find(L"gpt") != std::wstring::npos) return AgentLogoKind::Codex;
             if (lower.find(L"gemini") != std::wstring::npos) return AgentLogoKind::Gemini;
+            if (lower.find(L"opencode") != std::wstring::npos) return AgentLogoKind::OpenCode;
             return AgentLogoKind::Copilot;
         }
 
@@ -81,13 +83,15 @@ namespace winrt::TerminalApp::implementation
     void AgentPaneContent::UpdateAgentStatus(const winrt::hstring& name,
                                              const winrt::hstring& version,
                                              const winrt::hstring& model,
-                                             const winrt::hstring& state)
+                                             const winrt::hstring& state,
+                                             const winrt::hstring& backend)
     {
         const bool nameChanged = _agentName != name;
         _agentName = name;
         _agentVersion = version;
         _agentModel = model;
         _agentState = state;
+        _agentBackend = backend;
         _refreshLabel();
         if (nameChanged)
         {
@@ -181,6 +185,11 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    bool AgentPaneContent::ApplyAgentUsage(const Json::Value& usage)
+    {
+        return ::TerminalApp::AgentUsage::TryUpdateCache(_agentUsage, usage);
+    }
+
     void AgentPaneContent::SetAgentPanePosition(const winrt::hstring& position)
     {
         if (_agentPanePosition == position)
@@ -247,6 +256,11 @@ namespace winrt::TerminalApp::implementation
         else
         {
             text = std::wstring{ _agentName };
+            if (!_agentBackend.empty())
+            {
+                text += L" \u00B7 ";
+                text += _agentBackend;
+            }
             if (!_agentVersion.empty())
             {
                 text += L" ";
@@ -280,6 +294,7 @@ namespace winrt::TerminalApp::implementation
         ClaudeLogo().Visibility(logo == AgentLogoKind::Claude ? Visibility::Visible : Visibility::Collapsed);
         GeminiLogo().Visibility(logo == AgentLogoKind::Gemini ? Visibility::Visible : Visibility::Collapsed);
         CodexLogo().Visibility(logo == AgentLogoKind::Codex ? Visibility::Visible : Visibility::Collapsed);
+        OpenCodeLogo().Visibility(logo == AgentLogoKind::OpenCode ? Visibility::Visible : Visibility::Collapsed);
         AgentLogo().Visibility(Visibility::Visible);
     }
 
@@ -295,8 +310,6 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
-        // Re-pick up the pane position in case settings changed it.
-        SetAgentPanePosition(settings.GlobalSettings().AgentPanePosition());
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()

@@ -355,8 +355,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_focused())
         {
-            auto lastFocusedControl = GetActiveTerminalControl();
-            if (lastFocusedControl)
+            if (auto lastFocusedControl{ GetActiveTerminalControl() })
             {
                 lastFocusedControl.Focus(_focusState);
 
@@ -560,9 +559,11 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
-        auto control = GetActiveTerminalControl();
-        const auto currentOffset = control.ScrollOffset();
-        control.ScrollViewport(::base::ClampAdd(currentOffset, delta));
+        if (auto control{ GetActiveTerminalControl() })
+        {
+            const auto currentOffset = control.ScrollOffset();
+            control.ScrollViewport(::base::ClampAdd(currentOffset, delta));
+        }
     }
 
     // Method Description:
@@ -590,7 +591,8 @@ namespace winrt::TerminalApp::implementation
         if (kind == BuildStartupKind::Content && _rootPane)
         {
             const auto& myStableId = _stableId;
-            _rootPane->WalkTree([&myStableId](const auto& p) {
+            const auto sourceProfileGuid = _agentSourceProfileGuid;
+            _rootPane->WalkTree([&myStableId, &sourceProfileGuid](const auto& p) {
                 if (!p->_IsLeaf())
                 {
                     return false;
@@ -618,7 +620,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     return false;
                 }
-                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(cid, myStableId);
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                    cid,
+                    myStableId,
+                    sourceProfileGuid);
                 return false;
             });
         }
@@ -2464,8 +2469,7 @@ namespace winrt::TerminalApp::implementation
     // If, after the calculation, the tab is read-only we hide the close button on the tab view item
     void Tab::_RecalculateAndApplyReadOnly()
     {
-        const auto control = GetActiveTerminalControl();
-        if (control)
+        if (const auto control{ GetActiveTerminalControl() })
         {
             const auto isReadOnlyActive = control.ReadOnly();
             _tabStatus.IsReadOnlyActive(isReadOnlyActive);

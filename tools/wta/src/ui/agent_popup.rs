@@ -14,7 +14,9 @@ const CURRENT_PAD: &str = "  ";
 pub struct AgentPopupState<'a> {
     pub agents: &'a [AvailableAgent],
     pub selected: usize,
+    pub pane_focused: bool,
     pub current_id: &'a str,
+    pub current_source: &'a crate::agent_source::AgentSource,
 }
 
 pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: Rect) {
@@ -30,7 +32,8 @@ pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: R
         .agents
         .iter()
         .map(|agent| {
-            let marker = if agent.id == state.current_id {
+            let marker =
+                if agent.id == state.current_id && &agent.source == state.current_source {
                 CURRENT_MARKER
             } else {
                 CURRENT_PAD
@@ -46,9 +49,14 @@ pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: R
         })
         .collect();
 
+    let selected_style = if state.pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let list = List::new(items)
         .block(popup::block(t!("agent_picker.title").into_owned()))
-        .highlight_style(theme::SELECTED)
+        .highlight_style(selected_style)
         .highlight_symbol("> ");
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected.min(state.agents.len() - 1)));

@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} इंस्टॉल आहे आणि त�
 
 # ── एजंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "लोड होत आहे..."
-# {Locked="Enter","Esc","F5","↑","↓"} - की संयोजन, भाषांतर करू नका
-agents.footer_hint: "(↑ ↓ नेव्हिगेट करा • Enter सत्र सुरू करा • Esc बाहेर पडा • F5 रिफ्रेश करा)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - की संयोजन, भाषांतर करू नका
+agents.footer_hint: "(↑ ↓ नेव्हिगेट करा • Enter सत्र सुरू करा • Esc बाहेर पडा • F5 रिफ्रेश करा • / शोधा)"
 agents.status.active: "सक्रिय"
 agents.status.waiting_for_input: "इनपुटची प्रतीक्षा"
 agents.status.error: "त्रुटी"
@@ -131,6 +131,8 @@ connection.connecting_activity: "एजंटशी कनेक्ट होत
 connection.lost: "एजंटशी कनेक्शन तुटले. पुन्हा कनेक्ट करण्यासाठी /restart टाइप करा."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बंद करण्यासाठी Ctrl+C पुन्हा दाबा."  # {Locked="Ctrl+C"}
+system.selection_copied: "कॉपी केले"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "रद्द केले."
 system.no_prompt_in_flight: "प्रगतीत कोणताही प्रॉम्प्ट नाही."
 system.authentication_failed: "प्रमाणीकरण अयशस्वी"

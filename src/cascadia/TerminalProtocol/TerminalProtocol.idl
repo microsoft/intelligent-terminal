@@ -102,6 +102,8 @@ namespace Microsoft.Terminal.Protocol
     interface IProtocolServer
     {
         // Meta
+        // Compatibility handshake. COM activation is the trust boundary; this
+        // call does not gate any protocol method.
         AuthResult Authenticate(String token);
         String GetCapabilities();
 
@@ -131,4 +133,3 @@ namespace Microsoft.Terminal.Protocol
         void SendEvent(String eventJson);
     }
 }
-

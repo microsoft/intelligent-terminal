@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Zorg dat %{name} is geïnstalleerd en in het PATH staat
 
 # ── Agentweergave (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laden..."
-# {Locked="Enter","Esc","F5","↑","↓"} - toetscombinaties, niet vertalen
-agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten • Esc afsluiten • F5 vernieuwen)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - toetscombinaties, niet vertalen
+agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten • Esc afsluiten • F5 vernieuwen • / zoeken)"
 agents.status.active: "Actief"
 agents.status.waiting_for_input: "Wachten op invoer"
 agents.status.error: "Fout"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Verbinding maken met agent…"
 connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 
 # ── Systeemberichten (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Druk nogmaals op Ctrl+C om het deelvenster te sluiten."  # {Locked="Ctrl+C"}
+system.selection_copied: "Gekopieerd"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"

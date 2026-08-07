@@ -37,6 +37,7 @@ pub enum CliSource {
     Codex,
     Copilot,
     Gemini,
+    OpenCode,
     Unknown(String),
 }
 
@@ -47,6 +48,7 @@ impl CliSource {
             "codex"   => Self::Codex,
             "copilot" => Self::Copilot,
             "gemini"  => Self::Gemini,
+            "opencode" => Self::OpenCode,
             ""        => Self::Unknown(String::new()),
             other     => Self::Unknown(other.to_string()),
         }
@@ -63,9 +65,31 @@ impl CliSource {
             "codex"   => Some(Self::Codex),
             "copilot" => Some(Self::Copilot),
             "gemini"  => Some(Self::Gemini),
+            "opencode" => Some(Self::OpenCode),
             _ => None,
         }
     }
+}
+
+/// OpenCode persists untouched sessions with a timestamped default title.
+/// Treat only that exact provider-specific shape as a placeholder so a real
+/// user title that happens to start with "New session" remains visible.
+pub(crate) fn title_is_placeholder(cli: &CliSource, title: &str) -> bool {
+    let Some(timestamp) = title.strip_prefix("New session - ") else {
+        return false;
+    };
+    let bytes = timestamp.as_bytes();
+    matches!(cli, CliSource::OpenCode)
+        && bytes.len() == 24
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            4 | 7 => *byte == b'-',
+            10 => *byte == b'T',
+            13 | 16 => *byte == b':',
+            19 => *byte == b'.',
+            23 => *byte == b'Z',
+            _ => byte.is_ascii_digit(),
+        })
+        && crate::history_loader::parse_iso_to_system_time(timestamp).is_some()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -380,8 +404,20 @@ impl AgentSessionRegistry {
         // uppercase (canonical Windows GUID). Normalise to lowercase here
         // so `active_by_pane` lookups succeed regardless of source.
         let ev = match ev {
-            SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } =>
-                SessionEvent::SessionStarted { key, cli_source, pane_session_id: pane_session_id.to_ascii_lowercase(), cwd, title },
+            SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } => {
+                let title = if title_is_placeholder(&cli_source, &title) {
+                    String::new()
+                } else {
+                    title
+                };
+                SessionEvent::SessionStarted {
+                    key,
+                    cli_source,
+                    pane_session_id: pane_session_id.to_ascii_lowercase(),
+                    cwd,
+                    title,
+                }
+            }
             SessionEvent::ConnectionFailed { pane_session_id, reason } =>
                 SessionEvent::ConnectionFailed { pane_session_id: pane_session_id.to_ascii_lowercase(), reason },
             SessionEvent::PaneClosed { pane_session_id } =>
@@ -1336,6 +1372,19 @@ mod tests {
     fn pane(s: &str) -> String { s.to_string() }
 
     #[test]
+    fn opencode_placeholder_requires_exact_timestamp_shape() {
+        let cli = CliSource::OpenCode;
+        assert!(title_is_placeholder(&cli, "New session - 2026-07-23T01:14:00.422Z"));
+        assert!(!title_is_placeholder(&cli, "New session - 2026-07-23T01:14:00Z"));
+        assert!(!title_is_placeholder(&cli, "New session - 2026-07-23T01:14:00.422Z planning"));
+        assert!(!title_is_placeholder(&cli, "New session - 2026-02-30T01:14:00.422Z"));
+        assert!(!title_is_placeholder(
+            &CliSource::Copilot,
+            "New session - 2026-07-23T01:14:00.422Z"
+        ));
+    }
+
+    #[test]
     fn session_started_creates_idle_entry_bound_to_pane() {
         let mut reg = AgentSessionRegistry::new();
         reg.apply(SessionEvent::SessionStarted {
@@ -2188,6 +2237,7 @@ mod tests {
         assert_eq!(CliSource::from_agent_id("copilot"), Some(CliSource::Copilot));
         assert_eq!(CliSource::from_agent_id("claude"),  Some(CliSource::Claude));
         assert_eq!(CliSource::from_agent_id("gemini"),  Some(CliSource::Gemini));
+        assert_eq!(CliSource::from_agent_id("opencode"), Some(CliSource::OpenCode));
         // Case-insensitive — `current_agent_id` is conventionally lowercase
         // but mixed-case must not silently drop the filter.
         assert_eq!(CliSource::from_agent_id("Copilot"), Some(CliSource::Copilot));
@@ -2218,6 +2268,12 @@ mod tests {
         // Note: CliSource has `pub fn parse(Option<&str>) -> Self` (not FromStr).
         assert_eq!(CliSource::parse(Some("Codex")), CliSource::Codex);
         assert_eq!(CliSource::parse(Some("codex")), CliSource::Codex);
+    }
+
+    #[test]
+    fn cli_source_parse_round_trips_opencode() {
+        assert_eq!(CliSource::parse(Some("OpenCode")), CliSource::OpenCode);
+        assert_eq!(CliSource::parse(Some("opencode")), CliSource::OpenCode);
     }
 
     #[test]

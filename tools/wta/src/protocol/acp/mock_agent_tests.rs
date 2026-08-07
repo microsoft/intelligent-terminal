@@ -12,15 +12,17 @@
 //! The constructors are `pub(crate)` so app-module scenarios can borrow the
 //! harness and assert on real `App` state (see the spec, "option 2").
 
-use super::{ClientState, PromptTimingState, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session,
-    CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, TemplateMemo,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, CancelRequest,
+    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest,
 };
-use crate::app::AppEvent;
+use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
+use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
 use crate::protocol::acp::conn;
+use crate::protocol::acp::prompt_builder::TemplateMemo;
+use crate::protocol::acp::turn_metrics::PromptTimingState;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
@@ -94,8 +96,12 @@ impl MockAgent {
         &self,
         args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
-        Ok(acp::schema::v1::InitializeResponse::new(args.protocol_version)
-            .agent_info(acp::schema::v1::Implementation::new("mock-acp-agent", "0.0.0").title("Mock ACP Agent")))
+        Ok(
+            acp::schema::v1::InitializeResponse::new(args.protocol_version).agent_info(
+                acp::schema::v1::Implementation::new("mock-acp-agent", "0.0.0")
+                    .title("Mock ACP Agent"),
+            ),
+        )
     }
 
     async fn new_session(
@@ -105,7 +111,9 @@ impl MockAgent {
         if self.fail_new_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
         }
-        Ok(acp::schema::v1::NewSessionResponse::new(acp::schema::v1::SessionId::new("mock-session-1")))
+        Ok(acp::schema::v1::NewSessionResponse::new(
+            acp::schema::v1::SessionId::new("mock-session-1"),
+        ))
     }
 
     async fn authenticate(
@@ -115,14 +123,19 @@ impl MockAgent {
         Ok(acp::schema::v1::AuthenticateResponse::default())
     }
 
-    async fn prompt(&self, args: acp::schema::v1::PromptRequest) -> acp::Result<acp::schema::v1::PromptResponse> {
+    async fn prompt(
+        &self,
+        args: acp::schema::v1::PromptRequest,
+    ) -> acp::Result<acp::schema::v1::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
         let images: Vec<(String, String)> = args
             .prompt
             .iter()
             .filter_map(|b| match b {
-                acp::schema::v1::ContentBlock::Image(img) => Some((img.mime_type.clone(), img.data.clone())),
+                acp::schema::v1::ContentBlock::Image(img) => {
+                    Some((img.mime_type.clone(), img.data.clone()))
+                }
                 _ => None,
             })
             .collect();
@@ -142,9 +155,9 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
-                                    reply.as_str().into(),
-                                )),
+                                acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                                    acp::schema::v1::ContentChunk::new(reply.as_str().into()),
+                                ),
                             ))
                             .await;
                     });
@@ -178,7 +191,9 @@ impl MockAgent {
                                 acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
                                     sel.option_id.to_string()
                                 }
-                                acp::schema::v1::RequestPermissionOutcome::Cancelled => "cancelled".to_string(),
+                                acp::schema::v1::RequestPermissionOutcome::Cancelled => {
+                                    "cancelled".to_string()
+                                }
                                 _ => "unknown".to_string(),
                             };
                             *outcome_slot.lock().unwrap() = Some(chosen);
@@ -190,10 +205,12 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                acp::schema::v1::SessionUpdate::ToolCall(
+                                    acp::schema::v1::ToolCall::new(
                                     acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
-                                )),
+                                    ),
+                                ),
                             ))
                             .await;
                     });
@@ -203,20 +220,24 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid.clone(),
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                acp::schema::v1::SessionUpdate::ToolCall(
+                                    acp::schema::v1::ToolCall::new(
                                     acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
-                                )),
+                                    ),
+                                ),
                             ))
                             .await;
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                                acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                                    acp::schema::v1::ToolCallUpdate::new(
                                     acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     acp::schema::v1::ToolCallUpdateFields::new()
                                         .status(acp::schema::v1::ToolCallStatus::Completed),
-                                )),
+                                    ),
+                                ),
                             ))
                             .await;
                     });
@@ -226,7 +247,8 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
+                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(
+                                    vec![
                                     acp::schema::v1::PlanEntry::new(
                                         "Step one",
                                         acp::schema::v1::PlanEntryPriority::Medium,
@@ -237,7 +259,8 @@ impl MockAgent {
                                         acp::schema::v1::PlanEntryPriority::Low,
                                         acp::schema::v1::PlanEntryStatus::Pending,
                                     ),
-                                ])),
+                                    ],
+                                )),
                             ))
                             .await;
                     });
@@ -248,9 +271,9 @@ impl MockAgent {
                             let _ = conn
                                 .session_notification(acp::schema::v1::SessionNotification::new(
                                     sid.clone(),
-                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
-                                        part.into(),
-                                    )),
+                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                                        acp::schema::v1::ContentChunk::new(part.into()),
+                                    ),
                                 ))
                                 .await;
                         }
@@ -259,7 +282,9 @@ impl MockAgent {
             }
         }
 
-        Ok(acp::schema::v1::PromptResponse::new(acp::schema::v1::StopReason::EndTurn))
+        Ok(acp::schema::v1::PromptResponse::new(
+            acp::schema::v1::StopReason::EndTurn,
+        ))
     }
 
     async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
@@ -302,6 +327,12 @@ fn connect_with(
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        provider_probe_capture: ProviderProbeCapture::default(),
+        standard_usage_sessions: Mutex::new(HashSet::new()),
+        proposal_channels: Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        ),
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     let wta = WtaClient { state };
 
@@ -338,55 +369,145 @@ fn spawn_mock_pair(
     let client_builder = acp::Client
         .builder()
         .name("mock-wta")
-        .on_receive_request({ let c = wta.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
+        .on_receive_request(
+            {
+                let c = wta.clone();
+                move |req: acp::schema::v1::AgentRequest, responder, _cx| {
+                    let c = c.clone();
+                    async move {
             use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
             match req {
-                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
-                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
-                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
-                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
-                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
-                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                            Q::RequestPermissionRequest(a) => conn::respond_enum(
+                                responder,
+                                c.request_permission(a)
+                                    .await
+                                    .map(R::RequestPermissionResponse),
+                            ),
+                            Q::CreateTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.create_terminal(a).await.map(R::CreateTerminalResponse),
+                            ),
+                            Q::TerminalOutputRequest(a) => conn::respond_enum(
+                                responder,
+                                c.terminal_output(a).await.map(R::TerminalOutputResponse),
+                            ),
+                            Q::WaitForTerminalExitRequest(a) => conn::respond_enum(
+                                responder,
+                                c.wait_for_terminal_exit(a)
+                                    .await
+                                    .map(R::WaitForTerminalExitResponse),
+                            ),
+                            Q::ReleaseTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.release_terminal(a).await.map(R::ReleaseTerminalResponse),
+                            ),
+                            Q::KillTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.kill_terminal(a).await.map(R::KillTerminalResponse),
+                            ),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let c = wta.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
-            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let c = wta.clone();
+                move |notif: acp::schema::v1::AgentNotification, _cx| {
+                    let c = c.clone();
+                    async move {
+                        if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
+                            let _ = c.session_notification(n).await;
+                        }
             Ok(())
-        } } }, acp::on_receive_notification!());
-    let (client_conn, client_io) =
-        conn::spawn_client(client_builder, conn::byte_streams(wta_w.compat_write(), wta_r.compat()));
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
+    let (client_conn, client_io) = conn::spawn_client(
+        client_builder,
+        conn::byte_streams(wta_w.compat_write(), wta_r.compat()),
+    );
 
     let agent_builder = acp::Agent
         .builder()
         .name("mock-agent")
-        .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
-            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+        .on_receive_request(
+            {
+                let m = mock.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let m = m.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
             match req {
-                Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
-                Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
-                Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
-                Q::LoadSessionRequest(a) => conn::respond_enum(responder, m.load_session(a).await.map(R::LoadSessionResponse)),
-                Q::PromptRequest(a) => conn::respond_enum(responder, m.prompt(a).await.map(R::PromptResponse)),
+                            Q::InitializeRequest(a) => conn::respond_enum(
+                                responder,
+                                m.initialize(a).await.map(R::InitializeResponse),
+                            ),
+                            Q::AuthenticateRequest(a) => conn::respond_enum(
+                                responder,
+                                m.authenticate(a).await.map(R::AuthenticateResponse),
+                            ),
+                            Q::NewSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.new_session(a).await.map(R::NewSessionResponse),
+                            ),
+                            Q::LoadSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.load_session(a).await.map(R::LoadSessionResponse),
+                            ),
+                            Q::PromptRequest(a) => conn::respond_enum(
+                                responder,
+                                m.prompt(a).await.map(R::PromptResponse),
+                            ),
                 Q::ExtMethodRequest(_) => conn::respond_enum(
                     responder,
                     Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
-                        serde_json::value::to_raw_value(&serde_json::Value::Null).unwrap().into(),
+                                    serde_json::value::to_raw_value(&serde_json::Value::Null)
+                                        .unwrap()
+                                        .into(),
                     ))),
                 ),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let m = mock.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let m = m.clone(); async move {
-            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = m.cancel(n).await; }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let m = mock.clone();
+                move |notif: acp::schema::v1::ClientNotification, _cx| {
+                    let m = m.clone();
+                    async move {
+                        if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
+                            let _ = m.cancel(n).await;
+                        }
             Ok(())
-        } } }, acp::on_receive_notification!());
-    let (agent_conn, agent_io) =
-        conn::spawn_agent(agent_builder, conn::byte_streams(mock_w.compat_write(), mock_r.compat()));
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
+    let (agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(mock_w.compat_write(), mock_r.compat()),
+    );
 
-    assert!(conn_cell.set(agent_conn).is_ok(), "mock agent connection cell must be set exactly once");
-    tokio::task::spawn_local(async move { let _ = client_io.await; });
-    tokio::task::spawn_local(async move { let _ = agent_io.await; });
+    assert!(
+        conn_cell.set(agent_conn).is_ok(),
+        "mock agent connection cell must be set exactly once"
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
     client_conn
 }
 
@@ -416,38 +537,30 @@ pub(crate) fn connect_mock_agent_asking_permission() -> (
 
 /// Tool-call harness: the mock streams a `ToolCall` (a proposed command) on each
 /// prompt. Returns the client connection and the `AppEvent` receiver.
-pub(crate) fn connect_mock_agent_proposing_tool() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_proposing_tool(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
     (conn, event_rx)
 }
 
 /// Tool-call lifecycle harness: streams a `ToolCall` then a
 /// `ToolCallUpdate(Completed)`.
-pub(crate) fn connect_mock_agent_completing_tool() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_completing_tool(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ToolThenComplete);
     (conn, event_rx)
 }
 
 /// Plan harness: the mock streams a `Plan` with two entries.
-pub(crate) fn connect_mock_agent_proposing_plan() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_proposing_plan(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposePlan);
     (conn, event_rx)
 }
 
 /// Streaming harness: the mock streams the reply in two chunks.
-pub(crate) fn connect_mock_agent_streaming_two_chunks() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_streaming_two_chunks(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::StreamTwoChunks);
     (conn, event_rx)
 }
@@ -476,7 +589,9 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
             let (client_conn, mut event_rx, seen_prompts) = connect_mock_agent();
 
             client_conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
             let session = client_conn
@@ -523,11 +638,14 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 /// the dispatcher threads into prompt assembly. `seen_prompts` is the
 /// agent-side record of every assembled prompt that reached the wire.
 pub(crate) struct DispatchHarness {
+    client: WtaClient,
     pub conn: conn::ClientLink,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
+    pub proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -550,10 +668,17 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
+    let proposal_channels = Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        provider_probe_capture: ProviderProbeCapture::default(),
+        standard_usage_sessions: Mutex::new(HashSet::new()),
+        proposal_channels: Arc::clone(&proposal_channels),
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     let wta = WtaClient { state };
 
@@ -575,14 +700,16 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         slow_load: slow_load.clone(),
     };
 
-    let client_conn = spawn_mock_pair(wta, mock, &conn_cell);
+    let client_conn = spawn_mock_pair(wta.clone(), mock, &conn_cell);
 
     DispatchHarness {
+        client: wta,
         conn: client_conn,
         event_tx,
         event_rx,
         shell_mgr,
         prompt_timing,
+        proposal_channels,
         seen_prompts,
         seen_images,
         fail_new_session,
@@ -643,8 +770,12 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
                 false, // wt_connected
                 false, // is_agent_pane
+                true,  // proposal_commands_supported
+                &h.proposal_channels,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv()).await {
@@ -675,7 +806,9 @@ async fn dispatch_prompt_round_trips_through_agent() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             // Handshake so the lazy `new_session` inside the dispatcher succeeds.
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -692,14 +825,18 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
                 false,
                 false,
+                true,
+                &h.proposal_channels,
             );
 
             // Pump until the agent's streamed reply surfaces — implies lazy
             // new_session, prompt assembly + send, and response routing all ran.
             // The mock echoes the *assembled* prompt, which the dispatcher wraps
-            // in the planner template, so we assert structure rather than exact
+            // in the terminal template, so we assert structure rather than exact
             // equality.
             let chunk = next_agent_chunk(&mut event_rx).await;
             assert!(
@@ -712,7 +849,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             );
 
             // The assembled prompt that reached the agent must contain the user
-            // text (build_prompt_text wraps it with the planner template).
+            // text (build_prompt_text wraps it with the terminal template).
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1, "exactly one prompt reached the agent");
             assert!(
@@ -720,8 +857,8 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 "the agent must receive the user's text inside the assembled prompt"
             );
             assert!(
-                seen[0].contains("Terminal Agent"),
-                "a non-autofix prompt must carry the planner template"
+                seen[0].contains("Working in Windows Terminal"),
+                "a non-autofix prompt must carry the terminal template"
             );
 
             // The session is cached before the prompt is sent, so it's already
@@ -749,6 +886,48 @@ async fn dispatch_prompt_round_trips_through_agent() {
         .await;
 }
 
+#[tokio::test]
+async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+            dispatch_prompt(
+                test_prompt(1, "hello from WSL", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                false,
+                &h.proposal_channels,
+            );
+
+            let _ = next_agent_chunk(&mut event_rx).await;
+            let seen = h.seen_prompts.lock().unwrap();
+            assert_eq!(seen.len(), 1);
+            assert!(!seen[0].contains("WTA_CLI_PATH"));
+            assert!(!seen[0].contains("--channel v1."));
+        })
+        .await;
+}
+
 /// Full **Alt+V image paste** integration: a screenshot-shaped DIB on the live
 /// OS clipboard is captured via `read_clipboard_image` (the paste), attached to
 /// a `PromptSubmission`, and dispatched through the real `dispatch_prompt` →
@@ -765,7 +944,9 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
     // Capture the screenshot off the live clipboard up front (all sync). The
     // clipboard lock is held only for set+read, never across an `.await`.
     let pasted = {
-        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let dib = sample_screenshot_dib();
         if !unsafe { set_clipboard_dib(&dib) } {
             eprintln!(
@@ -782,7 +963,9 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -803,8 +986,12 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
                 false, // wt_connected
                 true,  // is_agent_pane
+                true,  // proposal_commands_supported
+                &h.proposal_channels,
             );
 
             // Pump until the turn ends so the prompt has fully reached the agent.
@@ -846,7 +1033,9 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
             // Make the mock reject session establishment.
@@ -865,8 +1054,12 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
                 false,
                 false,
+                true,
+                &h.proposal_channels,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -891,8 +1084,8 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
 }
 
 /// Template selection: an autofix prompt (`is_autofix=true`) must be assembled
-/// with the *autofix* template ("A command failed. Diagnose…"), NOT the planner
-/// persona. Picking the wrong template would make autofix behave like the
+/// with the *autofix* template ("Fixing a Failed Terminal Command"), NOT the planner
+/// terminal template. Picking the wrong template would make autofix behave like the
 /// general planner and fail to diagnose the failure.
 #[tokio::test]
 async fn dispatch_prompt_autofix_uses_autofix_template() {
@@ -901,7 +1094,9 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -918,20 +1113,24 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
                 false,
                 false,
+                true,
+                &h.proposal_channels,
             );
 
             let _ = next_agent_chunk(&mut event_rx).await; // wait for the round-trip
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1);
             assert!(
-                seen[0].contains("A command failed. Diagnose the error"),
+                seen[0].contains("Fixing a Failed Terminal Command"),
                 "autofix prompt must carry the auto-fix template"
             );
             assert!(
-                !seen[0].contains("You are Terminal Agent"),
-                "autofix prompt must NOT carry the planner persona template"
+                !seen[0].contains("You assist from within Windows Terminal"),
+                "autofix prompt must NOT carry the terminal template"
             );
             assert!(
                 seen[0].contains("fix the build"),
@@ -978,7 +1177,10 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
-            assert!(rekeyed, "old-tab must be rekeyed to new-tab with same SessionId");
+            assert!(
+                rekeyed,
+                "old-tab must be rekeyed to new-tab with same SessionId"
+            );
 
             // No-op: renaming a ghost tab leaves the map untouched.
             dispatch_rename_session(
@@ -994,11 +1196,13 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
             }
             let g = tab_to_session.lock().await;
             assert!(!g.contains_key("phantom"), "missing old id must be a no-op");
-            assert!(g.contains_key("new-tab"), "existing binding must survive the no-op");
+            assert!(
+                g.contains_key("new-tab"),
+                "existing binding must survive the no-op"
+            );
         })
         .await;
 }
-
 
 /// `dispatch_cancel` must fire the local per-session cancel oneshot (so an
 /// in-flight prompt task drops out of `conn.prompt().await`) and remove the
@@ -1067,10 +1271,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 .await
                 .insert("t1".to_string(), sid.clone());
             let (tx, rx) = oneshot::channel::<()>();
-            cancel_signals
-                .lock()
-                .unwrap()
-                .insert(sid.to_string(), tx);
+            cancel_signals.lock().unwrap().insert(sid.to_string(), tx);
 
             dispatch_drop_session(
                 DropSessionRequest {
@@ -1143,6 +1344,8 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1191,6 +1394,8 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1248,6 +1453,8 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 false,
                 false,
                 "Test",
+                &h.proposal_channels,
+                false,
             );
 
             assert!(
@@ -1298,6 +1505,8 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 false,
                 false,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1346,6 +1555,8 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 false,
                 false,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1400,6 +1611,8 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 false,
                 true,
                 std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1449,6 +1662,8 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 false,
                 false,
                 std::time::Duration::from_millis(50),
+                &h.proposal_channels,
+                false,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1483,7 +1698,10 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
             let mut event_rx = h.event_rx;
 
             dispatch_master_ext_request(
-                MasterExtRequest::SessionsList { request_id: 7, rescan: false },
+                MasterExtRequest::SessionsList {
+                    request_id: 7,
+                    rescan: false,
+                },
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,
@@ -1549,12 +1767,35 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        provider_probe_capture: ProviderProbeCapture::default(),
+        standard_usage_sessions: Mutex::new(HashSet::new()),
+        proposal_channels: Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        ),
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     (WtaClient { state }, event_rx)
 }
 
-fn notif(sid: &str, update: acp::schema::v1::SessionUpdate) -> acp::schema::v1::SessionNotification {
+fn notif(
+    sid: &str,
+    update: acp::schema::v1::SessionUpdate,
+) -> acp::schema::v1::SessionNotification {
     acp::schema::v1::SessionNotification::new(acp::schema::v1::SessionId::new(sid), update)
+}
+
+#[derive(Clone)]
+struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for SharedLogWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// An `AgentThoughtChunk` update becomes an `AgentThoughtChunk` event carrying
@@ -1565,7 +1806,9 @@ async fn session_notification_routes_agent_thought_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new("thinking".into())),
+            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new(
+                "thinking".into(),
+            )),
         ))
         .await
         .unwrap();
@@ -1586,7 +1829,9 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new("prior prompt".into())),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new(
+                "prior prompt".into(),
+            )),
         ))
         .await
         .unwrap();
@@ -1596,6 +1841,207 @@ async fn session_notification_routes_user_message_replay_chunk() {
             assert_eq!(text, "prior prompt");
         }
         _ => panic!("expected UserMessageReplayChunk"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_usage_update() {
+    let (client, mut rx) = bare_client();
+    let usage = acp::schema::v1::UsageUpdate::new(1_024, 8_192)
+        .cost(acp::schema::v1::Cost::new(0.004, "USD"));
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(usage),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::UsageReported {
+            session_id,
+            snapshot,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(
+                snapshot.context,
+                Some(crate::usage::UsageContext {
+                    used: 1_024,
+                    size: 8_192,
+                })
+            );
+            assert_eq!(snapshot.cost.expect("cost").currency, "USD");
+        }
+        _ => panic!("expected UsageReported"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_model_config_update() {
+    let (client, mut rx) = bare_client();
+    let update: acp::schema::v1::SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sessionUpdate": "config_option_update",
+        "configOptions": [{
+            "id": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": "gpt-5.6-sol",
+            "options": [
+                {"value": "claude-sonnet-5", "name": "Claude Sonnet 5"},
+                {"value": "gpt-5.6-sol", "name": "GPT-5.6 Sol"}
+            ]
+        }]
+    }))
+    .unwrap();
+
+    client
+        .session_notification(notif("s1", update))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ModelConfigUpdated {
+            session_id,
+            available_models,
+            current_model_id,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(current_model_id.as_deref(), Some("gpt-5.6-sol"));
+            assert_eq!(
+                available_models
+                    .iter()
+                    .map(|model| model.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["claude-sonnet-5", "gpt-5.6-sol"]
+            );
+        }
+        _ => panic!("expected ModelConfigUpdated"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_provider_reported_zero_size() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(1, 0),
+            ),
+        ))
+        .await
+        .expect("provider-owned capacity must not be rejected by the client");
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UsageReported { session_id, snapshot })
+            if session_id == "s1"
+                && snapshot.context == Some(crate::usage::UsageContext { used: 1, size: 0 })
+    ));
+}
+
+#[tokio::test]
+async fn notification_dispatch_routes_over_capacity_usage_and_keeps_chat_flow() {
+    let (client, mut rx) = bare_client();
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(101, 100)),
+        ))
+        .await;
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UsageReported { session_id, snapshot })
+            if session_id == "s1"
+                && snapshot.context == Some(crate::usage::UsageContext { used: 101, size: 100 })
+    ));
+
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
+                "still connected".into(),
+            )),
+        ))
+        .await;
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::AgentMessageChunk { session_id, text })
+            if session_id == "s1" && text == "still connected"
+    ));
+}
+
+#[tokio::test]
+async fn invalid_optional_cost_preserves_context_without_logging_values() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let writer = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(move || SharedLogWriter(writer.clone()))
+        .finish();
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+    let (client, mut rx) = bare_client();
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(123_456_789, 987_654_321)
+                    .cost(acp::schema::v1::Cost::new(-1.0, "USD")),
+            ),
+        ))
+        .await;
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UsageReported { snapshot, .. })
+            if snapshot.context == Some(crate::usage::UsageContext {
+                used: 123_456_789,
+                size: 987_654_321,
+            }) && snapshot.cost.is_none()
+    ));
+
+    let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    assert!(!logs.contains("987654321"));
+    assert!(!logs.contains("123456789"));
+}
+
+#[tokio::test]
+async fn session_notification_clears_removed_model_config() {
+    let (client, mut rx) = bare_client();
+    let update: acp::schema::v1::SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sessionUpdate": "config_option_update",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "auto",
+            "options": [{"value": "auto", "name": "Auto"}]
+        }]
+    }))
+    .unwrap();
+
+    client
+        .session_notification(notif("s1", update))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ModelConfigUpdated {
+            session_id,
+            available_models,
+            current_model_id,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert!(available_models.is_empty());
+            assert_eq!(current_model_id, None);
+        }
+        _ => panic!("expected ModelConfigUpdated"),
     }
 }
 
@@ -1619,12 +2065,261 @@ async fn session_notification_routes_tool_call() {
             id,
             title,
             status,
+            ..
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
             assert_eq!(title, "Run: echo hi");
             assert!(!status.is_empty(), "status should be a rendered enum name");
         }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_hides_proposal_tool_call_before_permission() {
+    let (client, mut rx) = bare_client();
+    let command = r#"& "$env:WTA_CLI_PATH" propose-terminal-actions --channel v1.helper.turn --payload-json '{}'"#;
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("proposal-tool"),
+                    "Propose terminal action",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": command,
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HideToolCall { session_id, id })
+            if session_id == "s1" && id == "proposal-tool"
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "proposal ToolCall must not reach the chat UI"
+    );
+
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("proposal-tool"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .status(acp::schema::v1::ToolCallStatus::Completed),
+            )),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        rx.try_recv().is_err(),
+        "updates for a hidden proposal ToolCall must remain hidden"
+    );
+}
+
+#[tokio::test]
+async fn session_notification_hides_proposal_mcp_tool_call() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                "intellterm_01234567890123456789/request_terminal_actions",
+            )),
+        ))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HideToolCall { session_id, id })
+            if session_id == "s1" && id == "proposal-mcp-tool"
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "proposal MCP ToolCall must not reach the chat UI"
+    );
+}
+
+/// When the agent's own `title` already embeds the location text (common
+/// for read/view tool calls, e.g. title "Viewing C:\...\rust-app" whose
+/// `locations` names that exact same path), the hint must be suppressed —
+/// otherwise the card renders the path twice on one line: "Viewing X (X)".
+#[tokio::test]
+async fn session_notification_tool_call_omits_location_already_in_title() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    r"Viewing C:\src\rust-app",
+                )
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                    r"C:\src\rust-app",
+                )]),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(location, None);
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// A `ToolCall` whose `locations` names a file surfaces that path as the
+/// event's `location` — this is what lets the chat card show *what* a
+/// generically-titled permission/read tool call actually touched (the bug
+/// this test guards: `client.rs` used to drop `locations`/`raw_input`
+/// entirely and only forward `title`/`status`).
+#[tokio::test]
+async fn session_notification_tool_call_surfaces_location_from_locations() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Access paths outside trusted directories",
+                )
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                    r"C:\src\rust-app",
+                )]),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(location.as_deref(), Some(r"C:\src\rust-app"));
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// When `locations` is empty (typical for `execute` tool calls), the
+/// `location` hint falls back to `raw_input.command` so the card can still
+/// show what's actually being run.
+#[tokio::test]
+async fn session_notification_tool_call_surfaces_location_from_raw_input_command() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Read main.rs",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "Get-Content 'C:\\rust-app\\src\\main.rs'",
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(
+                location.as_deref(),
+                Some("Get-Content 'C:\\rust-app\\src\\main.rs'")
+            );
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_ignores_empty_raw_input_target() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Run command",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "",
+                    "path": "   ",
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => assert_eq!(location, None),
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_truncates_long_target_on_char_boundary() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Run command",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "界".repeat(10_000),
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            location: Some(location),
+            ..
+        }) => {
+            assert_eq!(location.chars().count(), 201);
+            assert!(location.ends_with('…'));
+        }
+        _ => panic!("expected ToolCall with location"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_dedupes_long_target_by_visible_prefix() {
+    let (client, mut rx) = bare_client();
+    let visible_prefix = "A".repeat(200);
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    format!("Run {visible_prefix}"),
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": format!("{visible_prefix}{}", "B".repeat(10_000)),
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => assert_eq!(location, None),
         _ => panic!("expected ToolCall"),
     }
 }
@@ -1639,7 +2334,8 @@ async fn session_notification_routes_tool_call_update_status_only() {
             "s1",
             acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
                 acp::schema::v1::ToolCallId::new("tc-1"),
-                acp::schema::v1::ToolCallUpdateFields::new().status(acp::schema::v1::ToolCallStatus::Completed),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -1649,6 +2345,7 @@ async fn session_notification_routes_tool_call_update_status_only() {
             session_id,
             id,
             status,
+            ..
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
@@ -1739,22 +2436,25 @@ async fn session_notification_routes_plan_with_status_mapping() {
         .await
         .unwrap();
     match rx.try_recv() {
-        Ok(AppEvent::Plan { session_id, entries }) => {
+        Ok(AppEvent::Plan {
+            session_id,
+            entries,
+        }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(
                 entries,
                 vec![
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step one".to_string(),
-                        status: crate::app::PlanEntryStatus::InProgress,
+                        status: PlanEntryStatus::InProgress,
                     },
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step two".to_string(),
-                        status: crate::app::PlanEntryStatus::Completed,
+                        status: PlanEntryStatus::Completed,
                     },
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step three".to_string(),
-                        status: crate::app::PlanEntryStatus::Pending,
+                        status: PlanEntryStatus::Pending,
                     },
                 ]
             );
@@ -1778,6 +2478,207 @@ fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
     )
 }
 
+/// When the tool call carries a `locations` path, `request_permission`
+/// appends it to the description so the dialog is actionable — without
+/// this, generic titles like "Access paths outside trusted directories"
+/// give the user no idea what path is actually being requested.
+#[tokio::test]
+async fn request_permission_description_includes_location_from_locations() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title("Access paths outside trusted directories")
+                        .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                            r"C:\src\rust-app",
+                        )]),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    description,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(
+                        description,
+                        r"Access paths outside trusted directories (C:\src\rust-app)"
+                    );
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
+/// The full-card `target`/`target_is_command`/`kind_label` fields must
+/// surface the concrete path even when it repeats the title verbatim —
+/// unlike the chat `ToolCall` card, the permission dialog is a decision
+/// point and must never silently drop the target via dedup.
+#[tokio::test]
+async fn request_permission_target_is_not_deduped_against_title() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title(r"Viewing C:\src\rust-app")
+                        .kind(acp::schema::v1::ToolKind::Read)
+                        .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                            r"C:\src\rust-app",
+                        )]),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    target,
+                    target_is_command,
+                    kind_label,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(
+                        target.as_deref(),
+                        Some(r"C:\src\rust-app"),
+                        "target must be present even though the title already contains it"
+                    );
+                    assert!(!target_is_command);
+                    assert_eq!(kind_label.as_deref(), Some("→"));
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
+/// An `execute`-kind tool call's target is flagged as a command (not a
+/// path) so the permission card can render it with the `$ ` shell-prompt
+/// prefix instead of as a plain path.
+#[tokio::test]
+async fn request_permission_execute_kind_marks_target_as_command() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title("Run command")
+                        .kind(acp::schema::v1::ToolKind::Execute)
+                        .raw_input(Some(serde_json::json!({ "command": "rm -rf build" }))),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    target,
+                    target_is_command,
+                    kind_label,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(target.as_deref(), Some("rm -rf build"));
+                    assert!(target_is_command);
+                    assert_eq!(kind_label.as_deref(), Some("$"));
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
+/// Resolver commands follow the same permission flow as every other execute
+/// request; receiving the event proves no built-in bypass selected an option.
+#[tokio::test]
+async fn request_permission_resolver_uses_normal_permission_flow() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("resolver-tool"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title("Resolve command")
+                        .kind(acp::schema::v1::ToolKind::Execute)
+                        .raw_input(Some(serde_json::json!({
+                            "command": "wta.exe",
+                            "args": [
+                                "resolve-command",
+                                "git",
+                                "--shell",
+                                "cmd.exe",
+                                "--cwd",
+                                r"C:\workspace",
+                                "--json"
+                            ],
+                        }))),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                _ => panic!("expected resolver PermissionRequest"),
+            };
+            responder.send("allow-once".to_string()).unwrap();
+
+            let response = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                response.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(_)
+            ));
+        })
+        .await;
+}
+
 /// `request_permission` surfaces a `PermissionRequest` event and, once the user
 /// picks an option through the responder, returns `Selected(option_id)`.
 #[tokio::test]
@@ -1793,11 +2694,14 @@ async fn request_permission_returns_selected_option() {
             let responder = match rx.recv().await {
                 Some(AppEvent::PermissionRequest {
                     session_id,
+                    tool_call_id,
                     description,
                     options,
                     responder,
+                    ..
                 }) => {
                     assert_eq!(session_id, "s1");
+                    assert_eq!(tool_call_id, "mock-tool-1");
                     assert_eq!(description, "Run: echo hi");
                     assert_eq!(options.len(), 1);
                     assert_eq!(options[0].id, "allow-once");
@@ -1844,6 +2748,3 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-
-
-

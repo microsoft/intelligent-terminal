@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Asegúrate de que %{name} esté instalado y en el PATH.
 
 # ── Vista de agentes (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Cargando..."
-# {Locked="Enter","Esc","F5","↑","↓"} - combinaciones de teclas, no traducir
-agents.footer_hint: "(↑ ↓ navegar • Enter iniciar sesión • Esc salir • F5 actualizar)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - combinaciones de teclas, no traducir
+agents.footer_hint: "(↑ ↓ navegar • Enter iniciar sesión • Esc salir • F5 actualizar • / buscar)"
 agents.status.active: "Activo"
 agents.status.waiting_for_input: "Esperando entrada"
 agents.status.error: "Error"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Conectando con el agente…"
 connection.lost: "Se perdió la conexión con el agente. Escribe /restart para volver a conectar."  # {Locked="/restart"}
 
 # ── Mensajes del sistema (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Presiona Ctrl+C de nuevo para cerrar el panel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Copiado"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "No hay ningún indicador en curso."
 system.authentication_failed: "Error de autenticación"

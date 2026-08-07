@@ -355,6 +355,25 @@ cmd.exe //c "tools\razzle.cmd && bcz no_clean"
 - The deployed `wta.exe` sits next to `WindowsTerminal.exe` in the
   package directory, inheriting package identity for COM access
 
+### Safe Debug deployment
+
+After a Debug Terminal build, use this wrapper to deploy C++, XAML, IDL,
+`wtcli`, manifest, resource, packaging, or mixed changes:
+
+```powershell
+.\build\scripts\Invoke-IntelligentTerminalDebugDeployment.ps1 `
+    -AppxRecipePath src\cascadia\CascadiaPackage\bin\x64\Debug\CascadiaPackage.build.appxrecipe
+```
+
+The script validates the dev package and loose Debug layout, closes only exact
+PIDs running from that layout, deploys it, and reopens Intelligent Terminal if
+needed. It terminates IT panes and agent sessions but never ordinary Windows
+Terminal. Never stop `WindowsTerminal.exe` by name; use `-WhatIf -Verbose` when
+process selection is uncertain.
+
+Do not use full deployment for `wta.exe`-only changes; use the WTA hot-refresh
+flow. Static assets such as `wt-agent-hooks` are not `wta.exe`-only changes.
+
 ### Full rebuild flow (typical dev cycle)
 
 ```bash

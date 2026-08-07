@@ -101,6 +101,22 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
     }
 
     Context 'Agent pane slash commands' {
+        It '/move down completes and repositions the agent pane' {
+            Clear-AgentInput -App $script:app | Out-Null
+            $sess = Send-AgentPrompt -App $script:app -Text '/move ' -NoSubmit
+            Assert-AgentPaneText -App $script:app -PaneSessionId $sess.PaneSessionId -Pattern '/move\s+down\s+\(d\)' -TimeoutSec 10
+            (Get-AgentPaneText -App $script:app -PaneSessionId $sess.PaneSessionId -MaxLines 40) |
+                Should -Not -Match '/move\s+bottom'
+
+            Clear-AgentInput -App $script:app -PaneSessionId $sess.PaneSessionId | Out-Null
+            Initialize-LogOffsets -App $script:app | Out-Null
+            Send-AgentPrompt -App $script:app -PaneSessionId $sess.PaneSessionId -Text '/move down' | Out-Null
+
+            # Agent-pane geometry is not reliably exposed through UIA. C++ logs the validated
+            # canonical position immediately before applying RepositionAgentPane.
+            Assert-Log -App $script:app -Name 'terminal-agent-pane.log' -Pattern 'OnAgentStateChanged:.*pane_position=bottom' -TimeoutSec 15
+        }
+
         It '/model opens the model picker (Copilot advertises models)' {
             Clear-AgentInput -App $script:app | Out-Null
             # Drive the REAL /model command (proven live: Copilot opens a "Select model" modal

@@ -1,8 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #296: `/agent` selects a runtime-only agent override for one tab while the
-# shared master keeps sibling tabs and their conversations alive.
-# Release checklist: C225-C226 cover the slash-command UX; C227-C228 cover
-# per-tab isolation and global-default/override behavior.
+# shared master keeps sibling tabs and their conversations alive. PR #487 adds
+# prefix-filtered agent completion and keyboard acceptance.
+# Release checklist: C225-C226 and the PR #487 items cover the slash-command UX;
+# C227-C228 cover per-tab isolation and global-default/override behavior.
 
 BeforeDiscovery {
     $script:Ready = [bool](
@@ -22,6 +23,22 @@ Describe 'Feature per-tab agent selection through /agent' -Tag 'Feature' -Skip:(
         $script:defaultPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $active.session_id -TimeoutSec 30).PaneSessionId
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It '/agent completion selection is safe' {
+        try {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent cop' -NoSubmit | Out-Null
+            Assert-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -Pattern '(?i)/agent\s+copilot\s+.*Copilot' -TimeoutSec 10
+
+            Send-AgentKey -App $script:app -PaneSessionId $script:defaultPane -Key Enter | Out-Null
+            (Get-AgentPaneSession -App $script:app -PaneSessionId $script:defaultPane) |
+                Should -Not -BeNullOrEmpty -Because 'Enter must dispatch the highlighted current agent without rebuilding its pane'
+            Assert-Setting -App $script:app -Key 'acpAgent' -Value 'copilot'
+        }
+        finally {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+        }
+    }
 
     It '/agent appears in the slash menu and opens a keyboard-operable picker' {
         $titleRe = Get-WtaLocalizedTextRegex -Key 'agent_picker.title'
@@ -117,14 +134,17 @@ Describe 'Feature two tabs run different agents through one master' -Tag 'Featur
         $masterBefore | Should -Not -BeNullOrEmpty
         $script:masterPid = $masterBefore.ProcessId
         Initialize-LogOffsets -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" -NoSubmit | Out-Null
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:oldTabBPane `
+            -Pattern ('(?i)/agent\s+' + [regex]::Escape($script:targetAgent)) -TimeoutSec 15
+        Send-AgentKey -App $script:app -PaneSessionId $script:oldTabBPane -Key Enter | Out-Null
 
-        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
-                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
-            }) | Should -BeTrue -Because 'switching agents must replace tab B helper/pane'
-        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 45
+        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 60
         $script:tabBPane = $newB.PaneSessionId
         $script:tabBPane | Should -Match '[0-9A-Fa-f-]{36}'
+        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
+            }) | Should -BeTrue -Because 'switching agents must retire tab B old helper/pane'
 
         (& $script:GetMaster).ProcessId | Should -Be $masterBefore.ProcessId -Because 'a per-tab switch must reuse the shared master'
         (Get-AgentPaneSession -App $script:app -PaneSessionId $script:tabAPane) |

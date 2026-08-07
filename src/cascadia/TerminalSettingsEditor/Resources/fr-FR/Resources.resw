@@ -1237,6 +1237,30 @@
     <value>Si l’option est activée, ce profil sera généré dynamiquement dans le répertoire depuis lequel le Terminal a été lancé.</value>
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
+  <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
+    <value>Agent pour le volet de l’agent</value>
+    <comment>Header for choosing which AI agent backend is used by this profile.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
+    <value>Choisissez l’agent compatible avec ACP à utiliser dans le volet de l’agent. Pour ce profil, ce choix est prioritaire sur la sélection globale du volet de l’agent.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>Agent de la palette de commandes</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>Choisissez l’agent utilisé pour la délégation depuis la palette de commandes dans ce profil. Cette sélection est prioritaire sur le paramètre global de l’agent délégué.</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_UnavailableSuffix" xml:space="preserve">
+    <value> (indisponible)</value>
+    <comment>Suffix for a saved per-profile agent backend that is no longer installed.</comment>
+  </data>
   <data name="Profile_SuppressApplicationTitle.Header" xml:space="preserve">
     <value>Annuler les modifications apportées au titre</value>
     <comment>Header for a control to toggle changes in the app title.</comment>
@@ -2800,7 +2824,7 @@
     <comment>Subtitle shown beneath the page title on the AI Agents settings page. The hyperlink in AIAgents_PageSubtitlePrivacyLink follows this sentence inline; the trailing period belongs to this prefix.</comment>
   </data>
   <data name="AIAgents_PageSubtitlePrivacyLink" xml:space="preserve">
-    <value>En savoir plus sur l&apos;utilisation des données.</value>
+    <value>En savoir plus sur l'utilisation des données.</value>
     <comment>Inline hyperlink text that follows the AI Agents page subtitle and navigates to the privacy policy page. Includes a trailing period.</comment>
   </data>
   <data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Volet de l'agent</value><comment>Section header for the agent pane settings group.</comment></data>
@@ -2813,6 +2837,8 @@
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Choisissez l'agent utilisé pour les actions rapides dans la palette de commandes.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Suggérer automatiquement des correctifs pour les commandes en échec</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Lorsque cette option est activée, l'agent IA analyse automatiquement les commandes en échec et propose un correctif. Lorsqu'elle est désactivée, les commandes en échec affichent une indication cliquable dans la barre d'état — appuyez sur Ctrl+Alt+. ou cliquez sur l'indication pour demander un correctif.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Afficher l’utilisation du contexte et le coût de la session</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Lorsqu’ils sont disponibles, afficher l’utilisation de la fenêtre de contexte et le coût de la session dans la barre inférieure du terminal.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Position du volet</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>Détermine où s'ouvre le volet de l'agent par rapport à votre terminal.</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
@@ -2861,6 +2887,10 @@
     <value>Suppression des hooks Codex...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
   </data>
+  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
+    <value>Suppression des hooks OpenCode...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
+  </data>
   <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
     <value>Après l'installation, exécutez /hooks dans Codex et approuvez pour faire confiance aux nouveaux gestionnaires d'événements.</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
@@ -2899,5 +2929,49 @@
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Autorisez Terminal Intelligent à envoyer les erreurs à votre agent pour suggérer automatiquement des correctifs.</value>
+  </data>
+  <data name="AIAgents_CustomModels.Header" xml:space="preserve">
+    <value>Fournisseurs BYOM</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+  </data>
+  <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
+    <value>Utilisez un point de terminaison d’API Chat Completions compatible avec OpenAI. Prend en charge GitHub Copilot et OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} ne prend pas en charge les fournisseurs Chat Completions personnalisés compatibles avec OpenAI. Les fournisseurs enregistrés restent disponibles lorsque vous passez à GitHub Copilot ou OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>Supprimer</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>URL de base</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>ID du modèle</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Ajouter nouveau</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>Enregistrer</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Annuler</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
+  <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
+    <value>{} (custom provider)</value>
+    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
+    <value>{} | {} | Compatible avec OpenAI</value>
+    <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
 </root>

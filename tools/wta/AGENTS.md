@@ -5,9 +5,8 @@
 WTA (Windows Terminal Agent) is a Rust binary that bridges AI agent CLIs with
 Windows Terminal. It is built around a **helper + master** architecture (see
 `doc/specs/Multi-window-agent-pane.md`) and runs in one of three roles, selected
-at startup by flags / subcommands — **there is no standalone agent / TUI mode and
-no MCP server**; bare `wta` with neither `--master` nor `--connect-master` exits
-with an error.
+at startup by flags / subcommands. There is no standalone agent / TUI mode;
+bare `wta` with neither a role flag nor a subcommand exits with an error.
 
 - **`wta-master`** (`--master <pipe>`, spawned once by the C++ `SharedWta`
   singleton) -- the ACP **multiplexer**. Owns the *single* `ACP/stdio`
@@ -19,10 +18,22 @@ with an error.
   but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
   the pipe. *From the helper's perspective, master is the agent.* Entry:
   `src/helper/mod.rs` → `run_default_tui_over_pipe`.
-- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`,
+- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta resolve-command`,
+  `wta new-tab`,
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
+- **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
+  listener owned by `wta-master`, plus an on-demand loopback relay per WSL
+  distro) -- exposes only `request_terminal_actions`. Each session receives an
+  independent public server name plus a bearer capability, preventing
+  name-keyed Agent caches from overwriting another session's header. The
+  capability resolves to ACP SessionId, then `session_to_helper` routes the
+  request over the existing master/helper pipe. Relays are bounded
+  master-lifetime services and exit when their master-owned stdin pipe closes.
+  Unexpected relay failure is restarted on the same port. Capabilities are
+  revoked when their exact Agent CLI instance dies. The endpoint never
+  executes terminal actions.
 
 The helper side owns `ShellManager`, which services the agent CLI's ACP
 `create_terminal` / permission requests by routing to either a local subprocess
@@ -48,8 +59,13 @@ a single implementation today:
                |  ACP/stdio                      |  ShellManager
                v                                 |  (create_terminal /
          Agent CLI                               |   permission)
-      (copilot/claude/                           v
-       gemini/codex)                        CliChannel
+      (copilot/claude/                           |
+       gemini/codex)                             v
+               | per-session HTTP MCP             |
+               | capability                       |  CliChannel
+               v                                  |
+        master/WSL relay MCP -------------------> |
+         (existing ACP pipe routing)              |
                                                  |
  Human / agent shell-out:                        v
    wta <subcommand>  ----------------->  wtcli.exe -> COM IProtocolServer
@@ -65,7 +81,7 @@ a single implementation today:
 
 ### ACP (Agent Client Protocol)
 
-ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on **two hops**,
+ACP (`agent-client-protocol = "1.3.0"`, JSON-RPC 2.0) is spoken on **two hops**,
 because of the helper+master split:
 
 - **master ↔ agent CLI** (stdio): master is the ACP **client** of the agent CLI
@@ -111,10 +127,11 @@ The COM surface exposes reads and mutations, including `list_*`, `read_pane_outp
 wta --agent "copilot --acp --stdio"
 ```
 
-Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
-by the helper. The agent reaches Windows Terminal by shelling out to the `wta` /
-`wtcli` CLI helpers (which call WT's COM `IProtocolServer`); WTA no longer
-generates an MCP config or runs an MCP server for the agent.
+Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`,
+not by the helper. Each eligible Host or WSL ACP session receives an HTTP MCP
+configuration for the master-owned proposal endpoint or its distro-local
+relay. Other Windows Terminal operations remain available through the `wta` /
+`wtcli` CLI helpers, which call WT's COM `IProtocolServer`.
 
 ### Claude and Codex
 
@@ -122,7 +139,7 @@ Claude and Codex are launched through ACP adapters:
 
 ```
 wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
-wta --agent "npx -y @zed-industries/codex-acp"
+wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.4"
 ```
 
 The Terminal settings layer resolves the built-in agent IDs to these adapter commands.
@@ -155,6 +172,11 @@ Agents that can shell out, and humans debugging WTA, can use WTA as a small WT h
 | `pane-status` | -- | `get_process_status` |
 | `listen` | `mon` | COM event subscribe |
 
+`wta resolve-command <token> [--shell pwsh.exe] --json` is a local,
+profile-aware PowerShell command resolver. It does not call the WT protocol.
+It reports `exists`, `not_found`, `indeterminate`, or `unsupported`, replacing
+the former localhost MCP tool with the same machine-readable result shape.
+
 ## Connection Discovery
 
 `CliChannel` uses `wtcli.exe`, and `wtcli.exe` discovers WT through `WT_COM_CLSID`. WT injects this environment variable into pane shells.
@@ -184,7 +206,8 @@ subfolder keyed by the package version:
 Per-process logs in the helper+master architecture:
 
 - `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
-  per-helper routing, `session_to_helper` updates, agent CLI exit detection
+  per-helper routing, `session_to_helper` updates, proposal MCP call
+  receipt/routing/validation results, agent CLI exit detection
 - `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
   connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle
 - `wta-cli.log` -- short-lived CLI helpers (`list-*`, `capture-pane`, `listen`,
@@ -235,7 +258,7 @@ green build says nothing about the tests.
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `agent-client-protocol` | 0.10 | ACP client library |
+| `agent-client-protocol` | 1.3.0 | ACP client library |
 | `tokio` | 1 | Async runtime |
 | `ratatui` | 0.30 | TUI rendering |
 | `crossterm` | 0.29 | Terminal I/O |
@@ -494,15 +517,13 @@ reconciliation, `intellterm.wta/session_added|removed`, and
 render in the picker and aren't reachable by the cursor.
 
 The gate is a single constant — `app.rs::MVP_SESSIONS_ORIGIN_FILTER` —
-threaded through `App::sessions_origin_filter` so that the three places
+threaded through `App::sessions_origin_filter` so that the two places
 that have to stay in sync read the same value:
 
 1. `App::agents_rows_for_tab` (cursor / Enter dispatch source of
    truth) — applies the filter to both the snapshot path and the
    registry-fallback path.
-2. The post-history-scan auto-select and the Delete clamp (same
-   file) — `iter_sorted_with_filters(cli, self.sessions_origin_filter)`.
-3. `ui/agents_view::render` — applies the same retain to keep the
+2. `ui/agents_view::render` — applies the same retain to keep the
    rendered rows lined up with the cursor model.
 
 `agent_sessions::OriginFilter` (`ShellOnly | AgentPaneOnly | All`)
@@ -530,4 +551,3 @@ was already serialized.
 ready, flip `MVP_SESSIONS_ORIGIN_FILTER` to `OriginFilter::All` and
 delete `WTA_SESSIONS_SHOW_AGENT_PANE` handling in
 `resolve_sessions_origin_filter`. No other call site needs to change.
-

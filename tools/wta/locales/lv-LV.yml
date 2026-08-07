@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Pārliecinieties, ka %{name} ir instalēts un atrodas j
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ielādē..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu • F5 lai atsvaidzinātu)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu • F5 lai atsvaidzinātu • / lai meklētu)"
 agents.status.active: "Aktīvs"
 agents.status.waiting_for_input: "Gaida ievadi"
 agents.status.error: "Kļūda"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Savienojas ar aģentu…"
 connection.lost: "Savienojums ar aģentu tika zaudēts. Ierakstiet /restart, lai izveidotu savienojumu atkārtoti."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Nospiediet Ctrl+C vēlreiz, lai aizvērtu paneli."  # {Locked="Ctrl+C"}
+system.selection_copied: "Nokopēts"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"

@@ -110,8 +110,8 @@ agent.custom.auth_hint: "Переконайтеся, що %{name} встанов
 
 # ── Перегляд агентів (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Завантаження..."
-# {Locked="Enter","Esc","F5","↑","↓"} - комбінації клавіш, не перекладати
-agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс • Esc вихід • F5 оновити)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - комбінації клавіш, не перекладати
+agents.footer_hint: "(↑ ↓ навігація • Enter запустити сеанс • Esc вихід • F5 оновити • / шукати)"
 agents.status.active: "Активний"
 agents.status.waiting_for_input: "Очікування введення"
 agents.status.error: "Помилка"
@@ -127,6 +127,8 @@ connection.connecting_activity: "Підключення до агента…"
 connection.lost: "Підключення до агента втрачено. Введіть /restart, щоб підключитися знову."  # {Locked="/restart"}
 
 # ── Системні повідомлення (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Натисніть Ctrl+C ще раз, щоб закрити панель."  # {Locked="Ctrl+C"}
+system.selection_copied: "Скопійовано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Скасовано."
 system.no_prompt_in_flight: "Немає активного запиту."
 system.authentication_failed: "Помилка автентифікації"

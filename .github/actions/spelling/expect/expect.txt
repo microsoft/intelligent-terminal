@@ -23,14 +23,17 @@ AFX
 AHelper
 ahicon
 ahz
+aic
 AImpl
 AInplace
+aiu
 ALIGNRIGHT
 allocing
 allsigned
 alpc
 ALTERNATENAME
 ALTF
+ALTGR
 ALTNUMPAD
 ALWAYSTIP
 ansicpg
@@ -78,6 +81,7 @@ autoscrolling
 Autowrap
 AVerify
 awch
+AZERTY
 azurecr
 backgrounded
 Backgrounder
@@ -525,6 +529,7 @@ EOK
 EPres
 EQU
 ERASEBKGND
+EReport
 ERRORONEXIT
 espt
 esrp
@@ -816,6 +821,7 @@ INVALIDARG
 INVALIDATERECT
 ipch
 ipsp
+ITE
 iterm
 itermcolors
 itf
@@ -853,6 +859,8 @@ kinda
 KIYEOK
 KKP
 KLF
+klid
+KLLF
 KLMNO
 KOK
 KPRIORITY
@@ -1106,6 +1114,7 @@ nonspace
 NOOWNERZORDER
 NOPAINT
 noprofile
+norc
 NOREDRAW
 NOREMOVE
 NOREPOSITION
@@ -1116,6 +1125,7 @@ NOSELECTION
 NOSENDCHANGING
 NOSIZE
 NOSNAPSHOT
+NOTELLSHELL
 NOTHOUSANDS
 NOTICKS
 notif

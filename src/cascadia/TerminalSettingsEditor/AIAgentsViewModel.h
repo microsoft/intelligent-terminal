@@ -6,9 +6,12 @@
 #include "AIAgentsViewModel.g.h"
 #include "AcpModelEntry.g.h"
 #include "AgentEntry.g.h"
+#include "CustomModelProviderEntry.g.h"
 #include "ViewModelHelpers.h"
 #include "Utils.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/CustomModelCredential.h"
+#include "../inc/CustomModelProviderUtils.h"
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
@@ -48,6 +51,28 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _id;
         winrt::hstring _displayName;
         winrt::hstring _description;
+    };
+
+    struct CustomModelProviderEntry :
+        CustomModelProviderEntryT<CustomModelProviderEntry>,
+        ViewModelHelper<CustomModelProviderEntry>
+    {
+        CustomModelProviderEntry(
+            Model::CustomModelProvider provider,
+            std::function<void()> remove);
+
+        using ViewModelHelper<CustomModelProviderEntry>::PropertyChanged;
+
+        winrt::hstring Id() const { return _provider.Id(); }
+        winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
+        winrt::hstring ModelsDisplayText() const;
+        void Remove();
+
+        Model::CustomModelProvider Provider() const { return _provider; }
+
+    private:
+        Model::CustomModelProvider _provider;
+        std::function<void()> _remove;
     };
 
     struct AIAgentsViewModel : AIAgentsViewModelT<AIAgentsViewModel>, ViewModelHelper<AIAgentsViewModel>
@@ -95,11 +120,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Probe in flight counts as "present" so the ComboBox stays
         // visible (PlaceholderText="Default") instead of flashing the
         // free-form textbox during the probe window.
-        bool HasAcpModelList() const { return _acpModelList && (_acpModelList.Size() > 0 || _acpProbing); }
+        bool HasAcpModelList() const;
         bool ShowAcpModelTextBox() const { return !HasAcpModelList(); }
         Editor::AcpModelEntry CurrentAcpModelEntry();
         void CurrentAcpModelEntry(const Editor::AcpModelEntry& value);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> CustomModelProviders() const { return _customModelProviders; }
+        bool IsCustomModelProvidersExpanded() const { return _isCustomModelProvidersExpanded; }
+        void IsCustomModelProvidersExpanded(bool value);
+        bool IsAddingCustomModelProvider() const { return _isAddingCustomModelProvider; }
+        winrt::hstring NewCustomModelProviderBaseUrl() const { return _newCustomModelProviderBaseUrl; }
+        void NewCustomModelProviderBaseUrl(const winrt::hstring& value);
+        winrt::hstring NewCustomModelId() const { return _newCustomModelId; }
+        void NewCustomModelId(const winrt::hstring& value);
+        bool CanSaveCustomModelProvider() const { return _HasNonWhitespace(_newCustomModelProviderBaseUrl) && _HasNonWhitespace(_newCustomModelId); }
+        winrt::hstring CustomModelProviderUnsupportedMessage();
+        void AddCustomModelProvider();
+        void SaveCustomModelProvider();
+        void CancelCustomModelProvider();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
         bool AutoErrorDetectionEnabled() const;
@@ -108,6 +146,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool AutoFixEnabled() const;
         void AutoFixEnabled(bool value);
         bool HasAutoFixEnabled() const;
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         bool CanSuggestErrors() const;
 
         // GPO policy lock indicators
@@ -127,31 +166,42 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool IsClaudeCliDetected() const noexcept { return _claudeCliDetected; }
         bool IsGeminiCliDetected() const noexcept { return _geminiCliDetected; }
         bool IsCodexCliDetected() const noexcept { return _codexCliDetected; }
+        bool IsOpenCodeCliDetected() const noexcept { return _openCodeCliDetected; }
         bool IsAnyAgentCliDetected() const noexcept
         {
-            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected;
+            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected || _openCodeCliDetected;
         }
-        // Per-CLI "row visible" flags — true when the CLI has any wt-agent-hooks
-        // state on disk (marketplace registered OR plugin installed). The
-        // expander shows a Remove row for every CLI in this set so users can
-        // clean up partial installs, not just fully-installed ones.
+        // Per-CLI "row visible" flags. Existing integrations appear when they
+        // have hook state. OpenCode also appears when its CLI is detected so
+        // users can discover and install the newly supported integration.
         bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
         bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
         bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
         bool ShowCodexHookRow() const noexcept { return _showCodexHookRow; }
+        bool ShowOpenCodeHookRow() const noexcept { return _showOpenCodeHookRow; }
         // Detail text shown under the CLI name when state isn't fully
         // installed. Empty for fully-installed CLIs (subtitle is hidden in XAML).
         winrt::hstring CopilotHooksSubtitle() const { return _copilotHooksSubtitle; }
         winrt::hstring ClaudeHooksSubtitle() const { return _claudeHooksSubtitle; }
         winrt::hstring GeminiHooksSubtitle() const { return _geminiHooksSubtitle; }
         winrt::hstring CodexHooksSubtitle() const { return _codexHooksSubtitle; }
+        winrt::hstring OpenCodeHooksSubtitle() const { return _openCodeHooksSubtitle; }
         bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
         bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
         bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
         bool ShowCodexHooksSubtitle() const noexcept { return !_codexHooksSubtitle.empty(); }
+        bool ShowOpenCodeHooksSubtitle() const noexcept { return !_openCodeHooksSubtitle.empty(); }
         bool CanInstallAgentHooks() const noexcept
         {
             return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
+        }
+        bool CanRemoveAgentHooks() const noexcept
+        {
+            return !IsAgentSessionHooksPolicyLocked();
+        }
+        bool CanRemoveOpenCodeHooks() const noexcept
+        {
+            return _openCodeHooksPresent && !IsAgentSessionHooksPolicyLocked();
         }
         bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
         winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
@@ -163,23 +213,35 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void RemoveClaudeHooks();
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
+        void RemoveOpenCodeHooks();
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> _customModelProviders;
+        std::vector<Model::CustomModelProvider> _originalCustomModelProviders;
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
+        bool _isCustomModelProvidersExpanded{ false };
+        bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
+        winrt::hstring _newCustomModelProviderBaseUrl;
+        winrt::hstring _newCustomModelId;
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();
+        void _LoadCustomModelProviders();
+        void _CommitCustomModelProviders();
+        void _RemoveCustomModelProvider(const winrt::hstring& id);
+        static bool _HasNonWhitespace(std::wstring_view value) noexcept;
+        static winrt::hstring _TrimWhitespace(std::wstring_view value);
 
         // ── ACP model probe ──
         // A background `wta probe-models --agent <cmd>` invocation that
@@ -194,7 +256,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // previous one).
         uint64_t _acpProbeGeneration{ 0 };
         void _TriggerAcpModelProbe();
-        winrt::fire_and_forget _RunAcpModelProbeAsync(std::wstring agentCmdline, uint64_t generation);
+        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision);
         // Mirror of TerminalPage::_ResolveEffectiveAgentCliPath. Kept
         // here (rather than in inc/) because the Settings UI sits in
         // a separate project and can't include TerminalApp headers.
@@ -218,17 +280,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _claudeCliDetected{ false };
         bool _geminiCliDetected{ false };
         bool _codexCliDetected{ false };
-        // Row visibility — true when the CLI has any wt-agent-hooks state
-        // on disk (marketplace registered OR plugin installed).
+        bool _openCodeCliDetected{ false };
+        // Row visibility. OpenCode additionally appears when its CLI is detected.
         bool _showCopilotHookRow{ false };
         bool _showClaudeHookRow{ false };
         bool _showGeminiHookRow{ false };
         bool _showCodexHookRow{ false };
+        bool _showOpenCodeHookRow{ false };
+        bool _openCodeHooksPresent{ false };
         // Subtitle text per CLI; empty for fully-installed CLIs.
         winrt::hstring _copilotHooksSubtitle;
         winrt::hstring _claudeHooksSubtitle;
         winrt::hstring _geminiHooksSubtitle;
         winrt::hstring _codexHooksSubtitle;
+        winrt::hstring _openCodeHooksSubtitle;
         bool _installingAgentHooks{ false };
         bool _refreshingAgentHooks{ false };
         winrt::hstring _agentHooksInstallSummary;

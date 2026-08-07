@@ -26,7 +26,9 @@
 
 #include "../TerminalSettingsModel/GlobalAppSettings.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
+#include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../inc/AgentPolicy.h"
+#include "../inc/CustomModelProviderUtils.h"
 #include "JsonTestClass.h"
 
 using namespace Microsoft::Console;
@@ -73,7 +75,16 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInAcpAgentRoundtrips);
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
+        TEST_METHOD(CustomModelProvidersRoundtrip);
+        TEST_METHOD(CustomModelProviderContractNormalization);
+        TEST_METHOD(CustomModelProviderContractFiltering);
+        TEST_METHOD(CustomModelProviderSelectionPreservesUnsupportedContract);
+        TEST_METHOD(CustomModelProviderDerivedNameSanitizesEndpoint);
+        TEST_METHOD(CustomModelProviderEditorMergePreservesUnsupported);
+        TEST_METHOD(CustomModelProviderMultiModelDisplay);
+        TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
+        TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
 
@@ -345,6 +356,249 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude-4" }, settings->GlobalSettings().DelegateModel());
     }
 
+    void CustomAgentAndPolicyTests::CustomModelProvidersRoundtrip()
+    {
+        const auto settings = MakeSettings(
+            R"("customModelSelection": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-compatible","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
+        const auto& globals = settings->GlobalSettings();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
+        const auto providers = globals.CustomModelProviders();
+        VERIFY_ARE_EQUAL(2u, providers.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"https://openrouter.ai/api/v1" }, providers.GetAt(0).BaseUrl());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(0).ApiContract());
+        VERIFY_IS_TRUE(providers.GetAt(0).ApiKeyRequired());
+        VERIFY_ARE_EQUAL(2u, providers.GetAt(0).Models().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen/qwen3.5-9b" }, providers.GetAt(0).Models().GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-ollama" }, providers.GetAt(1).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"localhost" }, providers.GetAt(1).Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(1).ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"auto" }, providers.GetAt(1).Location());
+        VERIFY_IS_FALSE(providers.GetAt(1).ApiKeyRequired());
+        VERIFY_ARE_EQUAL(1u, providers.GetAt(1).Models().Size());
+
+        const auto copy = settings->Copy();
+        const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
+        copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
+
+        auto addedProviders = winrt::single_threaded_vector<CustomModelProvider>();
+        auto addedProvider = CustomModelProvider{ L"provider-added", L"Added", L"https://example.test/v1" };
+        addedProvider.Location(L"cloud");
+        addedProvider.ApiKeyCredential(L"{22222222-2222-2222-2222-222222222222}");
+        addedProvider.ApiKeyRequired(true);
+        addedProvider.Models().Append(CustomModel{ L"test-model", L"Test model" });
+        addedProviders.Append(addedProvider);
+        globals.CustomModelProviders(addedProviders);
+
+        const auto serialized = settings->ToJson();
+        const auto& serializedProviders = serialized["customModelProviders"];
+        VERIFY_IS_TRUE(serializedProviders.isArray());
+        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 1 }, serializedProviders.size());
+        VERIFY_ARE_EQUAL(std::string{ "provider-added" }, serializedProviders[0]["id"].asString());
+        VERIFY_ARE_EQUAL(std::string{ "openai-compatible" }, serializedProviders[0]["apiContract"].asString());
+        VERIFY_IS_TRUE(serializedProviders[0]["apiKeyRequired"].asBool());
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProviderContractNormalization()
+    {
+        const auto settings = MakeSettings(
+            R"("customModelProviders": [{"id":"missing","baseUrl":"https://missing.test/v1","models":[]},{"id":"blank","baseUrl":"https://blank.test/v1","apiContract":" \t ","models":[]},{"id":"unsupported","baseUrl":"https://unsupported.test/v1","apiContract":"openai-responses","models":[]},{"id":"padded","baseUrl":"https://padded.test/v1","apiContract":" openai-compatible ","models":[]}])");
+        const auto providers = settings->GlobalSettings().CustomModelProviders();
+        VERIFY_ARE_EQUAL(4u, providers.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(0).ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(1).ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-responses" }, providers.GetAt(2).ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L" openai-compatible " }, providers.GetAt(3).ApiContract());
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProviderContractFiltering()
+    {
+        namespace CustomModels = ::Microsoft::Terminal::CustomModels;
+
+        auto providers = winrt::single_threaded_vector<CustomModelProvider>();
+        auto supported = CustomModelProvider{ L"supported", L"Supported", L"https://supported.test/v1" };
+        supported.Models().Append(CustomModel{ L"model-a", L"Model A" });
+        providers.Append(supported);
+
+        auto unsupported = CustomModelProvider{ L"unsupported", L"Unsupported", L"https://unsupported.test/v1" };
+        unsupported.ApiContract(L"openai-responses");
+        unsupported.Models().Append(CustomModel{ L"model-b", L"Model B" });
+        providers.Append(unsupported);
+
+        const auto catalog = CustomModels::CaptureCatalog(providers);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, catalog.size());
+        VERIFY_ARE_EQUAL(std::string{ "custom:supported:model-a" }, catalog[0].selectionId);
+        VERIFY_ARE_EQUAL(
+            std::string{ CustomModels::CanonicalApiContractUtf8 },
+            catalog[0].apiContract);
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProviderSelectionPreservesUnsupportedContract()
+    {
+        namespace CustomModels = ::Microsoft::Terminal::CustomModels;
+
+        const auto settings = MakeSettings(
+            R"("customModelSelection":"custom:future:future-model","customModelProviders":[{"id":"future","baseUrl":"https://user:password@future.example/v2?token=secret#fragment","apiContract":"future-contract-v2","models":[{"id":"future-model","name":"Future Model"}]}])");
+        const auto& globals = settings->GlobalSettings();
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ L"custom:future:future-model" },
+            globals.CustomModelSelection());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"future.example" }, globals.CustomModelProviders().GetAt(0).Name());
+        VERIFY_IS_TRUE(CustomModels::SelectionExists(
+            globals.CustomModelProviders(),
+            std::wstring_view{ globals.CustomModelSelection() }));
+        VERIFY_IS_FALSE(CustomModels::SelectionExists(
+            globals.CustomModelProviders(),
+            L"custom:future:missing-model"));
+
+        const auto helperCatalog = CustomModels::CaptureCatalog(globals.CustomModelProviders());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, helperCatalog.size());
+        const auto serialized = settings->ToJson();
+        VERIFY_ARE_EQUAL(
+            std::string{ "custom:future:future-model" },
+            serialized["customModelSelection"].asString());
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProviderDerivedNameSanitizesEndpoint()
+    {
+        namespace CustomModels = ::Microsoft::Terminal::CustomModels;
+
+        const auto settings = MakeSettings(
+            R"("customModelProviders":[{"id":"provider","name":"https://user:password@models.example:8443/v1?token=secret#fragment","baseUrl":"https://user:password@models.example:8443/v1?token=secret#fragment","models":[{"id":"model-a"}]}])");
+        const auto provider = settings->GlobalSettings().CustomModelProviders().GetAt(0);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"models.example" }, provider.Name());
+
+        const auto catalog = CustomModels::CaptureCatalog(
+            settings->GlobalSettings().CustomModelProviders());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, catalog.size());
+        const auto serialized = CustomModels::SerializeCatalog(catalog);
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("user"));
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("password"));
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("token"));
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("base_url"));
+        VERIFY_ARE_EQUAL(std::string::npos, serialized.find("/v1"));
+        VERIFY_IS_TRUE(serialized.find("models.example") != std::string::npos);
+    }
+
+
+    void CustomAgentAndPolicyTests::CustomModelProviderEditorMergePreservesUnsupported()
+    {
+        namespace CustomModels = ::Microsoft::Terminal::CustomModels;
+
+        auto removed = CustomModelProvider{ L"removed", L"Removed", L"https://removed.test/v1" };
+        removed.Models().Append(CustomModel{ L"removed-model", L"Removed Model" });
+
+        auto hidden = CustomModelProvider{ L"future", L"Future Provider", L"https://future.test/v2" };
+        hidden.ApiContract(L"future-contract-v2");
+        hidden.Location(L"cloud");
+        hidden.ApiKeyCredential(L"{11111111-1111-1111-1111-111111111111}");
+        hidden.ApiKeyRequired(true);
+        hidden.Models().Append(CustomModel{ L"future-model", L"Future Model" });
+
+        auto editedOriginal = CustomModelProvider{ L"edited", L"Before", L"https://before.test/v1" };
+        editedOriginal.Models().Append(CustomModel{ L"old-model", L"Old Model" });
+
+        auto editedVisible = CustomModelProvider{ L"edited", L"After", L"https://after.test/v1" };
+        editedVisible.Models().Append(CustomModel{ L"new-model", L"New Model" });
+        auto addedVisible = CustomModelProvider{ L"added", L"Added", L"https://added.test/v1" };
+        addedVisible.Models().Append(CustomModel{ L"added-model", L"Added Model" });
+
+        const std::array original{ removed, hidden, editedOriginal };
+        const std::array visible{ editedVisible, addedVisible };
+        const auto merged =
+            CustomModels::MergeProviderEditsPreservingUnsupported(original, visible);
+
+        VERIFY_ARE_EQUAL(size_t{ 3 }, merged.size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"future" }, merged[0].Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"future-contract-v2" }, merged[0].ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"https://future.test/v2" }, merged[0].BaseUrl());
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ L"{11111111-1111-1111-1111-111111111111}" },
+            merged[0].ApiKeyCredential());
+        VERIFY_IS_TRUE(merged[0].ApiKeyRequired());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"future-model" }, merged[0].Models().GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"edited" }, merged[1].Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"After" }, merged[1].Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"new-model" }, merged[1].Models().GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"added" }, merged[2].Id());
+        VERIFY_IS_FALSE(std::ranges::any_of(merged, [](const auto& provider) {
+            return provider.Id() == L"removed";
+        }));
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProviderMultiModelDisplay()
+    {
+        namespace CustomModels = ::Microsoft::Terminal::CustomModels;
+
+        auto provider = CustomModelProvider{ L"provider", L"Provider", L"https://example.test/v1" };
+        provider.Models().Append(CustomModel{ L"model-a", L"Friendly Model" });
+        provider.Models().Append(CustomModel{ L"model-b", L"model-b" });
+
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ L"Friendly Model (model-a)\n" L"model-b" },
+            CustomModels::FormatModelDisplayText(provider));
+
+        const auto providers = std::array{ provider };
+        const auto catalog = CustomModels::CaptureCatalog(providers);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, catalog.size());
+        VERIFY_ARE_EQUAL(std::string{ "custom:provider:model-a" }, catalog[0].selectionId);
+        VERIFY_ARE_EQUAL(std::string{ "custom:provider:model-b" }, catalog[1].selectionId);
+    }
+
+    void CustomAgentAndPolicyTests::AcpRuntimeModelsAreScopedByAgent()
+    {
+        const auto state = AcpRuntimeState::Current();
+        auto copilotModels = winrt::single_threaded_vector<AcpModelInfo>();
+        copilotModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"custom:openrouter:deepseek",
+            L"deepseek (BYOK)",
+            L"OpenRouter"));
+        auto claudeModels = winrt::single_threaded_vector<AcpModelInfo>();
+        claudeModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"default",
+            L"Default",
+            L"Claude default"));
+
+        state.SetAvailableModels(L"custom:Test-Copilot", copilotModels.GetView(), L"custom:openrouter:deepseek");
+        state.SetAvailableModels(L"test-claude", claudeModels.GetView(), L"default");
+
+        const auto cachedCopilot = state.AvailableModels(L"custom:test-copilot");
+        const auto cachedClaude = state.AvailableModels(L"test-claude");
+        VERIFY_ARE_EQUAL(1u, cachedCopilot.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, cachedCopilot.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(1u, cachedClaude.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, cachedClaude.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"CUSTOM:TEST-COPILOT"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"test-claude"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing").Size());
+
+        const auto staleRevision = state.Revision(L"custom:test-copilot");
+        state.SetAvailableModels(L"custom:test-copilot", claudeModels.GetView(), L"default");
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"custom:test-copilot",
+            staleRevision,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"custom:test-copilot"));
+
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            1,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(0ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, state.CurrentModelId(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing-write").Size());
+        VERIFY_IS_TRUE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            0,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(1ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"test-missing-write"));
+    }
+
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()
     {
         // Explicit value survives load.
@@ -354,6 +608,15 @@ namespace SettingsModelUnitTests
         // Absent → falls back to the "bottom" default (MTSMSettings.h).
         const auto defaulted = MakeSettings({});
         VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, defaulted->GlobalSettings().AgentPanePosition());
+    }
+
+    void CustomAgentAndPolicyTests::ShowTokenUsageAndCostRoundtripsAndDefaultsOff()
+    {
+        const auto enabled = MakeSettings(R"("showTokenUsageAndCost": true)");
+        VERIFY_IS_TRUE(enabled->GlobalSettings().ShowTokenUsageAndCost());
+
+        const auto defaulted = MakeSettings({});
+        VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
     }
 
     void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()

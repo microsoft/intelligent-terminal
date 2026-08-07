@@ -1,11 +1,7 @@
 
 # How to build OpenConsole
 
-This repository uses [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) for some of its dependencies. To make sure submodules are restored or updated, be sure to run the following prior to building:
-
-```shell
-git submodule update --init --recursive
-```
+This repository's dependencies come from NuGet, vcpkg, and the vendored `oss/` tree, and are restored automatically by the build.
 
 OpenConsole.slnx may be built from within Visual Studio or from the command-line using a set of convenience scripts & tools in the **/tools** directory:
 

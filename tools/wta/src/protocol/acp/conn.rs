@@ -262,6 +262,17 @@ impl AgentLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
+    pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
+        let value = self
+            .cx()
+            .await?
+            .send_request(v1::AgentRequest::ExtMethodRequest(req))
+            .block_task()
+            .await?;
+        serde_json::from_value(value)
+            .map_err(|e| acp::Error::internal_error().data(format!("ext response decode: {e}")))
+    }
+
     pub async fn session_notification(&self, notif: SessionNotification) -> acp::Result<()> {
         self.cx().await?.send_notification(notif)
     }

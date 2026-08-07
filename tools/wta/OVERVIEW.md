@@ -27,17 +27,17 @@ terminal. WTA fills that gap:
 WTA runs as a **helper + master** pair, never as a standalone process: Windows
 Terminal spawns one **`wta-master`** singleton that owns the single connection to
 the agent CLI, and one **`wta-helper`** per agent pane that renders the TUI and
-talks ACP to master over a named pipe. A third, stateless role is the **CLI
-helpers** (`wta list-panes`, `wta capture-pane`, …) used for one-shot WT control.
+talks ACP to master over a named pipe. Stateless **CLI helpers** provide one-shot
+WT control, and the master-owned **proposal MCP endpoint** accepts typed terminal
+action requests with per-session capabilities.
 
-> There is **no standalone agent / TUI mode and no MCP server** anymore. Bare
-> `wta` with neither `--master` nor `--connect-master` exits with an error
-> (`main.rs`). The earlier single-process "ACP TUI" and "`wta mcp`" modes were
-> removed.
+> There is no standalone agent / TUI mode. Bare `wta` with neither a role flag
+> nor a subcommand exits with an error (`main.rs`). The proposal MCP endpoint is
+> not a general WT-control server and exposes no read or execution tools.
 
 ---
 
-## Three process roles
+## Process roles and MCP endpoint
 
 ### 1. `wta-master` — the ACP multiplexer (singleton)
 
@@ -84,12 +84,38 @@ wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
 wta hooks install                         # install the agent-hook bridge
+wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
 
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
-to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit. Used by humans
-debugging WTA and by agents that can shell out. (The agent CLI reaches WT this
-way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
+to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit, except local
+helpers such as `resolve-command`, which inspect cwd and machine state directly. Used by
+humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
+this way too — by shelling out to `wta` / `wtcli`. The proposal MCP endpoint
+is separate and cannot perform these operations.)
+
+Packaged builds register `wta.exe` as an App Execution Alias. WTA prepends the
+current package family's alias directory to the agent process `PATH`, so a short
+`wta.exe` invocation selects the matching Dev, Preview, or Store installation
+even when multiple variants are installed. Unpackaged builds prepend the
+running executable's directory instead.
+
+### 4. Proposal MCP endpoint — master-owned
+
+`wta-master` owns one stateless Streamable HTTP endpoint on Windows loopback.
+Host Agents use it directly; WSL Agents use an on-demand loopback relay inside
+their distro, avoiding inbound Windows firewall requirements. Relays are
+master-lifetime services with bounded request handling and a master-owned stdin
+pipe that terminates the distro process if master exits; unexpected relay
+failure is restarted on the same port so existing sessions recover. Each ACP
+session's `McpServer::Http` configuration carries an independent public server
+name and a distinct bearer capability, so name-keyed Agent caches cannot
+overwrite another session's header. Master maps the capability to SessionId,
+resolves the current Helper through `session_to_helper`, and forwards the typed
+input over the existing ACP pipe.
+The endpoint exposes only `request_terminal_actions` and returns after the
+Helper confirms that the recommendation card was presented. The user confirms
+or cancels independently.
 
 ---
 
@@ -145,7 +171,7 @@ way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
 
 ### WTA ↔ AI Agent (ACP, two hops)
 
-ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on two hops:
+ACP (`agent-client-protocol = "1.3.0"`, JSON-RPC 2.0) is spoken on two hops:
 
 - **master ↔ agent CLI** (stdio): master is the ACP **client**; it spawns and
   owns the agent CLI.
@@ -171,7 +197,7 @@ ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on two hops:
 | Async runtime | tokio |
 | CLI parsing | clap 4 |
 | TUI rendering | ratatui 0.30 + crossterm 0.29 |
-| ACP protocol | agent-client-protocol 0.10 |
+| ACP protocol | agent-client-protocol 1.3.0 |
 | Serialization | serde + serde_json |
 | Error handling | anyhow |
 | i18n | rust-i18n |

@@ -102,8 +102,8 @@ agent.custom.auth_hint: "Assegureu-vos que %{name} estiga instal·lat i al vostr
 
 # ── Vista d'agents (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "S'està carregant..."
-# {Locked="Enter","Esc","F5","↑","↓"} - combinacions de tecles, no traduïu
-agents.footer_hint: "(↑ ↓ per a navegar • Enter per a iniciar la sessió • Esc per a eixir • F5 per a actualitzar)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - combinacions de tecles, no traduïu
+agents.footer_hint: "(↑ ↓ per a navegar • Enter per a iniciar la sessió • Esc per a eixir • F5 per a actualitzar • / per a cercar)"
 agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
 agents.status.error: "Error"
@@ -119,6 +119,8 @@ connection.connecting_activity: "S'està connectant a l'agent…"
 connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per tornar-vos a connectar."  # {Locked="/restart"}
 
 # ── Missatges del sistema (src/app.rs) ────────────────────────────────────────
+system.close_pane_hint: "Premeu Ctrl+C una altra volta per a tancar el panell"  # {Locked="Ctrl+C"}
+system.selection_copied: "S'ha copiat"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"

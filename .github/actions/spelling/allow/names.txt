@@ -42,6 +42,9 @@ nguyen
 niksa
 nvaccess
 nvda
+Ollama
+OpenRouter
+openrouter
 osgwiki
 Ottosson
 pabhojwa
@@ -73,3 +76,7 @@ zljubisic
 Zoey
 zorio
 Figma
+gordon
+haonanttt
+Kinger
+usmani

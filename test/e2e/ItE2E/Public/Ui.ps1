@@ -4,7 +4,7 @@
 function Get-WinAppPath {
     if ($script:ItWinAppPath -and (Test-Path $script:ItWinAppPath)) { return $script:ItWinAppPath }
     $c = (Get-Command winapp -ErrorAction SilentlyContinue).Source
-    if (-not $c) { throw "winapp (Windows App CLI) not found. Run bootstrap.ps1 or: winget install Microsoft.winappcli" }
+    if (-not $c) { throw "winapp (Windows App CLI) not found. Run bootstrap.ps1 or: winget install Microsoft.WinAppCli" }
     $script:ItWinAppPath = $c; $c
 }
 

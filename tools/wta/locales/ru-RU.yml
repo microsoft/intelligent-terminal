@@ -110,8 +110,8 @@ agent.custom.auth_hint: "Убедитесь, что %{name} установлен
 
 # ── Представление агентов (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Загрузка..."
-# {Locked="Enter","Esc","F5","↑","↓"} - комбинации клавиш, не переводить
-agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход • F5 обновить)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - комбинации клавиш, не переводить
+agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход • F5 обновить • / поиск)"
 agents.status.active: "Активен"
 agents.status.waiting_for_input: "Ожидание ввода"
 agents.status.error: "Ошибка"
@@ -127,6 +127,8 @@ connection.connecting_activity: "Подключение к агенту…"
 connection.lost: "Подключение к агенту потеряно. Введите /restart, чтобы подключиться снова."  # {Locked="/restart"}
 
 # ── Системные сообщения (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Нажмите Ctrl+C ещё раз, чтобы закрыть панель"  # {Locked="Ctrl+C"}
+system.selection_copied: "Скопировано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Нет активного запроса."
 system.authentication_failed: "Ошибка аутентификации"

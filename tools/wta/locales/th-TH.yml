@@ -101,8 +101,8 @@ agent.custom.auth_hint: "ตรวจสอบว่า %{name} ถูกติ�
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "กำลังโหลด..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ เลื่อนเลือก • Enter เพื่อเปิดเซสชัน • Esc เพื่อออก • F5 เพื่อรีเฟรช)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ เลื่อนเลือก • Enter เพื่อเปิดเซสชัน • Esc เพื่อออก • F5 เพื่อรีเฟรช • / เพื่อค้นหา)"
 agents.status.active: "ใช้งานอยู่"
 agents.status.waiting_for_input: "รอข้อมูลป้อนเข้า"
 agents.status.error: "ข้อผิดพลาด"
@@ -118,6 +118,8 @@ connection.connecting_activity: "กำลังเชื่อมต่อก�
 connection.lost: "การเชื่อมต่อกับเอเจนต์ขาดหายไป พิมพ์ /restart เพื่อเชื่อมต่อใหม่"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "กด Ctrl+C อีกครั้งเพื่อปิดแผง"  # {Locked="Ctrl+C"}
+system.selection_copied: "คัดลอกแล้ว"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ยกเลิกแล้ว"
 system.no_prompt_in_flight: "ไม่มีพร้อมท์ที่กำลังดำเนินการ"
 system.authentication_failed: "การยืนยันตัวตนล้มเหลว"

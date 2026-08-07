@@ -13,6 +13,8 @@ azmcp
 bestpractices
 breadcrumb
 breadcrumbs
+byok
+byom
 caac
 CACHEDIR
 capturep
@@ -46,6 +48,7 @@ damerau
 dcs
 Dedented
 dedups
+deepseek
 demotable
 deselection
 desync
@@ -152,6 +155,7 @@ nullglob
 Nushell
 obra
 Oids
+ollama
 oobe
 ools
 openai
@@ -241,6 +245,7 @@ sxn
 synthesises
 sysnative
 Tencent
+TOCTOU
 THH
 tokio
 tombstoned
@@ -257,6 +262,7 @@ UIDs
 und
 undercounted
 undercounting
+undercounts
 unfocusable
 unrecognised
 unstash
@@ -264,16 +270,19 @@ unstashes
 unstashing
 upserting
 upserts
+usd
 usize
 vcxprojs
 vendored
 vsdevcmd
 vte
+wcsicmp
 westus
 Wez
 wezterm
 workarounds
 WSLs
+wslenv
 XBox
 YBox
 yeelam
@@ -283,3 +292,4 @@ zzzzz
 axum
 dispatchable
 slowloris
+Verbed

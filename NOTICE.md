@@ -557,9 +557,9 @@ requirements are met without embedding any single crate's license body as
 if it were canonical for the whole group.
 
 - **adler2** v2.0.1 -- [https://github.com/oyvindln/adler2](https://github.com/oyvindln/adler2) -- `0BSD OR Apache-2.0 OR MIT`
-- **agent-client-protocol** v1.0.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
-- **agent-client-protocol-derive** v1.0.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
-- **agent-client-protocol-schema** v1.1.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
+- **agent-client-protocol** v1.3.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
+- **agent-client-protocol-derive** v1.3.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
+- **agent-client-protocol-schema** v1.4.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
 - **aho-corasick** v1.1.4 -- [https://github.com/BurntSushi/aho-corasick](https://github.com/BurntSushi/aho-corasick) -- `MIT OR Unlicense`
 - **allocator-api2** v0.2.21 -- [https://github.com/zakarumych/allocator-api2](https://github.com/zakarumych/allocator-api2) -- `Apache-2.0 OR MIT`
 - **anstream** v0.6.21 -- [https://github.com/rust-cli/anstyle.git](https://github.com/rust-cli/anstyle.git) -- `Apache-2.0 OR MIT`
@@ -723,7 +723,6 @@ if it were canonical for the whole group.
 - **portable-atomic** v1.13.1 -- [https://github.com/taiki-e/portable-atomic](https://github.com/taiki-e/portable-atomic) -- `Apache-2.0 OR MIT`
 - **powerfmt** v0.2.0 -- [https://github.com/jhpratt/powerfmt](https://github.com/jhpratt/powerfmt) -- `Apache-2.0 OR MIT`
 - **proc-macro2** v1.0.106 -- [https://github.com/dtolnay/proc-macro2](https://github.com/dtolnay/proc-macro2) -- `Apache-2.0 OR MIT`
-- **pulldown-cmark** v0.10.3 -- [https://github.com/raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) -- `MIT`
 - **pxfm** v0.1.29 -- [https://github.com/awxkee/pxfm](https://github.com/awxkee/pxfm) -- `Apache-2.0 OR BSD-3-Clause`
 - **quote** v1.0.45 -- [https://github.com/dtolnay/quote](https://github.com/dtolnay/quote) -- `Apache-2.0 OR MIT`
 - **rand** v0.8.5 -- [https://github.com/rust-random/rand](https://github.com/rust-random/rand) -- `Apache-2.0 OR MIT`
@@ -812,7 +811,6 @@ if it were canonical for the whole group.
 - **triomphe** v0.1.15 -- [https://github.com/Manishearth/triomphe](https://github.com/Manishearth/triomphe) -- `Apache-2.0 OR MIT`
 - **typenum** v1.19.0 -- [https://github.com/paholg/typenum](https://github.com/paholg/typenum) -- `Apache-2.0 OR MIT`
 - **ucd-trie** v0.1.7 -- [https://github.com/BurntSushi/ucd-generate](https://github.com/BurntSushi/ucd-generate) -- `Apache-2.0 OR MIT`
-- **unicase** v2.9.0 -- [https://github.com/seanmonstar/unicase](https://github.com/seanmonstar/unicase) -- `Apache-2.0 OR MIT`
 - **unicode-ident** v1.0.24 -- [https://github.com/dtolnay/unicode-ident](https://github.com/dtolnay/unicode-ident) -- `(MIT OR Apache-2.0) AND Unicode-3.0`
 - **unicode-linebreak** v0.1.5 -- [https://github.com/axelf4/unicode-linebreak](https://github.com/axelf4/unicode-linebreak) -- `Apache-2.0`
 - **unicode-segmentation** v1.12.0 -- [https://github.com/unicode-rs/unicode-segmentation](https://github.com/unicode-rs/unicode-segmentation) -- `Apache-2.0 OR MIT`
@@ -865,7 +863,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 195 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.0.0, agent-client-protocol-derive v1.0.0, agent-client-protocol-schema v1.1.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+187 more)
+Applies to 194 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+186 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -960,7 +958,6 @@ Copyright (c) 2014 Chris Wong
 Copyright (c) 2014 Paho Lurie-Gregg
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2026 Alex Crichton
-Copyright (c) 2014-2026 Sean McArthur
 Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
@@ -1226,7 +1223,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 274 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+266 more)
+Applies to 272 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+264 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1271,7 +1268,6 @@ Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2019 Geoffroy Couprie
 Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
 Copyright (c) 2014-2026 Alex Crichton
-Copyright (c) 2014-2026 Sean McArthur
 Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
@@ -1360,7 +1356,6 @@ Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright 2012-2016 The Rust Project Developers.
 Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2014 Paho Lurie-Gregg
-Copyright 2015 Google Inc. All rights reserved.
 Copyright 2015 The Fancy Regex Authors.
 Copyright 2016-2026 Frank Denis.
 Copyright 2018 Developers of the Rand project

@@ -12,10 +12,13 @@ function Invoke-WtCli {
         [Parameter(Mandatory)]$App,
         [Parameter(Mandatory)][string[]]$Arguments,
         [int]$TimeoutSec = 20,
+        [switch]$SkipAuthenticate,
         [switch]$NoThrow
     )
     if (-not $App.ComClsid) { Resolve-WtComClsid -App $App | Out-Null }
-    $r = Invoke-Native -FilePath $App.WtcliPath -Arguments (@('--json') + $Arguments) `
+    $globalArgs = @('--json')
+    if ($SkipAuthenticate) { $globalArgs += '--skip-authenticate' }
+    $r = Invoke-Native -FilePath $App.WtcliPath -Arguments ($globalArgs + $Arguments) `
         -TimeoutSec $TimeoutSec -Environment @{ WT_COM_CLSID = $App.ComClsid }
     if ($r.ExitCode -ne 0) {
         $msg = "wtcli $($Arguments -join ' ') failed (exit $($r.ExitCode)): $($r.StdErr.Trim())"

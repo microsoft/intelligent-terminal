@@ -1,22 +1,34 @@
-use crossterm::event::{Event, EventStream};
+use crossterm::event::{Event, EventStream, MouseButton, MouseEventKind};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration, MissedTickBehavior};
 
-use crate::app::AppEvent;
+use crate::app_contracts::AppEvent;
 
 /// Pure translation of a crossterm input `Event` into the `AppEvent` the TUI
 /// consumes, or `None` for events we deliberately drop.
 ///
 /// Load-bearing branch: only `KeyEventKind::Press` becomes an `AppEvent::Key`
 /// — key *release* / *repeat* events (which conpty/Windows can deliver) must
-/// be dropped; otherwise every keystroke would fire twice. Paste, Mouse, and
-/// any other variant are dropped (we never enable mouse capture; the emulator
-/// translates wheel into arrow keys in alt-screen mode).
+/// be dropped; otherwise every keystroke would fire twice. Mouse events are
+/// forwarded so the app can scroll its virtual chat viewport without stealing
+/// Up/Down from prompt history. Paste and unsupported variants are dropped.
 fn map_crossterm_event(event: Event) -> Option<AppEvent> {
     match event {
         Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
             Some(AppEvent::Key(key))
+        }
+        Event::Mouse(mouse)
+            if matches!(
+                mouse.kind,
+                MouseEventKind::ScrollUp
+                    | MouseEventKind::ScrollDown
+                    | MouseEventKind::Down(MouseButton::Left)
+                    | MouseEventKind::Drag(MouseButton::Left)
+                    | MouseEventKind::Up(MouseButton::Left)
+            ) =>
+        {
+            Some(AppEvent::Mouse(mouse))
         }
         Event::Resize(w, h) => Some(AppEvent::Resize(w, h)),
         // WT/conpty forwards xterm focus-in/out (CSI I / CSI O) to the child
@@ -103,10 +115,8 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
                 };
                 let app_event = match map_crossterm_event(event) {
                     Some(ev) => ev,
-                    // We do not enable mouse capture (see main.rs run_acp_tui_mode).
-                    // The terminal emulator translates wheel into Up/Down arrow
-                    // keystrokes in alt-screen mode, so we never observe raw
-                    // Event::Mouse here. Drop anything else (Paste, key release, etc.).
+                    // Drop paste, key release/repeat, and any other event the
+                    // TUI does not consume.
                     None => continue,
                 };
                 if let AppEvent::Key(key) = &app_event {
@@ -129,7 +139,9 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+    };
 
     #[test]
     fn key_press_maps_to_key_event() {
@@ -174,7 +186,48 @@ mod tests {
     }
 
     #[test]
-    fn paste_and_other_events_are_dropped() {
+    fn mouse_events_are_forwarded() {
+        let mouse = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 4,
+            row: 7,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(matches!(
+            map_crossterm_event(Event::Mouse(mouse)),
+            Some(AppEvent::Mouse(mapped)) if mapped == mouse
+        ));
+    }
+
+    #[test]
+    fn left_button_selection_events_are_forwarded() {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            let mouse = MouseEvent {
+                kind,
+                column: 4,
+                row: 7,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(matches!(
+                map_crossterm_event(Event::Mouse(mouse)),
+                Some(AppEvent::Mouse(mapped)) if mapped == mouse
+            ));
+        }
+    }
+
+    #[test]
+    fn unsupported_mouse_and_paste_events_are_dropped() {
+        let mouse = MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 4,
+            row: 7,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(map_crossterm_event(Event::Mouse(mouse)).is_none());
         assert!(map_crossterm_event(Event::Paste("text".to_string())).is_none());
     }
 }
