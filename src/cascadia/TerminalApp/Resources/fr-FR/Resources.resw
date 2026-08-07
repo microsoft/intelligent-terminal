@@ -1045,6 +1045,8 @@
     <value>L'activation de cette option installera des hooks d'intégration pour suivre les sessions sur vos agents.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Afficher l’utilisation du contexte et le coût de la session</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Lorsqu’ils sont disponibles, afficher l’utilisation de la fenêtre de contexte et le coût de la session dans la barre inférieure du terminal.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Position du volet</value>
   </data>
@@ -1233,6 +1235,9 @@
     <value>⚠ La stratégie d'exécution de PowerShell bloque les scripts. Détection des erreurs désactivée.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Utilisation</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
+  <data name="Usage_TokensUnit" xml:space="preserve"><value>jetons</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
+  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Fenêtre de contexte</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
   <data name="CmdAppHelpFooter" xml:space="preserve">
     <value>Remarque : les arguments non reconnus sont automatiquement passés à la sous-commande « new-tab ».
 Par exemple, « wt -p "Ubuntu" -d C:\ » est équivalent à « wt new-tab -p "Ubuntu" -d C:\ ».
