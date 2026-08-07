@@ -308,15 +308,15 @@ struct MasterStateInner {
     /// and Gemini in another, and reaping one must not affect the other.
     ///
     /// When a helper resumes such a session (`--initial-load-session-id`
-    /// re-warm or `/restart`), `load_session` re-binds routing to the new
-    /// helper *directly* — no fresh `session/load` — because the CLI already
-    /// has it (a re-load would be rejected "already loaded", or, if the
-    /// orphan turn is still running, wedge behind it and hang the pane on
-    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
-    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
-    /// drops just that agent's set on CLI death, so a crashed-and-respawned
-    /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real `session/load` from disk.
+    /// re-warm or `/restart`), `load_session` uses `session/close` followed
+    /// by a real `session/load` on the same ACP connection so the replacement
+    /// helper receives the history replay. Agents without the close capability
+    /// retain the legacy route-only re-bind. Only recorded while the owning
+    /// CLI *instance* is still the live pool entry (checked via `Arc::ptr_eq`),
+    /// and `reap_agent` drops just that agent's set on CLI death, so a
+    /// crashed-and-respawned CLI under the same command line never re-binds
+    /// to a session it never had — such a resume falls back to a real
+    /// `session/load` from disk.
     orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
@@ -360,6 +360,20 @@ async fn bind_session_route(
     pending_usage.remove(&session_id);
     routes.insert(session_id, route);
     routes.len()
+}
+
+async fn remove_session_route_if_owned(
+    state: &MasterStateInner,
+    session_id: &acp::schema::v1::SessionId,
+    helper_id: HelperId,
+) {
+    let mut routes = state.session_to_helper.lock().await;
+    if routes
+        .get(session_id)
+        .is_some_and(|route| route.helper_id == helper_id)
+    {
+        routes.remove(session_id);
+    }
 }
 
 /// Canonical key for the agent-CLI pool: authoritative agent identity,
@@ -409,6 +423,16 @@ struct AgentCli {
     /// eventual clean-probe result without leaking one agent/source catalog to
     /// unrelated helpers in the same master.
     bound_helpers: Mutex<HashSet<HelperId>>,
+}
+
+impl AgentCli {
+    fn supports_session_close(&self) -> bool {
+        self.cached_init_resp
+            .agent_capabilities
+            .session_capabilities
+            .close
+            .is_some()
+    }
 }
 
 fn update_model_switch_channel_from_load(
@@ -692,7 +716,8 @@ impl MasterClient {
 /// already live inside the CLI (not missing). Copilot reports this as a
 /// "… is already loaded" message under `-32602`; we match that stable
 /// substring (in message or data) rather than the code. `load_session`
-/// uses it to re-bind an orphan session instead of failing the resume.
+/// uses it to close and retry when supported, or to retain the legacy
+/// route-only re-bind for agents without `session/close`.
 fn is_already_loaded_error(err: &acp::Error) -> bool {
     let msg = err.message.to_ascii_lowercase();
     if msg.contains("already loaded") {
@@ -1622,34 +1647,31 @@ impl HelperHandler {
             },
         )
         .await;
-        // Orphan re-bind fast path: this session's previous helper
-        // disconnected but the shared CLI still has it loaded (tracked in
-        // `orphaned_sessions` under this agent's key). Re-attach onto the
-        // routing pre-registered above WITHOUT a `session/load` round-trip —
-        // the CLI already has the session, and forwarding a load would be
-        // rejected "already loaded", or (if the orphan turn is still running)
-        // wedge behind it and hang the pane on "Resuming…". Any in-flight
-        // turn now streams its `session/update`s to this new helper. Scoped
-        // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
-        // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
-        let is_orphan_rebind = {
+        // Claim an orphan owned by this exact live CLI instance. Agents that
+        // support session/close can release it and perform a real load on the
+        // same connection, which replays history to the replacement helper.
+        // Legacy agents retain the route-only re-bind because loading a
+        // resident session is rejected as "already loaded".
+        let is_orphan = {
             let mut orphans = self.state.orphaned_sessions.lock().await;
             orphans
                 .get_mut(&agent.cmd_key)
                 .is_some_and(|set| set.remove(&session_id))
         };
+        let supports_session_close = agent.supports_session_close();
+        let close_before_load = is_orphan && supports_session_close;
 
-        // Both a re-bind and a real `session/load` resume the session; only a
-        // genuine load failure rolls back. Resolve the response, then register
-        // the resumed row once for either success path.
-        let resp = if is_orphan_rebind {
+        // Both a legacy re-bind and a real `session/load` resume the session;
+        // close/load failures roll back the route. Resolve the response, then
+        // register the resumed row once for either success path.
+        let resp = if is_orphan && !close_before_load {
             tracing::info!(
                 target: "master",
                 step = "helper→agent",
                 op = "load_session",
                 helper_id = ?self.helper_id,
                 session_id = ?session_id,
-                "re-binding orphan session without a session/load round-trip"
+                "re-binding orphan session because agent does not support session/close"
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
@@ -1659,11 +1681,7 @@ impl HelperHandler {
             {
                 Ok(endpoint) => endpoint,
                 Err(error) => {
-                    self.state
-                        .session_to_helper
-                        .lock()
-                        .await
-                        .remove(&session_id);
+                    remove_session_route_if_owned(&self.state, &session_id, self.helper_id).await;
                     return Err(error);
                 }
             };
@@ -1679,7 +1697,84 @@ impl HelperHandler {
             } else {
                 None
             };
-            match agent.conn.load_session(args).await {
+            if close_before_load {
+                tracing::info!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "close_session",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    "closing orphan session before reloading history on the existing ACP connection"
+                );
+                if let Err(error) = agent
+                    .conn
+                    .close_session(acp::schema::v1::CloseSessionRequest::new(
+                        session_id.clone(),
+                    ))
+                    .await
+                {
+                    if let Some(pending) = proposal_mcp.as_ref() {
+                        self.state.proposal_mcp_capabilities.cancel(pending).await;
+                    }
+                    remove_session_route_if_owned(&self.state, &session_id, self.helper_id).await;
+                    tracing::warn!(
+                        target: "master",
+                        helper_id = ?self.helper_id,
+                        session_id = ?session_id,
+                        error = %error,
+                        "session/close failed before durable resume; rolled back routing entry"
+                    );
+                    return Err(error);
+                }
+                self.state
+                    .proposal_mcp_capabilities
+                    .remove_session(&session_id)
+                    .await;
+            }
+
+            let mut load_result = agent.conn.load_session(args.clone()).await;
+            if !close_before_load
+                && supports_session_close
+                && load_result
+                    .as_ref()
+                    .is_err_and(|error| is_already_loaded_error(error))
+            {
+                tracing::info!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "close_session",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    "session was already loaded; closing it before retrying on the existing ACP connection"
+                );
+                load_result = match agent
+                    .conn
+                    .close_session(acp::schema::v1::CloseSessionRequest::new(
+                        session_id.clone(),
+                    ))
+                    .await
+                {
+                    Ok(_) => {
+                        self.state
+                            .proposal_mcp_capabilities
+                            .remove_session(&session_id)
+                            .await;
+                        agent.conn.load_session(args).await
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "master",
+                            helper_id = ?self.helper_id,
+                            session_id = ?session_id,
+                            error = %error,
+                            "session/close failed after session/load reported already loaded"
+                        );
+                        Err(error)
+                    }
+                };
+            }
+
+            match load_result {
                 Ok(resp) => {
                     if let Some(pending) = proposal_mcp.as_ref() {
                         if !self
@@ -1697,10 +1792,9 @@ impl HelperHandler {
                     }
                     resp
                 }
-                // Fallback for an orphan we didn't track (e.g. it predates
-                // this master): the CLI reports "already loaded", so re-bind
-                // onto the pre-registered routing just like the fast path.
-                Err(err) if is_already_loaded_error(&err) => {
+                // Compatibility fallback for an orphan we did not track when
+                // the agent cannot close resident sessions.
+                Err(err) if !supports_session_close && is_already_loaded_error(&err) => {
                     if let Some(pending) = proposal_mcp.as_ref() {
                         self.state.proposal_mcp_capabilities.cancel(pending).await;
                     }
@@ -1710,7 +1804,7 @@ impl HelperHandler {
                         op = "load_session",
                         helper_id = ?self.helper_id,
                         session_id = ?session_id,
-                        "re-binding session already loaded in the shared CLI"
+                        "re-binding already-loaded session because agent does not support session/close"
                     );
                     acp::schema::v1::LoadSessionResponse::new()
                 }
@@ -1722,10 +1816,7 @@ impl HelperHandler {
                     // needs touching — we never wrote to `registry` and we
                     // never broadcast `session_added`, so peers never saw
                     // this row.
-                    {
-                        let mut map = self.state.session_to_helper.lock().await;
-                        map.remove(&session_id);
-                    }
+                    remove_session_route_if_owned(&self.state, &session_id, self.helper_id).await;
                     tracing::warn!(
                         target: "master",
                         helper_id = ?self.helper_id,
@@ -1754,7 +1845,7 @@ impl HelperHandler {
         }
 
         // Register the resumed row (Live + tagged) — shared by the real-load
-        // and orphan-re-bind paths.
+        // and legacy orphan-re-bind paths.
         let mut info =
             crate::session_registry::SessionInfo::new(session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
@@ -3525,14 +3616,14 @@ async fn serve_helper(
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     // The dropped sessions are still loaded on the shared CLI — they're now
-    // orphans. Record them under the owning agent's key so a later resume
-    // re-binds directly instead of forwarding a `session/load` that the CLI
-    // rejects "already loaded" (or, mid-turn, wedges behind the running
-    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
-    // is STILL the live pool instance for its key. If that CLI already died
-    // (reaped, possibly respawned under the same command line), these
-    // sessions are gone — recording them would make a later resume skip the
-    // `session/load` the new CLI needs, binding to a session it never had.
+    // orphans. Record them under the owning agent's key so a later resume can
+    // close and reload them on the same ACP connection (or use the legacy
+    // route-only re-bind when the agent lacks session/close). Guard on
+    // `Arc::ptr_eq`: only record if the helper's bound CLI is STILL the live
+    // pool instance for its key. If that CLI already died (reaped, possibly
+    // respawned under the same command line), these sessions are gone —
+    // recording them would make a later resume skip the `session/load` the
+    // new CLI needs, binding to a session it never had.
     if !victims.is_empty() {
         if let Some(agent) = handler.agent.get() {
             let key = agent.cmd_key.clone();
