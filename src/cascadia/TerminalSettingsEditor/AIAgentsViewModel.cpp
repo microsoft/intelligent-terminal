@@ -404,6 +404,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         const auto baseUrl = _TrimWhitespace(_newCustomModelProviderBaseUrl);
         const auto modelId = _TrimWhitespace(_newCustomModelId);
+        const auto apiKey = _TrimWhitespace(_newCustomModelProviderApiKey);
         if (baseUrl.empty() || modelId.empty())
         {
             return;
@@ -425,11 +426,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
 
         winrt::hstring credentialId;
-        if (!_newCustomModelProviderApiKey.empty())
+        if (!apiKey.empty())
         {
             credentialId = ::Microsoft::Terminal::CustomModels::StoreApiKey(
                 {},
-                _newCustomModelProviderApiKey);
+                apiKey);
             provider.ApiKeyCredential(credentialId);
             provider.ApiKeyRequired(true);
         }
