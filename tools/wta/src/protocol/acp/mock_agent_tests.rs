@@ -14,7 +14,7 @@
 
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session, CancelRequest,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, AutofixTextKind, CancelRequest,
     DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
     RenameSessionRequest,
 };
@@ -741,7 +741,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         text: text.to_string(),
         pane_context: None,
         submitted_at_unix_s: 0.0,
-        is_autofix,
+        autofix_text_kind: is_autofix.then_some(AutofixTextKind::UserRequest),
         images: Vec::new(),
     }
 }
