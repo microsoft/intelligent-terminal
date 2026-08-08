@@ -29,9 +29,8 @@
     Check always reports all four).
 
 .PARAMETER SmokeTest
-    After Check / Install, fire a no-op prompt at each detected CLI and
-    tail %LOCALAPPDATA%\IntelligentTerminal\logs\hook-trace.log for an
-    `ENTER` line proving the hook fired.
+    After Check / Install, verify that the installed wtcli exposes the native
+    `agent-hook` command and print the enabled integrations.
 
 .PARAMETER WtaPath
     Override path to wta.exe. Defaults to a sibling of this script (the
@@ -350,21 +349,36 @@ function Invoke-HooksSmokeTest {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][psobject]$Report,
-        [Parameter()][string]$Cli = 'all'
+        [Parameter()][string]$Cli = 'all',
+        [Parameter()][string]$WtaPath
     )
 
-    $logPath = Join-Path $env:LOCALAPPDATA 'IntelligentTerminal\logs\hook-trace.log'
-    if (-not (Test-Path -LiteralPath $logPath)) {
-        Write-Host ''
-        Write-Host "Smoke-test skipped: $logPath not found (no hooks have ever fired on this machine)." -ForegroundColor Yellow
-        return
+    $wtcliPath = $null
+    if ($WtaPath) {
+        $sibling = Join-Path (Split-Path -Parent $WtaPath) 'wtcli.exe'
+        if (Test-Path -LiteralPath $sibling) {
+            $wtcliPath = $sibling
+        }
+    }
+    if (-not $wtcliPath) {
+        $wtcliPath = (Get-Command wtcli.exe -ErrorAction SilentlyContinue).Source
     }
 
     Write-Host ''
-    Write-Host '→ Smoke test: tailing hook-trace.log for ENTER lines (informational only).' -ForegroundColor Cyan
-    Get-Content -LiteralPath $logPath -Tail 20 |
-        Where-Object { $_ -match 'ENTER' } |
-        ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+    if (-not $wtcliPath) {
+        Write-Host 'Smoke-test failed: wtcli.exe was not found.' -ForegroundColor Red
+        return
+    }
+    $helpText = (& $wtcliPath --help 2>&1) -join "`n"
+    if ($helpText -notmatch '(?m)^\s*agent-hook\s+') {
+        Write-Host "Smoke-test failed: $wtcliPath does not expose agent-hook." -ForegroundColor Red
+        return
+    }
+
+    Write-Host "→ Native bridge available: $wtcliPath" -ForegroundColor Cyan
+    $Report.clis |
+        Where-Object { ($Cli -eq 'all' -or $_.name -eq $Cli) -and $_.plugin_enabled } |
+        ForEach-Object { Write-Host "  $($_.name): installed and enabled" -ForegroundColor DarkGray }
 }
 
 # ── Main ─────────────────────────────────────────────────────────────
@@ -389,7 +403,7 @@ $report = Get-AgentHooksStatus -WtaPath $wtaPath -Json $StatusJson
 Format-AgentHooksTable -Report $report -Title "wt-agent-hooks status (mode=$Mode)"
 
 if ($SmokeTest) {
-    Invoke-HooksSmokeTest -Report $report -Cli $CliFilter
+    Invoke-HooksSmokeTest -Report $report -Cli $CliFilter -WtaPath $wtaPath
 }
 
 $result = Test-AgentHooksConsistent -Report $report

@@ -218,9 +218,9 @@ Per-process logs in the helper+master architecture:
 - `wta-ensure-host.log` -- WT-side background ensure-running / SharedWta lifecycle
 - `wta-acp-debug.log` -- low-level ACP JSON-RPC wire trace
 
-Two files in the same dir are written by **non-Rust** producers:
-`terminal-agent-pane.log` (C++ `AgentPaneLog`) and `hook-trace.log` (PowerShell
-hooks). See the repo-level architecture notes for the full storage layout.
+`terminal-agent-pane.log` is written by the C++ `AgentPaneLog`; the remaining
+files in that directory are Rust logs. See the repo-level architecture notes
+for the full storage layout.
 
 The log level is controlled by `WTA_LOG` (or `RUST_LOG`); if unset, debug builds
 default to `debug` and release builds to `info` (`logging::default_filter_directive`).
@@ -387,7 +387,8 @@ and `liveness()` derive from it (see `agent_sessions.rs`).
   immediately, even if master's `session_removed` notification
   hasn't landed yet.
 
-* **Class B** is tracked by hooks + #266 **born-bound** bindings, with the file
+* **Class B** is tracked by native `wtcli agent-hook` events + #266
+  **born-bound** bindings, with the file
   **watcher** as a **status-only fallback for born-bound rows** (full design:
   [`doc/specs/hybrid-agent-session-tracking.md`](../../doc/specs/hybrid-agent-session-tracking.md)):
   a real PowerShell **hook** owns a session outright; #266 **born-bound**

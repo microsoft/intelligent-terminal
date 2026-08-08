@@ -8,9 +8,8 @@
 //
 // The wta agent-pane registry transitions a session out of `IDLE` only when
 // it receives `agent_event` broadcasts from the COM server. Those events
-// originate from a small PowerShell bridge (`send-event.ps1`) that the
-// CLI invokes through its hook system. If the user hasn't run a manual
-// plugin-install step, the CLI never invokes the bridge, the registry
+// originate from the native `wtcli agent-hook` bridge. If the user hasn't run
+// a manual plugin-install step, the CLI never invokes the bridge, the registry
 // stays empty, and the session management list looks frozen.
 //
 // Bundle = single source of truth (issue #20)
@@ -24,17 +23,17 @@
 //       .claude-plugin/marketplace.json
 //       wt-agent-hooks/                    <- the plugin folder Claude copies
 //         .claude-plugin/plugin.json
-//         hooks/{hooks.json,send-event.ps1}
+//         hooks/{hooks.json,agent-hook.cmd}
 //     copilot/                             <- passed to `copilot plugin marketplace add`
-//       (same shape; only hooks.json differs from claude/ — `-CliSource copilot`)
+//       (same plugin shape; hooks.json invokes the native bridge launcher)
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
-//       hooks/{hooks.json,send-event.ps1}
+//       hooks/{hooks.json,agent-hook.cmd}
 //     codex/                               <- passed to `codex plugin marketplace add`
 //       .agents/plugins/marketplace.json   <- Codex's mandatory sentinel location
 //       wt-agent-hooks/                    <- the plugin folder Codex copies
 //         .codex-plugin/plugin.json
-//         hooks/{hooks.json,send-event.ps1}
+//         hooks/{hooks.json,agent-hook.cmd}
 //
 // The MSIX package ships this directory next to `wta.exe` (see
 // `CascadiaPackage.wapproj`'s `wt-agent-hooks` Content glob), so at runtime
@@ -134,7 +133,7 @@ const MARKETPLACE_NAME: &str = "wt-local";
 const GEMINI_EXTENSION_DIR_NAME: &str = "wt-agent-hooks";
 
 const OPENCODE_PLUGIN_JS: &str = "wt-agent-hooks.js";
-const OPENCODE_BRIDGE_PS1: &str = "send-event.ps1";
+const OPENCODE_LEGACY_BRIDGE_PS1: &str = "send-event.ps1";
 const OPENCODE_MANIFEST: &str = "plugin.json";
 const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
 const OPENCODE_MANAGED_MARKER: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
@@ -200,9 +199,7 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
     let managed = managed_js || managed_support;
-    let complete = managed_js
-        && managed_support
-        && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js && managed_support;
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -349,8 +346,8 @@ impl CliStatus {
 
 /// Top-level shape of `wta hooks status --json`. `bundle_source`
 /// reports which entry in the bundle lookup chain supplied the hook
-/// files for the running `wta` process — useful when debugging "why is
-/// this machine running an old `send-event.ps1`?" support tickets.
+/// files for the running `wta` process — useful when debugging stale
+/// installed hook commands.
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusReport {
     pub schema_version: u32,
@@ -1123,12 +1120,12 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     let copy_result = (|| {
         fs::create_dir_all(&destination)?;
         fs::create_dir_all(&support_dir)?;
-        fs::copy(
-            source.join(OPENCODE_BRIDGE_PS1),
-            support_dir.join(OPENCODE_BRIDGE_PS1),
-        )?;
         fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_js)?;
-        // Commit the new version last. If either runtime file fails to copy,
+        let legacy_bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
+        if legacy_bridge.exists() {
+            fs::remove_file(legacy_bridge)?;
+        }
+        // Commit the new version last. If the runtime file fails to copy,
         // the old manifest keeps the upgrade eligible for retry.
         fs::copy(
             source.join(OPENCODE_MANIFEST),
@@ -1142,7 +1139,6 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
             let _ = fs::remove_file(&installed_js);
         }
         if !support_dir_existed {
-            let _ = fs::remove_file(support_dir.join(OPENCODE_BRIDGE_PS1));
             let _ = fs::remove_file(support_dir.join(OPENCODE_MANIFEST));
             let _ = fs::remove_dir(&support_dir);
         }
@@ -2259,7 +2255,7 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     out.attempted = true;
     let mut removed = true;
-    let bridge = support_dir.join(OPENCODE_BRIDGE_PS1);
+    let bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
     if bridge.exists() {
         if let Err(e) = fs::remove_file(&bridge) {
             removed = false;
@@ -3607,7 +3603,7 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
     if !managed_js && !managed_support {
         return Ok(None);
     }
-    let complete = managed_js && managed_support && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js && managed_support;
     Ok(Some(InstalledInfo {
         // A partial managed install must go through OpenCodeCopy even when its
         // surviving manifest already has the current bundle version.
@@ -4205,12 +4201,10 @@ fn upgrade_claude(home: &Path) -> bool {
 /// Git marketplaces (not the local `wt-local` marketplace), so we
 /// re-run the same uninstall + install flow used at first-run.
 ///
-/// Trust hashes recorded in `~/.codex/config.toml` survive the
-/// reinstall as long as the hook command strings in `hooks.json`
-/// don't change — the hashes are computed over the command string
-/// (which uses the literal `${PLUGIN_ROOT}` token, not a resolved
-/// path), so they stay stable even when the bundle dir moves between
-/// MSIX version directories.
+/// Trust hashes recorded in `~/.codex/config.toml` normally survive the
+/// reinstall while hook commands stay unchanged. Bundle 0.1.5 intentionally
+/// changed them from PowerShell to `wtcli agent-hook`, so existing users must
+/// approve the new native commands once through `/hooks`.
 fn upgrade_codex(home: &Path) -> bool {
     // 1. Uninstall — `uninstall_for_codex` already tolerates
     //    "not installed" / "not registered" idempotency, so it's safe

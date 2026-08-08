@@ -18,23 +18,17 @@ export const WtAgentHooks = async ({ directory }) => {
     Boolean(process.env.WT_COM_CLSID) &&
     Boolean(process.env.WT_SESSION) &&
     process.env.OPENCODE_CLIENT !== "acp"
-  const script = `${import.meta.dir}\\wt-agent-hooks\\send-event.ps1`
-
   function emit(topic, sessionID, payload = {}) {
     if (!enabled || !sessionID) return
 
     try {
       const child = Bun.spawn({
         cmd: [
-          "powershell.exe",
-          "-NoProfile",
-          "-NonInteractive",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          script,
-          "-CliSource",
+          "wtcli.exe",
+          "agent-hook",
+          "--cli-source",
           "opencode",
+          "--event",
           topic,
         ],
         stdin: new TextEncoder().encode(

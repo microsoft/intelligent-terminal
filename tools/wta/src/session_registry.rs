@@ -2851,7 +2851,7 @@ mod tests {
         // 1. Master creates an agent-pane session at new_session time
         //    with pane_session_id from _meta.wta (helper's WT_SESSION).
         // 2. The agent runs a tool in a DIFFERENT workspace shell pane.
-        // 3. PowerShell hooks in that shell pane fire SessionStarted
+        // 3. Native CLI hooks in that shell pane fire SessionStarted
         //    with the SHELL pane's GUID, not the helper's.
         // 4. Before this fix: master's reducer clobbered the row's
         //    pane_session_id with the shell GUID. session management Enter on the row
@@ -2870,7 +2870,7 @@ mod tests {
         info.cli_source = Some(CliSource::Copilot);
         reg.upsert(info).await;
 
-        // Now a PowerShell hook fires from a SHELL pane (where the
+        // Now a native CLI hook fires from a SHELL pane (where the
         // agent ran Get-ChildItem), publishing SessionStarted with
         // the SHELL pane's GUID.
         let applied = reg

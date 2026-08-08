@@ -3,7 +3,7 @@
 Static plugin/extension bundle that forwards CLI agent lifecycle events from
 **Claude Code**, **Copilot CLI**, **Codex CLI**, **Gemini CLI**, and **OpenCode**
 to Windows Terminal (WTA)
-via `wtcli send-event`. This lets the WTA agent pane display real-time tool
+via `wtcli`. This lets the WTA agent pane display real-time tool
 use, prompts, and session events from any agent CLI session running in another
 pane.
 
@@ -20,28 +20,31 @@ wt-agent-hooks/
 │   └── wt-agent-hooks/                     # the plugin folder Claude copies into ~/.claude/
 │       ├── .claude-plugin/plugin.json
 │       └── hooks/
-│           ├── hooks.json                  # 10 events, -CliSource claude
-│           └── send-event.ps1
+│           ├── hooks.json                  # native wtcli agent-hook commands
+│           └── agent-hook.cmd              # fast env gate + exit-0 launcher
 ├── copilot/                                # passed to `copilot plugin marketplace add`
-│   └── (identical layout to claude/, only -CliSource differs)
+│   └── (same layout as claude/, with --cli-source copilot)
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
 │   └── hooks/
-│       ├── hooks.json                      # 7 events, -CliSource gemini
-│       └── send-event.ps1
+│       ├── hooks.json                      # 7 native hook commands
+│       └── agent-hook.cmd
+├── codex/                                  # passed to `codex plugin marketplace add`
+│   └── wt-agent-hooks/hooks/
+│       ├── hooks.json                       # native hook commands
+│       └── agent-hook.cmd
 ├── opencode/                                # copied to OpenCode's global plugins dir
 │   ├── plugin.json                          # managed bundle version
-│   ├── wt-agent-hooks.js                    # OpenCode V1 plugin
-│   └── send-event.ps1
+│   └── wt-agent-hooks.js                    # OpenCode V1 plugin
 └── hook-debug/                             # dev utility, not part of the install bundle
     └── state-logger.ps1
 ```
 
-`send-event.ps1` is byte-identical across all hook subtrees (single source
-of truth — a unit test in `tools/wta/src/agent_hooks_installer.rs` enforces this).
-Claude and Copilot share the same plugin manifest and `hooks.json` schema
-modulo the `-CliSource <name>` token; another unit test enforces parity
-between the two so they can never drift.
+Every integration dispatches through the native `wtcli agent-hook` command.
+Manifest-driven CLIs share a byte-identical `agent-hook.cmd` launcher that
+short-circuits outside a real WT shell pane and preserves the hook exit-0
+contract if `wtcli.exe` is unavailable. Claude and Copilot share the same
+plugin manifest and event schema.
 
 ## How install works
 
@@ -76,9 +79,10 @@ claude/         copilot/        gemini-extension/
 OpenCode has no separate hook marketplace. `wta hooks install --cli opencode`
 copies `wt-agent-hooks.js` into `%XDG_CONFIG_HOME%\opencode\plugins\` when
 `XDG_CONFIG_HOME` is set, or `%USERPROFILE%\.config\opencode\plugins\`
-otherwise. It keeps its manifest and bridge in a dedicated `wt-agent-hooks\`
-support subdirectory and refuses to overwrite a same-name JavaScript plugin
-that does not contain Intelligent Terminal's managed-file marker.
+otherwise. It keeps its ownership/version manifest in a dedicated
+`wt-agent-hooks\` support subdirectory and refuses to overwrite a same-name
+JavaScript plugin that does not contain Intelligent Terminal's managed-file
+marker.
 
 Bundle resolution chain (first hit wins, see
 `agent_hooks_installer::bundle::candidate_roots`):
@@ -128,20 +132,24 @@ References:
 - Gemini: <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>
 - OpenCode: <https://opencode.ai/docs/plugins/>
 
-## Bridge script
+## Hook bridge
 
 ```
-Agent CLI ─── hook fires ──▶ send-event.ps1 ──▶ wtcli send-event ──▶ WTA
-            (stdin JSON)     (wraps payload)     (COM protocol)
+Agent CLI ─── hook fires ──▶ agent-hook.cmd ──▶ wtcli agent-hook ──▶ WTA
+                             (fast env gate)    (stdin JSON + COM)
 ```
 
-`send-event.ps1` reads the hook JSON from stdin, wraps it as
+The native bridge reads the hook JSON from stdin and wraps it as
 `{cli_source: <claude|codex|copilot|gemini|opencode>, agent_session_id: <sid>, payload: <hook_data>}`,
-and calls `wtcli send-event -e <event_type> <json>`. The `cli_source` field
-is hard-coded per-CLI via the `-CliSource <name>` argument in each
-`hooks.json` — env-var heuristics are unreliable because Copilot CLI
-inherits Claude's plugin shape and sets `CLAUDE_PLUGIN_ROOT`, making it
-indistinguishable from a real Claude run by env vars alone.
+then publish an `agent_event` through Terminal's COM protocol. The `cli_source`
+field is hard-coded per CLI in `hooks.json`; env-var heuristics are unreliable
+because Copilot CLI inherits Claude's plugin shape and sets
+`CLAUDE_PLUGIN_ROOT`, making it indistinguishable from a real Claude run.
+
+The launcher and `wtcli agent-hook` both require `WT_COM_CLSID` and
+`WT_SESSION`, write nothing, and always exit successfully. The shared ACP
+process has no `WT_SESSION`, so its redundant hooks are dropped before
+`wtcli.exe` starts and cannot be misattributed to the active shell pane.
 
 ## Manual install (for testing without `wta` startup)
 
@@ -172,9 +180,8 @@ wta hooks install --cli opencode
 | Hooks not firing (Copilot)       | `~/.copilot/logs/process-*.log`; verify `Loaded N hook(s) from M plugin(s)`.                |
 | Hooks not firing (Gemini)        | `~/.gemini/logs/*.log` and `gemini extensions list`.                                        |
 | Hooks not firing (OpenCode)      | Verify `~/.config/opencode/plugins/wt-agent-hooks.js` contains the managed-file marker.      |
-| Per-invocation script trace      | `%LOCALAPPDATA%\IntelligentTerminal\logs\hook-trace.log` — one line per `send-event.ps1` invocation, all CLIs. |
 | Events not reaching WTA          | `%LOCALAPPDATA%\IntelligentTerminal\logs\wta-ensure-host.log` — search for `agent_event`.   |
-| Wrong `cli_source` reported      | Check `hooks.json` in the installed plugin folder — every command must end with `-CliSource <name>`. |
+| Wrong `cli_source` reported      | Check `hooks.json` in the installed plugin folder — every command must contain `--cli-source <name>`. |
 
 ## Why two-level `claude/wt-agent-hooks/` nesting?
 
@@ -187,11 +194,10 @@ marketplace concept and reads the extension folder directly.
 
 ## Caveats
 
-- **Copilot ACP mode bypasses plugin hooks.** WTA launches Copilot via
-  `copilot --acp --stdio`; ACP mode does not trigger CLI plugin hooks. The
-  plugin only works for interactive Copilot CLI sessions running in regular
-  terminal panes. Claude and Gemini hooks **do** fire under WTA agent pane
-  (interactive mode), so this caveat is Copilot-specific.
+- **ACP modes may invoke plugin hooks.** `wtcli agent-hook` ignores invocations
+  without `WT_SESSION`, including WTA's shared ACP processes. Agent-pane
+  sessions are already tracked through ACP; only interactive CLI sessions in
+  regular terminal panes produce hook-backed rows.
 - **OpenCode ACP sessions are intentionally ignored by the plugin.** The
   plugin requires both `WT_COM_CLSID` and `WT_SESSION`; the shared ACP process
   used by the agent pane is already tracked through ACP and must not create a
@@ -200,3 +206,6 @@ marketplace concept and reads the extension folder directly.
   upgrade, which is why `agent_hooks_installer` re-runs marketplace
   registration on every wta startup and strips stale entries before
   reinstalling.
+- **Codex must re-trust the 0.1.5 commands once.** Codex hashes each hook
+  command for trust, so replacing the PowerShell command with
+  `wtcli agent-hook` requires reviewing the updated plugin through `/hooks`.

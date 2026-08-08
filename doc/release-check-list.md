@@ -369,7 +369,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C188` `[E2E]` **WTA logs are written:** WTA process logs are created in the expected package-private log directory.
 - [ ] `C189` `[E2E]` **C++ agent pane log is written:** Terminal-side agent pane log is created.
-- [ ] `C190` `[E2E]` **Hook trace log is written:** Hook events write to hook trace log when hooks are active.
+- [ ] `C190` `[E2E]` **Native hook bridge publishes events:** `wtcli agent-hook` reads stdin, redacts prompt content, and publishes a pane-scoped hook event.
 - [ ] `C191` `[UT~]` `[E2E]` **Log version directory is correct:** Packaged builds write under the current package-version log directory. _(UT: `runtime_paths` resolution.)_
 - [ ] `C192` `[UT~]` `[E2E]` **Old log cleanup is safe:** Starting the new build does not delete logs from the currently running version. _(UT: housekeeping prune logic.)_
 - [ ] `C193` `[E2E]` **Bug report zip includes agent logs:** Diagnostic collection includes WTA, hook, and terminal-agent-pane logs.

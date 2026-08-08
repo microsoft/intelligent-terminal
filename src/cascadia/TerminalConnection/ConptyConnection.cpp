@@ -79,19 +79,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
             }
 
-            // Hand the WTA log directory to the agent CLIs' PowerShell hooks
-            // (send-event.ps1) that run inside this shell. They can't resolve
-            // the package-private path themselves — a hook process is
-            // unpackaged and only sees the un-redirected %LOCALAPPDATA%, with
-            // no way to learn the package family name — so we inject the
-            // already-resolved path here, the same way WT_COM_CLSID is. (The
-            // Rust side sets the same var in spawn.rs for agent-pane CLIs,
-            // which don't come through ConptyConnection.) Must be injected
-            // here for the same reason as WT_COM_CLSID: regenerate() builds
-            // _initialEnv from the registry, not the process environment block.
+            // Keep the log path available to pre-0.1.5 hook bundles while
+            // startup auto-upgrade replaces their PowerShell bridge with
+            // `wtcli agent-hook`. Inject it after regenerate() on the
+            // per-connection environment so concurrent pane launches cannot
+            // race.
             {
-                // Versioned dir so hook-trace.log lands in `logs\<pkgver>\`
-                // alongside the Rust and C++ logs (not the flat root).
                 const auto wtaLogDir = ::IntelligentTerminal::LogDirVersioned();
                 if (!wtaLogDir.empty())
                     environment.as_map().insert_or_assign(L"WTA_HOOK_LOG_DIR", wtaLogDir.wstring());
