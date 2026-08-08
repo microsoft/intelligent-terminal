@@ -23,7 +23,7 @@ wt-agent-hooks/
 │           ├── hooks.json                  # 10 events, -CliSource claude
 │           └── send-event.ps1
 ├── copilot/                                # passed to `copilot plugin marketplace add`
-│   └── (identical layout to claude/, only -CliSource differs)
+│   └── (adds send-event.cmd to skip the bridge for WTA-owned ACP sessions)
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
 │   └── hooks/

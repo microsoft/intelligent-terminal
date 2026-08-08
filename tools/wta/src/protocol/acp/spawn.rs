@@ -17,6 +17,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 const STARTUP_STDERR_MAX_LINES: usize = 32;
 const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+const COPILOT_ACP_HOOK_GATE_ENV: &str = "WTA_COPILOT_ACP";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -250,6 +251,7 @@ pub(crate) fn spawn_agent_process(
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
     configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
+    configure_copilot_acp_hook_gate(&mut cmd, agent_cmd, agent_id, environment_policy);
 
     // Give the agent CLI a fresh PATH and make this package's `wta.exe`
     // App Execution Alias the first match. The package-specific alias directory
@@ -410,6 +412,24 @@ fn configure_child_environment(
             crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
             Ok(None)
         }
+    }
+}
+
+fn configure_copilot_acp_hook_gate(
+    command: &mut tokio::process::Command,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+) {
+    command.env_remove(COPILOT_ACP_HOOK_GATE_ENV);
+    if environment_policy == ChildEnvironmentPolicy::ApplySharedProvider
+        && resolve_spawn_profile(agent_cmd, agent_id).id == "copilot"
+    {
+        // Copilot runs command hooks synchronously, including Stop and
+        // SessionEnd. The WTA bridge is redundant for an ACP-owned session
+        // and delays the session/prompt response, so let its lightweight
+        // command wrapper exit before starting PowerShell.
+        command.env(COPILOT_ACP_HOOK_GATE_ENV, "1");
     }
 }
 
@@ -635,6 +655,51 @@ mod tests {
                 configured_env.get(std::ffi::OsStr::new(key)),
                 Some(&None),
                 "cloud policy must scrub {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn normal_copilot_acp_launch_suppresses_wta_hook_bridge() {
+        let mut command = tokio::process::Command::new("copilot");
+        configure_copilot_acp_hook_gate(
+            &mut command,
+            "copilot --acp --stdio",
+            Some("copilot"),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+        );
+
+        let configured_env: std::collections::HashMap<_, _> =
+            command.as_std().get_envs().collect();
+        assert_eq!(
+            configured_env.get(std::ffi::OsStr::new(COPILOT_ACP_HOOK_GATE_ENV)),
+            Some(&Some(std::ffi::OsStr::new("1")))
+        );
+    }
+
+    #[test]
+    fn non_copilot_and_probe_launches_do_not_suppress_hooks() {
+        for (agent_cmd, agent_id, policy) in [
+            (
+                "claude",
+                Some("claude"),
+                ChildEnvironmentPolicy::ApplySharedProvider,
+            ),
+            (
+                "copilot --acp --stdio",
+                Some("copilot"),
+                ChildEnvironmentPolicy::CleanCloudDiscovery,
+            ),
+        ] {
+            let mut command = tokio::process::Command::new("agent");
+            command.env(COPILOT_ACP_HOOK_GATE_ENV, "inherited");
+            configure_copilot_acp_hook_gate(&mut command, agent_cmd, agent_id, policy);
+
+            let configured_env: std::collections::HashMap<_, _> =
+                command.as_std().get_envs().collect();
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(COPILOT_ACP_HOOK_GATE_ENV)),
+                Some(&None)
             );
         }
     }
