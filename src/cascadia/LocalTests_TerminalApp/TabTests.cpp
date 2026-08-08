@@ -1169,7 +1169,10 @@ namespace TerminalAppLocalTests
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
             VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
 
-            tab->GetActivePane()->KeepRunning(true);
+            const auto activePane = tab->GetActivePane();
+            VERIFY_IS_FALSE(!!activePane->_keepRunningButton);
+            activePane->KeepRunning(true);
+            VERIFY_IS_TRUE(!!activePane->_keepRunningButton);
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
 
             const auto keptGroups = _contentManager->KeptGroups();

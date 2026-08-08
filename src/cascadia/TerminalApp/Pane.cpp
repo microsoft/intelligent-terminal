@@ -39,7 +39,6 @@ Pane::Pane(IPaneContent content, const bool lastFocused) :
 {
     _setPaneContent(std::move(content), s_nextContentId.fetch_add(1));
     _root.Children().Append(_borderFirst);
-    _EnsureKeepRunningButton();
 
     const auto& control{ _content.GetRoot() };
     _borderFirst.Child(control);
@@ -1647,7 +1646,6 @@ void Pane::_CloseChild(const bool closeFirst)
 
         // Reattach the TermControl to our grid.
         _root.Children().Append(_borderFirst);
-        _EnsureKeepRunningButton();
         const auto& control{ _content.GetRoot() };
         _borderFirst.Child(control);
 
@@ -3498,8 +3496,12 @@ void Pane::_EnsureKeepRunningButton()
         const auto label = RS_(L"PaneKeepRunningButton/ToolTip");
         Controls::ToolTipService::SetToolTip(_keepRunningButton, box_value(label));
         Automation::AutomationProperties::SetName(_keepRunningButton, label);
-        _keepRunningButton.Click([this](const auto&, const auto&) {
-            KeepRunning(false);
+        const auto weakThis = weak_from_this();
+        _keepRunningButton.Click([weakThis](const auto&, const auto&) {
+            if (const auto pane = weakThis.lock())
+            {
+                pane->KeepRunning(false);
+            }
         });
     }
 
@@ -3512,8 +3514,15 @@ void Pane::_EnsureKeepRunningButton()
 void Pane::KeepRunning(const bool value)
 {
     _keepRunning = value && _IsLeaf() && !_isAgentPane;
-    _EnsureKeepRunningButton();
-    _keepRunningButton.Visibility(_keepRunning ? Visibility::Visible : Visibility::Collapsed);
+    if (_keepRunning)
+    {
+        _EnsureKeepRunningButton();
+        _keepRunningButton.Visibility(Visibility::Visible);
+    }
+    else if (_keepRunningButton)
+    {
+        _keepRunningButton.Visibility(Visibility::Collapsed);
+    }
 }
 
 void Pane::ToggleKeepRunning()
