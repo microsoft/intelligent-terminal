@@ -541,6 +541,7 @@ fn bundle_files_are_well_formed() {
     assert!(!CLAUDE_SEND_EVENT_PS1.is_empty());
     assert!(!COPILOT_SEND_EVENT_PS1.is_empty());
     assert!(COPILOT_SEND_EVENT_CMD.contains("WTA_COPILOT_ACP"));
+    assert!(COPILOT_SEND_EVENT_CMD.contains("exit /b %ERRORLEVEL%"));
     assert!(!GEMINI_SEND_EVENT_PS1.is_empty());
 }
 
