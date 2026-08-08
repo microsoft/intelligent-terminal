@@ -558,6 +558,8 @@ fn bundle_files_are_well_formed() {
 fn bundle_hooks_thread_cli_source() {
     assert!(CLAUDE_HOOKS_JSON.contains("--cli-source claude"));
     assert!(COPILOT_HOOKS_JSON.contains("--cli-source copilot"));
+    assert!(COPILOT_HOOKS_JSON.contains("${PLUGIN_ROOT}"));
+    assert!(!COPILOT_HOOKS_JSON.contains("CLAUDE_PLUGIN_ROOT"));
     assert!(GEMINI_HOOKS_JSON.contains("--cli-source gemini"));
     assert!(CODEX_HOOKS_JSON.contains("--cli-source codex"));
 }
