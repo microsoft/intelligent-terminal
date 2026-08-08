@@ -60,7 +60,7 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, PermissionState, RecommendationFocus, TabSession, View,
+    ChatMessage, CompletedTurn, NoticeKind, PermissionState, RecommendationFocus, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -1987,7 +1987,7 @@ impl App {
             Some(agent) => self.apply_agent_pick(agent),
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::error(
                     t!("system.agent_unknown", agent = arg).into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -2050,7 +2050,7 @@ impl App {
 
     fn push_agent_switch_unavailable(&mut self) {
         let tab = self.current_tab_mut();
-        tab.messages.push(ChatMessage::System(
+        tab.messages.push(ChatMessage::warning(
             t!("system.agent_switch_unavailable").into_owned(),
         ));
         tab.scroll_to_bottom();
@@ -2071,7 +2071,7 @@ impl App {
         if self.model_picker_models.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.no_models").into_owned()));
+                .push(ChatMessage::info(t!("system.no_models").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -2095,7 +2095,7 @@ impl App {
             Some(_) => self.open_model_picker(),
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::error(
                     t!("system.model_unknown", model = arg.as_str()).into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -2195,7 +2195,7 @@ impl App {
         let session_id = {
             let tab = self.current_tab_mut();
             tab.model_override = Some(model_id.clone());
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::success(
                 t!("system.model_set", model = name.as_str()).into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -2427,7 +2427,7 @@ impl App {
                     "activate_agent_session_with_shift: not resumable",
                 );
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(msg));
+                tab.messages.push(ChatMessage::warning(msg));
                 tab.scroll_to_bottom();
                 #[cfg(test)]
                 {
@@ -2767,7 +2767,7 @@ impl App {
                 "dispatch_resume_in_agent_pane: agent does not support loadSession",
             );
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
+            tab.messages.push(ChatMessage::warning(msg));
             tab.scroll_to_bottom();
             #[cfg(test)]
             {
@@ -4249,7 +4249,7 @@ impl App {
         }
         if !self.agent_supports_image {
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::warning(
                 t!("system.image_not_supported").into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -4262,7 +4262,7 @@ impl App {
             }
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::info(
                     t!("system.image_clipboard_empty").into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -4499,12 +4499,10 @@ impl App {
         if !tab.model_picker_open || self.model_picker_models.is_empty() {
             return None;
         }
-        let current_id = self.current_model_id_for_picker();
         Some(crate::ui::ModelPopupState {
             models: &self.model_picker_models,
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
-            current_id,
             disabled: self
                 .model_picker_models
                 .iter()
@@ -4621,7 +4619,7 @@ impl App {
                 // Warn but fall through: the raw line (leading `/` intact) is
                 // still sent so the user doesn't lose what they typed.
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::warning(
                     t!("system.unknown_command", command = name.as_str()).into_owned(),
                 ));
                 false
@@ -4638,7 +4636,7 @@ impl App {
         let msg = t!("connection.lost").into_owned();
         self.current_tab_mut()
             .messages
-            .push(ChatMessage::System(msg));
+            .push(ChatMessage::warning(msg));
     }
 
     /// Dispatch a parsed slash-command. The Enter handler is responsible
@@ -4708,11 +4706,11 @@ impl App {
             }
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
             tab.scroll_to_bottom();
         } else {
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::info(
                 t!("system.no_prompt_in_flight").into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -4725,7 +4723,7 @@ impl App {
         if in_flight {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -4771,7 +4769,7 @@ impl App {
         if in_flight {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
             tab.scroll_to_bottom();
             return;
         }

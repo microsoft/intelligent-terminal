@@ -376,7 +376,7 @@ impl App {
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
-                tab.messages.push(ChatMessage::System(message));
+                tab.messages.push(ChatMessage::info(message));
                 tab.scroll_to_bottom();
             }
             AppEvent::PromptTemplateLoaded { name } => {
@@ -392,7 +392,7 @@ impl App {
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
-                    .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
+                    .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
@@ -667,7 +667,7 @@ impl App {
                     SoftStopReason::Refusal => t!("system.stopped_refusal"),
                 };
                 let tab = self.session_tab_mut(&session_id);
-                tab.messages.push(ChatMessage::System(msg.into_owned()));
+                tab.messages.push(ChatMessage::warning(msg.into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
@@ -866,7 +866,7 @@ impl App {
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()
                     .messages
-                    .push(ChatMessage::System(message));
+                    .push(ChatMessage::error(message));
                 self.scroll_to_bottom();
             }
             AppEvent::DebugPipeMessage(msg) => {
@@ -939,7 +939,7 @@ impl App {
                     if self.mode == AppMode::Chat {
                         self.current_tab_mut()
                             .messages
-                            .push(ChatMessage::System(t!("system.no_agents").into_owned()));
+                            .push(ChatMessage::warning(t!("system.no_agents").into_owned()));
                         self.scroll_to_bottom();
                     }
                 } else {

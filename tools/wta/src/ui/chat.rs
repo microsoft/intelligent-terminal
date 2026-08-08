@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::app::{App, ChatMessage, CompletedTurn, PlanEntryStatus};
+use crate::app::{App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus};
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
@@ -88,6 +88,7 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
+        ChatMessage::Notice { text, .. } => dot_wrap_count(text, body_width) + 1,
         ChatMessage::ToolCall {
             location,
             location_is_command,
@@ -502,6 +503,16 @@ fn build_message_lines<'a>(
             }
             lines.push(Line::default());
         }
+        ChatMessage::Notice { kind, text } => {
+            let (marker, style) = match kind {
+                NoticeKind::Success => ("✓", theme::NOTICE_SUCCESS),
+                NoticeKind::Info => ("i", theme::NOTICE_INFO),
+                NoticeKind::Warning => ("!", theme::NOTICE_WARNING),
+                NoticeKind::Error => ("×", theme::NOTICE_ERROR),
+            };
+            push_prefixed_lines(&mut lines, marker, text, wrap_width, style);
+            lines.push(Line::default());
+        }
         ChatMessage::ToolCall {
             id,
             title,
@@ -680,6 +691,43 @@ fn push_dot_prefixed_lines<'a>(
     }
 }
 
+fn push_prefixed_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    marker: &'static str,
+    text: &str,
+    wrap_width: usize,
+    style: Style,
+) {
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let mut first_row = true;
+
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            if first_row {
+                continue;
+            }
+            lines.push(Line::default());
+            continue;
+        }
+
+        for piece in textwrap::wrap(paragraph, body_width) {
+            let piece_str = truncate_render_text(&piece).into_owned();
+            if first_row {
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{marker} "), style),
+                    Span::styled(piece_str, style),
+                ]));
+                first_row = false;
+            } else {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(piece_str, style),
+                ]));
+            }
+        }
+    }
+}
+
 /// Mirrors `push_dot_prefixed_lines`, but for the user's own submitted
 /// prompt: splits on embedded `\n` (from Shift+Enter multi-line input) and
 /// wraps each paragraph so every line is a real `ratatui::Line` — ratatui
@@ -779,6 +827,39 @@ mod tests {
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn notices_render_distinct_markers_and_hanging_indents() {
+        let cases = [
+            (NoticeKind::Success, "✓"),
+            (NoticeKind::Info, "i"),
+            (NoticeKind::Warning, "!"),
+            (NoticeKind::Error, "×"),
+        ];
+
+        for (kind, marker) in cases {
+            let message = ChatMessage::Notice {
+                kind,
+                text: "A notice that wraps onto another line".into(),
+            };
+            let lines = build_message_lines(&message, false, false, None, 0, 20);
+            assert!(line_text(&lines[0]).starts_with(&format!("{marker} ")));
+            assert!(
+                line_text(&lines[1]).starts_with("  "),
+                "continuation rows must align with the notice body"
+            );
+            assert!(line_text(lines.last().expect("trailing row")).is_empty());
+        }
+    }
+
+    #[test]
+    fn notice_prefix_skips_leading_blank_lines() {
+        let message = ChatMessage::info("\n\nNotice text");
+        let lines = build_message_lines(&message, false, false, None, 0, 20);
+
+        assert_eq!(line_text(&lines[0]), "i Notice text");
+        assert_eq!(lines.len(), message_height(&message, 20));
     }
 
     fn assert_tool_call(

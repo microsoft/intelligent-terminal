@@ -2092,10 +2092,6 @@ fn model_config_update_refreshes_active_session_picker() {
         1,
         "the picker must highlight the model reported by the latest config update"
     );
-    assert_eq!(
-        app.model_popup_state().and_then(|state| state.current_id),
-        Some("gpt-5.6-sol")
-    );
 }
 
 #[test]
@@ -2226,7 +2222,17 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        app.current_tab().model_override.as_deref(),
+        Some("gpt-5.4")
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Notice {
+            kind: NoticeKind::Success,
+            ..
+        })
+    ));
     match master_rx.try_recv().expect("live model switch request") {
         crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
@@ -3940,9 +3946,12 @@ fn shift_enter_history_row_without_load_session_capability_shows_hint() {
     assert_eq!(cmd.kind, DispatchedCommandKind::NotResumable);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("LoadSessionNotSupported"), "argv: {}", argv);
-    // The current tab gets a System hint message.
+    // The current tab gets a warning notice.
     let has_hint = app.current_tab().messages.iter().any(|m| {
-        matches!(m, ChatMessage::System(text)
+        matches!(m, ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            text,
+        }
             if text.contains("loadSession")
                 && text.contains("Press Enter"))
     });
@@ -4614,8 +4623,11 @@ fn soft_stop_appends_system_line_without_changing_state() {
         app.current_tab()
             .messages
             .iter()
-            .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
-        "a soft stop must append its localized System line"
+            .any(|m| matches!(m, ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                text,
+            } if *text == expected)),
+        "a soft stop must append its localized warning"
     );
     assert!(
         matches!(app.state, ConnectionState::Connected),
@@ -4658,7 +4670,10 @@ fn soft_stop_reasons_map_to_distinct_localized_lines() {
             app.current_tab()
                 .messages
                 .iter()
-                .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+                .any(|m| matches!(m, ChatMessage::Notice {
+                    kind: NoticeKind::Warning,
+                    text,
+                } if *text == expected)),
             "reason {reason:?} must render the {key} line"
         );
     }
@@ -6025,6 +6040,10 @@ fn render_model_picker_lists_models() {
         !text.contains("shared-model (BYOM)"),
         "the cloud-mode model picker must omit BYOM rows; rendered:\n{text}"
     );
+    assert!(
+        !text.contains('●'),
+        "the model picker must not prefix the current model with a circle; rendered:\n{text}"
+    );
 }
 
 #[test]
@@ -6687,7 +6706,10 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
     assert!(
         tab.messages
             .iter()
-            .any(|m| matches!(m, ChatMessage::System(s) if *s == want)),
+            .any(|m| matches!(m, ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                text,
+            } if *text == want)),
         "Alt+V without image capability must push the not-supported message"
     );
     assert!(

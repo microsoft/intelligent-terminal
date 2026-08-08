@@ -692,7 +692,7 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     tab.messages
-                        .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+                        .push(ChatMessage::success(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                     self.close_pane_armed_at = None;
                 } else if !self.current_tab().input.is_empty()
@@ -876,7 +876,7 @@ impl App {
                     if !self.current_tab().turn.accepts_new_prompt() {
                         let tab = self.current_tab_mut();
                         tab.messages
-                            .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
+                            .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
                         tab.scroll_to_bottom();
                         return;
                     }

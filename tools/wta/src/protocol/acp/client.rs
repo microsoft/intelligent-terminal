@@ -74,16 +74,21 @@ pub struct PromptSubmission {
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
-    /// True when this prompt was synthesized by the auto-fix flow rather
-    /// than typed by a human. The host uses this to skip broadcasting it
-    /// as a User message (the client already shows the error line), and
-    /// the planner uses it to pick the auto-fix prompt template.
-    pub is_autofix: bool,
+    /// Distinguishes planner prompts from manual and automatic auto-fix
+    /// inputs. Automatic summaries are untrusted diagnostic context, while
+    /// text supplied to `/fix` is user intent.
+    pub autofix_text_kind: Option<AutofixTextKind>,
     /// Images pasted into the input via Alt+V. Sent to the agent as ACP
     /// `ContentBlock::Image` blocks appended after the text block (only when
     /// the agent advertised `promptCapabilities.image`). Empty for the common
     /// text-only and all auto-fix prompts.
     pub images: Vec<crate::clipboard_image::PastedImage>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutofixTextKind {
+    UserRequest,
+    FailureSummary,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -238,23 +243,35 @@ pub struct RenameSessionRequest {
 
 impl PromptSubmission {
     pub fn new(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, false)
+        Self::new_with_kind(text, pane_context, None)
     }
 
     pub fn new_autofix(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, true)
+        Self::new_with_kind(text, pane_context, Some(AutofixTextKind::UserRequest))
     }
 
-    fn new_with_kind(text: String, pane_context: Option<PaneContext>, is_autofix: bool) -> Self {
+    pub fn new_autofix_failure(text: String, pane_context: Option<PaneContext>) -> Self {
+        Self::new_with_kind(text, pane_context, Some(AutofixTextKind::FailureSummary))
+    }
+
+    fn new_with_kind(
+        text: String,
+        pane_context: Option<PaneContext>,
+        autofix_text_kind: Option<AutofixTextKind>,
+    ) -> Self {
         static NEXT_PROMPT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
             id: NEXT_PROMPT_ID.fetch_add(1, Ordering::Relaxed),
             text,
             pane_context,
             submitted_at_unix_s: now_unix_s(),
-            is_autofix,
+            autofix_text_kind,
             images: Vec::new(),
         }
+    }
+
+    pub fn is_autofix(&self) -> bool {
+        self.autofix_text_kind.is_some()
     }
 
     /// Attach pasted images (Alt+V) to a human-entered prompt.
@@ -3584,7 +3601,7 @@ async fn dispatch_prompt_body(
     };
     let prompt_session_id_str = prompt_session_id.to_string();
 
-    let kind = if prompt.is_autofix {
+    let kind = if prompt.is_autofix() {
         TemplateKind::Autofix
     } else {
         TemplateKind::Planner
@@ -3603,7 +3620,7 @@ async fn dispatch_prompt_body(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
-        prompt.is_autofix,
+        prompt.autofix_text_kind,
         include_template,
         &shell_mgr_task,
         wt_connected,
@@ -3615,7 +3632,7 @@ async fn dispatch_prompt_body(
             prompt_session_id_str.clone(),
             prompt.id,
             resolved_target_pane.clone(),
-            prompt.is_autofix,
+            prompt.is_autofix(),
         ) {
             Ok(_) => {}
             Err(error) => {
@@ -3661,7 +3678,7 @@ async fn dispatch_prompt_body(
     crate::telemetry::log_agent_prompt_sent(
         &prompt_session_id_str,
         u32::try_from(text.len()).unwrap_or(u32::MAX),
-        prompt.is_autofix,
+        prompt.is_autofix(),
         match kind {
             TemplateKind::Autofix => "Autofix",
             TemplateKind::Planner => "Planner",

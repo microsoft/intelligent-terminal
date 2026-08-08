@@ -222,14 +222,6 @@ impl App {
             tab.autofix.generation
         };
 
-        // The auto-fix kind is carried by PromptSubmission::is_autofix,
-        // so the text doesn't need a marker prefix — just the raw error
-        // summary + instruction.
-        let prompt_text = format!(
-            "{}\nDiagnose the error and suggest a fix.",
-            notification.summary
-        );
-
         // Route through the target tab's ACP session. `tab_id` carries the
         // failing tab's StableId so the ACP layer's `tab_to_session` map
         // routes (or lazy-creates) to the right session even when the
@@ -252,7 +244,8 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
-        let prompt = PromptSubmission::new_autofix(prompt_text, Some(pane_context));
+        let prompt =
+            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context));
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

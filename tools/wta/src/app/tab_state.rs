@@ -10,11 +10,24 @@ use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NoticeKind {
+    Success,
+    Info,
+    Warning,
+    Error,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
     Agent(String),
+    /// Legacy untyped system message retained for persisted chat compatibility.
     System(String),
+    Notice {
+        kind: NoticeKind,
+        text: String,
+    },
     ToolCall {
         id: String,
         title: String,
@@ -39,6 +52,36 @@ pub enum ChatMessage {
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
     Disclaimer,
+}
+
+impl ChatMessage {
+    pub fn success(text: impl Into<String>) -> Self {
+        Self::Notice {
+            kind: NoticeKind::Success,
+            text: text.into(),
+        }
+    }
+
+    pub fn info(text: impl Into<String>) -> Self {
+        Self::Notice {
+            kind: NoticeKind::Info,
+            text: text.into(),
+        }
+    }
+
+    pub fn warning(text: impl Into<String>) -> Self {
+        Self::Notice {
+            kind: NoticeKind::Warning,
+            text: text.into(),
+        }
+    }
+
+    pub fn error(text: impl Into<String>) -> Self {
+        Self::Notice {
+            kind: NoticeKind::Error,
+            text: text.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
