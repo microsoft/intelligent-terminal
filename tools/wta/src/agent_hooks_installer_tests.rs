@@ -507,7 +507,7 @@ const CODEX_AGENT_HOOK_CMD: &str =
 const CLAUDE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/.claude-plugin/plugin.json");
 const COPILOT_PLUGIN_JSON: &str =
-    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/.claude-plugin/plugin.json");
+    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/plugin.json");
 const GEMINI_EXTENSION_JSON: &str =
     include_str!("../wt-agent-hooks/gemini-extension/gemini-extension.json");
 const CODEX_PLUGIN_JSON: &str =
@@ -516,7 +516,7 @@ const CODEX_PLUGIN_JSON: &str =
 const CLAUDE_MARKETPLACE_JSON: &str =
     include_str!("../wt-agent-hooks/claude/.claude-plugin/marketplace.json");
 const COPILOT_MARKETPLACE_JSON: &str =
-    include_str!("../wt-agent-hooks/copilot/.claude-plugin/marketplace.json");
+    include_str!("../wt-agent-hooks/copilot/.github/plugin/marketplace.json");
 
 const OPENCODE_PLUGIN_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
@@ -643,13 +643,19 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
     );
 }
 
-/// Claude and Copilot share the same plugin and marketplace metadata.
+/// Copilot uses its native manifest locations while preserving the shared
+/// metadata and declaring the hook file explicitly.
 #[test]
-fn claude_and_copilot_share_static_manifests() {
+fn copilot_uses_native_plugin_layout() {
+    let claude: Value = serde_json::from_str(CLAUDE_PLUGIN_JSON).unwrap();
+    let mut copilot: Value = serde_json::from_str(COPILOT_PLUGIN_JSON).unwrap();
     assert_eq!(
-        CLAUDE_PLUGIN_JSON, COPILOT_PLUGIN_JSON,
-        "claude/ and copilot/ plugin.json must match byte-for-byte"
+        copilot.get("hooks").and_then(Value::as_str),
+        Some("hooks/hooks.json")
     );
+    copilot.as_object_mut().unwrap().remove("hooks");
+    assert_eq!(claude, copilot, "shared plugin metadata must stay aligned");
+
     assert_eq!(
         CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON,
         "claude/ and copilot/ marketplace.json must match byte-for-byte"

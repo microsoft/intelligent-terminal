@@ -23,7 +23,10 @@ wt-agent-hooks/
 │           ├── hooks.json                  # native wtcli agent-hook commands
 │           └── agent-hook.cmd              # fast env gate + exit-0 launcher
 ├── copilot/                                # passed to `copilot plugin marketplace add`
-│   └── (same layout as claude/, with --cli-source copilot)
+│   ├── .github/plugin/marketplace.json      # Copilot-native marketplace
+│   └── wt-agent-hooks/
+│       ├── plugin.json                      # Copilot-native root manifest
+│       └── hooks/                           # --cli-source copilot
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
 │   └── hooks/
@@ -149,7 +152,7 @@ because Copilot CLI inherits Claude's plugin shape and sets
 The launcher and `wtcli agent-hook` both require `WT_COM_CLSID` and
 `WT_SESSION`, write nothing, and always exit successfully. The shared ACP
 process has no `WT_SESSION`, so its redundant hooks are dropped before
-`wtcli.exe` starts and cannot be misattributed to the active shell pane.
+`wtcli.exe` starts and cannot be incorrectly attributed to the active shell pane.
 
 ## Manual install (for testing without `wta` startup)
 
@@ -183,14 +186,14 @@ wta hooks install --cli opencode
 | Events not reaching WTA          | `%LOCALAPPDATA%\IntelligentTerminal\logs\wta-ensure-host.log` — search for `agent_event`.   |
 | Wrong `cli_source` reported      | Check `hooks.json` in the installed plugin folder — every command must contain `--cli-source <name>`. |
 
-## Why two-level `claude/wt-agent-hooks/` nesting?
+## Marketplace layouts
 
-Claude/Copilot's `marketplace add` reads `<source>/.claude-plugin/marketplace.json`,
-which declares `"source": "./wt-agent-hooks"`. The CLI then copies
-`<source>/wt-agent-hooks/` (the plugin folder) into the user's writable plugin
-directory. So the on-disk shape mirrors what the CLI expects: an outer marketplace
-folder that points at an inner plugin folder by relative path. Gemini has no
-marketplace concept and reads the extension folder directly.
+Claude uses its native `.claude-plugin/marketplace.json` and
+`.claude-plugin/plugin.json` sentinels. Copilot uses its native
+`.github/plugin/marketplace.json` location and a root-level `plugin.json`.
+Both marketplaces declare `"source": "./wt-agent-hooks"`, so each CLI copies
+the self-contained inner plugin folder into its writable plugin directory.
+Gemini has no marketplace concept and reads the extension folder directly.
 
 ## Caveats
 

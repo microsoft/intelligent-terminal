@@ -25,7 +25,10 @@
 //         .claude-plugin/plugin.json
 //         hooks/{hooks.json,agent-hook.cmd}
 //     copilot/                             <- passed to `copilot plugin marketplace add`
-//       (same plugin shape; hooks.json invokes the native bridge launcher)
+//       .github/plugin/marketplace.json
+//       wt-agent-hooks/
+//         plugin.json                      <- Copilot-native root manifest
+//         hooks/{hooks.json,agent-hook.cmd}
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
 //       hooks/{hooks.json,agent-hook.cmd}
@@ -3402,7 +3405,8 @@ fn read_version_field(path: &Path) -> Option<Version> {
 fn read_bundled_version(cli: CliKind) -> Option<Version> {
     let dir = bundle::resolve_cli_dir(cli)?;
     let manifest = match cli {
-        CliKind::Copilot | CliKind::Claude => dir
+        CliKind::Copilot => dir.join("wt-agent-hooks").join("plugin.json"),
+        CliKind::Claude => dir
             .join("wt-agent-hooks")
             .join(".claude-plugin")
             .join("plugin.json"),
