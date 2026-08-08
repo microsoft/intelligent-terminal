@@ -62,9 +62,8 @@ fn logs_root() -> std::path::PathBuf {
 /// The directory log files are written to: `<root>/logs/<pkgver>` when
 /// packaged, `<root>/logs` when unpackaged.
 ///
-/// Shared so every writer agrees: `init` (this process's appender) and
-/// `spawn.rs` (which hands it to agent-CLI PowerShell hooks via
-/// `WTA_HOOK_LOG_DIR`) both resolve through here.
+/// Shared so every Rust process agrees on the package-private log directory.
+/// `spawn.rs` also hands it to pre-0.1.5 hook bundles during auto-upgrade.
 pub(crate) fn log_dir() -> std::path::PathBuf {
     let root = logs_root();
     match package_version() {
@@ -83,8 +82,8 @@ pub fn init(process: &str) {
     // deletion target, so no process can delete a file another is still writing.
     //
     // The version key is the *package* version (GetCurrentPackageId), shared at
-    // runtime with the C++ agent-pane logger and the PowerShell hooks so all
-    // three writers land in the same `logs\<pkgver>\` folder. Unpackaged
+    // runtime with the C++ agent-pane logger so both writers land in the same
+    // `logs\<pkgver>\` folder. Unpackaged
     // (dev-from-cargo / tests) has no package identity → logs go flat.
     let version_dir = package_version();
     let log_dir = match &version_dir {
@@ -142,8 +141,8 @@ pub fn init(process: &str) {
 ///
 /// This is the shared per-version-dir key: the C++ side reads the same value
 /// via `GetCurrentPackageId` in `IntelligentTerminalPaths.h`, so the Rust
-/// processes, the C++ agent-pane logger, and (through `WTA_HOOK_LOG_DIR`) the
-/// PowerShell hooks all resolve to the same `logs\<pkgver>\` folder.
+/// processes and the C++ agent-pane logger resolve to the same
+/// `logs\<pkgver>\` folder.
 pub(crate) fn package_version() -> Option<String> {
     use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
     use windows_sys::Win32::Storage::Packaging::Appx::{GetCurrentPackageId, PACKAGE_ID};

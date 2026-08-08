@@ -105,8 +105,8 @@ fn copy_dir_recursive_mirrors_tree() {
     )
     .unwrap();
     fs::write(
-        src.join("wt-agent-hooks/hooks/send-event.ps1"),
-        "Write-Output 'hi'",
+        src.join("wt-agent-hooks/hooks/native-hook.json"),
+        r#"{"command":"wtcli.exe agent-hook"}"#,
     )
     .unwrap();
 
@@ -125,8 +125,8 @@ fn copy_dir_recursive_mirrors_tree() {
         r#"{"hooks":{}}"#,
     );
     assert_eq!(
-        fs::read_to_string(dst.join("wt-agent-hooks/hooks/send-event.ps1")).unwrap(),
-        "Write-Output 'hi'",
+        fs::read_to_string(dst.join("wt-agent-hooks/hooks/native-hook.json")).unwrap(),
+        r#"{"command":"wtcli.exe agent-hook"}"#,
     );
 }
 
@@ -155,7 +155,6 @@ fn restage_bundle_dir_replaces_stale_contents() {
 
 fn write_opencode_test_bundle(root: &Path, js: &str) {
     fs::write(root.join(OPENCODE_PLUGIN_JS), js).unwrap();
-    fs::write(root.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
     fs::write(
         root.join(OPENCODE_MANIFEST),
         r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
@@ -176,10 +175,6 @@ fn copy_opencode_bundle_installs_managed_files() {
     assert_eq!(
         fs::read_to_string(installed.join(OPENCODE_PLUGIN_JS)).unwrap(),
         OPENCODE_PLUGIN_JS_CONTENT
-    );
-    assert_eq!(
-        fs::read_to_string(support_dir.join(OPENCODE_BRIDGE_PS1)).unwrap(),
-        "bridge"
     );
     assert!(support_dir.join(OPENCODE_MANIFEST).is_file());
 }
@@ -258,17 +253,17 @@ fn copy_opencode_bundle_rolls_back_partial_first_install() {
     let source = unique_dir("opencode-partial-source");
     let home = unique_dir("opencode-partial-home");
     fs::write(source.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
+
+    assert!(copy_opencode_bundle(&source, &home).is_err());
+    assert!(!opencode_support_dir(&home).exists());
+    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+
     fs::write(
         source.join(OPENCODE_MANIFEST),
         r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
     )
     .unwrap();
 
-    assert!(copy_opencode_bundle(&source, &home).is_err());
-    assert!(!opencode_support_dir(&home).exists());
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
-
-    fs::write(source.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
     copy_opencode_bundle(&source, &home).unwrap();
     assert!(opencode_support_dir(&home).join(OPENCODE_MANIFEST).is_file());
     assert!(opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).is_file());
@@ -284,6 +279,7 @@ fn copy_opencode_bundle_repairs_managed_install_with_bad_manifest() {
     fs::create_dir_all(&support).unwrap();
     fs::write(installed.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
     fs::write(support.join(OPENCODE_MANIFEST), "incomplete").unwrap();
+    fs::write(support.join(OPENCODE_LEGACY_BRIDGE_PS1), "stale bridge").unwrap();
 
     copy_opencode_bundle(&source, &home).unwrap();
 
@@ -291,10 +287,7 @@ fn copy_opencode_bundle_repairs_managed_install_with_bad_manifest() {
         read_version_field(&support.join(OPENCODE_MANIFEST)),
         Some("0.1.3".parse().unwrap())
     );
-    assert_eq!(
-        fs::read_to_string(support.join(OPENCODE_BRIDGE_PS1)).unwrap(),
-        "bridge"
-    );
+    assert!(!support.join(OPENCODE_LEGACY_BRIDGE_PS1).exists());
 }
 
 #[test]
@@ -315,7 +308,6 @@ fn opencode_status_requires_complete_managed_install() {
 
     let support_dir = opencode_support_dir(&home);
     fs::create_dir_all(&support_dir).unwrap();
-    fs::write(support_dir.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
     fs::write(
         support_dir.join(OPENCODE_MANIFEST),
         r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
@@ -390,7 +382,6 @@ fn opencode_uninstall_retry_removes_orphaned_managed_support_files() {
     let home = unique_dir("opencode-uninstall-retry");
     let support = opencode_support_dir(&home);
     fs::create_dir_all(&support).unwrap();
-    fs::write(support.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
     fs::write(
         support.join(OPENCODE_MANIFEST),
         r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
@@ -405,23 +396,23 @@ fn opencode_uninstall_retry_removes_orphaned_managed_support_files() {
 }
 
 #[test]
-fn opencode_uninstall_preserves_ownership_markers_after_bridge_failure() {
+fn opencode_uninstall_preserves_ownership_markers_after_manifest_failure() {
     let home = unique_dir("opencode-uninstall-failure");
     let source = unique_dir("opencode-uninstall-failure-source");
     write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
     copy_opencode_bundle(&source, &home).unwrap();
     let plugins = opencode_plugins_dir(&home);
     let support = opencode_support_dir(&home);
-    fs::remove_file(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
-    fs::create_dir(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
+    fs::remove_file(support.join(OPENCODE_MANIFEST)).unwrap();
+    fs::create_dir(support.join(OPENCODE_MANIFEST)).unwrap();
 
     let failed = opencode_uninstall(Some(&home));
 
     assert!(!failed.succeeded());
     assert!(plugins.join(OPENCODE_PLUGIN_JS).is_file());
-    assert!(support.join(OPENCODE_MANIFEST).is_file());
+    assert!(support.join(OPENCODE_MANIFEST).is_dir());
 
-    fs::remove_dir(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
+    fs::remove_dir(support.join(OPENCODE_MANIFEST)).unwrap();
     let retried = opencode_uninstall(Some(&home));
     assert!(retried.succeeded());
     assert!(!plugins.join(OPENCODE_PLUGIN_JS).exists());
@@ -502,56 +493,75 @@ const COPILOT_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json");
 const GEMINI_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
+const CODEX_HOOKS_JSON: &str =
+    include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/hooks.json");
+const CLAUDE_AGENT_HOOK_CMD: &str =
+    include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/agent-hook.cmd");
+const COPILOT_AGENT_HOOK_CMD: &str =
+    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/agent-hook.cmd");
+const GEMINI_AGENT_HOOK_CMD: &str =
+    include_str!("../wt-agent-hooks/gemini-extension/hooks/agent-hook.cmd");
+const CODEX_AGENT_HOOK_CMD: &str =
+    include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/agent-hook.cmd");
 
 const CLAUDE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/.claude-plugin/plugin.json");
 const COPILOT_PLUGIN_JSON: &str =
-    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/.claude-plugin/plugin.json");
+    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/plugin.json");
+const GEMINI_EXTENSION_JSON: &str =
+    include_str!("../wt-agent-hooks/gemini-extension/gemini-extension.json");
+const CODEX_PLUGIN_JSON: &str =
+    include_str!("../wt-agent-hooks/codex/wt-agent-hooks/.codex-plugin/plugin.json");
 
 const CLAUDE_MARKETPLACE_JSON: &str =
     include_str!("../wt-agent-hooks/claude/.claude-plugin/marketplace.json");
 const COPILOT_MARKETPLACE_JSON: &str =
-    include_str!("../wt-agent-hooks/copilot/.claude-plugin/marketplace.json");
+    include_str!("../wt-agent-hooks/copilot/.github/plugin/marketplace.json");
 
-const CLAUDE_SEND_EVENT_PS1: &str =
-    include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/send-event.ps1");
-const COPILOT_SEND_EVENT_PS1: &str =
-    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1");
-const CODEX_SEND_EVENT_PS1: &str =
-    include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/send-event.ps1");
-const GEMINI_SEND_EVENT_PS1: &str =
-    include_str!("../wt-agent-hooks/gemini-extension/hooks/send-event.ps1");
-const OPENCODE_SEND_EVENT_PS1: &str = include_str!("../wt-agent-hooks/opencode/send-event.ps1");
 const OPENCODE_PLUGIN_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
 const OPENCODE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/opencode/plugin.json");
 
-/// `hooks.json` files must reference `${CLAUDE_PLUGIN_ROOT}` (Claude/
-/// Copilot) or `${extensionPath}` (Gemini), and `send-event.ps1` must
-/// be non-empty in every per-CLI subtree.
+/// Every manifest-driven CLI uses the native wtcli hook bridge.
 #[test]
 fn bundle_files_are_well_formed() {
-    assert!(CLAUDE_HOOKS_JSON.contains("${CLAUDE_PLUGIN_ROOT}"));
-    assert!(COPILOT_HOOKS_JSON.contains("${CLAUDE_PLUGIN_ROOT}"));
-    assert!(GEMINI_HOOKS_JSON.contains("${extensionPath}"));
+    for hooks in [
+        CLAUDE_HOOKS_JSON,
+        COPILOT_HOOKS_JSON,
+        GEMINI_HOOKS_JSON,
+        CODEX_HOOKS_JSON,
+    ] {
+        assert!(hooks.contains("agent-hook.cmd"));
+        assert!(!hooks.contains("powershell"));
+        assert!(!hooks.contains("send-event.ps1"));
+    }
 
-    assert!(!CLAUDE_SEND_EVENT_PS1.is_empty());
-    assert!(!COPILOT_SEND_EVENT_PS1.is_empty());
-    assert!(!GEMINI_SEND_EVENT_PS1.is_empty());
+    for launcher in [
+        CLAUDE_AGENT_HOOK_CMD,
+        COPILOT_AGENT_HOOK_CMD,
+        GEMINI_AGENT_HOOK_CMD,
+        CODEX_AGENT_HOOK_CMD,
+    ] {
+        assert!(launcher.contains("if not defined WT_COM_CLSID exit /b 0"));
+        assert!(launcher.contains("if not defined WT_SESSION exit /b 0"));
+        assert!(launcher.contains("wtcli.exe agent-hook %* >nul 2>nul"));
+        assert!(launcher.contains("exit /b 0"));
+    }
+    assert_eq!(CLAUDE_AGENT_HOOK_CMD, COPILOT_AGENT_HOOK_CMD);
+    assert_eq!(CLAUDE_AGENT_HOOK_CMD, GEMINI_AGENT_HOOK_CMD);
+    assert_eq!(CLAUDE_AGENT_HOOK_CMD, CODEX_AGENT_HOOK_CMD);
 }
 
-/// Per-CLI hooks.json files must each contain the expected `-CliSource`
-/// argument so the bridge script tags emitted events with the right CLI.
+/// Per-CLI hooks.json files must each tag emitted events with the right CLI.
 #[test]
 fn bundle_hooks_thread_cli_source() {
-    assert!(CLAUDE_HOOKS_JSON.contains("-CliSource claude"));
-    assert!(!CLAUDE_HOOKS_JSON.contains("-CliSource copilot"));
-
-    assert!(COPILOT_HOOKS_JSON.contains("-CliSource copilot"));
-    assert!(!COPILOT_HOOKS_JSON.contains("-CliSource claude"));
-
-    assert!(GEMINI_HOOKS_JSON.contains("-CliSource gemini"));
+    assert!(CLAUDE_HOOKS_JSON.contains("--cli-source claude"));
+    assert!(COPILOT_HOOKS_JSON.contains("--cli-source copilot"));
+    assert!(COPILOT_HOOKS_JSON.contains("${PLUGIN_ROOT}"));
+    assert!(!COPILOT_HOOKS_JSON.contains("CLAUDE_PLUGIN_ROOT"));
+    assert!(GEMINI_HOOKS_JSON.contains("--cli-source gemini"));
+    assert!(CODEX_HOOKS_JSON.contains("--cli-source codex"));
 }
 
 /// Both CLIs must carry the common event set. Copilot additionally
@@ -592,71 +602,97 @@ fn claude_and_copilot_carry_full_event_catalog() {
     }
 }
 
-/// Claude and Copilot share the same hook-event schema for their
-/// common events; copilot carries additional tool-use hooks that
-/// claude dropped in #81. After removing those extra entries and
-/// normalizing `-CliSource`, the two files must match.
-#[test]
-fn claude_and_copilot_hooks_json_are_parity_identical() {
-    let normalized_claude = CLAUDE_HOOKS_JSON.replace("-CliSource claude", "-CliSource <CLI>");
-    // Strip the copilot-only tool-use hook blocks before comparing.
-    // Each block is a top-level key with its JSON array value + trailing comma.
-    let mut normalized_copilot =
-        COPILOT_HOOKS_JSON.replace("-CliSource copilot", "-CliSource <CLI>");
-    for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
-        // Remove the block: `"<Event>": [ ... ],\r\n` (with possible \r\n or \n)
-        if let Some(start) = normalized_copilot.find(&format!("\"{event}\"")) {
-            // Walk backward to capture leading whitespace
-            let block_start = normalized_copilot[..start]
-                .rfind('\n')
-                .map(|i| i + 1)
-                .unwrap_or(start);
-            // Find the closing `],` and then the next newline
-            if let Some(rel_end) = normalized_copilot[start..].find("],") {
-                let mut block_end = start + rel_end + 2; // past `],`
-                // Consume trailing whitespace/newline
-                while block_end < normalized_copilot.len()
-                    && matches!(normalized_copilot.as_bytes()[block_end], b'\r' | b'\n')
-                {
-                    block_end += 1;
-                }
-                normalized_copilot.replace_range(block_start..block_end, "");
+fn normalize_hook_commands(value: &mut Value) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                normalize_hook_commands(value);
             }
         }
+        Value::Object(values) => {
+            for (key, value) in values {
+                if key == "command" {
+                    *value = Value::String("<bridge>".into());
+                } else {
+                    normalize_hook_commands(value);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Claude and Copilot share the same hook-event schema for their common
+/// events even though Copilot now uses the native bridge. Copilot carries
+/// additional tool-use hooks that Claude dropped in #81.
+#[test]
+fn claude_and_copilot_hooks_json_are_parity_identical() {
+    let mut normalized_claude: Value = serde_json::from_str(CLAUDE_HOOKS_JSON).unwrap();
+    let mut normalized_copilot: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
+    normalize_hook_commands(&mut normalized_claude);
+    normalize_hook_commands(&mut normalized_copilot);
+
+    let copilot_hooks = normalized_copilot
+        .get_mut("hooks")
+        .and_then(Value::as_object_mut)
+        .unwrap();
+    for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+        copilot_hooks.remove(event);
     }
     assert_eq!(
         normalized_claude, normalized_copilot,
-        "claude/ and copilot/ hooks.json must match modulo -CliSource value and copilot-only tool-use hooks"
+        "claude/ and copilot/ hook schemas must match modulo bridge command and copilot-only tool-use hooks"
     );
 }
 
-/// Claude and Copilot share the same `plugin.json`, `marketplace.json`,
-/// and `send-event.ps1` content; assert byte-equality so future edits
-/// stay in sync.
+/// Copilot uses its native manifest locations while preserving the shared
+/// metadata and declaring the hook file explicitly.
 #[test]
-fn claude_and_copilot_share_static_manifests() {
+fn copilot_uses_native_plugin_layout() {
+    let claude: Value = serde_json::from_str(CLAUDE_PLUGIN_JSON).unwrap();
+    let mut copilot: Value = serde_json::from_str(COPILOT_PLUGIN_JSON).unwrap();
     assert_eq!(
-        CLAUDE_PLUGIN_JSON, COPILOT_PLUGIN_JSON,
-        "claude/ and copilot/ plugin.json must match byte-for-byte"
+        copilot.get("hooks").and_then(Value::as_str),
+        Some("hooks/hooks.json")
     );
+    copilot.as_object_mut().unwrap().remove("hooks");
+    assert_eq!(claude, copilot, "shared plugin metadata must stay aligned");
+
     assert_eq!(
         CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON,
         "claude/ and copilot/ marketplace.json must match byte-for-byte"
     );
-    assert_eq!(
-        CLAUDE_SEND_EVENT_PS1, COPILOT_SEND_EVENT_PS1,
-        "claude/ and copilot/ send-event.ps1 must match byte-for-byte"
-    );
 }
 
-/// `send-event.ps1` is single-source-of-truth across all supported CLIs.
-/// (Claude/Copilot byte-equality is covered above; this also pins Codex,
-/// Gemini, and OpenCode to the same content.)
 #[test]
-fn all_cli_send_event_scripts_are_identical() {
-    assert_eq!(CLAUDE_SEND_EVENT_PS1, CODEX_SEND_EVENT_PS1);
-    assert_eq!(CLAUDE_SEND_EVENT_PS1, GEMINI_SEND_EVENT_PS1);
-    assert_eq!(CLAUDE_SEND_EVENT_PS1, OPENCODE_SEND_EVENT_PS1);
+fn native_hook_bundle_versions_stay_in_sync() {
+    let manifests = [
+        CLAUDE_PLUGIN_JSON,
+        COPILOT_PLUGIN_JSON,
+        GEMINI_EXTENSION_JSON,
+        CODEX_PLUGIN_JSON,
+        OPENCODE_PLUGIN_JSON,
+    ];
+    for manifest in manifests {
+        let value: Value = serde_json::from_str(manifest).unwrap();
+        assert_eq!(
+            value.get("version").and_then(Value::as_str),
+            Some("0.1.5")
+        );
+    }
+
+    for marketplace in [CLAUDE_MARKETPLACE_JSON, COPILOT_MARKETPLACE_JSON] {
+        let value: Value = serde_json::from_str(marketplace).unwrap();
+        assert_eq!(
+            value
+                .get("plugins")
+                .and_then(Value::as_array)
+                .and_then(|plugins| plugins.first())
+                .and_then(|plugin| plugin.get("version"))
+                .and_then(Value::as_str),
+            Some("0.1.5")
+        );
+    }
 }
 
 #[test]
@@ -666,6 +702,9 @@ fn opencode_plugin_has_runtime_guards_and_source_tag() {
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WT_SESSION"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.OPENCODE_CLIENT"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"acp\""));
+    assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"wtcli.exe\""));
+    assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"agent-hook\""));
+    assert!(!OPENCODE_PLUGIN_JS_CONTENT.contains("powershell"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("new TextEncoder().encode"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"opencode\""));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("agent.session.start"));

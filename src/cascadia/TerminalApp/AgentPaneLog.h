@@ -33,10 +33,10 @@
 namespace winrt::TerminalApp::implementation
 {
     // The per-version WTA log directory (`logs\<pkgver>\`), resolved by the
-    // shared `IntelligentTerminal::LogDirVersioned()` so this logger, the Rust
-    // processes, and the PowerShell hooks all write into the same per-version
-    // folder. (The bug-report-zip action uses `LogDir()` — the root — so it can
-    // archive every version at once.)
+    // shared `IntelligentTerminal::LogDirVersioned()` so this logger and the
+    // Rust processes write into the same per-version folder. (The
+    // bug-report-zip action uses `LogDir()` — the root — so it can archive
+    // every version at once.)
     inline std::filesystem::path _intelligentTerminalLogDir()
     {
         return ::IntelligentTerminal::LogDirVersioned();

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.session.start"
+            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.session.start"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.notification"
+            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.notification"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.prompt.submit"
+            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.prompt.submit"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.stop"
+            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.stop"
           }
         ]
       }

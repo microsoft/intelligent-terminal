@@ -149,8 +149,8 @@ Run this section only when the agent has a bundled session hook/plugin.
    ACP session must appear exactly once through normal helper/master tracking.
 7. Remove hooks from Settings, including after temporarily removing the CLI
    from `PATH`, and confirm only managed files are deleted.
-8. Inspect `hook-trace.log`, `wta-ensure-host.log`, and the master/helper logs in
-   the packaged versioned log directory for the complete event path.
+8. Inspect `wta-ensure-host.log` and the master/helper logs in the packaged
+   versioned log directory for the complete native hook event path.
 
 ## Policy Verification
 

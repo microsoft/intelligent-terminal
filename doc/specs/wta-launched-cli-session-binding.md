@@ -48,7 +48,7 @@ directly into the `wta-master` registry. Independently mergeable on `main`.
   change to `OriginFilter`, `/sessions` rendering or Enter/Resume routing,
   registry serialization, or `history_loader`.
 - **Codex is out of scope.** It cannot pin `--session-id`, so it keeps using
-  `main`'s existing Codex hook (`wt-agent-hooks/codex/.../send-event.ps1`)
+  `main`'s existing Codex hook (`wt-agent-hooks/codex/.../hooks.json`)
   unchanged.
 - **User-typed (non-WTA-launched) sessions** are untouched here — they stay on
   the existing hook path.

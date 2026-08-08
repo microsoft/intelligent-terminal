@@ -5,9 +5,8 @@
 // WTA runtime log directory.
 //
 // Mirrors wta's Rust `runtime_paths::intelligent_terminal_local_root()` exactly
-// so every writer of the WTA logs — the Rust wta processes, the C++ agent-pane
-// logger / bug-report-zip action, and the conpty environment injection that
-// lets agent-CLI PowerShell hooks find the dir — all target the same folder.
+// so the Rust wta processes and the C++ agent-pane logger / bug-report-zip
+// action target the same folder.
 //
 // Header-only `inline` so each translation unit picks up its own copy without
 // ODR conflicts. Lives in `src/cascadia/inc/` so both TerminalApp and
@@ -61,9 +60,8 @@ namespace IntelligentTerminal
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads
-    // the same value via `GetCurrentPackageId`, so the Rust processes, this
-    // C++ logger, and (through `WTA_HOOK_LOG_DIR`) the PowerShell hooks all
-    // resolve to the same `logs\<pkgver>\` folder.
+    // the same value via `GetCurrentPackageId`, so the Rust processes and this
+    // C++ logger resolve to the same `logs\<pkgver>\` folder.
     inline std::wstring PackageVersionDir()
     {
         UINT32 length = 0;

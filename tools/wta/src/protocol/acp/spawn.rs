@@ -280,15 +280,8 @@ pub(crate) fn spawn_agent_process(
     }
     cmd.env("WTA_CLI_PATH", wta_cli_directory()?.join("wta.exe"));
 
-    // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
-    // CLI → node → powershell process chain) where to write their diagnostic
-    // trace. PowerShell can't resolve our package-private log dir on its own
-    // (it only sees the un-redirected `%LOCALAPPDATA%`, and doesn't know the
-    // package family name), so we hand it the already-resolved path. The hook
-    // falls back to bare `%LOCALAPPDATA%\IntelligentTerminal\logs` when this
-    // is unset (unpackaged dev runs, or an older wta that didn't set it).
-    // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
-    // `hook-trace.log` lands alongside this build's Rust + C++ logs.
+    // Keep the log path available to pre-0.1.5 hook bundles while startup
+    // auto-upgrade replaces their PowerShell bridge with `wtcli agent-hook`.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
     // Forward the user's locale to the agent process via standard POSIX

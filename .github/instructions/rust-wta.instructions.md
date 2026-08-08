@@ -40,7 +40,7 @@ User-facing strings go through `t!(...)` (rust-i18n) — see `rust-localization.
   - `intelligent_terminal_root()` for state (`LocalState`)
   - `logging::log_dir()` for logs (`LocalCache\Local`)
 - **Do not** hand-roll `%LOCALAPPDATA%\IntelligentTerminal` paths — the helper has to handle package-private (`Packages\<pfn>\LocalState`) vs unpackaged (bare `%LOCALAPPDATA%`) identity correctly.
-- All Rust log writers, the C++ `AgentPaneLog.h`, and PowerShell hooks share the same per-version dir `logs\<pkgver>\` so the bug-report zip captures everything.
+- All Rust log writers and the C++ `AgentPaneLog.h` share the same per-version dir `logs\<pkgver>\` so the bug-report zip captures everything.
 
 ## Third-Party Dependency Notices
 

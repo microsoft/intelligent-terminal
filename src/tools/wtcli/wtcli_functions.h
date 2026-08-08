@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -137,6 +139,162 @@ namespace wtcli
         outEvt["type"] = "event";
         outEvt["method"] = "agent_event";
         outEvt["params"] = params;
+        return true;
+    }
+
+    // Build an agent hook event directly from the hook JSON delivered on stdin.
+    // This is the native equivalent of the former PowerShell bridge.
+    //
+    // Returns false for malformed JSON or missing routing metadata and leaves
+    // outEvt untouched. Empty or whitespace-only stdin is accepted as a null
+    // payload because some lifecycle hooks do not provide a body.
+    inline bool BuildAgentHookEventJson(
+        const std::string& eventType,
+        const std::string& cliSource,
+        const std::string& hookJson,
+        const std::string& paneId,
+        const std::string& environmentSessionId,
+        Json::Value& outEvt)
+    {
+        if (eventType.empty() || cliSource.empty() || paneId.empty())
+        {
+            return false;
+        }
+
+        Json::Value payload{ Json::nullValue };
+        const auto hasJson = std::any_of(hookJson.begin(), hookJson.end(), [](const unsigned char ch) {
+            return std::isspace(ch) == 0;
+        });
+        if (hasJson)
+        {
+            Json::CharReaderBuilder reader;
+            std::string errors;
+            std::istringstream stream{ hookJson };
+            if (!Json::parseFromStream(reader, stream, &payload, &errors))
+            {
+                return false;
+            }
+        }
+
+        std::string agentSessionId = environmentSessionId;
+        if (payload.isObject())
+        {
+            for (const auto* key : { "session_id", "sessionId" })
+            {
+                const auto& value = payload[key];
+                if (value.isString())
+                {
+                    agentSessionId = value.asString();
+                    break;
+                }
+            }
+
+            static constexpr const char* alwaysStrip[] = {
+                "tool_result",
+                "tool_response",
+                "tool_output",
+                "toolResult",
+                "toolResponse",
+                "toolOutput",
+                "prompt",
+                "user_prompt",
+                "userPrompt",
+                "transcript_path",
+                "transcriptPath",
+                "hook_event_name",
+                "hookEventName",
+                "permission_mode",
+                "permissionMode",
+                "model",
+                "model_info",
+                "modelInfo",
+                "output_style",
+                "outputStyle",
+                "version",
+                "source",
+                "apiKeySource",
+                "transcript",
+                "messages",
+                "history",
+                "conversation",
+                "systemPrompt",
+                "system_prompt",
+                "instructions",
+                "context",
+                "files",
+                "attachments",
+                "events",
+                "chat",
+                "chatHistory",
+            };
+            for (const auto* key : alwaysStrip)
+            {
+                payload.removeMember(key);
+            }
+
+            std::string toolName;
+            for (const auto* key : { "tool_name", "toolName" })
+            {
+                const auto& value = payload[key];
+                if (value.isString())
+                {
+                    toolName = value.asString();
+                    break;
+                }
+            }
+            std::transform(toolName.begin(), toolName.end(), toolName.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+
+            static constexpr const char* userInputTools[] = {
+                "ask_user",
+                "askuser",
+                "ask-user",
+                "ask_question",
+                "askquestion",
+                "ask_for_clarification",
+                "request_input",
+                "request_user_input",
+                "user_input",
+                "prompt_user",
+                "clarification_request",
+            };
+            const auto isUserInputTool = std::any_of(
+                std::begin(userInputTools),
+                std::end(userInputTools),
+                [&](const char* value) { return toolName == value; });
+            if (!isUserInputTool)
+            {
+                payload.removeMember("tool_input");
+                payload.removeMember("toolInput");
+            }
+        }
+
+        Json::Value params;
+        params["cli_source"] = cliSource;
+        params["agent_session_id"] = agentSessionId;
+        params["payload"] = payload;
+
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto serialized = Json::writeString(writer, params);
+        constexpr size_t maxPayloadChars = 25000;
+        if (serialized.size() > maxPayloadChars)
+        {
+            Json::Value truncated;
+            truncated["_truncated"] = true;
+            truncated["_original_size"] = Json::UInt64{ serialized.size() };
+            params["payload"] = std::move(truncated);
+        }
+
+        params["event"] = eventType;
+        params["pane_id"] = paneId;
+
+        Json::Value event;
+        event["type"] = "event";
+        event["method"] = "agent_event";
+        event["params"] = std::move(params);
+        outEvt = std::move(event);
         return true;
     }
 

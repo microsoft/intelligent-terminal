@@ -1,8 +1,8 @@
-# sync-hooks.ps1 — copy the latest hook scripts from the repo into the live
-# Copilot/Gemini plugin install locations under the user's profile.
+# sync-hooks.ps1 — copy the latest native hook manifests from the repo into
+# the live Copilot/Gemini plugin install locations under the user's profile.
 #
 # Run this from a normal PowerShell prompt (not the agent session) any time
-# the files under tools/wta/wt-agent-hooks/agent-hooks-plugin/hooks/ or
+# the files under tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/ or
 # tools/wta/wt-agent-hooks/gemini-extension/hooks/ change. Restart the agent CLIs
 # (or close+reopen WT) for the new hooks to take effect.
 
@@ -14,20 +14,20 @@ $hooksRoot = Join-Path $wta 'wt-agent-hooks'
 
 $pairs = @(
     @{
-        Src = (Join-Path $hooksRoot 'agent-hooks-plugin\hooks\send-event.ps1')
-        Dst = (Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\send-event.ps1')
-    },
-    @{
-        Src = (Join-Path $hooksRoot 'gemini-extension\hooks\send-event.ps1')
-        Dst = (Join-Path $env:USERPROFILE '.gemini\extensions\wt-agent-hooks\hooks\send-event.ps1')
-    },
-    @{
-        Src = (Join-Path $hooksRoot 'agent-hooks-plugin\hooks\hooks.json')
+        Src = (Join-Path $hooksRoot 'copilot\wt-agent-hooks\hooks\hooks.json')
         Dst = (Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\hooks.json')
+    },
+    @{
+        Src = (Join-Path $hooksRoot 'copilot\wt-agent-hooks\hooks\agent-hook.cmd')
+        Dst = (Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\agent-hook.cmd')
     },
     @{
         Src = (Join-Path $hooksRoot 'gemini-extension\hooks\hooks.json')
         Dst = (Join-Path $env:USERPROFILE '.gemini\extensions\wt-agent-hooks\hooks\hooks.json')
+    },
+    @{
+        Src = (Join-Path $hooksRoot 'gemini-extension\hooks\agent-hook.cmd')
+        Dst = (Join-Path $env:USERPROFILE '.gemini\extensions\wt-agent-hooks\hooks\agent-hook.cmd')
     }
 )
 

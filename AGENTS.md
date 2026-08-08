@@ -191,8 +191,8 @@ same bare path when the process has no package identity):
       master-pipe.txt               (helper↔master rendezvous)
 
   …\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\  <- LOCAL/cache root
-      logs\<pkgver>\                (ALL logs for that build — Rust wta-*.log,
-                                     C++ terminal-agent-pane.log, PS hook-trace.log)
+      logs\<pkgver>\                (ALL logs for that build — Rust wta-*.log
+                                     and C++ terminal-agent-pane.log)
       hook-bundle-staging\ …        (hook-installer staging)
       hooks-upgrade-state.json      (per-CLI bundle version cache for the
                                      hooks auto-upgrade fast-path)
@@ -215,7 +215,7 @@ dev-sideload family (`IntelligentTerminal_rd9vj3e6a2mbr`) and the store family
 / `LocalCacheFolder` resolve to, so we construct them directly rather than
 pulling in the WinRT projection.
 
-**All three writers share one per-version dir** `logs\<pkgver>\`, where
+**Both writers share one per-version dir** `logs\<pkgver>\`, where
 `<pkgver>` is the **package version** (`GetCurrentPackageId`, e.g. `0.8.0.2`) —
 read identically at runtime by Rust (`logging::package_version`) and C++
 (`IntelligentTerminal::PackageVersionDir`), so no build-time version sync is
@@ -223,9 +223,6 @@ needed:
 - Rust wta processes → `logging::log_dir()` (`logs\<pkgver>\wta-*.log`).
 - C++ `AgentPaneLog.h` → `IntelligentTerminal::LogDirVersioned()` →
   `terminal-agent-pane.log` (renamed from the old `wta-agent-pane.log`).
-- PowerShell hooks (`send-event.ps1`) → `hook-trace.log`, via the
-  `WTA_HOOK_LOG_DIR` env var set to `LogDirVersioned()` (C++ ConptyConnection
-  for shell panes; `spawn.rs` for agent-pane CLIs).
 
 `IntelligentTerminal::LogDir()` stays the **root** (`…\logs`, no version) and is
 used only by the bug-report-zip action so it archives every version at once.
@@ -281,10 +278,8 @@ wta-ensure-host.log        — WT-side background ensure-running diagnostics (ke
 wta-acp-debug.log          — low-level ACP JSON-RPC wire trace
 ```
 
-Two files in the per-version dir are **not** written by the Rust wta binary —
-`hook-trace.log` (PowerShell hooks) and `terminal-agent-pane.log` (C++ side);
-see **All three writers share one per-version dir** above. They live in the
-same `logs\<pkgver>\` and so are cleaned together with the Rust logs when that
+`terminal-agent-pane.log` is the only file in the per-version dir not written
+by the Rust wta binary. It is cleaned together with the Rust logs when that
 version's dir ages out.
 
 ### Tracking flows by `target` field
