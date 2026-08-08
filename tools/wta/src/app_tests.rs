@@ -1288,6 +1288,11 @@ fn load_session_applied_when_target_tab_matches_owner() {
         Some("old-session"),
         "the previous session remains authoritative until load succeeds"
     );
+    assert!(app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].durable_session_id(),
+        Some("sess-abc")
+    );
     assert!(app.session_model_configs.contains_key("old-session"));
 }
 
@@ -1416,6 +1421,42 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
 }
 
 #[test]
+fn agent_connected_does_not_add_disclaimer_while_resuming() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".to_string(),
+        model: None,
+        version: None,
+        session_id: "sess-bootstrap".to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: true,
+    });
+
+    assert!(!app.tab_sessions["OWNER-TAB"]
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Disclaimer)));
+}
+
+#[test]
 fn set_agent_state_preserves_owner_pane_position() {
     let mut app = test_app();
     app.window_id = Some("window-1".into());
@@ -1513,6 +1554,41 @@ fn tab_error_clears_load_target() {
     assert!(app.tab_sessions["OWNER-TAB"]
         .loading_target_session_id
         .is_none());
+    assert!(!app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
+}
+
+#[test]
+fn tab_error_restores_the_previous_meaningful_session() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            session_id: Some("old-session".to_string()),
+            has_meaningful_conversation: true,
+            ..Default::default()
+        },
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "replacement-session",
+            "cwd": "",
+        }),
+    });
+    app.handle_event(AppEvent::TabError {
+        tab_id: "OWNER-TAB".to_string(),
+        message: "load failed".to_string(),
+    });
+
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].durable_session_id(),
+        Some("old-session")
+    );
 }
 
 /// Replayed history must be packed into collapsed CompletedTurn rows
@@ -2037,6 +2113,49 @@ fn born_bound_registration_uses_current_master_request_sender() {
         }
         other => panic!("expected SessionBornBound, got {other:?}"),
     }
+}
+
+#[test]
+fn restored_shell_agent_session_registers_as_born_bound() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let agent_session_id = "8f924227-22df-4e54-aa18-3471107b567b";
+    let pane_id = "F6BAB379-8942-4F5F-9E7F-078EA1AB9463";
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "session_born_bound".to_string(),
+        pane_id: pane_id.to_string(),
+        tab_id: None,
+        params: json!({
+            "agent_session_id": agent_session_id,
+            "agent": "copilot",
+            "cwd": r"C:\repo",
+        }),
+    });
+
+    let session = app
+        .agent_sessions
+        .get(&agent_session_id.to_string())
+        .expect("restored session should be live locally");
+    assert_eq!(session.status, crate::agent_sessions::AgentStatus::Idle);
+    assert_eq!(
+        session.pane_session_id.as_deref(),
+        Some("f6bab379-8942-4f5f-9e7f-078ea1ab9463")
+    );
+    assert_eq!(
+        session.cli_source,
+        crate::agent_sessions::CliSource::Copilot
+    );
+
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            event: crate::agent_sessions::SessionEvent::SessionStarted {
+                key,
+                pane_session_id,
+                ..
+            },
+        }) if key == agent_session_id && pane_session_id == pane_id
+    ));
 }
 
 #[test]
@@ -8861,6 +8980,74 @@ fn usage_projection_contains_context_cost_and_explicit_null() {
         &TabSession::default(),
     );
     assert!(cleared["params"]["usage"].is_null());
+}
+
+#[test]
+fn agent_state_projection_includes_agent_session_id() {
+    let mut tab = TabSession {
+        session_id: Some("agent-session-1".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+
+    let event = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        event["params"]["agent_session_id"],
+        serde_json::json!("agent-session-1")
+    );
+
+    tab.loading_target_session_id = Some("agent-session-2".to_string());
+    let loading = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        loading["params"]["agent_session_id"],
+        serde_json::json!("agent-session-2")
+    );
+
+    let cleared = super::app_status_projection::build_agent_state_changed_event(
+        "TAB-1",
+        &TabSession::default(),
+    );
+    assert!(cleared["params"]["agent_session_id"].is_null());
+}
+
+#[test]
+fn durable_session_id_requires_a_meaningful_conversation() {
+    let mut tab = TabSession {
+        session_id: Some("fresh-session".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(tab.durable_session_id(), None);
+
+    tab.has_meaningful_conversation = true;
+    assert_eq!(tab.durable_session_id(), Some("fresh-session"));
+}
+
+#[test]
+fn durable_session_id_uses_the_load_target_during_replay() {
+    let tab = TabSession {
+        loading_session: true,
+        loading_target_session_id: Some("loaded-session".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+    assert_eq!(tab.durable_session_id(), Some("loaded-session"));
+}
+
+#[test]
+fn submitting_a_prompt_marks_the_session_meaningful() {
+    let mut app = test_app();
+    app.turn_submit_prompt_for_tab(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: 1,
+            text: "hello".to_string(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+
+    assert!(app.current_tab().has_meaningful_conversation);
 }
 
 #[test]

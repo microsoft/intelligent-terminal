@@ -127,6 +127,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
             InitialView::Sessions => helper::config::InitialView::Sessions,
             InitialView::ShellSessions => helper::config::InitialView::ShellSessions,
         },
+        initial_pane_position: cli.initial_pane_position,
         owner_tab_id: cli.owner_tab_id,
         owner_window_id: cli.owner_window_id,
         initial_load_session_id: cli.initial_load_session_id,

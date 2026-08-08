@@ -82,6 +82,7 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+        tab.has_meaningful_conversation = true;
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -92,6 +93,7 @@ impl App {
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
+        self.project_tab_state(&owned_tab);
     }
 
     /// Observe a streamed chunk. Thought chunks only advance the state

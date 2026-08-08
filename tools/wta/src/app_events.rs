@@ -8,6 +8,20 @@
 use super::*;
 
 impl App {
+    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+        self.agent_sessions.apply(event.clone());
+        if self
+            .master_request_tx
+            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .is_err()
+        {
+            tracing::warn!(
+                target: "coordinator",
+                "born-bound registration queue is unavailable",
+            );
+        }
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
@@ -238,6 +252,7 @@ impl App {
                         .iter()
                         .any(|m| !matches!(m, ChatMessage::Disclaimer));
                 if !has_real_content
+                    && !tab.loading_session
                     && !tab
                         .messages
                         .iter()
@@ -246,6 +261,7 @@ impl App {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&bind_tab);
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -290,6 +306,7 @@ impl App {
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
+                    tab.meaningful_conversation_before_load = None;
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -320,6 +337,7 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::UsageReported {
                 session_id,
@@ -366,6 +384,10 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
+                tab.has_meaningful_conversation = tab
+                    .meaningful_conversation_before_load
+                    .take()
+                    .unwrap_or(false);
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
                 tab.timing_note = None;
@@ -373,6 +395,7 @@ impl App {
                 tab.active_direct_proposal_id = None;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
@@ -1136,18 +1159,7 @@ impl App {
                 self.handle_agents_snapshot_failed(request_id);
             }
             AppEvent::RegisterBornBoundSession { event } => {
-                if self
-                    .master_request_tx
-                    .send(
-                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event },
-                    )
-                    .is_err()
-                {
-                    tracing::warn!(
-                        target: "coordinator",
-                        "born-bound registration queue is unavailable",
-                    );
-                }
+                self.register_born_bound_session(event);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -1189,6 +1201,45 @@ impl App {
                             .messages
                             .push(ChatMessage::AgentEvent(detail));
                     }
+                    return;
+                }
+
+                if method == "session_born_bound" {
+                    let agent_session_id = params
+                        .get("agent_session_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let agent = params
+                        .get("agent")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if agent_session_id.is_empty() || pane_id.is_empty() || agent.is_empty() {
+                        tracing::warn!(
+                            target: "session_hook",
+                            agent_session_id,
+                            pane_id,
+                            agent,
+                            "ignoring incomplete restored session born-bound event"
+                        );
+                        return;
+                    }
+
+                    self.register_born_bound_session(
+                        crate::agent_sessions::SessionEvent::SessionStarted {
+                            key: agent_session_id.to_string(),
+                            cli_source: crate::session_registry::SessionHookCliSource::Known(
+                                agent.to_string(),
+                            )
+                            .into(),
+                            pane_session_id: pane_id,
+                            cwd: params
+                                .get("cwd")
+                                .and_then(|value| value.as_str())
+                                .map(std::path::PathBuf::from)
+                                .unwrap_or_default(),
+                            title: String::new(),
+                        },
+                    );
                     return;
                 }
 
@@ -1571,6 +1622,11 @@ impl App {
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
+                        if !tab.loading_session {
+                            tab.meaningful_conversation_before_load =
+                                Some(tab.has_meaningful_conversation);
+                        }
+                        tab.has_meaningful_conversation = true;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
@@ -1587,16 +1643,7 @@ impl App {
                         // normal connection. `loading_session` still opens the
                         // replay window; any past content just streams in above.
                     }
-                    // If the load_session target IS the active tab, push the
-                    // (now Chat) view to C++ so the bar drops the "Agent
-                    // sessions" label that the user was looking at when they
-                    // hit Shift+Enter on a session row. When the target is a
-                    // not-yet-active tab (e.g. WT just created a fresh tab
-                    // and the `tab_changed` race still hasn't landed), the
-                    // imminent `tab_changed` to that tab will project then.
-                    if tab_id == self.active_tab_key() {
-                        self.project_active_tab_state();
-                    }
+                    self.project_tab_state(tab_id);
                     let _ = self.load_session_tx.send(LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),

@@ -244,6 +244,12 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Latched after the first prompt or session/load. A pre-warmed session/new
+    /// alone must not become durable; `/clear` keeps the same session durable.
+    pub has_meaningful_conversation: bool,
+    /// Preserves the current session's durability while a replacement
+    /// `session/load` is in flight so a failed load can roll back cleanly.
+    pub(crate) meaningful_conversation_before_load: Option<bool>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -365,6 +371,14 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn durable_session_id(&self) -> Option<&str> {
+        self.has_meaningful_conversation.then_some(
+            self.loading_target_session_id
+                .as_deref()
+                .or(self.session_id.as_deref()),
+        )?
+    }
+
     pub(crate) fn matching_shell_session_count(&self) -> usize {
         self.shell_sessions
             .iter()
