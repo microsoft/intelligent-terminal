@@ -134,6 +134,7 @@ private:
     void _registerHotKey(int index, const winrt::Microsoft::Terminal::Control::KeyChord& hotkey) noexcept;
     void _unregisterHotKey(int index) noexcept;
     void _setupGlobalHotkeys();
+    bool _restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
     void _finalizeSessionPersistence() const;
@@ -162,7 +163,11 @@ private:
     bool _notificationIconShown = false;
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
+    bool _deferPersistedLayoutRestore = false;
     SafeDispatcherTimer _persistStateTimer;
+    std::wstring _startupCurrentDirectory;
+    std::wstring _startupEnvironment;
+    uint32_t _startupShowWindowCommand = SW_SHOWDEFAULT;
     std::optional<bool> _currentSystemThemeIsDark;
     int32_t _windowCount = 0;
     int32_t _messageBoxCount = 0;
