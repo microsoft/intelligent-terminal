@@ -179,7 +179,7 @@ the former localhost MCP tool with the same machine-readable result shape.
 
 ## Connection Discovery
 
-`CliChannel` uses `wtcli.exe`, and `wtcli.exe` discovers WT through `WT_COM_CLSID`. WT injects this environment variable into pane shells.
+`CliChannel` uses `wtcli.exe`, and `wtcli.exe` discovers WT through `WT_COM_CLSID`. WT injects this environment variable into pane shells. State/query commands may activate the packaged COM server; event-only `publish` and `send-event` use the Running Object Table and only connect to an existing server so late hook events cannot relaunch Terminal during shutdown.
 
 `pipe-id` and `set-env` are diagnostic subcommands that surface the inherited `WT_COM_CLSID` value. They should not be described as a security boundary.
 

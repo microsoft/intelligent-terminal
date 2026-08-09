@@ -359,6 +359,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C182` `[E2E]` **`wtcli capture-pane` works:** Pane output capture succeeds.
 - [ ] `C183` `[E2E]` **`wtcli send-keys`/send input path works:** Insert/run operations can send input to the target pane.
 - [ ] `C184` `[E2E]` **`wtcli listen` works:** Event subscription receives shell/agent events.
+- [ ] `C246` `[new]` `[E2E]` **Event-only protocol commands do not relaunch Terminal:** Late hook and WTA events are dropped after shutdown instead of activating a new Terminal process.
 - [ ] `C185` `[E2E]` **WTA master starts:** One master process starts per Terminal process when needed.
 - [ ] `C186` `[E2E]` **WTA helper starts per tab/pane:** Agent pane helper starts and connects to master.
 - [ ] `C187` `[E2E]` **Master/helper crash recovery is acceptable:** Crashes or exits recover or surface an actionable error.

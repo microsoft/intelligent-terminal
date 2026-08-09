@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include <unknwn.h>
+#include <oleauto.h>
 #include <winrt/Windows.Foundation.h>
 
 #include "Formatting.h"
@@ -69,9 +70,16 @@ struct EventSink : ITerminalProtocolEventSink
 
 // ── Helpers ──
 
+enum class TerminalConnectionMode
+{
+    AllowActivation,
+    RunningOnly,
+};
+
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
                                                           std::string* outVersion = nullptr,
-                                                          bool skipAuthenticate = false)
+                                                          bool skipAuthenticate = false,
+                                                          TerminalConnectionMode mode = TerminalConnectionMode::AllowActivation)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -93,10 +101,26 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     }
 
     winrt::com_ptr<ITerminalProtocol> server;
-    auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    HRESULT hr = S_OK;
+    if (mode == TerminalConnectionMode::RunningOnly)
+    {
+        winrt::com_ptr<IUnknown> activeObject;
+        hr = GetActiveObject(cls, nullptr, activeObject.put());
+        if (SUCCEEDED(hr))
+        {
+            hr = activeObject->QueryInterface(__uuidof(ITerminalProtocol), server.put_void());
+        }
+    }
+    else
+    {
+        hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    }
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (mode == TerminalConnectionMode::AllowActivation)
+        {
+            fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        }
         return nullptr;
     }
     if (skipAuthenticate)
@@ -346,6 +370,13 @@ int main()
         if (!server)
             exitCode = 1;
         return server;
+    };
+    auto connectIfRunning = [&]() -> winrt::com_ptr<ITerminalProtocol> {
+        return ConnectToTerminal(
+            nullptr,
+            nullptr,
+            skipAuthenticate,
+            TerminalConnectionMode::RunningOnly);
     };
 
     // ── list-windows ──
@@ -941,7 +972,7 @@ int main()
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
     publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
     publishCmd->callback([&]() {
-        auto server = connect();
+        auto server = connectIfRunning();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
         auto hr = server->SendEvent(evt.get());
@@ -955,7 +986,7 @@ int main()
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
-        auto server = connect();
+        auto server = connectIfRunning();
         if (!server) return;
         std::string resolvedSessionId;
         if (!sendEventPaneTarget.empty())

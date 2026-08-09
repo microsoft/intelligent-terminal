@@ -1,9 +1,11 @@
 # wtcli Command Reference
 
-`wtcli` is the CLI client for the Windows Terminal Protocol. It looks up the
-running Terminal via the `WT_COM_CLSID` environment variable, calls
-`CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `IProtocolServer`, and
-exposes a tmux-style command surface over its IDL methods.
+`wtcli` is the CLI client for the Windows Terminal Protocol. It discovers the
+Terminal brand via the `WT_COM_CLSID` environment variable and exposes a
+tmux-style command surface over its IDL methods. Most commands call
+`CoCreateInstance(CLSCTX_LOCAL_SERVER)`. Event-only `publish` and `send-event`
+instead resolve the already-running server through the Running Object Table;
+if Terminal is not running, they drop the event without activating the app.
 
 - Source: `src/tools/wtcli/main.cpp`
 - IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
@@ -37,8 +39,8 @@ scripts) are not counted.
 | `focus-pane` | `focusp` | Move focus to the given pane. | `wtcli focus-pane -t 3` | ✅ `cli_channel.rs` (`focus_pane`) |
 | `wait-for` | — | Block (poll `pane-status`) until the pane process exits. `--interval` is poll period in ms; `--timeout` is seconds (`0` = forever). | `wtcli wait-for -t 3 --timeout 60` | ❌ Not called. (`wta` exposes its own `wait-for` subcommand at `tools/wta/src/main.rs:209`, but its handler polls by shelling out to `wtcli pane-status` in a Rust loop — it does **not** invoke `wtcli wait-for`.) |
 | `listen` | — | Long-running. Subscribe to `IProtocolServer` and stream every event JSON line to stdout until Ctrl-C. `-t` filters by pane id; `--event` filters by type and supports a trailing `*` wildcard. | `wtcli --json listen --event "agent.*"` | ✅ `cli_channel.rs` (background listener task) |
-| `send-event` | `se` | Publish an event using the `agent_event` envelope: sets `type=event`, `method=agent_event`, fills `params.event` from `-e` and `params.pane_id` from `-p` (or the active pane). Extra params come from the trailing JSON object. | `wtcli send-event -p 3 -e agent.task.completed '{"exit_code":0}'` | ❌ Not called from in-tree code. Documented as the public CLI surface for external agents in `doc/specs/llm-agent-event-integration.md`. |
-| `publish` | — | Low-level escape hatch: forwards a raw JSON string straight to `IProtocolServer::SendEvent` with no envelope. Used for events that don't fit the `agent_event` shape (e.g. `autofix_state` routed directly to `TerminalPage`). | `wtcli publish '{"method":"autofix_state","params":{"state":"ready"}}'` | ✅ `tools/wta/src/app.rs` (`publish_event_blocking`) |
+| `send-event` | `se` | Publish an event using the `agent_event` envelope: sets `type=event`, `method=agent_event`, fills `params.event` from `-e` and `params.pane_id` from `-p` (or the active pane). Extra params come from the trailing JSON object. Connect-only: never launches Terminal. | `wtcli send-event -p 3 -e agent.task.completed '{"exit_code":0}'` | ❌ Not called from in-tree code. Documented as the public CLI surface for external agents in `doc/specs/llm-agent-event-integration.md`. |
+| `publish` | — | Low-level escape hatch: forwards a raw JSON string straight to `IProtocolServer::SendEvent` with no envelope. Used for events that don't fit the `agent_event` shape (e.g. `autofix_state` routed directly to `TerminalPage`). Connect-only: never launches Terminal. | `wtcli publish '{"method":"autofix_state","params":{"state":"ready"}}'` | ✅ `tools/wta/src/app.rs` (`publish_event_blocking`) |
 | `info` | — | Print `WT_COM_CLSID`, connection status, protocol version, and the server's `GetCapabilities()` method list. | `wtcli --json info` | ✅ `cli_channel.rs` maps `get_capabilities` → `wtcli info` |
 | `test-pipe` | — | Smoke test: connect, run `list-windows` + `get_capabilities`, print results. Diagnostic only. | `wtcli test-pipe` | ❌ Not called. Manual diagnostic. |
 | `set-env` | `setenv` | Print shell-specific export statements for `WT_COM_CLSID` (`-s powershell\|bash\|cmd`). Output is meant to be `eval`'d / `Invoke-Expression`'d by the caller; it does not modify the current process. | `wtcli set-env -s powershell \| Invoke-Expression` | ❌ Not called. Manual recovery for child shells that didn't inherit `WT_COM_CLSID`. |

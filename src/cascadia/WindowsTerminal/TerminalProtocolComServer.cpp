@@ -8,6 +8,7 @@
 #include "AppHost.h"
 
 #include <json/json.h>
+#include <oleauto.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
@@ -28,6 +29,7 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 
 static DWORD g_comRegistration = 0;
+static DWORD g_activeObjectRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
@@ -81,6 +83,29 @@ try
             }
         }
 
+        if (SUCCEEDED(regHr))
+        {
+            const auto activeObject = Make<TerminalProtocolComServer>();
+            if (!activeObject)
+            {
+                regHr = E_OUTOFMEMORY;
+            }
+            else
+            {
+                regHr = RegisterActiveObject(
+                    activeObject.Get(),
+                    __uuidof(TerminalProtocolComServer),
+                    ACTIVEOBJECT_STRONG,
+                    &g_activeObjectRegistration);
+            }
+        }
+
+        if (FAILED(regHr) && g_comRegistration)
+        {
+            LOG_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+            g_comRegistration = 0;
+        }
+
         ready.SetEvent();
 
         // Keep this MTA thread alive so the COM registration stays active.
@@ -97,9 +122,24 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
 
+    HRESULT result = S_OK;
+    if (g_activeObjectRegistration)
+    {
+        const auto hr = RevokeActiveObject(g_activeObjectRegistration, nullptr);
+        if (FAILED(hr))
+        {
+            result = hr;
+        }
+        g_activeObjectRegistration = 0;
+    }
+
     if (g_comRegistration)
     {
-        RETURN_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+        const auto hr = CoRevokeClassObject(g_comRegistration);
+        if (SUCCEEDED(result) && FAILED(hr))
+        {
+            result = hr;
+        }
         g_comRegistration = 0;
     }
 
@@ -113,7 +153,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return S_OK;
+    return result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()

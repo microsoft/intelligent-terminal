@@ -111,6 +111,76 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     }
 }
 
+Describe 'Feature §9 event-only protocol lifecycle' -Tag 'Feature','ConnectOnly' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'Event-only protocol commands do not relaunch Terminal' {
+        $sourcePane = (Get-ActivePane -App $script:app).session_id
+        $sendEventType = "protocol.connect_only.send.$([guid]::NewGuid().ToString('N'))"
+        $publishEventType = "protocol.connect_only.publish.$([guid]::NewGuid().ToString('N'))"
+        $publishPayload = @{
+            type = 'event'
+            method = 'agent_event'
+            params = @{
+                event = $publishEventType
+                pane_id = $sourcePane
+            }
+        } | ConvertTo-Json -Compress
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 500
+            Invoke-WtCli -App $script:app -Arguments @('send-event', '-p', $sourcePane, '-e', $sendEventType, '{}') | Out-Null
+            Invoke-WtCli -App $script:app -Arguments @('publish', $publishPayload) | Out-Null
+            {
+                Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.event -eq $sendEventType
+                }
+            } | Should -Not -Throw
+            {
+                Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.event -eq $publishEventType
+                }
+            } | Should -Not -Throw
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+
+        $stoppedApp = $script:app
+        Stop-Terminal -App $stoppedApp
+        $script:app = $null
+
+        (Test-Until -TimeoutSec 10 -IntervalSec 0.5 -Condition {
+            @(Get-WtProcessesForApp -App $stoppedApp).Count -eq 0
+        }) | Should -BeTrue
+
+        try {
+            $environment = @{ WT_COM_CLSID = $stoppedApp.ComClsid }
+            $sendResult = Invoke-Native -FilePath $stoppedApp.WtcliPath `
+                -Arguments @('send-event', '-p', $sourcePane, '-e', $sendEventType, '{}') `
+                -TimeoutSec 10 -Environment $environment
+            $publishResult = Invoke-Native -FilePath $stoppedApp.WtcliPath `
+                -Arguments @('publish', $publishPayload) `
+                -TimeoutSec 10 -Environment $environment
+
+            $sendResult.ExitCode | Should -Be 0
+            $publishResult.ExitCode | Should -Be 0
+            Start-Sleep -Seconds 3
+            @(Get-WtProcessesForApp -App $stoppedApp).Count | Should -Be 0
+        }
+        finally {
+            Get-WtProcessesForApp -App $stoppedApp | ForEach-Object {
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
 Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:UiReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
