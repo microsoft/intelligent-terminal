@@ -21,6 +21,7 @@
 
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace IntelligentTerminal
@@ -36,19 +37,39 @@ namespace IntelligentTerminal
     // `%LOCALAPPDATA%` is unavailable.
     inline std::filesystem::path LogDir()
     {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0 &&
-            GetEnvironmentVariableW(L"APPDATA", localAppData, MAX_PATH) == 0)
+        const auto environmentPath = [](const wchar_t* name) {
+            const auto required = GetEnvironmentVariableW(name, nullptr, 0);
+            if (required == 0)
+            {
+                return std::filesystem::path{};
+            }
+
+            std::wstring value(required, L'\0');
+            const auto copied = GetEnvironmentVariableW(name, value.data(), required);
+            if (copied == 0 || copied >= required)
+            {
+                return std::filesystem::path{};
+            }
+
+            value.resize(copied);
+            return std::filesystem::path{ std::move(value) };
+        };
+
+        auto base = environmentPath(L"LOCALAPPDATA");
+        if (base.empty())
         {
-            wchar_t tempPath[MAX_PATH];
-            const auto length = GetTempPathW(ARRAYSIZE(tempPath), tempPath);
-            if (length == 0 || length >= ARRAYSIZE(tempPath))
+            base = environmentPath(L"APPDATA");
+        }
+        if (base.empty())
+        {
+            std::error_code error;
+            base = std::filesystem::temp_directory_path(error);
+            if (error)
             {
                 return {};
             }
-            return std::filesystem::path{ tempPath } / L"IntelligentTerminal" / L"logs";
+            return base / L"IntelligentTerminal" / L"logs";
         }
-        std::filesystem::path base{ std::wstring(localAppData) };
 
         // Two-call pattern: query the family-name length first. A packaged
         // process returns ERROR_INSUFFICIENT_BUFFER and fills `length`; an
