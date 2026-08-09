@@ -18,6 +18,7 @@
 #include "AppHost.h"
 #include "TerminalProtocolComServer.h"
 #include "../TerminalApp/KeepRunningSessionHelpers.h"
+#include "../inc/ProtocolServiceRouting.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
@@ -303,6 +304,16 @@ bool WindowEmperor::KillDetachedSessionForProtocol(const GUID& sessionId) const 
                  0,
                  reinterpret_cast<LPARAM>(&request));
     return request.Killed;
+}
+
+WindowEmperor::ShellSessionsProtocolRequest WindowEmperor::GetShellSessionsForProtocol() const noexcept
+{
+    ShellSessionsProtocolRequest request;
+    SendMessageW(_window.get(),
+                 WM_GET_SHELL_SESSIONS_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return request;
 }
 
 AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
@@ -1397,6 +1408,53 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 if (found != _windows.end())
                 {
                     request->Host = *found;
+                }
+            }
+            return 0;
+        }
+        case WM_GET_SHELL_SESSIONS_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<ShellSessionsProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Host.reset();
+                request->SerializedSessions.clear();
+                request->Result = E_UNEXPECTED;
+
+                try
+                {
+                    ::Microsoft::Terminal::Protocol::details::RouteShellSessionRequest(
+                        !_windows.empty(),
+                        [&]() {
+                            // Do not call TerminalPage::ListProtocolShellSessions().get()
+                            // here. Its coroutine resumes on this UI dispatcher, so
+                            // waiting from the emperor thread would deadlock. Keep the
+                            // host alive and let the COM MTA call the page after
+                            // SendMessage returns.
+                            const auto target = _mostRecentWindow();
+                            const auto found = std::find_if(_windows.begin(), _windows.end(), [&](const auto& host) {
+                                return host.get() == target;
+                            });
+                            THROW_HR_IF(E_FAIL, found == _windows.end());
+                            request->Host = *found;
+                            request->Result = S_OK;
+                        },
+                        [&]() {
+                            // With no visible window, service the synchronous
+                            // process-wide request here. Running it on the emperor
+                            // thread both avoids using AppLogic from the COM MTA and
+                            // prevents a newly opening window from overlapping the
+                            // temporary store-only wta-master.
+                            const auto manager = _keptSessionManager();
+                            THROW_HR_IF(E_NOT_VALID_STATE, !manager);
+                            request->SerializedSessions = manager.ListProtocolShellSessions();
+                            request->Result = S_OK;
+                        });
+                }
+                catch (...)
+                {
+                    request->Result = wil::ResultFromCaughtException();
+                    LOG_HR(request->Result);
                 }
             }
             return 0;

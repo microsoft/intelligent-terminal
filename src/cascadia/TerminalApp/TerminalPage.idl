@@ -71,6 +71,10 @@ namespace TerminalApp
         // Raised once when a successfully detached live session later ends
         // while still detached. Args: session Guid + terminal state.
         event Windows.Foundation.TypedEventHandler<ContentManager, DetachedSessionEndedArgs> DetachedSessionClosed;
+
+        // Process-wide durable-session query. This remains available after the
+        // last TerminalPage closes while keep-running content keeps the process alive.
+        String ListProtocolShellSessions();
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs

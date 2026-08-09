@@ -200,6 +200,7 @@ commands.fix.summary: "Das aktive Terminal diagnostizieren und eine Korrektur vo
 commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"
+commands.shell_sessions.summary: "Gespeicherte Befehlszeilensitzungen durchsuchen und wiederherstellen"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Agent für diese Registerkarte auswählen (/agent <id> zum direkten Wechseln)"  # {Locked="/agent","<id>"}
 
 # ── Empfehlungsausführung (src/coordinator.rs) ───────────────────────────

@@ -214,6 +214,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "រកមើល និងស្ដារវគ្គបន្ទាត់ពាក្យបញ្ជាដែលបានរក្សាទុក"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "ជ្រើសរើសភ្នាក់ងារសម្រាប់ផ្តាំងនេះ (/agent <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/agent","<id>"}
 
 # ── ការអនុវត្តអនុសាសន៍ (src/coordinator.rs) ───────────────────────────

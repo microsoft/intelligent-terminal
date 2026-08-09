@@ -196,6 +196,7 @@ commands.fix.summary: "[!!_Diagnose the active terminal and suggest a fix (/fix 
 commands.restart.summary: "[!!_Restart agent_!!]"
 commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
 commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"
+commands.shell_sessions.summary: "[!!_Browse and restore saved shell sessions_!!]"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "[!!_Pick the agent for this tab (/agent <id> to switch directly)_!!]"  # {Locked="/agent","<id>"}
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────

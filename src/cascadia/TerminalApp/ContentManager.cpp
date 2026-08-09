@@ -4,10 +4,14 @@
 #include "pch.h"
 #include "ContentManager.h"
 #include "ContentManager.g.cpp"
+#include "SharedWta.h"
 
 #include <wil/token_helpers.h>
+#include <json/json.h>
+#include <sstream>
 
 #include "../../types/inc/utils.hpp"
+#include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::ApplicationModel;
 using namespace winrt::Windows::ApplicationModel::DataTransfer;
@@ -104,6 +108,61 @@ namespace winrt::TerminalApp::implementation
         }
 
         return 0;
+    }
+
+    winrt::hstring ContentManager::ListProtocolShellSessions()
+    {
+        // In the zero-window state there is no TerminalPage to provide the
+        // normal agent launch configuration. That configuration is unnecessary
+        // for this request: wta-master opens the durable store at startup and
+        // agent CLIs are spawned lazily only when a helper initializes.
+        std::wstring wtaPath;
+        if (!SharedWta::Instance().IsRunning())
+        {
+            wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
+        }
+        return ListProtocolShellSessionsWithLaunchConfiguration(
+            ::Microsoft::Console::Utils::IsRunningElevated(),
+            wtaPath,
+            {});
+    }
+
+    winrt::hstring ContentManager::ListProtocolShellSessionsWithLaunchConfiguration(
+        const bool elevated,
+        const std::wstring_view wtaPath,
+        const std::span<const std::wstring> extraArgs)
+    {
+        auto& sharedWta = SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            THROW_HR_IF(E_FAIL, !temporaryAcquire);
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::Value params;
+        params["elevated"] = elevated;
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/list",
+            Json::writeString(writer, params));
+        THROW_HR_IF(E_FAIL, !result);
+
+        Json::Value response;
+        std::string errors;
+        std::istringstream stream{ *result };
+        THROW_HR_IF(
+            WEB_E_INVALID_JSON_STRING,
+            !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors) ||
+                !response["sessions"].isArray());
+        return winrt::to_hstring(Json::writeString(writer, response["sessions"]));
     }
 
     ControlInteractivity ContentManager::CreateCore(const Microsoft::Terminal::Control::IControlSettings& settings,

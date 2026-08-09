@@ -37,6 +37,9 @@ Abstract:
 
 #include <functional>
 #include <mutex>
+#include <span>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 
 namespace winrt::TerminalApp::implementation
@@ -138,6 +141,12 @@ namespace winrt::TerminalApp::implementation
         bool DiscardKeptSession(const winrt::guid& sessionId);
         void DiscardKeptGroup(const winrt::guid& groupId);
         bool HasKeptSessions();
+        winrt::hstring ListProtocolShellSessions();
+
+        winrt::hstring ListProtocolShellSessionsWithLaunchConfiguration(
+            bool elevated,
+            std::wstring_view wtaPath,
+            std::span<const std::wstring> extraArgs);
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::TerminalApp::DetachedSessionEndedArgs> DetachedSessionClosed;

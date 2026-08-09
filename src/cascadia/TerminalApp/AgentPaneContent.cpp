@@ -232,7 +232,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isShellSessionsView)
         {
-            AgentLabelText().Text(L"Shell sessions");
+            AgentLabelText().Text(RS_(L"AgentPane_ShellSessionsTitle"));
             return;
         }
 

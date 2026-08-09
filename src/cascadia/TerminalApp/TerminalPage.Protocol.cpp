@@ -12,6 +12,7 @@
 // The ComServer calls .get() on the returned IAsyncOperation to block.
 
 #include "pch.h"
+#include "ContentManager.h"
 #include "TerminalPage.h"
 #include "SharedWta.h"
 #include "../../types/inc/utils.hpp"
@@ -845,46 +846,18 @@ namespace winrt::TerminalApp::implementation
     {
         co_await wil::resume_foreground(Dispatcher());
 
-        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
-        bool temporaryAcquire = false;
-        if (!sharedWta.IsRunning())
+        winrt::hstring wtaPath;
+        std::vector<std::wstring> extraArgs;
+        if (!SharedWta::Instance().IsRunning())
         {
-            const auto wtaPath = _DetectWtaPath();
-            const auto extraArgs = _BuildSharedWtaExtraArgs();
-            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
-            if (!temporaryAcquire)
-            {
-                THROW_HR(E_FAIL);
-            }
+            wtaPath = _DetectWtaPath();
+            extraArgs = _BuildSharedWtaExtraArgs();
         }
-        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
-            if (temporaryAcquire)
-            {
-                sharedWta.ReleasePane();
-            }
-        });
-
-        Json::Value params;
-        params["elevated"] = IsRunningElevated();
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        const auto result = sharedWta.Request(
-            "_intellterm.wta/shell_sessions/list",
-            Json::writeString(writer, params));
-        if (!result)
-        {
-            THROW_HR(E_FAIL);
-        }
-
-        Json::Value response;
-        std::string errors;
-        std::istringstream stream{ *result };
-        if (!Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors) ||
-            !response["sessions"].isArray())
-        {
-            THROW_HR(WEB_E_INVALID_JSON_STRING);
-        }
-        co_return winrt::to_hstring(Json::writeString(writer, response["sessions"]));
+        const auto manager = winrt::get_self<ContentManager>(_manager);
+        co_return manager->ListProtocolShellSessionsWithLaunchConfiguration(
+            IsRunningElevated(),
+            std::wstring_view{ wtaPath },
+            extraArgs);
     }
 
     IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring id)

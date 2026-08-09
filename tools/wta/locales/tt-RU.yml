@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Агентны яңадан старт"
 commands.stop.summary: "Башкарылучы сорауны кире кагу"
 commands.sessions.summary: "Тарихи сеанслар сайлагычын ачу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Сакланган боерык юлы сеансларын карау һәм торгызу"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Бу панель өчен агент сайлагыз (туры алыштыру өчен /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────

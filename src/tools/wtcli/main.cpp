@@ -507,6 +507,8 @@ int main()
     listShellSessionsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
+        if (!SupportsMethod(server.get(), "list_shell_sessions", exitCode))
+            return;
         Json::Value sessions;
         auto hr = CallJson([&](BSTR* j) { return server->ListShellSessions(j); }, sessions);
         if (FAILED(hr)) { fprintf(stderr, "ListShellSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
@@ -554,6 +556,8 @@ int main()
     restoreShellSessionCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
+        if (!SupportsMethod(server.get(), "restore_shell_session", exitCode))
+            return;
 
         uint64_t windowId = 0;
         if (!restoreShellSessionWindowId.empty() && !TryParseU64(restoreShellSessionWindowId, windowId))

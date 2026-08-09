@@ -1504,7 +1504,7 @@ mod tests {
             id: None,
             expected_revision: None,
             name: name.to_string(),
-            active_pane_cwd: r"C:\repo".to_string(),
+            active_pane_cwd: r"C:\project".to_string(),
             layout_json: r#"{"actions":[]}"#.to_string(),
             elevated: false,
             buffers: vec![ShellSessionBufferInput {
@@ -1538,7 +1538,7 @@ mod tests {
         assert_eq!(list.sessions.len(), 2);
         assert_ne!(first.id, second.id);
         assert_eq!(list.sessions[0].name, "same");
-        assert_eq!(list.sessions[0].active_pane_cwd, r"C:\repo");
+        assert_eq!(list.sessions[0].active_pane_cwd, r"C:\project");
         assert_eq!(list.sessions[1].name, "same");
         Ok(())
     }

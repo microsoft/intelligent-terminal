@@ -808,6 +808,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationIconRestoreSession" xml:space="preserve">
+    <value>恢复</value>
+    <comment>Context menu item that brings a still-running background session back into a terminal window.</comment>
+  </data>
+  <data name="NotificationIconCloseSession" xml:space="preserve">
+    <value>关闭</value>
+    <comment>Context menu item that ends a still-running background session, stopping whatever it is running.</comment>
+  </data>
   <data name="NotificationMessage_TabActivity" xml:space="preserve">
     <value>选项卡“{0}”中的活动</value>
     <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
@@ -1283,6 +1291,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>智能体会话</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
   </data>
+  <data name="AgentPane_ShellSessionsTitle" xml:space="preserve">
+    <value>Shell 会话</value>
+    <comment>Title shown in the agent pane title bar when the saved shell-sessions view is active.</comment>
+  </data>
   <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
     <value>切换智能体</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
@@ -1323,5 +1335,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 例如，'wt -p "Ubuntu" -d C:\' 等同于 'wt new-tab -p "Ubuntu" -d C:\'。
 如需了解所有可用选项，请运行 "wt new-tab --help"。</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
+  </data>
+  <data name="PaneKeepRunningButton.ToolTip" xml:space="preserve">
+    <value>停止让此窗格在关闭后继续运行</value>
+    <comment>Tooltip and accessible name for the pin button that opts the pane out of remaining alive after it is closed.</comment>
   </data>
 </root>

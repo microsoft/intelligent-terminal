@@ -1600,7 +1600,12 @@ fn pack_replayed_messages_groups_into_expanded_turns() {
     tab.messages = vec![
         ChatMessage::System("Resuming session abc...".to_string()),
         ChatMessage::User(
-            "# Terminal Agent\nYou are...\n\n## User Request\nget time".to_string(),
+            r#"# Terminal Agent
+You are...
+
+## User Request
+get time"#
+                .to_string(),
         ),
         ChatMessage::Agent("Hello, I am ready.".to_string()),
         ChatMessage::User("list files".to_string()),
@@ -1644,7 +1649,12 @@ fn pack_replayed_recommendation_reuses_live_turn_formatting() {
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::User(
-            "# Terminal Agent\n...\n\n## User Request\nget time".to_string(),
+            r#"# Terminal Agent
+...
+
+## User Request
+get time"#
+                .to_string(),
         ),
         ChatMessage::Agent(
             r#"```json
@@ -2180,7 +2190,7 @@ fn restored_shell_agent_session_registers_as_born_bound() {
         params: json!({
             "agent_session_id": agent_session_id,
             "agent": "copilot",
-            "cwd": r"C:\repo",
+            "cwd": r"C:\project",
         }),
     });
 

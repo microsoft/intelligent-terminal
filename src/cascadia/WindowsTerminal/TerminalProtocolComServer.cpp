@@ -655,12 +655,21 @@ try
     *json = nullptr;
 
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    auto* host = s_emperor->GetMostRecentWindow();
-    RETURN_HR_IF(E_FAIL, !host);
-    const auto page = _getPage(host);
-    RETURN_HR_IF(E_FAIL, !page);
+    const auto request = s_emperor->GetShellSessionsForProtocol();
+    RETURN_IF_FAILED(request.Result);
 
-    const auto serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    std::string serialized;
+    if (request.Host)
+    {
+        const auto page = _getPage(request.Host.get());
+        RETURN_HR_IF(E_FAIL, !page);
+        serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    }
+    else
+    {
+        serialized = winrt::to_string(request.SerializedSessions);
+    }
+
     Json::Value sessions;
     std::string errors;
     std::istringstream stream{ serialized };

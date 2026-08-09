@@ -78,6 +78,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "AI ئاگېنتىنى قايتا قوزغات"
 commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
 commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "ساقلانغان بۇيرۇق قۇرى ئولتۇرۇشلىرىنى كۆرۈش ۋە ئەسلىگە كەلتۈرۈش"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "بۇ بەت ئۈچۈن ۋاكالەتچى تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────

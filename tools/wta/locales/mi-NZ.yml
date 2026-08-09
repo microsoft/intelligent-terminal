@@ -197,6 +197,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Tirotiro me te whakaora i ngā wātū raina whakahau kua tiakina"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Kōwhiria te māngai mō tēnei papa (/agent <id> ki te huri tika)"  # {Locked="/agent","<id>"}
 
 # ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────

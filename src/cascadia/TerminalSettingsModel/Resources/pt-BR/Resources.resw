@@ -1014,4 +1014,8 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Abrir agente em segundo plano em uma nova guia</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="TogglePaneKeepRunningCommandKey" xml:space="preserve">
+    <value>Alternar a execução do painel após fechá-lo</value>
+    <comment>Command name for opting the active terminal pane in or out of remaining alive after it is closed.</comment>
+  </data>
 </root>

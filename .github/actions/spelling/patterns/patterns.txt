@@ -256,6 +256,10 @@ _\d[0-9a-z]{12}['\.]
 
 # string test
 equals_insensitive_ascii\("\w+", "\w+"
+
+# WTA inline image attachment tokens
+\[image:\s+[^\]]+\]
+
 # hit-count: 47 file-count: 11
 # special cased printf markers
 \\r\\n(?=[a-z])|(?<!\\)\\[nrt](?=[a-z]{2,})(?=.*(?:<.*['"`]|"(?:[;,]|\);)$|\) \+$))

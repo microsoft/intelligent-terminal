@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "הפעל מחדש את הסוכן"
 commands.stop.summary: "בטל את הבקשה שמתבצעת"
 commands.sessions.summary: "פתח את בורר ההפעלות ההיסטוריות (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "עיין בהפעלות שמורות של שורת הפקודה ושחזר אותן"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "בחר את הסוכן עבור כרטיסייה זו (/agent <id> למעבר ישיר)"  # {Locked="/agent","<id>"}
 
 # ── לוח המלצות (src/ui/recommendations.rs) ───────────────────────────────

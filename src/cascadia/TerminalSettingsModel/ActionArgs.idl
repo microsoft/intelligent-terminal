@@ -174,16 +174,6 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<Windows.UI.Color> TabColor;
         String Profile; // Either a GUID or a profile's name if the GUID isn't a match
         Guid SessionId;
-        Boolean UseWorkspaceBuffer;
-        String AgentSessionId;
-        String AgentResumeCommandline;
-        String AgentPaneSessionId;
-        String AgentPaneView;
-        Boolean AgentPaneOpen;
-        String AgentPanePosition;
-        String ShellSessionRestorePath;
-        String DurableShellSessionId;
-        Int64 DurableShellSessionRevision;
         Boolean AppendCommandLine;
 
         // We use IReference<> to treat some args as nullable where null means
@@ -206,10 +196,19 @@ namespace Microsoft.Terminal.Settings.Model
 
         String ToCommandline();
 
-        // Keep new members at the end to preserve the ABI slots of the
-        // existing durable-session properties.
+        // Keep new members at the end to preserve the ABI slots of existing members.
+        Boolean UseWorkspaceBuffer;
+        String AgentSessionId;
         String AgentSessionAgent;
+        String AgentResumeCommandline;
+        String AgentPaneSessionId;
         String AgentPaneAgent;
+        String AgentPaneView;
+        Boolean AgentPaneOpen;
+        String AgentPanePosition;
+        String ShellSessionRestorePath;
+        String DurableShellSessionId;
+        Int64 DurableShellSessionRevision;
 
         // Set only by a durable-session restore, and never serialized: the id
         // of a session that may still be detached and running. SessionId always

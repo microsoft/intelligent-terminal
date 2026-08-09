@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ایجنٹ کو دوبارہ شروع کریں"
 commands.stop.summary: "جاری پرامپٹ منسوخ کریں"
 commands.sessions.summary: "تاریخی سیشنز کا انتخاب کار کھولیں (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "محفوظ کردہ کمانڈ لائن سیشنز کو براؤز اور بحال کریں"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "اس ٹیب کے لیے ایجنٹ منتخب کریں (براہ راست تبدیل کرنے کے لیے /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── سفارشات پینل (src/ui/recommendations.rs) ───────────────────────────────

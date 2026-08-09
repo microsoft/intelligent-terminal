@@ -117,7 +117,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "shell-sessions",
-        summary_key: "commands.sessions.summary",
+        summary_key: "commands.shell_sessions.summary",
         kind: CommandKind::ShellSessions,
     },
     CommandSpec {
@@ -382,6 +382,18 @@ mod tests {
             parse("/shell-sessions").unwrap().kind,
             CommandKind::ShellSessions
         );
+    }
+
+    #[test]
+    fn registry_summary_keys_follow_command_names() {
+        for spec in REGISTRY {
+            let expected = format!("commands.{}.summary", spec.name.replace('-', "_"));
+            assert_eq!(
+                spec.summary_key, expected,
+                "/{} must use its command-specific localization key",
+                spec.name
+            );
+        }
     }
 
     #[test]

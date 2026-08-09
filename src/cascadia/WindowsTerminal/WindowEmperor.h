@@ -37,6 +37,7 @@ public:
         WM_KEPT_SESSIONS_CHANGED,
         WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
         WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
+        WM_GET_SHELL_SESSIONS_FOR_PROTOCOL,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -75,6 +76,13 @@ public:
         bool Killed{ false };
     };
 
+    struct ShellSessionsProtocolRequest
+    {
+        std::shared_ptr<AppHost> Host;
+        winrt::hstring SerializedSessions;
+        HRESULT Result{ E_UNEXPECTED };
+    };
+
     WindowEmperor();
     ~WindowEmperor();
 
@@ -95,6 +103,7 @@ public:
     std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
     std::vector<DetachedSessionProtocolEntry> GetDetachedSessionsForProtocol() const noexcept;
     bool KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept;
+    ShellSessionsProtocolRequest GetShellSessionsForProtocol() const noexcept;
 
 private:
     struct SummonWindowSelectionArgs
