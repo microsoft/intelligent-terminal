@@ -31,14 +31,22 @@ namespace IntelligentTerminal
     //   * Unpackaged: %LOCALAPPDATA%\IntelligentTerminal\logs
     //
     // Logs are transient cache, hence `LocalCache\Local` (not `LocalState`,
-    // which holds persistent state like the agent-pane session index). Returns
-    // an empty path when `%LOCALAPPDATA%` is unavailable.
+    // which holds persistent state like the agent-pane session index). Mirrors
+    // WTA by falling back to `%APPDATA%`, then the process temp directory, when
+    // `%LOCALAPPDATA%` is unavailable.
     inline std::filesystem::path LogDir()
     {
         wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0 &&
+            GetEnvironmentVariableW(L"APPDATA", localAppData, MAX_PATH) == 0)
         {
-            return {};
+            wchar_t tempPath[MAX_PATH];
+            const auto length = GetTempPathW(ARRAYSIZE(tempPath), tempPath);
+            if (length == 0 || length >= ARRAYSIZE(tempPath))
+            {
+                return {};
+            }
+            return std::filesystem::path{ tempPath } / L"IntelligentTerminal" / L"logs";
         }
         std::filesystem::path base{ std::wstring(localAppData) };
 
