@@ -45,11 +45,10 @@ namespace winrt::TerminalApp::implementation
     inline constexpr bool ShouldResumeAgentSession(
         const bool hasAgentSession,
         const bool hasKeptSessionId,
-        const bool hasShellSessionRestorePath,
-        const bool useWorkspaceBuffer) noexcept
+        const bool hasShellSessionRestorePath) noexcept
     {
         return hasAgentSession &&
-               (hasKeptSessionId || hasShellSessionRestorePath || useWorkspaceBuffer);
+               (hasKeptSessionId || hasShellSessionRestorePath);
     }
 
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept

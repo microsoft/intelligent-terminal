@@ -197,7 +197,6 @@ namespace Microsoft.Terminal.Settings.Model
         String ToCommandline();
 
         // Keep new members at the end to preserve the ABI slots of existing members.
-        Boolean UseWorkspaceBuffer;
         String AgentSessionId;
         String AgentSessionAgent;
         String AgentResumeCommandline;

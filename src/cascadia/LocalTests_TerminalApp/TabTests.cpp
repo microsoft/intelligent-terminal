@@ -199,7 +199,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
         TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
-        TEST_METHOD(AgentSessionRestoreCoversLayoutOnlyDurableRestore);
+        TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
@@ -408,15 +408,14 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(ShouldPersistShellSession(false, false, false, true));
     }
 
-    void TabTests::AgentSessionRestoreCoversLayoutOnlyDurableRestore()
+    void TabTests::AgentSessionRestoreRequiresDurableRestoreContext()
     {
         using winrt::TerminalApp::implementation::ShouldResumeAgentSession;
 
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true, false, false));
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, false, true));
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true, false));
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true));
     }
 
     void TabTests::PaneAgentSessionEndPreservesDurableBinding()
