@@ -356,6 +356,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
 
+    _deferPersistedLayoutRestore = false;
     _skipPersistence = false;
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
@@ -402,6 +403,8 @@ void WindowEmperor::OpenWindow(const winrt::hstring& name)
     {
         return;
     }
+
+    _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
 
     // If a window with this name is already live, just summon it.
     // This mirrors the summon behavior in AppHost::DispatchCommandline (which is
@@ -670,6 +673,10 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
 
+    const auto args = commandlineToArgArray(GetCommandLineW());
+    const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
+    _deferPersistedLayoutRestore = isEmbedding;
+
     _createMessageWindow(windowClassName.c_str());
     _setupGlobalHotkeys();
     _setupKeptSessionTracking();
@@ -693,32 +700,18 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
-        const auto env = stringFromDoubleNullTerminated(envMem.get());
-        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
-        const auto showCmd = gsl::narrow_cast<uint32_t>(nCmdShow);
+        _startupEnvironment = stringFromDoubleNullTerminated(envMem.get());
+        _startupCurrentDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+        _startupShowWindowCommand = gsl::narrow_cast<uint32_t>(nCmdShow);
 
-        // Restore persisted windows.
-        const auto state = ApplicationState::SharedInstance();
-        const auto layouts = state.PersistedWindowLayouts();
-        if (layouts && layouts.Size() > 0)
+        if (!isEmbedding)
         {
-            _needsPersistenceCleanup = true;
-
-            uint32_t startIdx = 0;
-            for (const auto layout : layouts)
-            {
-                hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
-                startIdx += 1;
-            }
+            _restorePersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
         }
 
-
-        const auto args = commandlineToArgArray(GetCommandLineW());
-
-        if (args.size() == 2 && args[1] == L"-Embedding")
+        if (isEmbedding)
         {
-            // We were launched for ConPTY handoff. We have no windows and also don't want to exit.
+            // We were launched as a COM server. We have no windows and also don't want to exit.
             //
             // TODO: Here we could start a timer and exit after, say, 5 seconds
             // if no windows are created. But that's a minor concern.
@@ -728,7 +721,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // Create another window if needed: There aren't any yet, OR we got an explicit command line.
             if (_windows.empty() || args.size() != 1)
             {
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
+                _dispatchCommandlineCommon(args, _startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
             }
 
             // If we created no windows, e.g. because the args are "/?" we can just exit now.
@@ -745,6 +738,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         TerminalConnection::ConptyConnection::NewConnection([this](TerminalConnection::ConptyConnection conn) {
+            _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+
             TerminalApp::CommandlineArgs args;
             args.ShowWindowCommand(conn.ShowWindow());
             args.Connection(std::move(conn));
@@ -1216,11 +1211,10 @@ bool WindowEmperor::_hasKeptSessions() const
     return false;
 }
 
-// Re-runs the startup layout restore for a process that never restarted. Used
-// when a bare launch arrives while we are headless with kept sessions: the
-// layout was written when the last window closed, and restoring it is what
-// reattaches those sessions. Returns false if there is nothing to restore, so
-// the caller can fall back to an ordinary new window.
+// Runs the startup layout restore, including when a process stayed headless
+// after COM activation or after its last window closed with kept sessions.
+// Returns false if no window was restored, so callers can fall back to an
+// ordinary new window.
 bool WindowEmperor::_restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd)
 try
 {
@@ -1232,15 +1226,15 @@ try
     }
 
     _needsPersistenceCleanup = true;
+    const auto previousWindowCount = _windows.size();
 
-    uint32_t startIdx = 0;
-    for (const auto layout : layouts)
+    for (uint32_t index = 0; index < layouts.Size(); ++index)
     {
-        winrt::hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
+        winrt::hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(index) };
         _dispatchCommandlineCommon(args, cwd, env, showCmd);
-        startIdx += 1;
     }
-    return true;
+
+    return _windows.size() > previousWindowCount;
 }
 catch (...)
 {
@@ -1591,6 +1585,11 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                     // kept sessions stranded with no way to reach them. The
                     // startup path does this too, but it only runs once, when
                     // the process starts — and this process never left.
+                    const auto restoredDeferredLayouts = _restoreDeferredPersistedLayouts(handoff.cwd, handoff.env, handoff.show);
+                    if (restoredDeferredLayouts && argv.size() == 1)
+                    {
+                        return 0;
+                    }
                     if (_windows.empty() && _hasKeptSessions() && argv.size() == 1 &&
                         _restoreAllKeptSessions())
                     {
@@ -1636,6 +1635,17 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
+bool WindowEmperor::_restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd)
+{
+    if (!_deferPersistedLayoutRestore)
+    {
+        return false;
+    }
+
+    _deferPersistedLayoutRestore = false;
+    return _restorePersistedLayouts(cwd, env, showCmd);
+}
+
 void WindowEmperor::_setupSessionPersistence(bool enabled)
 {
     if (!enabled)
@@ -1652,6 +1662,11 @@ void WindowEmperor::_setupSessionPersistence(bool enabled)
 
 void WindowEmperor::_persistState(const ApplicationState& state) const
 {
+    if (_deferPersistedLayoutRestore)
+    {
+        return;
+    }
+
     // Calling an `ApplicationState` setter triggers a write to state.json.
     // With this if condition we avoid an unnecessary write when persistence is disabled.
     if (state.PersistedWindowLayouts())
@@ -1674,6 +1689,11 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 void WindowEmperor::_finalizeSessionPersistence() const
 {
     using namespace std::string_view_literals;
+
+    if (_deferPersistedLayoutRestore)
+    {
+        return;
+    }
 
     if (_skipPersistence)
     {
