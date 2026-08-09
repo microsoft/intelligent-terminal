@@ -33,6 +33,25 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    inline constexpr bool ShouldPersistShellSession(
+        const bool hasUserInput,
+        const bool hasDurableId,
+        const bool hasKeepRunningPane,
+        const bool hasAgentSession) noexcept
+    {
+        return hasUserInput || hasDurableId || hasKeepRunningPane || hasAgentSession;
+    }
+
+    inline constexpr bool ShouldResumeAgentSession(
+        const bool hasAgentSession,
+        const bool hasKeptSessionId,
+        const bool hasShellSessionRestorePath,
+        const bool useWorkspaceBuffer) noexcept
+    {
+        return hasAgentSession &&
+               (hasKeptSessionId || hasShellSessionRestorePath || useWorkspaceBuffer);
+    }
+
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
     {
         if (closeAccepted)

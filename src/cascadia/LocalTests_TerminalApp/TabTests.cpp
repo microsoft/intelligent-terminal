@@ -198,6 +198,9 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
+        TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
+        TEST_METHOD(AgentSessionRestoreCoversLayoutOnlyDurableRestore);
+        TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
         TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
@@ -392,6 +395,63 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(keepRunning.save);
         VERIFY_IS_TRUE(keepRunning.detach);
         VERIFY_IS_FALSE(keepRunning.persistScrollback);
+    }
+
+    void TabTests::ShellSessionAgentBindingQualifiesForPersistence()
+    {
+        using winrt::TerminalApp::implementation::ShouldPersistShellSession;
+
+        VERIFY_IS_FALSE(ShouldPersistShellSession(false, false, false, false));
+        VERIFY_IS_TRUE(ShouldPersistShellSession(true, false, false, false));
+        VERIFY_IS_TRUE(ShouldPersistShellSession(false, true, false, false));
+        VERIFY_IS_TRUE(ShouldPersistShellSession(false, false, true, false));
+        VERIFY_IS_TRUE(ShouldPersistShellSession(false, false, false, true));
+    }
+
+    void TabTests::AgentSessionRestoreCoversLayoutOnlyDurableRestore()
+    {
+        using winrt::TerminalApp::implementation::ShouldResumeAgentSession;
+
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true, false, false));
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, false, true));
+    }
+
+    void TabTests::PaneAgentSessionEndPreservesDurableBinding()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto control = tab->GetRootPane()->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(control);
+            const auto paneSessionId = control.Connection().SessionId();
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
+
+            const auto event = [&](const std::string_view name) {
+                Json::Value evt;
+                evt["params"]["pane_id"] = paneId;
+                evt["params"]["event"] = std::string{ name };
+                evt["params"]["agent_session_id"] = "agent-session-resumed";
+                evt["params"]["agent"] = "copilot";
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, evt)));
+            };
+
+            event("agent.session.start");
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+
+            event("agent.session.end");
+            const auto binding = page->_paneAgentSessions.find(paneSessionId);
+            VERIFY_IS_TRUE(binding != page->_paneAgentSessions.end());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-resumed" }, binding->second.sessionId);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, binding->second.agent);
+        });
     }
 
     void TabTests::ReattachKeptSessionWhenKeepRunningIsDisabled()

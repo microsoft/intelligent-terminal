@@ -196,6 +196,10 @@ marketplace concept and reads the extension folder directly.
   plugin requires both `WT_COM_CLSID` and `WT_SESSION`; the shared ACP process
   used by the agent pane is already tracked through ACP and must not create a
   duplicate hook-backed row.
+- **Pane routing survives sanitized hook environments.** Terminal exports the
+  pane GUID as both `WT_SESSION` and `WTA_PANE_SESSION_ID`; `send-event.ps1`
+  prefers the standard variable and uses the WTA-owned copy when an agent CLI
+  strips `WT_SESSION` from its hook subprocess.
 - **MSIX install paths include the package version.** They change on every
   upgrade, which is why `agent_hooks_installer` re-runs marketplace
   registration on every wta startup and strips stale entries before

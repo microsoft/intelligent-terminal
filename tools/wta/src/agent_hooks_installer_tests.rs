@@ -660,10 +660,18 @@ fn all_cli_send_event_scripts_are_identical() {
 }
 
 #[test]
+fn send_event_uses_wta_pane_id_when_cli_strips_wt_session() {
+    assert!(COPILOT_SEND_EVENT_PS1.contains("$env:WTA_PANE_SESSION_ID"));
+    assert!(COPILOT_SEND_EVENT_PS1.contains("[bool]$paneSessionId"));
+    assert!(COPILOT_SEND_EVENT_PS1.contains("-p `\"$paneSessionId`\""));
+}
+
+#[test]
 fn opencode_plugin_has_runtime_guards_and_source_tag() {
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains(OPENCODE_MANAGED_MARKER));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WT_COM_CLSID"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WT_SESSION"));
+    assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WTA_PANE_SESSION_ID"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.OPENCODE_CLIENT"));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"acp\""));
     assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("new TextEncoder().encode"));

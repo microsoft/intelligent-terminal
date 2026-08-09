@@ -16,7 +16,7 @@ export const WtAgentHooks = async ({ directory }) => {
   const enabled =
     process.platform === "win32" &&
     Boolean(process.env.WT_COM_CLSID) &&
-    Boolean(process.env.WT_SESSION) &&
+    Boolean(process.env.WT_SESSION || process.env.WTA_PANE_SESSION_ID) &&
     process.env.OPENCODE_CLIENT !== "acp"
   const script = `${import.meta.dir}\\wt-agent-hooks\\send-event.ps1`
 

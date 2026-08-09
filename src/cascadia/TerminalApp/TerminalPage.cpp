@@ -6005,17 +6005,12 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane();
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
-                    if (sessionEnded)
+                    if (!sessionEnded)
                     {
-                        if (const auto binding = _paneAgentSessions.find(*paneSessionId);
-                            binding != _paneAgentSessions.end() &&
-                            (agentSessionId.empty() || binding->second.sessionId == winrt::to_hstring(agentSessionId)))
-                        {
-                            _paneAgentSessions.erase(binding);
-                        }
-                    }
-                    else
-                    {
+                        // This map tracks the most recent resumable agent
+                        // session for durable restore, not merely a currently
+                        // running CLI process. Keep the binding after
+                        // agent.session.end; a later session start replaces it.
                         _paneAgentSessions.insert_or_assign(
                             *paneSessionId,
                             _PaneAgentSession{
@@ -6510,19 +6505,10 @@ namespace winrt::TerminalApp::implementation
                                     if (const auto connection = term2.Connection())
                                     {
                                         const auto paneSessionId = connection.SessionId();
-                                        if (paneBound && (eventName == "agent.session.stopped" || eventName == "agent.session.end"))
-                                        {
-                                            const auto binding = page->_paneAgentSessions.find(paneSessionId);
-                                            if (binding != page->_paneAgentSessions.end() &&
-                                                (agentSessionId.empty() || binding->second.sessionId == winrt::to_hstring(agentSessionId)))
-                                            {
-                                                page->_paneAgentSessions.erase(binding);
-                                            }
-                                        }
-                                        else if (paneBound &&
-                                                 (eventName == "agent.session.started" || eventName == "agent.session.start") &&
-                                                 !agentSessionId.empty() &&
-                                                 !agentSessionId.starts_with("sidekick-"))
+                                        if (paneBound &&
+                                            (eventName == "agent.session.started" || eventName == "agent.session.start") &&
+                                            !agentSessionId.empty() &&
+                                            !agentSessionId.starts_with("sidekick-"))
                                         {
                                             const auto resumeCommandline = _BuildAgentResumeCommandline(
                                                 agentParams.get("cli_source", "").asString(),
@@ -6564,14 +6550,9 @@ namespace winrt::TerminalApp::implementation
                                 return; // AgentEvent never falls through to vt_sequence
                             }
 
-                            // isOsc133 path — forward as vt_sequence.
-                            if (seqStr.starts_with("osc:133;A"))
-                            {
-                                if (const auto connection = term2.Connection())
-                                {
-                                    page->_paneAgentSessions.erase(connection.SessionId());
-                                }
-                            }
+                            // isOsc133 path — forward as vt_sequence. A shell
+                            // prompt after an agent exits does not clear the
+                            // pane's last resumable agent-session binding.
                             if (autoFixPolicyLocked)
                             {
                                 return;
@@ -8802,8 +8783,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto restoringAgentSession = newTerminalArgs &&
-                                           (!newTerminalArgs.ShellSessionRestorePath().empty() || newTerminalArgs.UseWorkspaceBuffer()) &&
-                                           !newTerminalArgs.AgentSessionId().empty();
+                                           ShouldResumeAgentSession(
+                                               !newTerminalArgs.AgentSessionId().empty(),
+                                               newTerminalArgs.KeptSessionId() != winrt::guid{},
+                                               !newTerminalArgs.ShellSessionRestorePath().empty(),
+                                               newTerminalArgs.UseWorkspaceBuffer());
         auto resumingAgentSession = false;
         if (restoringAgentSession)
         {

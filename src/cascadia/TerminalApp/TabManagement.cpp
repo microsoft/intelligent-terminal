@@ -884,19 +884,25 @@ namespace winrt::TerminalApp::implementation
         }
 
         bool hasUserInput = false;
+        bool hasAgentSession = false;
         tab->GetRootPane()->WalkTree([&](const auto& pane) {
             if (!pane->IsAgentPane())
             {
                 if (const auto control = pane->GetTerminalControl())
                 {
                     hasUserInput = hasUserInput || control.HasUserInput();
+                    if (const auto connection = control.Connection())
+                    {
+                        hasAgentSession = hasAgentSession || _paneAgentSessions.contains(connection.SessionId());
+                    }
                 }
             }
         });
-        if (!hasUserInput && tab->DurableShellSessionId().empty() && !hasKeepRunningPane)
+        if (!ShouldPersistShellSession(hasUserInput, !tab->DurableShellSessionId().empty(), hasKeepRunningPane, hasAgentSession))
         {
-            // Intentional Durable Sessions boundary: profile startup commands alone do not qualify until the user sends input.
-            _agentPaneLog("_PersistShellSession: skipped — no user input and no durable id");
+            // Profile startup commands alone do not qualify until the user
+            // sends input or a resumable agent session binds to the pane.
+            _agentPaneLog("_PersistShellSession: skipped — no user input, durable id, keep-running pane, or agent session");
             return;
         }
 

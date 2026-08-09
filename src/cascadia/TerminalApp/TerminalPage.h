@@ -729,6 +729,9 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring agent;
             winrt::hstring resumeCommandline;
         };
+        // Most recent resumable agent session observed in each shell pane.
+        // Retained after the CLI exits so durable restore can relaunch it;
+        // removed only when the pane itself closes or a new binding replaces it.
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
