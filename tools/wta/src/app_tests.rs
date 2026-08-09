@@ -1595,7 +1595,7 @@ fn tab_error_restores_the_previous_meaningful_session() {
 /// completes. Each User message opens a new turn and WTA's composed prompt is
 /// reduced back to the original user request.
 #[test]
-fn pack_replayed_messages_groups_into_collapsed_turns() {
+fn pack_replayed_messages_groups_into_expanded_turns() {
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::System("Resuming session abc...".to_string()),
@@ -1627,7 +1627,7 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(t0.prompt, "get time");
     assert_eq!(t0.details.len(), 1);
     assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
-    assert!(!t0.expanded, "replayed turn must default to collapsed");
+    assert!(t0.expanded, "replayed turn must match live expanded rendering");
     assert!(t0.trailing_marker.is_none());
 
     let t1 = &tab.completed_turns[1];
@@ -1636,7 +1636,7 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(t1.details.len(), 2);
     assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
     assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
-    assert!(!t1.expanded);
+    assert!(t1.expanded);
 }
 
 #[test]
@@ -1681,7 +1681,7 @@ fn pack_replayed_recommendation_reuses_live_turn_formatting() {
 }
 
 #[test]
-fn render_replayed_turn_hides_composed_prompt_and_shows_reply_when_expanded() {
+fn render_replayed_turn_matches_live_expanded_conversation() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     let tab = app.current_tab_mut();
@@ -1694,16 +1694,10 @@ fn render_replayed_turn_hides_composed_prompt_and_shows_reply_when_expanded() {
     ];
     tab.pack_replayed_messages_into_turns();
 
-    let collapsed = render_to_text(&mut app, 80, 24);
-    assert!(collapsed.contains("REAL_USER_REQUEST"));
-    assert!(!collapsed.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
-    assert!(!collapsed.contains("RESTORED_AGENT_REPLY"));
-
-    app.current_tab_mut().completed_turns[0].expanded = true;
-    let expanded = render_to_text(&mut app, 80, 24);
-    assert!(expanded.contains("REAL_USER_REQUEST"));
-    assert!(expanded.contains("RESTORED_AGENT_REPLY"));
-    assert!(!expanded.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
+    let rendered = render_to_text(&mut app, 80, 24);
+    assert!(rendered.contains("REAL_USER_REQUEST"));
+    assert!(rendered.contains("RESTORED_AGENT_REPLY"));
+    assert!(!rendered.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
 }
 
 /// Preview logic: huge single-line prompt must clip to the cap with
@@ -1741,7 +1735,7 @@ fn pack_replayed_messages_preserves_pre_user_orphans() {
     assert!(matches!(&tab.messages[1], ChatMessage::Agent(s) if s == "stray context dump"));
     assert_eq!(tab.completed_turns.len(), 1);
     assert_eq!(tab.completed_turns[0].prompt, "hi");
-    assert!(!tab.completed_turns[0].expanded);
+    assert!(tab.completed_turns[0].expanded);
 }
 
 /// Empty messages must no-op (no panic, no spurious turn).
@@ -1754,8 +1748,8 @@ fn pack_replayed_messages_empty_is_noop() {
 }
 
 /// Integration: SessionAttached for the load target must trigger
-/// packing — replayed User/Agent rows must end up as collapsed
-/// CompletedTurn entries, not loose ChatMessage rows.
+/// packing — replayed User/Agent rows must end up as expanded CompletedTurn
+/// entries, matching live chat rendering rather than loose ChatMessage rows.
 #[test]
 fn session_attached_for_load_target_packs_replayed_history() {
     let (mut app, _load_session_rx) = make_app_with_load_session_channel();
@@ -1796,10 +1790,10 @@ fn session_attached_for_load_target_packs_replayed_history() {
     assert_eq!(
         tab.completed_turns.len(),
         2,
-        "both replayed user prompts must become collapsed CompletedTurn rows"
+        "both replayed user prompts must become CompletedTurn rows"
     );
     for turn in &tab.completed_turns {
-        assert!(!turn.expanded, "replayed turns default collapsed");
+        assert!(turn.expanded, "replayed turns must match live expanded rendering");
     }
     // Resume is silent now — no "Resuming…" marker is posted, so after
     // packing the replayed User/Agent rows into turns nothing is left in

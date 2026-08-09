@@ -506,23 +506,23 @@ impl TabSession {
         }
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
-        let mut current: Option<(String, Vec<ChatMessage>, bool)> = None;
+        let mut current: Option<(String, Vec<ChatMessage>)> = None;
         for message in drained {
             match message {
                 ChatMessage::User(text) => {
-                    if let Some((prompt, details, expanded)) = current.take() {
+                    if let Some((prompt, details)) = current.take() {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded,
+                            expanded: true,
                             trailing_marker: None,
                         });
                     }
                     let prompt = replay_user_request(&text);
-                    current = Some((collapsed_prompt_preview(prompt), Vec::new(), false));
+                    current = Some((collapsed_prompt_preview(prompt), Vec::new()));
                 }
                 other => {
-                    if let Some((_, details, expanded)) = current.as_mut() {
+                    if let Some((_, details)) = current.as_mut() {
                         match other {
                             ChatMessage::Agent(text) => {
                                 if let Ok(recommendations) =
@@ -531,7 +531,6 @@ impl TabSession {
                                     details.push(ChatMessage::Agent(
                                         super::format_recommendations_for_chat(&recommendations),
                                     ));
-                                    *expanded = true;
                                 } else {
                                     details.push(ChatMessage::Agent(text));
                                 }
@@ -544,11 +543,11 @@ impl TabSession {
                 }
             }
         }
-        if let Some((prompt, details, expanded)) = current.take() {
+        if let Some((prompt, details)) = current.take() {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded,
+                expanded: true,
                 trailing_marker: None,
             });
         }
