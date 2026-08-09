@@ -689,145 +689,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_SaveWorkspaceSnapshot(const winrt::hstring& name, const WindowLayout& layout)
-    {
-        using namespace std::string_view_literals;
-        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-        const auto elevated = IsRunningElevated();
-        const auto filenamePrefix = elevated ? L"workspace_elevated_"sv : L"workspace_buffer_"sv;
-        const auto snapshotId = ::Microsoft::Console::Utils::CreateGuid();
-        const auto snapshotIdString = ::Microsoft::Console::Utils::GuidToPlainString(snapshotId);
-        struct PendingBufferWrite
-        {
-            std::filesystem::path destination;
-            std::filesystem::path temporary;
-            std::filesystem::path backup;
-            bool installed{ false };
-        };
-        std::vector<PendingBufferWrite> pendingWrites;
-        bool committed = false;
-        const auto cleanup = wil::scope_exit([&]() {
-            if (!committed)
-            {
-                for (auto it = pendingWrites.rbegin(); it != pendingWrites.rend(); ++it)
-                {
-                    std::error_code error;
-                    std::filesystem::remove(it->temporary, error);
-                    if (it->installed)
-                    {
-                        error.clear();
-                        std::filesystem::remove(it->destination, error);
-                    }
-                    if (!it->backup.empty())
-                    {
-                        MoveFileExW(it->backup.c_str(), it->destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-                    }
-                }
-            }
-        });
-
-        wil::unique_hlocal_security_descriptor sd;
-        SECURITY_ATTRIBUTES sa{};
-        if (elevated)
-        {
-            unsigned long size;
-            THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
-            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-            sa.lpSecurityDescriptor = sd.get();
-        }
-
-        for (const auto& tab : _tabs)
-        {
-            if (const auto tabImpl = _GetTabImpl(tab))
-            {
-                tabImpl->GetRootPane()->WalkTree([&](const auto& pane) {
-                    if (pane->IsAgentPane())
-                    {
-                        return;
-                    }
-
-                    std::filesystem::path temporaryPath;
-                    try
-                    {
-                        if (const auto control = pane->GetTerminalControl())
-                        {
-                            if (const auto connection = control.Connection())
-                            {
-                                const auto sessionId = connection.SessionId();
-                                if (sessionId != winrt::guid{})
-                                {
-                                    const auto filename = fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
-                                    const auto destinationPath = settingsDirectory / filename;
-                                    temporaryPath = settingsDirectory / fmt::format(FMT_COMPILE(L"workspace_tmp_{}_{}.txt"), snapshotIdString, sessionId);
-                                    wil::unique_hfile file{ CreateFileW(temporaryPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
-                                    THROW_LAST_ERROR_IF(!file);
-                                    control.PersistTo(reinterpret_cast<int64_t>(file.get()));
-
-                                    LARGE_INTEGER size;
-                                    THROW_IF_WIN32_BOOL_FALSE(GetFileSizeEx(file.get(), &size));
-                                    if (size.QuadPart > 0)
-                                    {
-                                        pendingWrites.emplace_back(PendingBufferWrite{ destinationPath, temporaryPath });
-                                        temporaryPath.clear();
-                                    }
-                                    else
-                                    {
-                                        file.reset();
-                                        std::error_code error;
-                                        std::filesystem::remove(temporaryPath, error);
-                                        temporaryPath.clear();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (...)
-                    {
-                        if (!temporaryPath.empty())
-                        {
-                            std::error_code error;
-                            std::filesystem::remove(temporaryPath, error);
-                        }
-                        throw;
-                    }
-                });
-            }
-        }
-
-        for (auto& write : pendingWrites)
-        {
-            if (std::filesystem::exists(write.destination))
-            {
-                write.backup = settingsDirectory / fmt::format(FMT_COMPILE(L"workspace_backup_{}_{}.txt"), snapshotIdString, write.destination.filename().wstring());
-                THROW_IF_WIN32_BOOL_FALSE(MoveFileExW(write.destination.c_str(), write.backup.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
-            }
-            THROW_IF_WIN32_BOOL_FALSE(MoveFileExW(write.temporary.c_str(), write.destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
-            write.installed = true;
-        }
-
-        const auto state = ApplicationState::SharedInstance();
-        THROW_HR_IF(E_FAIL, !state.SaveWorkspaceAndFlush(name, layout));
-        committed = true;
-        for (const auto& write : pendingWrites)
-        {
-            if (!write.backup.empty())
-            {
-                std::error_code error;
-                std::filesystem::remove(write.backup, error);
-            }
-        }
-    }
-
-    // Save while tab and pane content is still alive so scrollback and agent
-    // bindings are captured alongside the named workspace layout.
     void TerminalPage::_SaveWorkspaceIfNeeded()
     {
         const auto& windowName = _WindowProperties.WindowName();
         if (!windowName.empty())
         {
-            if (const auto layout = _GetWindowLayout(true))
+            if (const auto layout = GetWindowLayout())
             {
-                _SaveWorkspaceSnapshot(windowName, layout);
+                ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
             }
         }
     }

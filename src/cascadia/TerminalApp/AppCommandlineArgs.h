@@ -62,7 +62,6 @@ private:
         CLI::Option* commandlineOption;
         CLI::Option* profileNameOption;
         CLI::Option* sessionIdOption;
-        CLI::Option* useWorkspaceBufferOption;
         CLI::Option* agentSessionIdOption;
         CLI::Option* agentSessionAgentOption;
         CLI::Option* agentResumeCommandlineOption;
@@ -107,7 +106,6 @@ private:
 
     std::string _profileName;
     std::string _sessionId;
-    bool _useWorkspaceBuffer{ false };
     std::string _agentSessionId;
     std::string _agentSessionAgent;
     std::string _agentResumeCommandline;

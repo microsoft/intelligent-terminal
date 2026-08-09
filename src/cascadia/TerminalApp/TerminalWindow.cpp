@@ -275,14 +275,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalWindow::PersistWorkspace()
-    {
-        if (_root)
-        {
-            _root->PersistWorkspace();
-        }
-    }
-
     winrt::Windows::UI::Xaml::ElementTheme TerminalWindow::GetRequestedTheme()
     {
         return Theme().RequestedTheme();

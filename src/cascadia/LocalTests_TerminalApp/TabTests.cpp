@@ -199,7 +199,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
         TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
-        TEST_METHOD(AgentSessionRestoreCoversLayoutOnlyDurableRestore);
+        TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
@@ -220,6 +220,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BuildKeptGroupRestoreActionsPreservesRestoreArguments);
         TEST_METHOD(DurableSessionCloseWritesSaveResultsToTabAndPersistedActions);
         TEST_METHOD(GetWindowLayoutIncludesDurableMetadataForPersistedFullLayoutsOnly);
+        TEST_METHOD(PersistStateForNamedWorkspaceExcludesDurableMetadata);
         TEST_METHOD(PersistStateForUnnamedWindowIncludesDurableMetadata);
         TEST_METHOD(RestoreAllKeptGroupsSnapshotsOrderAndReportsFallback);
         TEST_METHOD(DetachedFailedSessionQueuedReapEmitsFailedEventOnce);
@@ -408,15 +409,14 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(ShouldPersistShellSession(false, false, false, true));
     }
 
-    void TabTests::AgentSessionRestoreCoversLayoutOnlyDurableRestore()
+    void TabTests::AgentSessionRestoreRequiresDurableRestoreContext()
     {
         using winrt::TerminalApp::implementation::ShouldResumeAgentSession;
 
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true, false, false));
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, false, true));
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true, false));
+        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false));
+        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true));
     }
 
     void TabTests::PaneAgentSessionEndPreservesDurableBinding()
@@ -1651,6 +1651,52 @@ namespace TerminalAppLocalTests
         VERIFY_IS_NOT_NULL(terminalArgs);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-unnamed" }, terminalArgs.DurableShellSessionId());
         VERIFY_ARE_EQUAL(17LL, terminalArgs.DurableShellSessionRevision());
+    }
+
+    void TabTests::PersistStateForNamedWorkspaceExcludesDurableMetadata()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        auto applicationState = ApplicationState::SharedInstance();
+        applicationState.Reset();
+        const auto resetState = wil::scope_exit([&]() {
+            applicationState.Reset();
+        });
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            _windowProperties->WindowName(L"workspace-without-durable-session");
+            tab->SetDurableShellSession(L"shell-session-workspace", 23);
+            page->PersistState();
+        });
+
+        const auto workspaces = applicationState.AllPersistedWorkspaces();
+        VERIFY_IS_NOT_NULL(workspaces);
+        VERIFY_IS_TRUE(workspaces.HasKey(L"workspace-without-durable-session"));
+
+        const auto workspaceActions = workspaces.Lookup(L"workspace-without-durable-session").TabLayout();
+        VERIFY_IS_NOT_NULL(workspaceActions);
+        VERIFY_ARE_EQUAL(1u, workspaceActions.Size());
+
+        const auto terminalArgs = _getTerminalArgs(workspaceActions.GetAt(0));
+        VERIFY_IS_NOT_NULL(terminalArgs);
+        VERIFY_IS_TRUE(terminalArgs.DurableShellSessionId().empty());
+        VERIFY_ARE_EQUAL(0LL, terminalArgs.DurableShellSessionRevision());
+
+        const auto persistedLayouts = applicationState.PersistedWindowLayouts();
+        VERIFY_IS_NOT_NULL(persistedLayouts);
+        VERIFY_ARE_EQUAL(1u, persistedLayouts.Size());
+        const auto startupActions = persistedLayouts.GetAt(0).TabLayout();
+        VERIFY_IS_NOT_NULL(startupActions);
+        VERIFY_ARE_EQUAL(1u, startupActions.Size());
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenWorkspace, startupActions.GetAt(0).Action());
     }
 
     void TabTests::RestoreAllKeptGroupsSnapshotsOrderAndReportsFallback()
