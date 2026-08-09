@@ -1591,19 +1591,17 @@ fn tab_error_restores_the_previous_meaningful_session() {
     );
 }
 
-/// Replayed history must be packed into collapsed CompletedTurn rows
-/// after session/load completes. Each User message opens a new turn;
-/// the prompt header is a short preview (the full original User text
-/// is kept as the first details entry so expanding shows everything).
-/// Subsequent non-User messages become later details. Default
-/// `expanded: false` so the resumed transcript doesn't dump as one
-/// long wall.
+/// Replayed history must be packed into CompletedTurn rows after session/load
+/// completes. Each User message opens a new turn and WTA's composed prompt is
+/// reduced back to the original user request.
 #[test]
 fn pack_replayed_messages_groups_into_collapsed_turns() {
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::System("Resuming session abc...".to_string()),
-        ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+        ChatMessage::User(
+            "# Terminal Agent\nYou are...\n\n## User Request\nget time".to_string(),
+        ),
         ChatMessage::Agent("Hello, I am ready.".to_string()),
         ChatMessage::User("list files".to_string()),
         ChatMessage::ToolCall {
@@ -1626,26 +1624,86 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(tab.completed_turns.len(), 2);
 
     let t0 = &tab.completed_turns[0];
-    // Preview shows first non-empty line + ellipsis (extra lines below).
-    assert_eq!(t0.prompt, "# Terminal Agent…");
-    // details = [original full User, Agent reply].
-    assert_eq!(t0.details.len(), 2);
-    assert!(
-        matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are"))
-    );
-    assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
+    assert_eq!(t0.prompt, "get time");
+    assert_eq!(t0.details.len(), 1);
+    assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
     assert!(!t0.expanded, "replayed turn must default to collapsed");
     assert!(t0.trailing_marker.is_none());
 
     let t1 = &tab.completed_turns[1];
     // Short single-line prompt — no ellipsis.
     assert_eq!(t1.prompt, "list files");
-    // details = [original User, ToolCall, Agent].
-    assert_eq!(t1.details.len(), 3);
-    assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
-    assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
-    assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
+    assert_eq!(t1.details.len(), 2);
+    assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
+    assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
     assert!(!t1.expanded);
+}
+
+#[test]
+fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+    let mut tab = TabSession::default();
+    tab.messages = vec![
+        ChatMessage::User(
+            "# Terminal Agent\n...\n\n## User Request\nget time".to_string(),
+        ),
+        ChatMessage::Agent(
+            r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [{
+    "choice": 1,
+    "title": "Get the current time",
+    "rationale": "Displays the current time.",
+    "actions": [{
+      "type": "send",
+      "parent": "old-pane-id",
+      "input": "Get-Date -Format 'HH:mm:ss'"
+    }]
+  }]
+}
+```"#
+                .to_string(),
+        ),
+    ];
+
+    tab.pack_replayed_messages_into_turns();
+
+    assert_eq!(tab.completed_turns.len(), 1);
+    let turn = &tab.completed_turns[0];
+    assert_eq!(turn.prompt, "get time");
+    assert!(turn.expanded);
+    assert_eq!(
+        turn.details,
+        vec![ChatMessage::Agent(
+            "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+        )]
+    );
+}
+
+#[test]
+fn render_replayed_turn_hides_composed_prompt_and_shows_reply_when_expanded() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let tab = app.current_tab_mut();
+    tab.messages = vec![
+        ChatMessage::User(
+            "# Terminal Agent\nSYSTEM_PROMPT_MUST_NOT_RENDER\n\n## User Request\nREAL_USER_REQUEST"
+                .to_string(),
+        ),
+        ChatMessage::Agent("RESTORED_AGENT_REPLY".to_string()),
+    ];
+    tab.pack_replayed_messages_into_turns();
+
+    let collapsed = render_to_text(&mut app, 80, 24);
+    assert!(collapsed.contains("REAL_USER_REQUEST"));
+    assert!(!collapsed.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
+    assert!(!collapsed.contains("RESTORED_AGENT_REPLY"));
+
+    app.current_tab_mut().completed_turns[0].expanded = true;
+    let expanded = render_to_text(&mut app, 80, 24);
+    assert!(expanded.contains("REAL_USER_REQUEST"));
+    assert!(expanded.contains("RESTORED_AGENT_REPLY"));
+    assert!(!expanded.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
 }
 
 /// Preview logic: huge single-line prompt must clip to the cap with

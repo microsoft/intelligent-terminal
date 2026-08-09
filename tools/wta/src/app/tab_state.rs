@@ -104,8 +104,7 @@ pub struct CompletedTurn {
 /// Maximum displayed characters for a collapsed turn header preview.
 /// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
 /// wrap width even after the chevron + prompt prefix; longer prompts get
-/// truncated with a trailing ellipsis. The full original text is always
-/// preserved in the turn's first `details` entry.
+/// truncated with a trailing ellipsis.
 const COLLAPSED_PROMPT_PREVIEW_CHARS: usize = 80;
 
 /// Build the single-line preview shown in a collapsed `CompletedTurn`
@@ -135,6 +134,14 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
         out.push('…');
     }
     out
+}
+
+fn replay_user_request(text: &str) -> &str {
+    const DELIMITER: &str = "## User Request\n";
+    text.rsplit_once(DELIMITER)
+        .map(|(_, request)| request.trim())
+        .filter(|request| !request.is_empty())
+        .unwrap_or_else(|| text.trim())
 }
 
 pub struct PermissionState {
@@ -499,36 +506,49 @@ impl TabSession {
         }
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
-        let mut current: Option<(String, Vec<ChatMessage>)> = None;
+        let mut current: Option<(String, Vec<ChatMessage>, bool)> = None;
         for message in drained {
             match message {
                 ChatMessage::User(text) => {
-                    if let Some((prompt, details)) = current.take() {
+                    if let Some((prompt, details, expanded)) = current.take() {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded: false,
+                            expanded,
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
+                    let prompt = replay_user_request(&text);
+                    current = Some((collapsed_prompt_preview(prompt), Vec::new(), false));
                 }
                 other => {
-                    if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                    if let Some((_, details, expanded)) = current.as_mut() {
+                        match other {
+                            ChatMessage::Agent(text) => {
+                                if let Ok(recommendations) =
+                                    crate::coordinator::parse_recommendation_set(&text)
+                                {
+                                    details.push(ChatMessage::Agent(
+                                        super::format_recommendations_for_chat(&recommendations),
+                                    ));
+                                    *expanded = true;
+                                } else {
+                                    details.push(ChatMessage::Agent(text));
+                                }
+                            }
+                            other => details.push(other),
+                        }
                     } else {
                         kept.push(other);
                     }
                 }
             }
         }
-        if let Some((prompt, details)) = current.take() {
+        if let Some((prompt, details, expanded)) = current.take() {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded: false,
+                expanded,
                 trailing_marker: None,
             });
         }
