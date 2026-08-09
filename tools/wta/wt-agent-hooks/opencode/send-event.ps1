@@ -92,14 +92,7 @@ try {
         elseif ($env:COPILOT_CLI)  { 'copilot' }
         elseif ($env:CLAUDE_PLUGIN_ROOT) { 'claude' }
         else { '<unknown>' }
-    # Copilot can strip the well-known WT_SESSION variable from hook
-    # subprocesses. Terminal injects the same pane GUID under a WTA-owned
-    # fallback so async wtcli dispatch never has to guess the active pane.
-    $paneSessionId =
-        if ($env:WT_SESSION) { $env:WT_SESSION }
-        elseif ($env:WTA_PANE_SESSION_ID) { $env:WTA_PANE_SESSION_ID }
-        else { '' }
-    $wtSess = if ($paneSessionId) { $paneSessionId } else { '<no-WT_SESSION>' }
+    $wtSess = if ($env:WT_SESSION) { $env:WT_SESSION } else { '<no-WT_SESSION>' }
     Add-Content -LiteralPath $tracePath -Value "$stamp | ENTER cli=$CliSource event=$EventType envHint=$cliEnvHint wt=$wtSess pid=$PID" -ErrorAction SilentlyContinue
 
     # ── Locate wtcli.exe ────────────────────────────────────────────────
@@ -258,7 +251,7 @@ try {
     $wrapper = @{
         cli_source       = $cliSource
         agent_session_id = $agentSessionId
-        pane_bound       = [bool]$paneSessionId
+        pane_bound       = [bool]$env:WT_SESSION
         payload          = $parsed
     }
 
@@ -293,7 +286,7 @@ try {
         $wrapper = @{
             cli_source       = $cliSource
             agent_session_id = $agentSessionId
-            pane_bound       = [bool]$paneSessionId
+            pane_bound       = [bool]$env:WT_SESSION
             payload          = @{
                 _truncated     = $true
                 _original_size = $originalSize
@@ -331,8 +324,8 @@ try {
     # in the session management list the same (focused) pane GUID, so Enter on any live row
     # focuses the focused pane instead of its own pane.
     $paneArg = ''
-    if ($paneSessionId) {
-        $paneArg = " -p `"$paneSessionId`""
+    if ($env:WT_SESSION) {
+        $paneArg = " -p `"$($env:WT_SESSION)`""
     }
     # Async dispatch: launch wtcli via ShellExecuteEx so the parent PowerShell
     # process can exit immediately without waiting for wtcli's COM round-trip.

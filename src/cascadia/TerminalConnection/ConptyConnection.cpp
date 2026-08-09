@@ -59,12 +59,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         {
             // Ensure every connection has the unique identifier in the environment.
             // Convert connection Guid to string and ignore the enclosing '{}'.
-            const auto paneSessionId = Utils::GuidToPlainString(_sessionId);
-            environment.as_map().insert_or_assign(L"WT_SESSION", paneSessionId);
-            // Some agent CLIs strip the well-known WT_SESSION variable from
-            // hook subprocesses. Preserve the same routing identity under a
-            // WTA-owned name so lifecycle hooks can still target this pane.
-            environment.as_map().insert_or_assign(L"WTA_PANE_SESSION_ID", paneSessionId);
+            environment.as_map().insert_or_assign(L"WT_SESSION", Utils::GuidToPlainString(_sessionId));
 
             // The profile Guid does include the enclosing '{}'
             environment.as_map().insert_or_assign(L"WT_PROFILE_ID", Utils::GuidToString(_profileGuid));
@@ -126,7 +121,6 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // WSLENV.3: Add our terminal-specific environment variables to WSLENV.
             static constexpr std::wstring_view builtinWslEnvVars[] = {
                 L"WT_SESSION",
-                L"WTA_PANE_SESSION_ID",
                 L"WT_PROFILE_ID",
                 L"WT_COM_CLSID",
                 L"INTELLIGENT_TERMINAL",
