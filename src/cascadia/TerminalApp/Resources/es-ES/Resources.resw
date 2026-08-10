@@ -1304,10 +1304,10 @@ Para todas las opciones disponibles, ejecute 'wt new-tab --help'.</value>
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Esta pestaña seguirá ejecutándose después de cerrarla.</value>
-    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Tooltip for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Esta pestaña seguirá ejecutándose después de cerrarla.</value>
-    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Accessible name for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>

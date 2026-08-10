@@ -2051,7 +2051,7 @@ namespace winrt::TerminalApp::implementation
         {
             Controls::FontIcon keepRunningSymbol;
             keepRunningSymbol.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
-            keepRunningSymbol.Glyph(L"\xE718");
+            keepRunningSymbol.Glyph(L"\xE916"); // Stopwatch
 
             _keepRunningMenuItem.Click([weakThis](auto&&, auto&&) {
                 if (auto tab{ weakThis.get() })

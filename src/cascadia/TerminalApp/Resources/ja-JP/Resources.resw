@@ -1313,10 +1313,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>このタブは閉じた後も実行され続けます。</value>
-    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Tooltip for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>このタブは閉じた後も実行され続けます。</value>
-    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Accessible name for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>

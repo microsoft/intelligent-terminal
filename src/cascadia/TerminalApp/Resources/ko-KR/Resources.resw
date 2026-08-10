@@ -1344,10 +1344,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>이 탭은 닫은 후에도 계속 실행됩니다.</value>
-    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Tooltip for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
   <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>이 탭은 닫은 후에도 계속 실행됩니다.</value>
-    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+    <comment>Accessible name for the stopwatch icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>

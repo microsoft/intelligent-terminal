@@ -11,7 +11,7 @@ issue id: durable-sessions (bucket 2)
 
 Durable Sessions combines saving sessions for restore with keeping their shells
 running. Users opt in a whole tab from its context menu; the tab header then
-shows a pin. Closing that tab detaches all of its non-agent shell panes so the
+shows a keep-running indicator. Closing that tab detaches all of its non-agent shell panes so the
 terminal process can stay alive with nothing on screen. When "When Terminal
 starts" is set to either restore option, the tab also persists its layout, cwd,
 shell sessions, and agent sessions. "Restore window layout and content"
@@ -190,7 +190,7 @@ request in flight at a time.
 ## Opt-in and settings
 
 Right-click a tab and select **Add tab to keep-running**. The item changes to
-**Remove tab from keep-running** after selection, and a pin in the tab header
+**Remove tab from keep-running** after selection, and a stopwatch in the tab header
 shows which tabs are selected. There is no pane-level opt-in or default keyboard
 shortcut.
 
