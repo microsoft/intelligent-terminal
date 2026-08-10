@@ -134,6 +134,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C054` `[E2E]` **Different positions work:** Open/hide/focus works for bottom, right, left, and top pane positions.
 - [ ] `C055` `[E2E]` **Stash preserves chat:** Hiding and restoring the pane preserves helper process, connection state, and chat history.
 - [ ] `C056` `[E2E]` **Tab close cleans up:** Closing the owning tab cleans up the helper and does not leave a broken pane.
+- [ ] `C247` `[new]` `[E2E]` **Closing a tab mid-turn leaves sibling agent tabs working:** When one tab closes with a prompt in flight, its orphaned result is discarded without terminating the shared agent CLI, and another tab can continue chatting without a restart. _(#419/#425; E2E: `Feature.SharedAgentLifecycle`.)_
 - [ ] `C215` `[new]` `[E2E]` **Agent panes are not persisted into saved layout:** Saving and restoring a window layout does not resurrect a previously-open agent pane; restored windows come back without an unexpected agent pane. _(#360/#275.)_
 
 ### Built-in agent chat matrix
