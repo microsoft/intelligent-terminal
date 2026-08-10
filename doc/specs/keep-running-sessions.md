@@ -119,7 +119,8 @@ reattaches every live group directly from the process-wide `ContentManager`.
 The notification-area menu also lists each detached tab separately, with
 **Restore** and **Close** actions. A group is hidden while its restore is
 pending, preventing a second restore request; it reappears if dispatch leaves
-any pane unconfirmed.
+any pane unconfirmed. When a durable database id is available, it is also the
+group identity, so the same saved shell session can only occupy one row.
 
 ### Ordering with bucket 1
 
@@ -179,6 +180,12 @@ unconfirmed panes. This deliberately does not use
 Groups from several former windows may be restored into one available window.
 The original window topology and pane split ratios are not retained; panes in a
 multi-pane group are currently rebuilt with equal splits.
+
+Opening a saved shell session is idempotent across windows. The protocol first
+looks for a tab whose durable shell-session id matches the database primary key;
+if found, it summons that window and focuses the existing tab instead of
+starting another copy. The shell-session picker also allows only one Enter
+request in flight at a time.
 
 ## Opt-in and settings
 

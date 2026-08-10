@@ -2947,6 +2947,7 @@ impl App {
         tab.current_view = View::Chat;
         tab.shell_sessions_loading = false;
         tab.shell_sessions_error = None;
+        tab.shell_session_restore_in_flight = false;
         tab.shell_session_delete_confirmation = None;
         tab.shell_session_delete_in_flight = false;
         tab.shell_sessions_search_focused = false;
@@ -2966,14 +2967,23 @@ impl App {
     }
 
     fn restore_shell_session(&mut self, tab_id: String, id: String) {
-        self.tab_mut(&tab_id).shell_sessions_error = None;
+        {
+            let tab = self.tab_mut(&tab_id);
+            if tab.shell_session_restore_in_flight {
+                return;
+            }
+            tab.shell_sessions_error = None;
+            tab.shell_session_restore_in_flight = true;
+        }
         let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
             tab_id: tab_id.clone(),
             id,
             window_id: self.window_id.clone(),
         };
         if self.master_request_tx.send(request).is_err() {
-            self.tab_mut(&tab_id).shell_sessions_error =
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_session_restore_in_flight = false;
+            tab.shell_sessions_error =
                 Some("Shell-session master connection is unavailable".to_string());
         }
     }

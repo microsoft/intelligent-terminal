@@ -31,6 +31,7 @@ WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 static DWORD g_comRegistration = 0;
 static DWORD g_activeObjectRegistration = 0;
 static std::shared_mutex g_mtx;
+static std::mutex g_shellSessionRestoreMutex;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
 
@@ -1041,6 +1042,19 @@ try
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
     const auto idH = _hstr(id);
     RETURN_HR_IF(E_INVALIDARG, idH.empty());
+
+    // Keep the active-tab lookup and first synchronous NewTab action atomic
+    // across concurrent wtcli/helper requests for the same database row.
+    std::scoped_lock restoreLock{ g_shellSessionRestoreMutex };
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (page && page.FocusProtocolShellSession(idH).get())
+        {
+            return S_OK;
+        }
+    }
 
     const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);

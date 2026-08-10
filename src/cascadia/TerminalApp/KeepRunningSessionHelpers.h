@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace winrt::TerminalApp::implementation
@@ -41,6 +42,31 @@ namespace winrt::TerminalApp::implementation
         const bool hasAgentSession) noexcept
     {
         return hasUserInput || hasDurableId || keepRunning || hasAgentSession;
+    }
+
+    inline winrt::guid GetKeepRunningGroupId(
+        const winrt::hstring& tabStableId,
+        const winrt::hstring& durableShellSessionId)
+    {
+        if (!durableShellSessionId.empty())
+        {
+            std::wstring text{ durableShellSessionId };
+            if (text.front() != L'{')
+            {
+                text.insert(text.begin(), L'{');
+                text.push_back(L'}');
+            }
+
+            GUID durableId{};
+            if (SUCCEEDED(IIDFromString(text.c_str(), &durableId)))
+            {
+                return winrt::guid{ durableId };
+            }
+        }
+
+        GUID tabId{};
+        winrt::check_hresult(IIDFromString(tabStableId.c_str(), &tabId));
+        return winrt::guid{ tabId };
     }
 
     inline constexpr bool ShouldResumeAgentSession(

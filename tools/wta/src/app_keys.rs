@@ -243,7 +243,9 @@ impl App {
             let tab_id = self.active_tab_key().to_string();
             let count = self.current_tab().matching_shell_session_count();
 
-            if self.current_tab().shell_session_delete_in_flight {
+            if self.current_tab().shell_session_restore_in_flight
+                || self.current_tab().shell_session_delete_in_flight
+            {
                 return;
             }
             if let Some(id) = self.current_tab().shell_session_delete_confirmation.clone() {

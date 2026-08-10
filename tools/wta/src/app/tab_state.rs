@@ -368,6 +368,7 @@ pub struct TabSession {
     pub shell_sessions_list_state: ratatui::widgets::ListState,
     pub shell_sessions_loading: bool,
     pub shell_sessions_error: Option<String>,
+    pub shell_session_restore_in_flight: bool,
     pub shell_session_delete_confirmation: Option<String>,
     pub shell_session_delete_in_flight: bool,
 
