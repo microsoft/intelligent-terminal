@@ -7893,6 +7893,8 @@ fn rec_card_height_includes_inter_card_gap() {
 
 #[test]
 fn rec_card_height_handles_open_action_synthesis() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let choice = RecommendationChoice {
         choice: 0,
         title: "t".into(),
@@ -7902,13 +7904,71 @@ fn rec_card_height_handles_open_action_synthesis() {
             parent: None,
             cwd: Some("C:/repo".into()),
             title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+    // The rendered "New tab (logs) in C:/repo" fits on one row at width 72.
+    // Directions are ignored for tab targets.
+    assert_eq!(
+        recommendation_card_height(&choice, 80) as u16,
+        CARD_MIN_SIZE + 1
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_panel_direction_display() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::Open {
+            target: OpenTarget::Panel,
+            parent: None,
+            cwd: Some("C:/repo".into()),
+            title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+
+    // The renderer displays "New panel (left) (logs) in C:/repo", which wraps
+    // at the 32-cell content width. The old planner omitted "(left)".
+    assert_eq!(
+        recommendation_card_height(&choice, 40) as u16,
+        CARD_MIN_SIZE + 2
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_and_send_fallback() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("es-ES");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::OpenAndSend {
+            target: OpenTarget::Tab,
+            parent: None,
+            input: "aaaaaaaa".into(),
+            agent: None,
+            cwd: None,
+            title: None,
             direction: None,
             profile: None,
         }],
     };
-    let h = recommendation_card_height(&choice, 80);
-    // "New tab (logs) in C:/repo" fits on one row at width 72.
-    assert_eq!(h as u16, CARD_MIN_SIZE + 1);
+
+    // The localized renderer text is "agente: aaaaaaaa" (16 chars), which
+    // wraps at the 15-character content width. The old hard-coded "agent"
+    // label fit on one row.
+    assert_eq!(
+        recommendation_card_height(&choice, 23) as u16,
+        CARD_MIN_SIZE + 2
+    );
 }
 
 #[test]

@@ -79,7 +79,7 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
     let Some(choice) = recommendations.choices.get(selected) else {
         return;
     };
-    let (summary, buttons, body_kind) = extract_card_content(choice, app, true);
+    let (summary, buttons, body_kind) = extract_card_content(choice);
     let marker = "○";
     let position = if recommendations.choices.len() > 1 {
         format!(" ↑↓ {}/{} ", selected + 1, recommendations.choices.len())
@@ -181,7 +181,7 @@ fn render_card(
         return;
     };
 
-    let (command_text, buttons, body_kind) = extract_card_content(choice, app, is_selected);
+    let (command_text, buttons, body_kind) = extract_card_content(choice);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
@@ -213,82 +213,92 @@ enum CardBodyKind {
     Description,
 }
 
-fn extract_card_content(
-    choice: &RecommendationChoice,
-    _app: &App,
-    _is_selected: bool,
-) -> (String, Vec<String>, CardBodyKind) {
-    for action in &choice.actions {
-        match action {
-            RecommendedAction::Send { input, .. } => {
-                return (
-                    input.clone(),
-                    vec![
-                        t!("recommendations.button_run_command").into_owned(),
-                        t!("recommendations.button_insert_in_terminal").into_owned(),
-                    ],
-                    CardBodyKind::Code,
-                );
-            }
-            RecommendedAction::OpenAndSend {
-                target,
-                input,
-                agent,
-                ..
-            } => {
-                let fallback = t!("recommendations.agent_fallback").into_owned();
-                let agent_label = agent.as_deref().unwrap_or(&fallback);
-                let display = t!("recommendations.open_and_send_display",
-                    agent = agent_label, input = input.as_str()).into_owned();
-                let target_label = match target {
-                    OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
-                    OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
-                };
-                return (display, vec![target_label], CardBodyKind::Code);
-            }
-            RecommendedAction::Open {
-                target,
-                cwd,
-                title,
-                direction,
-                ..
-            } => {
-                let kind = match target {
-                    OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
-                    OpenTarget::Panel => match direction.as_deref() {
-                        Some(d) if !d.is_empty() => {
-                            t!("recommendations.open_kind_panel_direction", direction = d).into_owned()
-                        }
-                        _ => t!("recommendations.open_kind_panel").into_owned(),
-                    },
-                };
-                let display = match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        t!("recommendations.open_new_with_title_and_cwd",
-                            kind = kind.as_str(), title = t, cwd = c).into_owned()
-                    }
-                    (Some(t), _) if !t.is_empty() => {
-                        t!("recommendations.open_new_with_title",
-                            kind = kind.as_str(), title = t).into_owned()
-                    }
-                    (_, Some(c)) if !c.is_empty() => {
-                        t!("recommendations.open_new_with_cwd",
-                            kind = kind.as_str(), cwd = c).into_owned()
-                    }
-                    _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
-                };
-                let button = match target {
-                    OpenTarget::Tab => t!("recommendations.button_open_tab").into_owned(),
-                    OpenTarget::Panel => t!("recommendations.button_open_panel").into_owned(),
-                };
-                return (display, vec![button], CardBodyKind::Description);
+fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, CardBodyKind) {
+    let display = recommendation_display_text(choice);
+    let (buttons, body_kind) = match choice.actions.first() {
+        Some(RecommendedAction::Send { .. }) => (
+            vec![
+                t!("recommendations.button_run_command").into_owned(),
+                t!("recommendations.button_insert_in_terminal").into_owned(),
+            ],
+            CardBodyKind::Code,
+        ),
+        Some(RecommendedAction::OpenAndSend { target, .. }) => {
+            let target_label = match target {
+                OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
+                OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
+            };
+            (vec![target_label], CardBodyKind::Code)
+        }
+        Some(RecommendedAction::Open { target, .. }) => {
+            let button = match target {
+                OpenTarget::Tab => t!("recommendations.button_open_tab").into_owned(),
+                OpenTarget::Panel => t!("recommendations.button_open_panel").into_owned(),
+            };
+            (vec![button], CardBodyKind::Description)
+        }
+        None => (
+            vec![t!("recommendations.button_execute").into_owned()],
+            CardBodyKind::Description,
+        ),
+    };
+    (display, buttons, body_kind)
+}
+
+pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> String {
+    match choice.actions.first() {
+        Some(RecommendedAction::Send { input, .. }) => input.clone(),
+        Some(RecommendedAction::OpenAndSend { input, agent, .. }) => {
+            let fallback = t!("recommendations.agent_fallback").into_owned();
+            let agent_label = agent.as_deref().unwrap_or(&fallback);
+            t!(
+                "recommendations.open_and_send_display",
+                agent = agent_label,
+                input = input.as_str()
+            )
+            .into_owned()
+        }
+        Some(RecommendedAction::Open {
+            target,
+            cwd,
+            title,
+            direction,
+            ..
+        }) => {
+            let kind = match target {
+                OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
+                OpenTarget::Panel => match direction.as_deref() {
+                    Some(direction) if !direction.is_empty() => t!(
+                        "recommendations.open_kind_panel_direction",
+                        direction = direction
+                    )
+                    .into_owned(),
+                    _ => t!("recommendations.open_kind_panel").into_owned(),
+                },
+            };
+            match (title.as_deref(), cwd.as_deref()) {
+                (Some(title), Some(cwd)) if !title.is_empty() && !cwd.is_empty() => t!(
+                    "recommendations.open_new_with_title_and_cwd",
+                    kind = kind.as_str(),
+                    title = title,
+                    cwd = cwd
+                )
+                .into_owned(),
+                (Some(title), _) if !title.is_empty() => t!(
+                    "recommendations.open_new_with_title",
+                    kind = kind.as_str(),
+                    title = title
+                )
+                .into_owned(),
+                (_, Some(cwd)) if !cwd.is_empty() => t!(
+                    "recommendations.open_new_with_cwd",
+                    kind = kind.as_str(),
+                    cwd = cwd
+                )
+                .into_owned(),
+                _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
             }
         }
+        None => choice.title.clone(),
     }
-
-    (
-        choice.title.clone(),
-        vec![t!("recommendations.button_execute").into_owned()],
-        CardBodyKind::Description,
-    )
 }

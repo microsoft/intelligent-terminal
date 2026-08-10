@@ -1,7 +1,9 @@
 use crate::app::PermissionState;
-use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction};
+use crate::coordinator::{RecommendationChoice, RecommendationSet};
+use unicode_width::UnicodeWidthStr;
 
 use super::card::{card_content_width, CARD_MIN_SIZE};
+use super::recommendations::recommendation_display_text;
 
 pub(crate) const COMPACT_RECOMMENDATION_HEIGHT: u16 = 2;
 const COMPACT_PERMISSION_HEIGHT: u16 = 1;
@@ -149,33 +151,7 @@ pub(crate) fn recommendation_panel_height(
 /// Rendered recommendation-card height, including one inter-card gap row.
 pub(crate) fn recommendation_card_height(choice: &RecommendationChoice, panel_width: u16) -> usize {
     let inner_width = card_content_width(panel_width);
-    let text = choice
-        .actions
-        .iter()
-        .find_map(|action| match action {
-            RecommendedAction::Send { input, .. } => Some(input.clone()),
-            RecommendedAction::OpenAndSend { agent, input, .. } => {
-                let label = agent.as_deref().unwrap_or("agent");
-                Some(format!("{label}: {input}"))
-            }
-            RecommendedAction::Open {
-                target, cwd, title, ..
-            } => {
-                let kind = match target {
-                    OpenTarget::Tab => "tab",
-                    OpenTarget::Panel => "panel",
-                };
-                Some(match (title.as_deref(), cwd.as_deref()) {
-                    (Some(title), Some(cwd)) if !title.is_empty() && !cwd.is_empty() => {
-                        format!("New {kind} ({title}) in {cwd}")
-                    }
-                    (Some(title), _) if !title.is_empty() => format!("New {kind} ({title})"),
-                    (_, Some(cwd)) if !cwd.is_empty() => format!("New {kind} in {cwd}"),
-                    _ => format!("New {kind} (empty)"),
-                })
-            }
-        })
-        .unwrap_or_else(|| choice.title.clone());
+    let text = recommendation_display_text(choice);
 
     let content_lines = wrapped_line_count(&text, inner_width);
     CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
@@ -200,13 +176,14 @@ pub(crate) fn permission_card_height(permission: &PermissionState, panel_width: 
 }
 
 fn wrapped_line_count(text: &str, width: usize) -> usize {
+    let width = width.max(1);
     text.lines()
         .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
+            let display_width = UnicodeWidthStr::width(line);
+            if display_width == 0 {
                 1
             } else {
-                chars.div_ceil(width)
+                display_width.div_ceil(width)
             }
         })
         .sum::<usize>()
@@ -321,5 +298,20 @@ mod tests {
         assert_eq!(layout.input_height, 3);
         assert_eq!(layout.chat_height, 1);
         assert_eq!(layout.activity_height, 0);
+    }
+
+    #[test]
+    fn wrapped_line_count_uses_display_width_for_cjk() {
+        assert_eq!(wrapped_line_count("你好", 3), 2);
+    }
+
+    #[test]
+    fn wrapped_line_count_does_not_charge_combining_marks() {
+        assert_eq!(wrapped_line_count("e\u{301}e\u{301}", 1), 2);
+    }
+
+    #[test]
+    fn wrapped_line_count_handles_zero_width() {
+        assert_eq!(wrapped_line_count("abc", 0), 3);
     }
 }
