@@ -193,6 +193,7 @@ commands.fix.summary: "診斷作用中的終端機並建議修正方式（/fix <
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
+commands.shell_sessions.summary: "瀏覽並還原已儲存的命令列工作階段"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "為此分頁選擇智能體（使用 /agent <id> 可直接切換）"  # {Locked="/agent","<id>"}
 
 # ── 建議執行 (src/coordinator.rs) ───────────────────────────

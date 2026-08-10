@@ -805,6 +805,14 @@
     <value>Windows</value>
     <comment>This is displayed as a label for the context menu item that holds the submenu of available windows.</comment>
   </data>
+  <data name="NotificationIconRestoreSession" xml:space="preserve">
+    <value>Восстановить</value>
+    <comment>Context menu item that brings a still-running background session back into a terminal window.</comment>
+  </data>
+  <data name="NotificationIconCloseSession" xml:space="preserve">
+    <value>Закрыть</value>
+    <comment>Context menu item that ends a still-running background session, stopping whatever it is running.</comment>
+  </data>
   <data name="NotificationMessage_TabActivity" xml:space="preserve">
     <value>Активность на вкладке "{0}"</value>
     <comment>{0} is the tab title. Shown as the body of a desktop notification when tab activity is detected.</comment>
@@ -1276,6 +1284,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Сеансы агентов</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
   </data>
+  <data name="AgentPane_ShellSessionsTitle" xml:space="preserve">
+    <value>Сеансы оболочки</value>
+    <comment>Title shown in the agent pane title bar when the saved shell-sessions view is active.</comment>
+  </data>
   <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
     <value>Сменить агента</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
@@ -1316,5 +1328,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 Например, 'wt -p "Ubuntu" -d C:\' эквивалентно 'wt new-tab -p "Ubuntu" -d C:\'.
 Для просмотра всех доступных параметров выполните команду "wt new-tab --help".</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
+  </data>
+  <data name="PaneKeepRunningButton.ToolTip" xml:space="preserve">
+    <value>Не оставлять эту панель запущенной после закрытия</value>
+    <comment>Tooltip and accessible name for the pin button that opts the pane out of remaining alive after it is closed.</comment>
   </data>
 </root>

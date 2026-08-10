@@ -134,8 +134,12 @@ namespace winrt::TerminalApp::implementation
         _isElevated = ::Microsoft::Console::Utils::IsRunningElevated();
         _canDragDrop = ::Microsoft::Console::Utils::CanUwpDragDrop();
 
+        const auto ownerDispatcher = DispatcherQueue::GetForCurrentThread();
+        THROW_HR_IF(E_UNEXPECTED, !ownerDispatcher);
+        _contentManager = winrt::make<implementation::ContentManager>(ownerDispatcher);
+
         _reloadSettings = std::make_shared<ThrottledFunc<>>(
-            DispatcherQueue::GetForCurrentThread(),
+            ownerDispatcher,
             til::throttled_func_options{
                 .delay = std::chrono::milliseconds{ 100 },
                 .debounce = true,

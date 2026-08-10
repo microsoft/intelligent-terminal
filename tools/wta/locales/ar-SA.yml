@@ -76,6 +76,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "إعادة تشغيل عامل الذكاء الاصطناعي"
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "تصفح جلسات سطر الأوامر المحفوظة واستعدها"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "اختر عامل لعلامة التبويب هذه (/agent <id> للتبديل مباشرةً)"  # {Locked="/agent","<id>"}
 
 # ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────

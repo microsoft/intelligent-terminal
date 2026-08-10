@@ -73,6 +73,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Ponovo pokreni agenta"
 commands.stop.summary: "Otkaži upit u toku"
 commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Pregledajte i vratite sačuvane sesije komandne linije"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Izaberite agent za ovu karticu (/agent <id> za direktnu promjenu)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate

@@ -199,6 +199,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Περιήγηση και επαναφορά αποθηκευμένων περιόδων λειτουργίας γραμμής εντολών"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Επιλέξτε το πράκτορα για αυτό το πλαίσιο (/agent <id> για άμεση εναλλαγή)"  # {Locked="/agent","<id>"}
 
 # ── Εκτέλεση σύστασης (src/coordinator.rs) ───────────────────────────

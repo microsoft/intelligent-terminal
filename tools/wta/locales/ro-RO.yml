@@ -197,6 +197,7 @@ commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere
 commands.restart.summary: "Reporniți agentul"
 commands.stop.summary: "Anulați promptul în curs"
 commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Răsfoiți și restaurați sesiunile salvate de linie de comandă"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Alegeți agentul pentru această filă (/agent <id> pentru a comuta direct)"  # {Locked="/agent","<id>"}
 
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────

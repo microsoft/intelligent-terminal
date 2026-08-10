@@ -195,6 +195,24 @@ namespace Microsoft.Terminal.Settings.Model
         UInt64 ContentId{ get; set; };
 
         String ToCommandline();
+
+        // Keep new members at the end to preserve the ABI slots of existing members.
+        String AgentSessionId;
+        String AgentSessionAgent;
+        String AgentResumeCommandline;
+        String AgentPaneSessionId;
+        String AgentPaneAgent;
+        String AgentPaneView;
+        Boolean AgentPaneOpen;
+        String AgentPanePosition;
+        String ShellSessionRestorePath;
+        String DurableShellSessionId;
+        Int64 DurableShellSessionRevision;
+
+        // Set only by a durable-session restore, and never serialized: the id
+        // of a session that may still be detached and running. SessionId always
+        // carries a fresh identity for the shell we would create if it isn't.
+        Guid KeptSessionId;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

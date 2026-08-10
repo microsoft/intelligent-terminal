@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 // WTA runtime data lives under two package-private roots, split by lifetime:
@@ -182,6 +182,47 @@ pub fn wt_state_json_path() -> Option<PathBuf> {
     dev_match.or(store_match)
 }
 
+/// Persistent root for durable shell-session state.
+///
+/// A packaged WTA uses its normal package-private root. An unpackaged WTA
+/// launched by WT follows the inherited `WT_SETTINGS_DIR`, where C++ stages
+/// buffers. Older launchers without that variable fall back to
+/// [`wt_state_json_path`], then to the normal unpackaged root.
+pub fn shell_session_runtime_root() -> Option<PathBuf> {
+    let packaged = current_package_family_name().is_some();
+    shell_session_runtime_root_from(
+        packaged,
+        intelligent_terminal_root(),
+        std::env::var_os("WT_SETTINGS_DIR").map(PathBuf::from),
+        (!packaged).then(wt_state_json_path).flatten(),
+    )
+}
+
+fn shell_session_runtime_root_from(
+    packaged: bool,
+    intelligent_root: Option<PathBuf>,
+    wt_settings_directory: Option<PathBuf>,
+    wt_state_path: Option<PathBuf>,
+) -> Option<PathBuf> {
+    if packaged {
+        return intelligent_root;
+    }
+    wt_settings_directory
+        .or_else(|| wt_state_path.and_then(|path| path.parent().map(Path::to_path_buf)))
+        .map(|directory| directory.join("IntelligentTerminal"))
+        .or(intelligent_root)
+}
+
+/// Cascadia's `SettingsDirectory` corresponding to
+/// [`shell_session_runtime_root`]. Used only for narrowly-named legacy-file
+/// cleanup.
+pub fn shell_session_settings_directory() -> Option<PathBuf> {
+    shell_session_runtime_root()?
+        .parent()
+        .filter(|directory| directory.ends_with("LocalState"))
+        .map(Path::to_path_buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,6 +233,47 @@ mod tests {
         // OS call must report "no package" and we must fall back gracefully
         // rather than panicking or returning a bogus name.
         assert_eq!(current_package_family_name(), None);
+    }
+
+    #[test]
+    fn shell_session_root_uses_packaged_identity_root() {
+        let packaged_root = PathBuf::from(
+            r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState\IntelligentTerminal",
+        );
+        assert_eq!(
+            shell_session_runtime_root_from(true, Some(packaged_root.clone()), None, None),
+            Some(packaged_root)
+        );
+    }
+
+    #[test]
+    fn unpackaged_shell_session_root_follows_wt_settings_directory() {
+        let bare_root = PathBuf::from(r"C:\Users\test\AppData\Local\IntelligentTerminal");
+        let settings = PathBuf::from(
+            r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState",
+        );
+        assert_eq!(
+            shell_session_runtime_root_from(false, Some(bare_root), Some(settings.clone()), None,),
+            Some(settings.join("IntelligentTerminal"))
+        );
+    }
+
+    #[test]
+    fn unpackaged_shell_session_root_falls_back_safely() {
+        let bare_root = PathBuf::from(r"C:\Users\test\AppData\Local\IntelligentTerminal");
+        let state = PathBuf::from(
+            r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState\state.json",
+        );
+        assert_eq!(
+            shell_session_runtime_root_from(false, Some(bare_root.clone()), None, Some(state)),
+            Some(PathBuf::from(
+                r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState\IntelligentTerminal"
+            ))
+        );
+        assert_eq!(
+            shell_session_runtime_root_from(false, Some(bare_root.clone()), None, None),
+            Some(bare_root)
+        );
     }
 
     #[test]

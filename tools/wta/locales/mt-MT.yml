@@ -197,6 +197,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Ibbrawżja u rrestawra s-sessjonijiet tal-linja tal-kmand salvati"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Agħżel il-aġent għal dan il-pannell (/agent <id> biex tibdel direttament)"  # {Locked="/agent","<id>"}
 
 # ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────

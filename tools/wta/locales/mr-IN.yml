@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "एजंट पुन्हा सुरू करा"
 commands.stop.summary: "चालू असलेला प्रॉम्प्ट रद्द करा"
 commands.sessions.summary: "ऐतिहासिक सत्र निवडक उघडा (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "जतन केलेली कमांड-लाइन सत्रे ब्राउझ करा आणि पुनर्संचयित करा"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "या पेनसाठी एजंट निवडा (थेट स्विच करण्यासाठी /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── शिफारस पॅनेल (src/ui/recommendations.rs) ───────────────────────────────

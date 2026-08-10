@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "એજન્ટ ફરી શરૂ કરો"
 commands.stop.summary: "ચાલુ પ્રોમ્પ્ટ રદ કરો"
 commands.sessions.summary: "ઐતિહાસિક સત્રોનું પિકર ખોલો (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "સાચવેલા કમાન્ડ-લાઇન સત્રોને બ્રાઉઝ કરો અને પુનઃસ્થાપિત કરો"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "આ પેન માટે એજન્ટ પસંદ કરો (સીધું બદલવા /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ભલામણ પૅનલ (src/ui/recommendations.rs) ───────────────────────────────

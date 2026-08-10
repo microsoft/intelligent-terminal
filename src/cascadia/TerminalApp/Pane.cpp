@@ -1609,6 +1609,7 @@ void Pane::_CloseChild(const bool closeFirst)
         // we pass the child's contentId to _setPaneContent so it transfers with
         // the content automatically.
         auto remainingContentId = remainingChild->_contentId;
+        const auto remainingKeepRunning = remainingChild->_keepRunning;
         _setPaneContent(remainingChild->_takePaneContent(), remainingContentId);
         if (!_content)
         {
@@ -1653,6 +1654,7 @@ void Pane::_CloseChild(const bool closeFirst)
         // what our active control is, we won't technically be a "leaf", and
         // GetTerminalControl will return null.
         _splitState = SplitState::None;
+        KeepRunning(remainingKeepRunning);
 
         // re-attach our handler for the control's GotFocus event.
         if (control)
@@ -2532,8 +2534,11 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
     {
         //   Move our content and content ID into the first child.
         auto originalContentId = _contentId;
+        const auto originalKeepRunning = _keepRunning;
         _firstChild = std::make_shared<Pane>(_takePaneContent());
         _firstChild->_broadcastEnabled = _broadcastEnabled;
+        _firstChild->KeepRunning(originalKeepRunning);
+        _keepRunning = false;
         // Overwrite the fresh content ID with the original so protocol
         // lookups continue to find this content after the split.
         _firstChild->_contentId = originalContentId;
@@ -3470,6 +3475,59 @@ void Pane::_EnsureAgentChip()
     _agentChip.IsHitTestVisible(false);
     _agentChip.Visibility(Visibility::Collapsed);
     _UpdateAgentChipBackground();
+}
+
+void Pane::_EnsureKeepRunningButton()
+{
+    if (!_keepRunningButton)
+    {
+        Controls::FontIcon icon{};
+        icon.Glyph(L"\xE718");
+
+        _keepRunningButton = Controls::Button{};
+        _keepRunningButton.Content(icon);
+        _keepRunningButton.Width(32);
+        _keepRunningButton.Height(32);
+        _keepRunningButton.Padding({ 0, 0, 0, 0 });
+        _keepRunningButton.HorizontalAlignment(HorizontalAlignment::Right);
+        _keepRunningButton.VerticalAlignment(VerticalAlignment::Top);
+        _keepRunningButton.Margin({ 0, 8, 8, 0 });
+        _keepRunningButton.Visibility(Visibility::Collapsed);
+        const auto label = RS_(L"PaneKeepRunningButton/ToolTip");
+        Controls::ToolTipService::SetToolTip(_keepRunningButton, box_value(label));
+        Automation::AutomationProperties::SetName(_keepRunningButton, label);
+        const auto weakThis = weak_from_this();
+        _keepRunningButton.Click([weakThis](const auto&, const auto&) {
+            if (const auto pane = weakThis.lock())
+            {
+                pane->KeepRunning(false);
+            }
+        });
+    }
+
+    if (!_keepRunningButton.Parent())
+    {
+        _root.Children().Append(_keepRunningButton);
+    }
+}
+
+void Pane::KeepRunning(const bool value)
+{
+    _keepRunning = value && _IsLeaf() && !_isAgentPane;
+    if (_keepRunning)
+    {
+        _EnsureKeepRunningButton();
+        _keepRunningButton.Visibility(Visibility::Visible);
+    }
+    else if (_keepRunningButton)
+    {
+        _keepRunningButton.Visibility(Visibility::Collapsed);
+    }
+}
+
+void Pane::ToggleKeepRunning()
+{
+    KeepRunning(!_keepRunning);
 }
 
 // Apply the theme-tracking background brush to the chip. Reuses the

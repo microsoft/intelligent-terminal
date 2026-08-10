@@ -26,7 +26,15 @@ fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(cli.initial_pane_position.is_none());
     assert!(!cli.follows_global_acp_model);
+}
+
+#[test]
+fn cli_parses_initial_pane_position() {
+    let cli = Cli::try_parse_from(["wta", "--initial-pane-position", "left"])
+        .expect("restored pane position must parse");
+    assert_eq!(cli.initial_pane_position.as_deref(), Some("left"));
 }
 
 #[test]
@@ -232,7 +240,7 @@ fn process_label_subcommands() {
 
     let probe_sources =
         Cli::try_parse_from(["wta", "probe-agent-sources", "--wsl-distro", "Ubuntu-24.04"])
-    .unwrap();
+            .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());
 

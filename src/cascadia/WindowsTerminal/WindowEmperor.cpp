@@ -7,6 +7,7 @@
 #include <CoreWindow.h>
 #include <ScopedResourceLoader.h>
 #include <WtExeUtils.h>
+#include <json/json.h>
 #include <til/hash.h>
 #include <wil/token_helpers.h>
 #include <winrt/TerminalApp.h>
@@ -16,6 +17,8 @@
 
 #include "AppHost.h"
 #include "TerminalProtocolComServer.h"
+#include "../TerminalApp/KeepRunningSessionHelpers.h"
+#include "../inc/ProtocolServiceRouting.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
 #include "../../types/inc/User32Utils.hpp"
@@ -119,6 +122,35 @@ static const uint8_t* deserializeString(const uint8_t* it, const uint8_t* end, w
 
     str = { reinterpret_cast<const wchar_t*>(it), len - 1 };
     return it + bytes;
+}
+
+static std::string formatPaneId(const winrt::guid& sessionId)
+{
+    // Match the existing connection_state pane_id format used by
+    // TerminalPage::_FindSessionIdForControl and TerminalProtocolComServer.
+    wchar_t buf[40]{};
+    ::StringFromGUID2(sessionId, buf, ARRAYSIZE(buf));
+    std::wstring ws{ buf };
+    if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
+    {
+        ws = ws.substr(1, ws.size() - 2);
+    }
+    return winrt::to_string(winrt::hstring{ ws });
+}
+
+static void notifyDetachedSessionEnded(const winrt::TerminalApp::DetachedSessionEndedArgs& detachedSession)
+{
+    Json::Value evt;
+    evt["type"] = "event";
+    evt["method"] = "connection_state";
+    Json::Value params;
+    params["pane_id"] = formatPaneId(detachedSession.SessionId());
+    params["state"] = winrt::to_string(detachedSession.State());
+    evt["params"] = params;
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    TerminalProtocolComServer::s_NotifyEventToComClients(Json::writeString(wb, evt));
 }
 
 struct Handoff
@@ -244,6 +276,46 @@ AppHost* WindowEmperor::GetWindowById(uint64_t id) const noexcept
     return nullptr;
 }
 
+std::shared_ptr<AppHost> WindowEmperor::GetWindowForProtocol(const uint64_t id) const noexcept
+{
+    ProtocolWindowRequest request{ id };
+    SendMessageW(_window.get(),
+                 WM_GET_WINDOW_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return std::move(request.Host);
+}
+
+std::vector<WindowEmperor::DetachedSessionProtocolEntry> WindowEmperor::GetDetachedSessionsForProtocol() const noexcept
+{
+    DetachedSessionsProtocolRequest request;
+    SendMessageW(_window.get(),
+                 WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return std::move(request.Rows);
+}
+
+bool WindowEmperor::KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept
+{
+    KillDetachedSessionProtocolRequest request{ sessionId };
+    SendMessageW(_window.get(),
+                 WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return request.Killed;
+}
+
+WindowEmperor::ShellSessionsProtocolRequest WindowEmperor::GetShellSessionsForProtocol() const noexcept
+{
+    ShellSessionsProtocolRequest request;
+    SendMessageW(_window.get(),
+                 WM_GET_SHELL_SESSIONS_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return request;
+}
+
 AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
 {
     _assertIsMainThread();
@@ -283,6 +355,9 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
+
+    _deferPersistedLayoutRestore = false;
+    _skipPersistence = false;
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -328,6 +403,8 @@ void WindowEmperor::OpenWindow(const winrt::hstring& name)
     {
         return;
     }
+
+    _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
 
     // If a window with this name is already live, just summon it.
     // This mirrors the summon behavior in AppHost::DispatchCommandline (which is
@@ -576,8 +653,13 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
 
+    const auto args = commandlineToArgArray(GetCommandLineW());
+    const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
+    _deferPersistedLayoutRestore = isEmbedding;
+
     _createMessageWindow(windowClassName.c_str());
     _setupGlobalHotkeys();
+    _setupKeptSessionTracking();
     _checkWindowsForNotificationIcon();
     _setupSessionPersistence(_app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout());
 
@@ -598,31 +680,18 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
-        const auto env = stringFromDoubleNullTerminated(envMem.get());
-        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
-        const auto showCmd = gsl::narrow_cast<uint32_t>(nCmdShow);
+        _startupEnvironment = stringFromDoubleNullTerminated(envMem.get());
+        _startupCurrentDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+        _startupShowWindowCommand = gsl::narrow_cast<uint32_t>(nCmdShow);
 
-        // Restore persisted windows.
-        const auto state = ApplicationState::SharedInstance();
-        const auto layouts = state.PersistedWindowLayouts();
-        if (layouts && layouts.Size() > 0)
+        if (!isEmbedding)
         {
-            _needsPersistenceCleanup = true;
-
-            uint32_t startIdx = 0;
-            for (const auto layout : layouts)
-            {
-                hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
-                startIdx += 1;
-            }
+            _restorePersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
         }
 
-        const auto args = commandlineToArgArray(GetCommandLineW());
-
-        if (args.size() == 2 && args[1] == L"-Embedding")
+        if (isEmbedding)
         {
-            // We were launched for ConPTY handoff. We have no windows and also don't want to exit.
+            // We were launched as a COM server. We have no windows and also don't want to exit.
             //
             // TODO: Here we could start a timer and exit after, say, 5 seconds
             // if no windows are created. But that's a minor concern.
@@ -632,7 +701,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // Create another window if needed: There aren't any yet, OR we got an explicit command line.
             if (_windows.empty() || args.size() != 1)
             {
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
+                _dispatchCommandlineCommon(args, _startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
             }
 
             // If we created no windows, e.g. because the args are "/?" we can just exit now.
@@ -649,6 +718,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         TerminalConnection::ConptyConnection::NewConnection([this](TerminalConnection::ConptyConnection conn) {
+            _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+
             TerminalApp::CommandlineArgs args;
             args.ShowWindowCommand(conn.ShowWindow());
             args.Connection(std::move(conn));
@@ -1096,9 +1167,76 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
     if (
         _messageBoxCount <= 0 &&
         _windowCount <= 0 &&
+        // A "keep running" session is a live shell with no window. Quitting
+        // would kill it, which is precisely what the user asked us not to do.
+        !_hasKeptSessions() &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
         PostQuitMessage(0);
+    }
+}
+
+// True when at least one durable session is detached with no window. This is what
+// lets the process outlive its last window, tmux-style.
+bool WindowEmperor::_hasKeptSessions() const
+{
+    try
+    {
+        if (const auto manager = _keptSessionManager())
+        {
+            return manager.HasKeptSessions();
+        }
+    }
+    CATCH_LOG();
+    return false;
+}
+
+// Runs the startup layout restore, including when a process stayed headless
+// after COM activation or after its last window closed with kept sessions.
+// Returns false if no window was restored, so callers can fall back to an
+// ordinary new window.
+bool WindowEmperor::_restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd)
+try
+{
+    const auto state = ApplicationState::SharedInstance();
+    const auto layouts = state.PersistedWindowLayouts();
+    if (!layouts || layouts.Size() == 0)
+    {
+        return false;
+    }
+
+    _needsPersistenceCleanup = true;
+    const auto previousWindowCount = _windows.size();
+
+    for (uint32_t index = 0; index < layouts.Size(); ++index)
+    {
+        winrt::hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(index) };
+        _dispatchCommandlineCommon(args, cwd, env, showCmd);
+    }
+
+    return _windows.size() > previousWindowCount;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+// The content manager raises its events on the UI thread. Re-evaluating our
+// exit condition from inside a content callback would mean tearing down the app
+// underneath its own stack, so KeptSessionsChanged bounces through the message
+// queue first. DetachedSessionClosed already carries the terminal's actual end
+// state, so forwarding that protocol event is safe to enqueue immediately.
+void WindowEmperor::_setupKeptSessionTracking()
+{
+    if (const auto manager = _keptSessionManager())
+    {
+        _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
+            PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
+        });
+        _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& closedSession) {
+            notifyDetachedSessionEnded(closedSession);
+        });
     }
 }
 
@@ -1134,12 +1272,16 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         case WM_CLOSE_TERMINAL_WINDOW:
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
+            const auto hasKeptSessions = _hasKeptSessions();
             // Keep the last window in the array so that we can persist it on exit.
             // We check for AllowHeadless(), as that being true prevents us from ever quitting in the first place.
             // (= If we avoided closing the last window you wouldn't be able to reach a headless state.)
+            // Kept "keep running" sessions are the same story: they hold the
+            // process open deliberately, so the last window must really close.
             const auto shouldKeepWindow =
                 _windows.size() == 1 &&
                 globalSettings.ShouldUsePersistedLayout() &&
+                !hasKeptSessions &&
                 !globalSettings.AllowHeadless();
 
             if (!shouldKeepWindow)
@@ -1172,8 +1314,8 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // deterministic window count management.
                         const auto strong = *it;
 
-                        // Before destroying a named window, persist its full
-                        // tab/buffer state as a workspace so it can be restored later.
+                        // Before destroying a named window, persist its layout
+                        // as a workspace so it can be restored later.
                         try
                         {
                             const auto windowName = strong->Logic().WindowProperties().WindowName();
@@ -1208,6 +1350,14 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
             return 0;
+        case WM_KEPT_SESSIONS_CHANGED:
+            // The last kept session just ended (or the first one was detached).
+            // Re-check whether we still have a reason to run, and whether the
+            // notification icon should appear — without it, a windowless
+            // terminal would be invisible and unquittable.
+            _checkWindowsForNotificationIcon();
+            _postQuitMessageIfNeeded();
+            return 0;
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {
@@ -1227,12 +1377,131 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             }
             return 0;
         }
+        case WM_GET_WINDOW_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<ProtocolWindowRequest*>(lParam);
+            if (request)
+            {
+                const auto target = request->Id == 0 ? _mostRecentWindow() : GetWindowById(request->Id);
+                const auto found = std::find_if(_windows.begin(), _windows.end(), [&](const auto& host) {
+                    return host.get() == target;
+                });
+                if (found != _windows.end())
+                {
+                    request->Host = *found;
+                }
+            }
+            return 0;
+        }
+        case WM_GET_SHELL_SESSIONS_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<ShellSessionsProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Host.reset();
+                request->SerializedSessions.clear();
+                request->Result = E_UNEXPECTED;
+
+                try
+                {
+                    ::Microsoft::Terminal::Protocol::details::RouteShellSessionRequest(
+                        !_windows.empty(),
+                        [&]() {
+                            // Do not call TerminalPage::ListProtocolShellSessions().get()
+                            // here. Its coroutine resumes on this UI dispatcher, so
+                            // waiting from the emperor thread would deadlock. Keep the
+                            // host alive and let the COM MTA call the page after
+                            // SendMessage returns.
+                            const auto target = _mostRecentWindow();
+                            const auto found = std::find_if(_windows.begin(), _windows.end(), [&](const auto& host) {
+                                return host.get() == target;
+                            });
+                            THROW_HR_IF(E_FAIL, found == _windows.end());
+                            request->Host = *found;
+                            request->Result = S_OK;
+                        },
+                        [&]() {
+                            // With no visible window, service the synchronous
+                            // process-wide request here. Running it on the emperor
+                            // thread both avoids using AppLogic from the COM MTA and
+                            // prevents a newly opening window from overlapping the
+                            // temporary store-only wta-master.
+                            const auto manager = _keptSessionManager();
+                            THROW_HR_IF(E_NOT_VALID_STATE, !manager);
+                            request->SerializedSessions = manager.ListProtocolShellSessions();
+                            request->Result = S_OK;
+                        });
+                }
+                catch (...)
+                {
+                    request->Result = wil::ResultFromCaughtException();
+                    LOG_HR(request->Result);
+                }
+            }
+            return 0;
+        }
+        case WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<DetachedSessionsProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Rows.clear();
+                if (const auto manager = _keptSessionManager())
+                {
+                    const auto sessions = manager.DetachedSessions();
+                    request->Rows.reserve(sessions.Size());
+
+                    for (const auto& session : sessions)
+                    {
+                        DetachedSessionProtocolEntry row{};
+                        row.SessionId = session.SessionId();
+                        row.GroupId = session.GroupId();
+                        row.TabTitle = std::wstring{ session.TabTitle() };
+                        row.ShellSessionId = std::wstring{ session.ShellSessionId() };
+                        row.Pid = session.Pid();
+                        request->Rows.emplace_back(std::move(row));
+                    }
+                }
+            }
+            return 0;
+        }
+        case WM_KILL_DETACHED_SESSION_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<KillDetachedSessionProtocolRequest*>(lParam);
+            if (request)
+            {
+                request->Found = false;
+                request->Killed = false;
+                if (const auto manager = _keptSessionManager())
+                {
+                    const auto sessionId = winrt::guid{ request->SessionId };
+                    for (const auto& session : manager.DetachedSessions())
+                    {
+                        if (session.SessionId() == sessionId)
+                        {
+                            request->Found = true;
+                            break;
+                        }
+                    }
+
+                    request->Killed = manager.DiscardKeptSession(sessionId);
+                    request->Found |= request->Killed;
+                }
+            }
+            return 0;
+        }
         case WM_NOTIFY_FROM_NOTIFICATION_AREA:
             switch (LOWORD(lParam))
             {
             case NIN_SELECT:
             case NIN_KEYSELECT:
             {
+                if (_windows.empty())
+                {
+                    _activateHeadlessTrayWindow(SW_SHOWNORMAL);
+                    break;
+                }
+
                 SummonWindowSelectionArgs args;
                 args.SummonBehavior.MoveToCurrentDesktop(false);
                 args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
@@ -1296,6 +1565,23 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
+                    // Coming back from the headless state that keep-running put
+                    // us in. A bare launch means "give me my terminal back", so
+                    // restore what was open when the last window closed rather
+                    // than opening an unrelated default tab and leaving the
+                    // kept sessions stranded with no way to reach them. The
+                    // startup path does this too, but it only runs once, when
+                    // the process starts — and this process never left.
+                    const auto restoredDeferredLayouts = _restoreDeferredPersistedLayouts(handoff.cwd, handoff.env, handoff.show);
+                    if (restoredDeferredLayouts && argv.size() == 1)
+                    {
+                        return 0;
+                    }
+                    if (_windows.empty() && _hasKeptSessions() && argv.size() == 1 &&
+                        _restoreAllKeptSessions())
+                    {
+                        return 0;
+                    }
                     _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
                 }
             }
@@ -1336,6 +1622,17 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
+bool WindowEmperor::_restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd)
+{
+    if (!_deferPersistedLayoutRestore)
+    {
+        return false;
+    }
+
+    _deferPersistedLayoutRestore = false;
+    return _restorePersistedLayouts(cwd, env, showCmd);
+}
+
 void WindowEmperor::_setupSessionPersistence(bool enabled)
 {
     if (!enabled)
@@ -1352,6 +1649,11 @@ void WindowEmperor::_setupSessionPersistence(bool enabled)
 
 void WindowEmperor::_persistState(const ApplicationState& state) const
 {
+    if (_deferPersistedLayoutRestore)
+    {
+        return;
+    }
+
     // Calling an `ApplicationState` setter triggers a write to state.json.
     // With this if condition we avoid an unnecessary write when persistence is disabled.
     if (state.PersistedWindowLayouts())
@@ -1374,6 +1676,11 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 void WindowEmperor::_finalizeSessionPersistence() const
 {
     using namespace std::string_view_literals;
+
+    if (_deferPersistedLayoutRestore)
+    {
+        return;
+    }
 
     if (_skipPersistence)
     {
@@ -1508,39 +1815,83 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     AppendMenuW(menu, MF_SEPARATOR, 0, L"");
 
     // A submenu to focus a specific window. Lists all windows that we manage.
-    if (const auto submenu = CreatePopupMenu())
+    // Skipped when there are none: before keep-running, the icon could never
+    // outlive the last window, so an empty list was unreachable — now it is the
+    // normal headless state, and an always-empty submenu is just noise.
+    if (!_windows.empty())
     {
-        static constexpr MENUINFO submenuInfo{
-            .cbSize = sizeof(MENUINFO),
-            .fMask = MIM_MENUDATA,
-            .dwStyle = MNS_NOTIFYBYPOS,
-        };
-        SetMenuInfo(submenu, &submenuInfo);
-
-        std::wstring displayText;
-        displayText.reserve(64);
-
-        for (const auto& host : _windows)
+        if (const auto submenu = CreatePopupMenu())
         {
-            const auto logic = host->Logic();
-            const auto props = logic.WindowProperties();
-            const auto id = props.WindowId();
+            static constexpr MENUINFO submenuInfo{
+                .cbSize = sizeof(MENUINFO),
+                .fMask = MIM_MENUDATA,
+                .dwStyle = MNS_NOTIFYBYPOS,
+            };
+            SetMenuInfo(submenu, &submenuInfo);
 
-            displayText.clear();
-            fmt::format_to(std::back_inserter(displayText), L"#{}", id);
-            if (const auto title = logic.Title(); !title.empty())
+            std::wstring displayText;
+            displayText.reserve(64);
+
+            for (const auto& host : _windows)
             {
-                fmt::format_to(std::back_inserter(displayText), L": {}", title);
-            }
-            if (const auto name = props.WindowName(); !name.empty())
-            {
-                fmt::format_to(std::back_inserter(displayText), L" [{}]", name);
+                const auto logic = host->Logic();
+                const auto props = logic.WindowProperties();
+                const auto id = props.WindowId();
+
+                displayText.clear();
+                fmt::format_to(std::back_inserter(displayText), L"#{}", id);
+                if (const auto title = logic.Title(); !title.empty())
+                {
+                    fmt::format_to(std::back_inserter(displayText), L": {}", title);
+                }
+                if (const auto name = props.WindowName(); !name.empty())
+                {
+                    fmt::format_to(std::back_inserter(displayText), L" [{}]", name);
+                }
+
+                AppendMenuW(submenu, MF_STRING, gsl::narrow_cast<UINT_PTR>(id), displayText.c_str());
             }
 
-            AppendMenuW(submenu, MF_STRING, gsl::narrow_cast<UINT_PTR>(id), displayText.c_str());
+            AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), RS_(L"NotificationIconWindowSubmenu").c_str());
         }
+    }
 
-        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), RS_(L"NotificationIconWindowSubmenu").c_str());
+    // Sessions that are still running with no window. Without this the icon
+    // announces that *something* is alive but gives no way to see what, get it
+    // back, or stop it — and with no window there is nothing else on screen.
+    _keptSessionMenuIds.clear();
+    if (const auto manager = _keptSessionManager())
+    {
+        const auto groups = manager.KeptGroups();
+        if (groups.Size() > 0)
+        {
+            AppendMenuW(menu, MF_SEPARATOR, 0, L"");
+
+            std::wstring displayText;
+            for (const auto& entry : groups)
+            {
+                const auto index = _keptSessionMenuIds.size();
+                _keptSessionMenuIds.push_back(entry.Key());
+
+                displayText = entry.Value().empty() ? std::wstring{ L"(untitled)" } : std::wstring{ entry.Value() };
+
+                // Each tab gets its own submenu so restoring and closing stay
+                // distinct — a single click doing either would be a trap.
+                if (const auto sessionMenu = CreatePopupMenu())
+                {
+                    static constexpr MENUINFO sessionMenuInfo{
+                        .cbSize = sizeof(MENUINFO),
+                        .fMask = MIM_MENUDATA,
+                        .dwStyle = MNS_NOTIFYBYPOS,
+                    };
+                    SetMenuInfo(sessionMenu, &sessionMenuInfo);
+
+                    AppendMenuW(sessionMenu, MF_STRING, KeptSessionMenuIdBase + index * 2, RS_(L"NotificationIconRestoreSession").c_str());
+                    AppendMenuW(sessionMenu, MF_STRING, KeptSessionMenuIdBase + index * 2 + 1, RS_(L"NotificationIconCloseSession").c_str());
+                    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sessionMenu), displayText.c_str());
+                }
+            }
+        }
     }
 
     // We'll need to set our window to the foreground before calling
@@ -1560,11 +1911,42 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     _currentWindowMenu = menu;
 }
 
-void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam) const
+void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam)
 {
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+
+    // Detached-session items live in their own id range so they can't be
+    // confused with window ids.
+    if (windowId >= KeptSessionMenuIdBase)
+    {
+        const auto offset = windowId - KeptSessionMenuIdBase;
+        const size_t index = offset / 2;
+        const auto isClose = (offset % 2) != 0;
+        if (index < _keptSessionMenuIds.size())
+        {
+            const auto sessionId = til::at(_keptSessionMenuIds, index);
+            if (isClose)
+            {
+                _discardKeptSession(sessionId);
+            }
+            else
+            {
+                _restoreKeptSession(sessionId);
+            }
+        }
+        return;
+    }
+
+    // With no windows there is nothing to summon. Re-run the persisted layout
+    // restore first when durable sessions are detached so the tray brings back
+    // the last real window arrangement instead of a blank default tab.
+    if (windowId == 0 && _windows.empty())
+    {
+        _activateHeadlessTrayWindow(SW_SHOWNORMAL);
+        return;
+    }
 
     // _notificationAreaMenuRequested constructs each menu item with an ID
     // that is either 0 for "Focus Terminal" or >0 for a specific window ID.
@@ -1576,6 +1958,144 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
     std::ignore = _summonWindow(std::move(args));
 }
+
+winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
+{
+    _assertIsMainThread();
+
+    try
+    {
+        if (const auto logic = _app.Logic())
+        {
+            return logic.ContentManager();
+        }
+    }
+    CATCH_LOG();
+    return nullptr;
+}
+
+void WindowEmperor::_activateHeadlessTrayWindow(const uint32_t showWindowCommand)
+{
+    _assertIsMainThread();
+    WI_ASSERT(_windows.empty());
+
+    const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
+    const auto env = stringFromDoubleNullTerminated(envMem.get());
+    const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
+
+    if (_restoreAllKeptSessions())
+    {
+        return;
+    }
+
+    const std::array args{ winrt::hstring{ L"wt" } };
+    _dispatchCommandlineCommon(args, cwd, env, showWindowCommand);
+}
+
+// Brings a detached tab back on screen. Its panes are right here in the
+// ContentManager, so this reuses the same "open with existing content" path a
+// cross-window pane drag uses, rather than going anywhere near the saved
+// snapshot. The panes come back in one tab; their original split ratios are not
+// preserved, since the layout those panes had is gone with the tab.
+bool WindowEmperor::_restoreAllKeptSessions()
+try
+{
+    const auto manager = _keptSessionManager();
+    if (!manager)
+    {
+        return false;
+    }
+
+    // Snapshot before any take mutates ContentManager. For the MVP, detached
+    // groups from multiple original windows intentionally return as tabs in
+    // the first available window rather than recreating the old topology.
+    return winrt::TerminalApp::implementation::RestoreAllKeptGroups(
+        manager.KeptGroups(),
+        [&](const auto& groupId) {
+            return _restoreKeptSession(groupId);
+        });
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+bool WindowEmperor::_restoreKeptSession(const winrt::guid& groupId)
+try
+{
+    const auto manager = _keptSessionManager();
+    if (!manager)
+    {
+        return false;
+    }
+
+    const auto restoredGroup = manager.BeginReattachKeptGroup(groupId);
+    auto actions = winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(restoredGroup);
+    if (actions.empty())
+    {
+        manager.CancelKeptGroupReattach(groupId);
+        return false;
+    }
+
+    try
+    {
+        if (_windows.empty())
+        {
+            // Startup action processing suspends between actions after the
+            // first one. Create the tab with its first pane, then attach the
+            // remaining splits synchronously so every kept pane either
+            // confirms reattach before this transaction ends or is cancelled.
+            std::vector<ActionAndArgs> firstAction;
+            firstAction.emplace_back(actions.front());
+            const auto firstContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(firstAction)));
+            CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, firstContent, nullptr });
+
+            if (actions.size() > 1)
+            {
+                std::vector<ActionAndArgs> remainingActions{ actions.begin() + 1, actions.end() };
+                const auto remainingContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(remainingActions)));
+                _windows.back()->Logic().AttachContent(remainingContent, 0);
+            }
+        }
+        else
+        {
+            const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+            _windows.front()->Logic().AttachContent(content, 0);
+        }
+    }
+    catch (...)
+    {
+        manager.CancelKeptGroupReattach(groupId);
+        throw;
+    }
+
+    // Some actions may decline to attach (for example, an invalid profile).
+    // Confirmed panes were removed individually; make every unconfirmed pane
+    // visible and claimable again.
+    manager.CancelKeptGroupReattach(groupId);
+    if (manager.KeptGroups().HasKey(groupId))
+    {
+        LOG_IF_FAILED(E_FAIL);
+        return false;
+    }
+    return true;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+void WindowEmperor::_discardKeptSession(const winrt::guid& groupId)
+try
+{
+    if (const auto manager = _keptSessionManager())
+    {
+        manager.DiscardKeptGroup(groupId);
+    }
+}
+CATCH_LOG()
 
 #pragma endregion
 #pragma region GlobalHotkeys
@@ -1715,6 +2235,10 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
             needsIcon |= host->Logic().IsQuakeWindow();
         }
     }
+    // A process with kept sessions but no windows has nothing else on screen.
+    // The icon is the only way for the user to see it is still there, get a
+    // window back, or quit it.
+    needsIcon |= _hasKeptSessions();
 
     if (_notificationIconShown == needsIcon)
     {

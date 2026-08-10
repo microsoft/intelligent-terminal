@@ -1,0 +1,211 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+#pragma once
+
+#include <algorithm>
+#include <cstddef>
+#include <vector>
+
+namespace winrt::TerminalApp::implementation
+{
+    struct ShellSessionCloseActions
+    {
+        bool save{ false };
+        bool detach{ false };
+        bool persistScrollback{ false };
+    };
+
+    inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(
+        const winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference preference,
+        const bool keepRunning) noexcept
+    {
+        using winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference;
+
+        switch (preference)
+        {
+        case FirstWindowPreference::PersistedLayout:
+            return { true, keepRunning, false };
+        case FirstWindowPreference::PersistedLayoutAndContent:
+            return { true, keepRunning, true };
+        case FirstWindowPreference::DefaultProfile:
+        default:
+            return { false, keepRunning, false };
+        }
+    }
+
+    inline constexpr bool ShouldPersistShellSession(
+        const bool hasUserInput,
+        const bool hasDurableId,
+        const bool hasKeepRunningPane,
+        const bool hasAgentSession) noexcept
+    {
+        return hasUserInput || hasDurableId || hasKeepRunningPane || hasAgentSession;
+    }
+
+    inline constexpr bool ShouldResumeAgentSession(
+        const bool hasAgentSession,
+        const bool hasKeptSessionId,
+        const bool hasShellSessionRestorePath) noexcept
+    {
+        return hasAgentSession &&
+               (hasKeptSessionId || hasShellSessionRestorePath);
+    }
+
+    inline constexpr bool ShouldBindPaneAgentSession(
+        const bool sessionStarted,
+        const bool paneBound) noexcept
+    {
+        return !sessionStarted || paneBound;
+    }
+
+    inline winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs GetTerminalArgsForRestoreAction(
+        const winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs& action)
+    {
+        using namespace winrt::Microsoft::Terminal::Settings::Model;
+
+        if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+        {
+            return newTabArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+        if (const auto splitPaneArgs = action.Args().try_as<SplitPaneArgs>())
+        {
+            return splitPaneArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+        return nullptr;
+    }
+
+    inline void RemoveAgentPaneSessionFromShellBindings(
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
+        const winrt::hstring& agentPaneSessionId)
+    {
+        if (agentPaneSessionId.empty())
+        {
+            return;
+        }
+
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+                terminalArgs && terminalArgs.AgentSessionId() == agentPaneSessionId)
+            {
+                terminalArgs.AgentSessionId(L"");
+                terminalArgs.AgentSessionAgent(L"");
+                terminalArgs.AgentResumeCommandline(L"");
+            }
+        }
+    }
+
+    template<typename TPathForSession>
+    inline void SetPersistedLayoutAgentRestorePaths(
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
+        TPathForSession&& pathForSession)
+    {
+        std::vector<winrt::hstring> agentPaneSessionIds;
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+                terminalArgs && !terminalArgs.AgentPaneSessionId().empty())
+            {
+                agentPaneSessionIds.emplace_back(terminalArgs.AgentPaneSessionId());
+            }
+        }
+
+        for (const auto& action : actions)
+        {
+            const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+            if (terminalArgs &&
+                !terminalArgs.AgentSessionId().empty() &&
+                std::find(agentPaneSessionIds.begin(), agentPaneSessionIds.end(), terminalArgs.AgentSessionId()) == agentPaneSessionIds.end() &&
+                terminalArgs.SessionId() != winrt::guid{})
+            {
+                terminalArgs.ShellSessionRestorePath(pathForSession(terminalArgs.SessionId()));
+            }
+        }
+    }
+
+    inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
+    {
+        if (closeAccepted)
+        {
+            return false;
+        }
+
+        closeAccepted = true;
+        return true;
+    }
+
+    template<typename TRestore>
+    inline bool RestoreAllKeptGroups(const winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring>& groups,
+                                     TRestore&& restore)
+    {
+        std::vector<winrt::guid> groupIds;
+        if (groups)
+        {
+            groupIds.reserve(groups.Size());
+            for (const auto& group : groups)
+            {
+                groupIds.emplace_back(group.Key());
+            }
+        }
+
+        auto restoredAny = false;
+        for (const auto& groupId : groupIds)
+        {
+            restoredAny = restore(groupId) || restoredAny;
+        }
+        return restoredAny;
+    }
+
+    inline std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildKeptGroupRestoreActions(const winrt::TerminalApp::KeptGroupRestoreResult& restoredGroup)
+    {
+        using namespace winrt::Microsoft::Terminal::Settings::Model;
+
+        std::vector<ActionAndArgs> actions;
+        if (!restoredGroup)
+        {
+            return actions;
+        }
+
+        const auto restoreArgs = restoredGroup.RestoreArgs();
+        if (!restoreArgs || restoreArgs.Size() == 0)
+        {
+            return actions;
+        }
+
+        actions.reserve(static_cast<size_t>(restoreArgs.Size()));
+
+        const auto shellSessionId = restoredGroup.ShellSessionId();
+        const auto shellSessionRevision = restoredGroup.ShellSessionRevision();
+
+        for (const auto& storedArgs : restoreArgs)
+        {
+            if (!storedArgs)
+            {
+                continue;
+            }
+
+            auto terminalArgs = storedArgs.Copy().try_as<NewTerminalArgs>();
+            terminalArgs.DurableShellSessionId(L"");
+            terminalArgs.DurableShellSessionRevision(0);
+            terminalArgs.KeptSessionId(terminalArgs.SessionId());
+
+            if (actions.empty())
+            {
+                if (!shellSessionId.empty())
+                {
+                    terminalArgs.DurableShellSessionId(shellSessionId);
+                    terminalArgs.DurableShellSessionRevision(shellSessionRevision);
+                }
+
+                actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ terminalArgs });
+            }
+            else
+            {
+                actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, terminalArgs });
+            }
+        }
+
+        return actions;
+    }
+}

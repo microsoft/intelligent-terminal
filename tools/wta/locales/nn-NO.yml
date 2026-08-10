@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnostiser den aktive terminalen og føreslå ei løysi
 commands.restart.summary: "Start agenten på nytt"
 commands.stop.summary: "Avbryt den pågåande førespurnaden"
 commands.sessions.summary: "Opne veljaren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Bla gjennom og gjenopprett lagra kommandolinjeøkter"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Vel agenten for dette panelet (/agent <id> for å byte direkte)"  # {Locked="/agent","<id>"}
 
 # ── Utføring av tilråding (src/coordinator.rs) ───────────────────────────

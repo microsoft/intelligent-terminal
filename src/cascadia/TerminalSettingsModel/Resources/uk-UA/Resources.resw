@@ -987,4 +987,8 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>Відкрити фоновий агент у новій вкладці</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="TogglePaneKeepRunningCommandKey" xml:space="preserve">
+    <value>Перемкнути роботу панелі після закриття</value>
+    <comment>Command name for opting the active terminal pane in or out of remaining alive after it is closed.</comment>
+  </data>
 </root>

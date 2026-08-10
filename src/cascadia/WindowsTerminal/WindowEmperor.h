@@ -31,6 +31,13 @@ public:
         WM_IDENTIFY_ALL_WINDOWS,
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
         WM_GET_WINDOW_LIST,
+        WM_GET_WINDOW_FOR_PROTOCOL,
+        // Posted when a "keep running" session is detached or released, so the
+        // emperor can re-evaluate whether it still has a reason to exist.
+        WM_KEPT_SESSIONS_CHANGED,
+        WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
+        WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
+        WM_GET_SHELL_SESSIONS_FOR_PROTOCOL,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -40,6 +47,40 @@ public:
     {
         uint64_t Id;
         std::wstring Name;
+    };
+
+    struct ProtocolWindowRequest
+    {
+        uint64_t Id;
+        std::shared_ptr<AppHost> Host;
+    };
+
+    struct DetachedSessionProtocolEntry
+    {
+        GUID SessionId{};
+        GUID GroupId{};
+        std::wstring TabTitle;
+        std::wstring ShellSessionId;
+        uint32_t Pid{ 0 };
+    };
+
+    struct DetachedSessionsProtocolRequest
+    {
+        std::vector<DetachedSessionProtocolEntry> Rows;
+    };
+
+    struct KillDetachedSessionProtocolRequest
+    {
+        GUID SessionId{};
+        bool Found{ false };
+        bool Killed{ false };
+    };
+
+    struct ShellSessionsProtocolRequest
+    {
+        std::shared_ptr<AppHost> Host;
+        winrt::hstring SerializedSessions;
+        HRESULT Result{ E_UNEXPECTED };
     };
 
     WindowEmperor();
@@ -59,6 +100,10 @@ public:
     const std::wstring& GetComClsid() const noexcept { return _comClsid; }
     const std::vector<std::shared_ptr<::AppHost>>& GetWindows() const noexcept { return _windows; }
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
+    std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
+    std::vector<DetachedSessionProtocolEntry> GetDetachedSessionsForProtocol() const noexcept;
+    bool KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept;
+    ShellSessionsProtocolRequest GetShellSessionsForProtocol() const noexcept;
 
 private:
     struct SummonWindowSelectionArgs
@@ -84,16 +129,25 @@ private:
     void _postQuitMessageIfNeeded() const;
     safe_void_coroutine _showMessageBox(winrt::hstring message, bool error);
     void _notificationAreaMenuRequested(WPARAM wParam);
-    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam) const;
+    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam);
     void _hotkeyPressed(long hotkeyIndex);
     void _registerHotKey(int index, const winrt::Microsoft::Terminal::Control::KeyChord& hotkey) noexcept;
     void _unregisterHotKey(int index) noexcept;
     void _setupGlobalHotkeys();
+    bool _restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
     void _finalizeSessionPersistence() const;
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
+    bool _hasKeptSessions() const;
+    bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
+    void _setupKeptSessionTracking();
+    void _activateHeadlessTrayWindow(uint32_t showWindowCommand);
+    bool _restoreAllKeptSessions();
+    bool _restoreKeptSession(const winrt::guid& groupId);
+    void _discardKeptSession(const winrt::guid& groupId);
+    winrt::TerminalApp::ContentManager _keptSessionManager() const;
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
@@ -109,12 +163,22 @@ private:
     bool _notificationIconShown = false;
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
+    bool _deferPersistedLayoutRestore = false;
     SafeDispatcherTimer _persistStateTimer;
+    std::wstring _startupCurrentDirectory;
+    std::wstring _startupEnvironment;
+    uint32_t _startupShowWindowCommand = SW_SHOWDEFAULT;
     std::optional<bool> _currentSystemThemeIsDark;
     int32_t _windowCount = 0;
     int32_t _messageBoxCount = 0;
     std::wstring _pendingAumidLnkPath;
     std::wstring _pendingAumid;
+    winrt::event_token _keptSessionsChangedToken{};
+    winrt::event_token _detachedSessionClosedToken{};
+    // Menu ids for the detached-tab items, kept in the order the menu was built
+    // so a click can map back to a tab. Well clear of any window id.
+    static constexpr UINT KeptSessionMenuIdBase = 0x40000000;
+    std::vector<winrt::guid> _keptSessionMenuIds;
 
 #if 0 // #ifdef NDEBUG
     static constexpr void _assertIsMainThread() noexcept

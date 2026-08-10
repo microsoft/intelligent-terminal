@@ -356,6 +356,20 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleTogglePaneKeepRunning(const IInspectable& sender,
+                                                    const ActionEventArgs& args)
+    {
+        if (const auto activeTab{ _senderOrFocusedTab(sender) })
+        {
+            if (const auto pane = activeTab->GetActivePane(); pane && !pane->IsAgentPane())
+            {
+                pane->ToggleKeepRunning();
+            }
+        }
+
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleEnablePaneReadOnly(const IInspectable& sender,
                                                  const ActionEventArgs& args)
     {
@@ -500,7 +514,20 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            LOG_IF_FAILED(_OpenNewTab(realArgs.ContentArgs()));
+            const auto result = _OpenNewTab(realArgs.ContentArgs());
+            LOG_IF_FAILED(result);
+            if (SUCCEEDED(result))
+            {
+                if (const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+                    terminalArgs && !terminalArgs.DurableShellSessionId().empty())
+                {
+                    if (const auto tab = _GetFocusedTabImpl())
+                    {
+                        tab->SetDurableShellSession(terminalArgs.DurableShellSessionId(),
+                                                    terminalArgs.DurableShellSessionRevision());
+                    }
+                }
+            }
             args.Handled(true);
         }
     }

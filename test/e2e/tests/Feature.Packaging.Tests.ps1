@@ -111,6 +111,154 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     }
 }
 
+Describe 'Feature §9 event-only protocol lifecycle' -Tag 'Feature','ConnectOnly' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'Event-only protocol commands do not relaunch Terminal' {
+        $sourcePane = (Get-ActivePane -App $script:app).session_id
+        $sendEventType = "protocol.connect_only.send.$([guid]::NewGuid().ToString('N'))"
+        $publishEventType = "protocol.connect_only.publish.$([guid]::NewGuid().ToString('N'))"
+        $publishPayload = @{
+            type = 'event'
+            method = 'agent_event'
+            params = @{
+                event = $publishEventType
+                pane_id = $sourcePane
+            }
+        } | ConvertTo-Json -Compress
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 500
+            Invoke-WtCli -App $script:app -Arguments @('send-event', '-p', $sourcePane, '-e', $sendEventType, '{}') | Out-Null
+            Invoke-WtCli -App $script:app -Arguments @('publish', $publishPayload) | Out-Null
+            {
+                Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.event -eq $sendEventType
+                }
+            } | Should -Not -Throw
+            {
+                Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.event -eq $publishEventType
+                }
+            } | Should -Not -Throw
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+
+        $stoppedApp = $script:app
+        Stop-Terminal -App $stoppedApp
+        $script:app = $null
+
+        (Test-Until -TimeoutSec 10 -IntervalSec 0.5 -Condition {
+            @(Get-WtProcessesForApp -App $stoppedApp).Count -eq 0
+        }) | Should -BeTrue
+
+        try {
+            $environment = @{ WT_COM_CLSID = $stoppedApp.ComClsid }
+            $sendResult = Invoke-Native -FilePath $stoppedApp.WtcliPath `
+                -Arguments @('send-event', '-p', $sourcePane, '-e', $sendEventType, '{}') `
+                -TimeoutSec 10 -Environment $environment
+            $publishResult = Invoke-Native -FilePath $stoppedApp.WtcliPath `
+                -Arguments @('publish', $publishPayload) `
+                -TimeoutSec 10 -Environment $environment
+
+            $sendResult.ExitCode | Should -Be 0
+            $publishResult.ExitCode | Should -Be 0
+            Start-Sleep -Seconds 3
+            @(Get-WtProcessesForApp -App $stoppedApp).Count | Should -Be 0
+        }
+        finally {
+            Get-WtProcessesForApp -App $stoppedApp | ForEach-Object {
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+Describe 'Feature §9 headless COM activation' -Tag 'Feature','Packaging' -Skip:(-not $script:UiReady) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    }
+
+    It 'COM activation stays headless and defers saved-layout restore' {
+        $app = Resolve-ItApp -Package (Get-ItTestPackage)
+        Stop-AppInstances -App $app
+        Backup-WtConfig -App $app
+
+        try {
+            Invoke-FrePass -App $app | Out-Null
+            Set-WtSetting -App $app -Key 'firstWindowPreference' -Value 'persistedLayout' | Out-Null
+            Set-WtState -App $app -Key 'persistedWindowLayouts' -Value $null | Out-Null
+
+            $app.AppUserModelId | Should -Not -BeNullOrEmpty
+            Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
+
+            $initialProcess = Wait-Until -TimeoutSec 30 -IntervalSec 0.5 -Because 'initial Terminal process' -Condition {
+                Get-WtProcessesForApp -App $app | Select-Object -First 1
+            }
+            $app.Pid = $initialProcess.Id
+            Resolve-WtComClsid -App $app -TimeoutSec 30 | Out-Null
+
+            (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
+                @(Get-WtWindows -App $app).Count -eq 1
+            }) | Should -BeTrue
+            (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
+                @(Get-WtWindowHwnds -App $app | Where-Object { $_.pid -eq $app.Pid }).Count -gt 0
+            }) | Should -BeTrue
+
+            Stop-Terminal -App $app -RestoreSettings $false
+            (Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+                @(Get-WtProcessesForApp -App $app).Count -eq 0
+            }) | Should -BeTrue
+
+            $savedLayoutCount = Wait-Until -TimeoutSec 10 -IntervalSec 0.5 -Because 'persisted window layout' -Condition {
+                $count = @((Get-WtStateObject -App $app).persistedWindowLayouts).Count
+                if ($count -gt 0) { $count }
+            }
+            $savedLayoutCount | Should -Be 1
+
+            $activation = Invoke-Native -FilePath $app.WtcliPath -Arguments @('--json', 'list-windows') `
+                -TimeoutSec 20 -Environment @{ WT_COM_CLSID = $app.ComClsid }
+            $activation.ExitCode | Should -Be 0
+            $activationResult = $activation.StdOut | ConvertFrom-JsonSafe
+            $activationResult | Should -Not -BeNullOrEmpty
+            $activationResult.PSObject.Properties.Name | Should -Contain 'windows'
+            @($activationResult.windows).Count | Should -Be 0
+
+            $headlessProcess = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Because 'COM-activated Terminal process' -Condition {
+                Get-WtProcessesForApp -App $app | Select-Object -First 1
+            }
+            $app.Pid = $headlessProcess.Id
+            $unexpectedWindow = Test-Until -TimeoutSec 3 -IntervalSec 0.25 -Condition {
+                $process = Get-Process -Id $app.Pid -ErrorAction SilentlyContinue
+                ($process -and $process.MainWindowHandle -ne 0) -or
+                    @(Get-WtWindows -App $app).Count -gt 0 -or
+                    @(Get-WtWindowHwnds -App $app | Where-Object { $_.pid -eq $app.Pid }).Count -gt 0
+            }
+            $unexpectedWindow | Should -BeFalse
+            @((Get-WtStateObject -App $app).persistedWindowLayouts).Count | Should -Be $savedLayoutCount
+
+            Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                try { @(Get-WtWindows -App $app).Count -eq $savedLayoutCount } catch { $false }
+            }) | Should -BeTrue
+            (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
+                @(Get-WtWindowHwnds -App $app | Where-Object { $_.pid -eq $app.Pid }).Count -eq $savedLayoutCount
+            }) | Should -BeTrue
+        }
+        finally {
+            Stop-AppInstances -App $app
+            Restore-WtConfig -App $app
+        }
+    }
+}
+
 Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:UiReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force

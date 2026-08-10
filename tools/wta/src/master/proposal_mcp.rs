@@ -289,6 +289,13 @@ impl CapabilityRegistry {
         Self::remove_capability(&mut routes, &pending.hash);
     }
 
+    pub(super) async fn remove_session(&self, session_id: &acp::schema::v1::SessionId) {
+        let mut routes = self.routes.lock().await;
+        if let Some(hash) = routes.by_session.get(session_id).copied() {
+            Self::remove_capability(&mut routes, &hash);
+        }
+    }
+
     pub(super) async fn remove_owner(&self, owner: AgentInstanceId) -> usize {
         let mut routes = self.routes.lock().await;
         let Some(hashes) = routes.by_owner.remove(&owner) else {
@@ -1081,6 +1088,27 @@ mod tests {
         assert!(matches!(
             registry.resolve(&replacement.secret).await,
             CapabilityResolution::Unknown
+        ));
+    }
+
+    #[tokio::test]
+    async fn closing_session_revokes_committed_capability_but_not_replacement() {
+        let registry = CapabilityRegistry::default();
+        let owner = AgentInstanceId::new_v4();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let committed = registry.prepare(owner, None).await;
+        assert!(registry.bind(&committed, session_id.clone()).await);
+        let replacement = registry.prepare(owner, Some(session_id.clone())).await;
+
+        registry.remove_session(&session_id).await;
+
+        assert!(matches!(
+            registry.resolve(&committed.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&replacement.secret).await,
+            CapabilityResolution::Bound(found) if found == session_id
         ));
     }
 

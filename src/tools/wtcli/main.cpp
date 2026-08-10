@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include <unknwn.h>
+#include <oleauto.h>
 #include <winrt/Windows.Foundation.h>
 
 #include "Formatting.h"
@@ -25,6 +26,7 @@
 #include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -68,9 +70,16 @@ struct EventSink : ITerminalProtocolEventSink
 
 // ── Helpers ──
 
+enum class TerminalConnectionMode
+{
+    AllowActivation,
+    RunningOnly,
+};
+
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
                                                           std::string* outVersion = nullptr,
-                                                          bool skipAuthenticate = false)
+                                                          bool skipAuthenticate = false,
+                                                          TerminalConnectionMode mode = TerminalConnectionMode::AllowActivation)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -92,10 +101,26 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     }
 
     winrt::com_ptr<ITerminalProtocol> server;
-    auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    HRESULT hr = S_OK;
+    if (mode == TerminalConnectionMode::RunningOnly)
+    {
+        winrt::com_ptr<IUnknown> activeObject;
+        hr = GetActiveObject(cls, nullptr, activeObject.put());
+        if (SUCCEEDED(hr))
+        {
+            hr = activeObject->QueryInterface(__uuidof(ITerminalProtocol), server.put_void());
+        }
+    }
+    else
+    {
+        hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
+    }
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (mode == TerminalConnectionMode::AllowActivation)
+        {
+            fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        }
         return nullptr;
     }
     if (skipAuthenticate)
@@ -179,6 +204,50 @@ static HRESULT CallJson(F&& call, Json::Value& out)
     return hr;
 }
 
+static std::string MethodDisplayName(std::string_view method)
+{
+    std::string displayName{ method };
+    for (auto& ch : displayName)
+    {
+        if (ch == '_')
+            ch = '-';
+    }
+    return displayName;
+}
+
+static bool SupportsMethod(ITerminalProtocol* server, std::string_view method, int& exitCode)
+{
+    Json::Value methods;
+    const auto hr = CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, methods);
+    const auto displayName = MethodDisplayName(method);
+
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities failed while checking %s support: 0x%08X\n",
+                displayName.c_str(),
+                static_cast<uint32_t>(hr));
+        exitCode = 1;
+        return false;
+    }
+    if (!methods.isArray())
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities returned malformed capabilities while checking %s support.\n",
+                displayName.c_str());
+        exitCode = 1;
+        return false;
+    }
+
+    for (const auto& supportedMethod : methods)
+    {
+        if (supportedMethod.isString() && supportedMethod.asString() == method)
+            return true;
+    }
+
+    fprintf(stderr, "[wtcli] Connected Terminal does not support %s.\n", displayName.c_str());
+    exitCode = 1;
+    return false;
+}
+
 static std::string GuidToString(const GUID& g)
 {
     wchar_t buf[40]{};
@@ -187,6 +256,19 @@ static std::string GuidToString(const GUID& g)
     if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
         ws = ws.substr(1, ws.size() - 2);
     return winrt::to_string(winrt::hstring{ ws });
+}
+
+static bool TryGuidFromString(const std::string& target, GUID& outGuid)
+{
+    auto wstr = winrt::to_hstring(target);
+    std::wstring guidStr{ wstr };
+    if (!guidStr.empty() && guidStr[0] != L'{')
+        guidStr = L"{" + guidStr + L"}";
+    GUID parsedGuid{};
+    if (FAILED(CLSIDFromString(guidStr.c_str(), &parsedGuid)))
+        return false;
+    outGuid = parsedGuid;
+    return true;
 }
 
 static GUID GuidFromString(const std::string& target)
@@ -288,6 +370,13 @@ int main()
         if (!server)
             exitCode = 1;
         return server;
+    };
+    auto connectIfRunning = [&]() -> winrt::com_ptr<ITerminalProtocol> {
+        return ConnectToTerminal(
+            nullptr,
+            nullptr,
+            skipAuthenticate,
+            TerminalConnectionMode::RunningOnly);
     };
 
     // ── list-windows ──
@@ -410,6 +499,83 @@ int main()
         else
         {
             FormatPanesHuman(panes);
+        }
+    });
+
+    // ── list-shell-sessions ──
+    auto* listShellSessionsCmd = app.add_subcommand("list-shell-sessions", "List saved shell sessions");
+    listShellSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "list_shell_sessions", exitCode))
+            return;
+        Json::Value sessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListShellSessions(j); }, sessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListShellSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["shell_sessions"] = sessions;
+            PrintJson(result);
+        }
+        else
+        {
+            for (const auto& session : sessions)
+                printf("%s\t%s\n", session["id"].asCString(), session["name"].asCString());
+        }
+    });
+
+    // ── list-detached-sessions ──
+    auto* listDetachedSessionsCmd = app.add_subcommand("list-detached-sessions", "List live detached sessions");
+    listDetachedSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "list_detached_sessions", exitCode))
+            return;
+        Json::Value detachedSessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListDetachedSessions(j); }, detachedSessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListDetachedSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["detached_sessions"] = detachedSessions;
+            PrintJson(result);
+        }
+        else
+        {
+            FormatDetachedSessionsHuman(detachedSessions);
+        }
+    });
+
+    // ── restore-shell-session ──
+    std::string restoreShellSessionId;
+    std::string restoreShellSessionWindowId;
+    auto* restoreShellSessionCmd = app.add_subcommand("restore-shell-session", "Restore a saved shell session");
+    restoreShellSessionCmd->add_option("id", restoreShellSessionId, "Durable shell session ID")->required();
+    restoreShellSessionCmd->add_option("-w,--window-id", restoreShellSessionWindowId, "Target window ID");
+    restoreShellSessionCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "restore_shell_session", exitCode))
+            return;
+
+        uint64_t windowId = 0;
+        if (!restoreShellSessionWindowId.empty() && !TryParseU64(restoreShellSessionWindowId, windowId))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreShellSessionWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        wil::unique_bstr id{ Bstr(restoreShellSessionId) };
+        const auto hr = server->RestoreShellSession(windowId, id.get());
+        if (FAILED(hr)) { fprintf(stderr, "RestoreShellSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["id"] = restoreShellSessionId;
+            PrintJson(result);
         }
     });
 
@@ -546,6 +712,41 @@ int main()
         else
         {
             printf("Session %s closed.\n", GuidToString(sessionId).c_str());
+        }
+    });
+
+    // ── kill-detached-session ──
+    std::string killDetachedSessionId;
+    auto* killDetachedSessionCmd = app.add_subcommand("kill-detached-session", "Close a detached session");
+    killDetachedSessionCmd->add_option("session-id", killDetachedSessionId, "Detached session GUID")->required();
+    killDetachedSessionCmd->callback([&]() {
+        GUID sessionId{};
+        if (!TryGuidFromString(killDetachedSessionId, sessionId))
+        {
+            fprintf(stderr, "[wtcli] Invalid session ID: %s\n", killDetachedSessionId.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "kill_detached_session", exitCode))
+            return;
+
+        const auto hr = server->KillDetachedSession(sessionId);
+        if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
+        {
+            fprintf(stderr, "[wtcli] Detached session not found: %s\n", killDetachedSessionId.c_str());
+            exitCode = 1;
+            return;
+        }
+        if (FAILED(hr)) { fprintf(stderr, "KillDetachedSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["session_id"] = killDetachedSessionId;
+            PrintJson(result);
         }
     });
 
@@ -775,7 +976,7 @@ int main()
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
     publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
     publishCmd->callback([&]() {
-        auto server = connect();
+        auto server = connectIfRunning();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
         auto hr = server->SendEvent(evt.get());
@@ -789,7 +990,7 @@ int main()
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
-        auto server = connect();
+        auto server = connectIfRunning();
         if (!server) return;
         std::string resolvedSessionId;
         if (!sendEventPaneTarget.empty())

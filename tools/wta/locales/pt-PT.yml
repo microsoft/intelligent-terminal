@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnosticar o terminal ativo e sugerir uma correção (/
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar a indicação em curso"
 commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"
+commands.shell_sessions.summary: "Navegar e restaurar sessões guardadas da linha de comandos"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Escolha o agente para este separador (/agent <id> para mudar diretamente)"  # {Locked="/agent","<id>"}
 
 # ── Execução de recomendação (src/coordinator.rs) ───────────────────────────

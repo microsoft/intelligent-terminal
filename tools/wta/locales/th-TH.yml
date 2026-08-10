@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "เรียกดูและกู้คืนเซสชันบรรทัดคำสั่งที่บันทึกไว้"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "เลือกตัวแทนสำหรับแผงนี้ (/agent <id> เพื่อสลับโดยตรง)"  # {Locked="/agent","<id>"}
 
 # ── การดำเนินการคำแนะนำ (src/coordinator.rs) ───────────────────────────

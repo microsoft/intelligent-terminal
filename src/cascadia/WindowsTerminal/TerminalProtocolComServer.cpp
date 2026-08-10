@@ -8,6 +8,7 @@
 #include "AppHost.h"
 
 #include <json/json.h>
+#include <oleauto.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
@@ -28,6 +29,7 @@ namespace Protocol = winrt::Microsoft::Terminal::Protocol;
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 
 static DWORD g_comRegistration = 0;
+static DWORD g_activeObjectRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
@@ -81,6 +83,29 @@ try
             }
         }
 
+        if (SUCCEEDED(regHr))
+        {
+            const auto activeObject = Make<TerminalProtocolComServer>();
+            if (!activeObject)
+            {
+                regHr = E_OUTOFMEMORY;
+            }
+            else
+            {
+                regHr = RegisterActiveObject(
+                    activeObject.Get(),
+                    __uuidof(TerminalProtocolComServer),
+                    ACTIVEOBJECT_STRONG,
+                    &g_activeObjectRegistration);
+            }
+        }
+
+        if (FAILED(regHr) && g_comRegistration)
+        {
+            LOG_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+            g_comRegistration = 0;
+        }
+
         ready.SetEvent();
 
         // Keep this MTA thread alive so the COM registration stays active.
@@ -97,9 +122,24 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
 
+    HRESULT result = S_OK;
+    if (g_activeObjectRegistration)
+    {
+        const auto hr = RevokeActiveObject(g_activeObjectRegistration, nullptr);
+        if (FAILED(hr))
+        {
+            result = hr;
+        }
+        g_activeObjectRegistration = 0;
+    }
+
     if (g_comRegistration)
     {
-        RETURN_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+        const auto hr = CoRevokeClassObject(g_comRegistration);
+        if (SUCCEEDED(result) && FAILED(hr))
+        {
+            result = hr;
+        }
         g_comRegistration = 0;
     }
 
@@ -113,7 +153,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return S_OK;
+    return result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
@@ -185,7 +225,7 @@ static bool _parseJson(const std::string& str, Json::Value& out)
 
 // ── JSON serialization helpers (the wire format is JSON; see wtcli Formatting) ──
 
-static std::string _guidStr(const winrt::guid& g)
+static std::string _guidStr(const GUID& g)
 {
     wchar_t buf[40]{};
     ::StringFromGUID2(g, buf, ARRAYSIZE(buf));
@@ -295,6 +335,17 @@ static Json::Value _toJson(const Protocol::TabCreationResult& r)
     v["session_id"] = _guidStr(r.SessionId);
     v["window_id"] = static_cast<Json::UInt64>(r.WindowId);
     v["pid"] = static_cast<Json::UInt>(r.Pid);
+    return v;
+}
+
+static Json::Value _toJson(const WindowEmperor::DetachedSessionProtocolEntry& session)
+{
+    Json::Value v;
+    v["session_id"] = _guidStr(session.SessionId);
+    v["pid"] = static_cast<Json::UInt>(session.Pid);
+    v["tab_title"] = winrt::to_string(winrt::hstring{ session.TabTitle });
+    v["group_id"] = _guidStr(session.GroupId);
+    v["shell_session_id"] = winrt::to_string(winrt::hstring{ session.ShellSessionId });
     return v;
 }
 
@@ -513,15 +564,19 @@ try
         "get_process_status",
         "get_session_variable",
         "get_settings",
+        "list_shell_sessions",
         "create_tab",
         "split_pane",
         "close_pane",
         "send_input",
         "focus_pane",
         "set_session_variable",
+        "restore_shell_session",
         "subscribe",
         "unsubscribe",
         "send_event",
+        "list_detached_sessions",
+        "kill_detached_session",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -589,6 +644,55 @@ try
     }
 
     *json = _bstrFromJson(arr);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListShellSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    const auto request = s_emperor->GetShellSessionsForProtocol();
+    RETURN_IF_FAILED(request.Result);
+
+    std::string serialized;
+    if (request.Host)
+    {
+        const auto page = _getPage(request.Host.get());
+        RETURN_HR_IF(E_FAIL, !page);
+        serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    }
+    else
+    {
+        serialized = winrt::to_string(request.SerializedSessions);
+    }
+
+    Json::Value sessions;
+    std::string errors;
+    std::istringstream stream{ serialized };
+    RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
+    *json = _bstrFromJson(sessions);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListDetachedSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    Json::Value rows(Json::arrayValue);
+    for (const auto& session : s_emperor->GetDetachedSessionsForProtocol())
+    {
+        rows.append(_toJson(session));
+    }
+
+    *json = _bstrFromJson(rows);
     return S_OK;
 }
 CATCH_RETURN()
@@ -779,19 +883,10 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // Find target window.
-    AppHost* targetHost = nullptr;
-    if (windowId != 0)
-    {
-        targetHost = s_emperor->GetWindowById(windowId);
-    }
-    else
-    {
-        targetHost = s_emperor->GetMostRecentWindow();
-    }
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);
 
-    const auto page = _getPage(targetHost);
+    const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
 
     // Build NewTerminalArgs.
@@ -937,6 +1032,30 @@ try
     }
 
     return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR id)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    const auto idH = _hstr(id);
+    RETURN_HR_IF(E_INVALIDARG, idH.empty());
+
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
+    RETURN_HR_IF(E_FAIL, !targetHost);
+
+    const auto page = _getPage(targetHost.get());
+    RETURN_HR_IF(E_FAIL, !page);
+    return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::KillDetachedSession(GUID sessionId)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    return s_emperor->KillDetachedSessionForProtocol(sessionId) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 
@@ -1086,6 +1205,9 @@ try
         // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::PaneAgentSession:
+        _dispatchPaneAgentSessionToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentChipTarget:
         // Helper override for which pane gets the "Agent" chip; null
         // pane_session_id reverts the tab to source-flag-driven chip.
@@ -1108,7 +1230,12 @@ try
     {
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        s_NotifyEventToComClients(Json::writeString(wb, evt));
+        const auto normalized = Json::writeString(wb, evt);
+        // Hooks publish agent lifecycle events through the broadcast route.
+        // Mirror those events into TerminalPage so durable tab snapshots see
+        // the same pane/session binding as WTA's registry.
+        _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
+        s_NotifyEventToComClients(normalized);
         return S_OK;
     }
     default:
@@ -1401,6 +1528,39 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnPaneAgentSessionChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Page may have been torn down during dispatch.
                 }
             });
     }

@@ -96,6 +96,7 @@ pub enum AppEvent {
     },
     UserMessageReplayChunk {
         session_id: String,
+        message_id: Option<String>,
         text: String,
     },
     AgentMessageEnd {
@@ -214,6 +215,22 @@ pub enum AppEvent {
     },
     RegisterBornBoundSession {
         event: crate::agent_sessions::SessionEvent,
+    },
+    ShellSessionsLoaded {
+        tab_id: String,
+        sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+        error: Option<String>,
+    },
+    ShellSessionRestored {
+        tab_id: String,
+        id: String,
+        error: Option<String>,
+    },
+    ShellSessionDeleted {
+        tab_id: String,
+        id: String,
+        deleted: bool,
+        error: Option<String>,
     },
     MasterMutationCompleted {
         request_id: u64,

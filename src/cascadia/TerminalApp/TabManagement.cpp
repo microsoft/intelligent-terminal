@@ -22,10 +22,12 @@
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
+#include "KeepRunningSessionHelpers.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <shlobj.h>
+#include <sddl.h>
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation::Collections;
@@ -92,7 +94,24 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() };
+            newTerminalArgs && !newTerminalArgs.AgentPaneSessionId().empty())
+        {
+            if (const auto tabImpl = _GetTabImpl(newTab))
+            {
+                _pendingDurableAgentPaneRestores.insert_or_assign(
+                    tabImpl->StableId(),
+                    _PendingDurableAgentPaneRestore{
+                        _currentStartupActionBatchId,
+                        winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                        newTerminalArgs.AgentPaneAgent(),
+                        winrt::to_string(newTerminalArgs.StartingDirectory()),
+                        winrt::to_string(newTerminalArgs.AgentPaneView()),
+                        newTerminalArgs.AgentPaneOpen(),
+                        newTerminalArgs.AgentPanePosition() });
+            }
+        }
         return S_OK;
     }
     CATCH_RETURN();
@@ -367,7 +386,13 @@ namespace winrt::TerminalApp::implementation
                 // problem a global "is any drag in flight?" check would
                 // have (window-A-drag would erroneously block window-B's
                 // unrelated new-tab pre-warm).
-                if (agentLeavesSeen == 0)
+                if (self->_pendingDurableAgentPaneRestores.contains(newTabId))
+                {
+                    _agentPaneLog(
+                        std::string{ "_InitializeTab(deferred): durable agent pane restore pending for tab " } +
+                        winrt::to_string(newTabId));
+                }
+                else if (agentLeavesSeen == 0)
                 {
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
@@ -386,6 +411,7 @@ namespace winrt::TerminalApp::implementation
             });
         }
     }
+
 
     // Method Description:
     // - Create a new tab using a specified pane as the root.
@@ -592,10 +618,78 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
-    // Method Description:
-    // - If this window has a name, persist its current workspace layout to
-    //   ApplicationState. Intended to be called from the close-pane / close-tab
-    //   paths while tab/pane content is still alive (before it gets torn down).
+    void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    {
+        const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            return contentArgs.try_as<NewTerminalArgs>();
+        };
+
+        if (const auto& durableShellSessionId = tab->DurableShellSessionId();
+            !durableShellSessionId.empty())
+        {
+            for (const auto& action : actions)
+            {
+                if (const auto terminalArgs = getTerminalArgs(action))
+                {
+                    terminalArgs.DurableShellSessionId(durableShellSessionId);
+                    terminalArgs.DurableShellSessionRevision(tab->DurableShellSessionRevision());
+                    break;
+                }
+            }
+        }
+
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = getTerminalArgs(action))
+            {
+                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
+                {
+                    terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentSessionAgent(binding->second.agent);
+                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                }
+            }
+        }
+
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            const auto agentSessionId = agentContent.AgentSessionId();
+            if (!agentSessionId.empty())
+            {
+                RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
+                for (const auto& action : actions)
+                {
+                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                    {
+                        if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
+                        {
+                            terminalArgs.AgentPaneSessionId(agentSessionId);
+                            terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
+                                                            tab->AgentIdOverride() :
+                                                            _settings.GlobalSettings().EffectiveAcpAgent());
+                            terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
+                                                       agentContent.IsSessionsView() ? L"sessions" :
+                                                                                       L"chat");
+                            terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                            terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void TerminalPage::_SaveWorkspaceIfNeeded()
     {
         const auto& windowName = _WindowProperties.WindowName();
@@ -606,6 +700,323 @@ namespace winrt::TerminalApp::implementation
                 ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
             }
         }
+    }
+
+    TerminalPage::_ShellSessionSaveResult TerminalPage::_ParseShellSessionSaveResponse(const std::string_view json)
+    {
+        Json::Value response;
+        std::string errors;
+        Json::CharReaderBuilder builder;
+        builder["allowComments"] = false;
+        builder["collectComments"] = false;
+        builder["allowTrailingCommas"] = false;
+        builder["failIfExtra"] = true;
+        builder["rejectDupKeys"] = true;
+        builder["strictRoot"] = true;
+
+        const auto reader = std::unique_ptr<Json::CharReader>{ builder.newCharReader() };
+        if (!reader->parse(json.data(), json.data() + json.size(), &response, &errors))
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+
+        THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !response.isObject());
+
+        const auto& id = response["id"];
+        const auto& revision = response["revision"];
+        const auto& forked = response["forked"];
+        THROW_HR_IF(WEB_E_INVALID_JSON_STRING,
+                    !id.isString() ||
+                        id.asString().empty() ||
+                        !(revision.isInt() || revision.isInt64()) ||
+                        revision.asInt64() <= 0 ||
+                        !forked.isBool());
+
+        return _ShellSessionSaveResult{ winrt::to_hstring(id.asString()), revision.asInt64(), forked.asBool() };
+    }
+
+    void TerminalPage::_ApplyShellSessionSaveResult(Tab* const tab, const _ShellSessionSaveResult& save)
+    {
+        tab->SetDurableShellSession(save.id, save.revision);
+    }
+
+    void TerminalPage::_PersistShellSession(Tab* const tab)
+    {
+        bool hasKeepRunningPane = false;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            hasKeepRunningPane = hasKeepRunningPane || pane->KeepRunning();
+        });
+        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference(), hasKeepRunningPane);
+        if (!closeActions.save && !closeActions.detach)
+        {
+            _agentPaneLog("_PersistShellSession: skipped — saving and keep-running are off");
+            return;
+        }
+
+        bool hasUserInput = false;
+        bool hasAgentSession = false;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (!pane->IsAgentPane())
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    hasUserInput = hasUserInput || control.HasUserInput();
+                    if (const auto connection = control.Connection())
+                    {
+                        hasAgentSession = hasAgentSession || _paneAgentSessions.contains(connection.SessionId());
+                    }
+                }
+            }
+        });
+        if (!ShouldPersistShellSession(hasUserInput, !tab->DurableShellSessionId().empty(), hasKeepRunningPane, hasAgentSession))
+        {
+            // Profile startup commands alone do not qualify until the user
+            // sends input or a resumable agent session binds to the pane.
+            _agentPaneLog("_PersistShellSession: skipped — no user input, durable id, keep-running pane, or agent session");
+            return;
+        }
+
+        if (!closeActions.save)
+        {
+            _agentPaneLog("_PersistShellSession: detaching without saving");
+            _DetachShellPanesForKeepRunning(tab, tab->DurableShellSessionId(), tab->DurableShellSessionRevision());
+            return;
+        }
+
+        try
+        {
+            const auto sessionName = tab->Title();
+            auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
+            if (sessionName.empty() || actions.empty())
+            {
+                _agentPaneLog(std::string{ "_PersistShellSession: skipped — nameEmpty=" } +
+                              (sessionName.empty() ? "true" : "false") + " actions=" +
+                              std::to_string(actions.size()));
+            }
+            else
+            {
+                const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+                const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"shell-session-staging";
+                std::filesystem::create_directories(stagingDirectory);
+                const auto elevated = IsRunningElevated();
+                std::vector<std::filesystem::path> persistedPaths;
+                Json::Value buffers{ Json::arrayValue };
+                bool committed = false;
+                const auto cleanup = wil::scope_exit([&]() {
+                    if (!committed)
+                    {
+                        for (const auto& path : persistedPaths)
+                        {
+                            std::error_code error;
+                            std::filesystem::remove(path, error);
+                        }
+                    }
+                });
+
+                wil::unique_hlocal_security_descriptor sd;
+                SECURITY_ATTRIBUTES sa{};
+                if (elevated)
+                {
+                    unsigned long size;
+                    THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
+                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                    sa.lpSecurityDescriptor = sd.get();
+                }
+
+                _AddDurableSessionMetadata(tab, actions);
+
+                if (closeActions.persistScrollback)
+                {
+                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (pane->IsAgentPane())
+                        {
+                            return;
+                        }
+
+                        std::filesystem::path path;
+                        try
+                        {
+                            if (const auto control = pane->GetTerminalControl())
+                            {
+                                if (const auto connection = control.Connection())
+                                {
+                                    const auto sessionId = connection.SessionId();
+                                    if (sessionId != winrt::guid{})
+                                    {
+                                        const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
+                                        path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
+                                        wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                                        THROW_LAST_ERROR_IF(!file);
+                                        control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                                        persistedPaths.emplace_back(path);
+
+                                        Json::Value buffer;
+                                        buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                                        buffer["staging_path"] = til::u16u8(path.wstring());
+                                        buffers.append(std::move(buffer));
+                                    }
+                                }
+                            }
+                        }
+                        catch (...)
+                        {
+                            if (!path.empty())
+                            {
+                                std::error_code error;
+                                std::filesystem::remove(path, error);
+                            }
+                            throw;
+                        }
+                    });
+                }
+
+                WindowLayout layout;
+                layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+
+                Json::Value params;
+                params["name"] = winrt::to_string(sessionName);
+
+                TermControl activeShellControl{ nullptr };
+                for (const auto paneId : tab->GetMruPanes())
+                {
+                    if (const auto pane = tab->GetRootPane()->FindPane(paneId);
+                        pane && !pane->IsAgentPane())
+                    {
+                        activeShellControl = pane->GetTerminalControl();
+                        if (activeShellControl)
+                        {
+                            break;
+                        }
+                    }
+                }
+                if (!activeShellControl)
+                {
+                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                        if (!activeShellControl && !pane->IsAgentPane())
+                        {
+                            activeShellControl = pane->GetTerminalControl();
+                        }
+                    });
+                }
+
+                if (activeShellControl)
+                {
+                    params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
+                }
+                else
+                {
+                    params["active_pane_cwd"] = "";
+                }
+                params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
+                params["elevated"] = elevated;
+                params["buffers"] = std::move(buffers);
+                if (!tab->DurableShellSessionId().empty())
+                {
+                    params["id"] = winrt::to_string(tab->DurableShellSessionId());
+                    params["expected_revision"] = Json::Int64{ tab->DurableShellSessionRevision() };
+                }
+
+                auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+                bool temporaryAcquire = false;
+                if (!sharedWta.IsRunning())
+                {
+                    const auto wtaPath = _DetectWtaPath();
+                    const auto extraArgs = _BuildSharedWtaExtraArgs();
+                    temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+                    THROW_HR_IF(E_FAIL, !temporaryAcquire);
+                }
+                const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+                    if (temporaryAcquire)
+                    {
+                        sharedWta.ReleasePane();
+                    }
+                });
+
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                const auto result = sharedWta.Request(
+                    "_intellterm.wta/shell_sessions/save",
+                    Json::writeString(writer, params));
+                if (!result)
+                {
+                    _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result");
+                }
+                THROW_HR_IF(E_FAIL, !result);
+                const auto save = _ParseShellSessionSaveResponse(*result);
+                _ApplyShellSessionSaveResult(tab, save);
+                committed = true;
+            }
+        }
+        CATCH_LOG()
+
+        if (closeActions.detach)
+        {
+            _DetachShellPanesForKeepRunning(tab, tab->DurableShellSessionId(), tab->DurableShellSessionRevision());
+        }
+    }
+
+    // Detaches opted-in shell panes so the commands they are running survive
+    // closing. The content keeps its connection and buffer; only the
+    // TermControl is severed. Restoring the session reattaches to the same
+    // content.
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision, const std::shared_ptr<Pane>& subtree)
+    {
+        // One group per tab, so a multi-pane tab is offered back as the one
+        // thing the user closed rather than as N indistinguishable panes.
+        const auto groupId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto title = tab->Title();
+        auto detached = 0;
+
+        const auto root = subtree ? subtree : tab->GetRootPane();
+        root->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane() || !pane->KeepRunning())
+            {
+                return;
+            }
+
+            try
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    if (const auto connection = control.Connection())
+                    {
+                        if (const auto sessionId = connection.SessionId(); sessionId != winrt::guid{})
+                        {
+                            auto restoreArgs = pane->GetTerminalArgsForPane(BuildStartupKind::Content).try_as<NewTerminalArgs>();
+                            if (!restoreArgs)
+                            {
+                                return;
+                            }
+                            restoreArgs.ContentId(control.ContentId());
+                            restoreArgs.SessionId(sessionId);
+                            if (const auto binding = _paneAgentSessions.find(sessionId); binding != _paneAgentSessions.end())
+                            {
+                                restoreArgs.AgentSessionId(binding->second.sessionId);
+                                restoreArgs.AgentSessionAgent(binding->second.agent);
+                                restoreArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                            }
+
+                            // Capture the pane id before detaching, while the
+                            // control can still resolve it. Only sessions that
+                            // remain retained after immediate liveness reaping
+                            // suppress the ordinary tab-teardown close event.
+                            auto paneId = _FindSessionIdForControl(control);
+                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, shellSessionRevision, restoreArgs, control))
+                            {
+                                if (!paneId.empty())
+                                {
+                                    _panesKeptRunning.insert(std::move(paneId));
+                                }
+                                ++detached;
+                            }
+                        }
+                    }
+                }
+            }
+            CATCH_LOG()
+        });
+
+        _agentPaneLog("_DetachShellPanesForKeepRunning: detached " + std::to_string(detached) + " pane(s)");
     }
 
     // Method Description:
@@ -658,12 +1069,24 @@ namespace winrt::TerminalApp::implementation
         // Per-tab model: each tab owns its own agent pane. Closing a tab
         // takes its agent pane with it — no rescue needed.
 
+        // Persist first so a named workspace serializes the returned durable
+        // id/revision, matching the last-pane close path.
+        try
+        {
+            _PersistShellSession(t);
+        }
+        CATCH_LOG()
+
         // If this is the last tab in a named window, persist the workspace
-        // layout now while tab content is still alive. After tab.Close()
-        // the pane content will be torn down by the time _RemoveTab runs.
+        // layout while tab content is still alive. After tab.Close() the pane
+        // content will be torn down by the time _RemoveTab runs.
         if (_tabs.Size() == 1)
         {
-            _SaveWorkspaceIfNeeded();
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
         }
 
         tab.Close();
@@ -812,7 +1235,10 @@ namespace winrt::TerminalApp::implementation
             // if the user manually closed all tabs.
             // Do this only if we are the last window; the monarch will notice
             // we are missing and remove us that way otherwise.
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
         }
         else if (focusedTabIndex.has_value() && focusedTabIndex.value() == gsl::narrow_cast<uint32_t>(tabIndex))
         {
@@ -839,7 +1265,6 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
-
     }
 
     // Method Description:
@@ -1084,28 +1509,62 @@ namespace winrt::TerminalApp::implementation
         }
         _AddPreviouslyClosedPaneOrTab(std::move(state.args));
 
+        winrt::com_ptr<Tab> owningTab;
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const std::shared_ptr<Pane>& candidate) {
+                    if (candidate == pane)
+                    {
+                        owningTab = tabImpl;
+                    }
+                });
+            }
+            if (owningTab)
+            {
+                break;
+            }
+        }
+
+        const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
+        if (isLastPane)
+        {
+            try
+            {
+                _PersistShellSession(owningTab.get());
+            }
+            CATCH_LOG()
+        }
+        else if (owningTab && pane->KeepRunning())
+        {
+            _DetachShellPanesForKeepRunning(owningTab.get(), owningTab->DurableShellSessionId(), owningTab->DurableShellSessionRevision(), pane);
+        }
+
+        // If this is the last pane on the last tab of a named window, persist
+        // the workspace after the shell-session save has updated the tab's
+        // durable id and revision, while the pane content is still alive.
+        if (isLastPane && _tabs.Size() == 1)
+        {
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
+        }
+
         // Notify wta of pane closure BEFORE destruction (see
         // `_NotifyPanesClosing` for the revoker-race rationale). Must
         // happen before `pane->Close()` since Close destroys the
         // TermControl and the SessionId becomes unresolvable.
         _NotifyPanesClosing(pane);
 
-        // If this is the last pane on the last tab of a named window, persist
-        // the workspace layout now while the pane content is still alive.
-        // We can't wait until _RemoveTab, because pane->Close() below will
-        // destroy the content before _RemoveTab is reached.
-        if (_tabs.Size() == 1)
-        {
-            if (const auto activeTab{ _GetFocusedTabImpl() })
-            {
-                if (activeTab->GetLeafPaneCount() == 1)
-                {
-                    _SaveWorkspaceIfNeeded();
-                }
-            }
-        }
-
-        // If specified, detach before closing to directly update the pane structure
         pane->Close();
     }
 

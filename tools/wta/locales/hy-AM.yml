@@ -81,6 +81,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Վերագործարկել ագենտը"
 commands.stop.summary: "Չեղարկել ընթացիկ հարցումը"
 commands.sessions.summary: "Բացել պատմական նիստերի ընտրիչը (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.shell_sessions.summary: "Զննեք և վերականգնեք պահված հրամանի տողի աշխատաշրջանները"  # Opens saved command-line shell sessions; selecting one restores it
 commands.agent.summary: "Ընտրեք գործակալն այս ներդիրի համար (/agent <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────

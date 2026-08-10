@@ -1014,4 +1014,8 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>새 탭에서 백그라운드 에이전트 열기</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="TogglePaneKeepRunningCommandKey" xml:space="preserve">
+    <value>창을 닫은 후에도 계속 실행하는 설정 전환</value>
+    <comment>Command name for opting the active terminal pane in or out of remaining alive after it is closed.</comment>
+  </data>
 </root>
