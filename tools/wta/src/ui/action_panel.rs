@@ -33,6 +33,7 @@ pub(crate) struct LayoutRequest {
     pub input_height: u16,
     pub chat_natural_height: u16,
     pub hint_requested: bool,
+    pub activity_requested: bool,
     pub recommendation_natural_height: Option<u16>,
     pub permission_natural_height: Option<u16>,
 }
@@ -41,8 +42,9 @@ pub(crate) struct LayoutRequest {
 ///
 /// Input and the active action form the hard interactive base. A pending
 /// permission is modal and suppresses recommendations. Recommendations use a
-/// two-row summary until a five-row card shell fits. Activity, chat, and
-/// optional hints yield first if the host reports fewer than seven rows.
+/// two-row summary until a five-row card shell fits. Activity and navigation
+/// hints share one status row, with activity taking precedence. Chat and the
+/// status row yield first if the host reports fewer than seven rows.
 pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
     let mut result = ActionPanelLayout {
         chat_height: 0,
@@ -74,11 +76,9 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         }
     } else if let Some(natural_height) = request.recommendation_natural_height {
         if preferred_action_budget >= CARD_MIN_SIZE {
-            let reserve_hint = u16::from(preferred_action_budget > CARD_MIN_SIZE);
-            let panel_budget = preferred_action_budget.saturating_sub(reserve_hint);
-            result.recommendation_height = natural_height.min(panel_budget).max(CARD_MIN_SIZE);
+            result.recommendation_height =
+                natural_height.min(preferred_action_budget).max(CARD_MIN_SIZE);
             result.recommendation_mode = PanelMode::Full;
-            result.recommendation_hint_height = reserve_hint;
         } else if emergency_action_budget >= COMPACT_RECOMMENDATION_HEIGHT {
             result.recommendation_height = COMPACT_RECOMMENDATION_HEIGHT;
             result.recommendation_mode = PanelMode::Compact;
@@ -87,32 +87,40 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
 
     let action_rows = result
         .permission_height
-        .saturating_add(result.recommendation_height)
-        .saturating_add(result.recommendation_hint_height);
+        .saturating_add(result.recommendation_height);
     let natural_content_without_hint = request
         .input_height
-        .saturating_add(ACTIVITY_HEIGHT)
         .saturating_add(action_rows)
         .saturating_add(request.chat_natural_height.max(CHAT_MIN_HEIGHT));
     let compact = result.permission_mode == PanelMode::Compact
         || result.recommendation_mode == PanelMode::Compact;
-    if request.hint_requested && !compact && request.available_rows > natural_content_without_hint {
-        result.hint_height = 1;
-    }
+    let generic_hint_requested = request.hint_requested
+        && !compact
+        && request.available_rows > natural_content_without_hint;
 
     let base_remaining = request
         .available_rows
         .saturating_sub(action_rows)
-        .saturating_sub(result.hint_height)
         .saturating_sub(super::input::INPUT_MIN_HEIGHT);
     result.chat_height = CHAT_MIN_HEIGHT.min(base_remaining);
-    result.activity_height = ACTIVITY_HEIGHT.min(base_remaining.saturating_sub(result.chat_height));
+    let status_height =
+        ACTIVITY_HEIGHT.min(base_remaining.saturating_sub(result.chat_height));
+    if request.activity_requested {
+        result.activity_height = status_height;
+    } else if result.recommendation_mode == PanelMode::Full {
+        result.recommendation_hint_height = status_height;
+    } else if generic_hint_requested {
+        result.hint_height = status_height;
+    }
+    let allocated_status_height = result
+        .activity_height
+        .saturating_add(result.recommendation_hint_height)
+        .saturating_add(result.hint_height);
 
     let input_capacity = request
         .available_rows
-        .saturating_sub(result.activity_height)
+        .saturating_sub(allocated_status_height)
         .saturating_sub(action_rows)
-        .saturating_sub(result.hint_height)
         .saturating_sub(result.chat_height)
         .max(super::input::INPUT_MIN_HEIGHT);
     result.input_height = request.input_height.min(input_capacity);
@@ -120,9 +128,8 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
     let chat_capacity = request
         .available_rows
         .saturating_sub(result.input_height)
-        .saturating_sub(result.activity_height)
-        .saturating_sub(action_rows)
-        .saturating_sub(result.hint_height);
+        .saturating_sub(allocated_status_height)
+        .saturating_sub(action_rows);
     result.chat_height = request.chat_natural_height.min(chat_capacity);
     result
 }
@@ -216,6 +223,7 @@ mod tests {
             input_height: 3,
             chat_natural_height: 4,
             hint_requested: true,
+            activity_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: None,
         }
@@ -234,21 +242,33 @@ mod tests {
         let ten = plan(recommendation_request(10));
         assert_eq!(ten.recommendation_mode, PanelMode::Full);
         assert_eq!(ten.recommendation_height, 5);
-        assert_eq!(ten.recommendation_hint_height, 0);
+        assert_eq!(ten.recommendation_hint_height, 1);
 
         let eleven = plan(recommendation_request(11));
-        assert_eq!(eleven.recommendation_height, 5);
+        assert_eq!(eleven.recommendation_height, 6);
         assert_eq!(eleven.recommendation_hint_height, 1);
 
         let twelve = plan(recommendation_request(12));
         assert_eq!(twelve.recommendation_height, 6);
         assert_eq!(twelve.recommendation_hint_height, 1);
-        assert_eq!(twelve.chat_height, 1);
+        assert_eq!(twelve.chat_height, 2);
 
         let thirteen = plan(recommendation_request(13));
         assert_eq!(thirteen.recommendation_height, 6);
         assert_eq!(thirteen.recommendation_hint_height, 1);
-        assert_eq!(thirteen.chat_height, 2);
+        assert_eq!(thirteen.chat_height, 3);
+    }
+
+    #[test]
+    fn activity_replaces_navigation_and_generic_hints() {
+        let mut request = recommendation_request(13);
+        request.activity_requested = true;
+
+        let layout = plan(request);
+
+        assert_eq!(layout.activity_height, 1);
+        assert_eq!(layout.recommendation_hint_height, 0);
+        assert_eq!(layout.hint_height, 0);
     }
 
     #[test]
@@ -258,6 +278,7 @@ mod tests {
             input_height: 3,
             chat_natural_height: 4,
             hint_requested: true,
+            activity_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: Some(5),
         };
@@ -280,13 +301,14 @@ mod tests {
             input_height: 8,
             chat_natural_height: 4,
             hint_requested: false,
+            activity_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: None,
         });
 
         assert_eq!(layout.recommendation_mode, PanelMode::Compact);
         assert_eq!(layout.recommendation_height, 2);
-        assert_eq!(layout.input_height, 3);
+        assert_eq!(layout.input_height, 4);
         assert_eq!(layout.chat_height, 1);
     }
 

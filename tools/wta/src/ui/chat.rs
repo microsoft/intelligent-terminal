@@ -153,6 +153,11 @@ fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
     tab.should_show_thinking()
 }
 
+pub(crate) fn should_show_activity(app: &App) -> bool {
+    matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        || should_show_turn_activity(app.current_tab())
+}
+
 fn permission_tool_call_id(tab: &crate::app::TabSession) -> Option<&str> {
     tab.permission
         .front()

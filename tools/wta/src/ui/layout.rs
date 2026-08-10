@@ -143,6 +143,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         input_height,
         chat_natural_height: chat_estimate,
         hint_requested,
+        activity_requested: chat::should_show_activity(app),
         recommendation_natural_height,
         permission_natural_height,
     });
