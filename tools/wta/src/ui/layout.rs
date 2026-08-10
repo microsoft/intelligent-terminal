@@ -96,6 +96,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             &mut tab.shell_sessions_list_state,
             tab.shell_sessions_loading,
             tab.shell_sessions_error.as_deref(),
+            tab.shell_session_restore_in_flight,
             tab.shell_session_delete_confirmation.as_deref(),
             tab.shell_session_delete_in_flight,
         );

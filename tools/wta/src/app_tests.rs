@@ -9398,6 +9398,8 @@ fn shell_session_search_filters_navigation_and_restore() {
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(app.current_tab().shell_session_restore_in_flight);
     assert!(matches!(
         master_rx.try_recv(),
         Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
@@ -9405,6 +9407,14 @@ fn shell_session_search_filters_navigation_and_restore() {
             ..
         }) if id == cwd_id
     ));
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::ShellSessionRestored {
+        tab_id: DEFAULT_TAB_ID.to_string(),
+        id: cwd_id.to_string(),
+        error: None,
+    });
+    assert!(!app.current_tab().shell_session_restore_in_flight);
 
     app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));

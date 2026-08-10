@@ -17,6 +17,7 @@ pub fn render(
     list_state: &mut ListState,
     loading: bool,
     error: Option<&str>,
+    restore_in_flight: bool,
     delete_confirmation: Option<&str>,
     delete_in_flight: bool,
 ) {
@@ -142,7 +143,12 @@ pub fn render(
             width: area.width,
             height: 1,
         };
-        let (hint, style) = if delete_in_flight {
+        let (hint, style) = if restore_in_flight {
+            (
+                "Opening or focusing shell session...".to_string(),
+                Style::default().fg(Color::Yellow),
+            )
+        } else if delete_in_flight {
             (
                 "Deleting shell session...".to_string(),
                 Style::default().fg(Color::Yellow),
@@ -161,7 +167,8 @@ pub fn render(
             )
         } else {
             (
-                "(↑ ↓ Navigate • Enter Restore • Esc Back • D Delete • F5 Refresh)".to_string(),
+                "(↑ ↓ Navigate • Enter Open/Focus • Esc Back • D Delete • F5 Refresh)"
+                    .to_string(),
                 Style::default().fg(Color::DarkGray),
             )
         };

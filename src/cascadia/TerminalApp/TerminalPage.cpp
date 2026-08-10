@@ -3675,7 +3675,10 @@ namespace winrt::TerminalApp::implementation
     //   nt -d .` from inside another directory to work as expected.
     // Return Value:
     // - <none>
-    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions, const winrt::hstring cwd, const winrt::hstring env)
+    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions,
+                                                            const winrt::hstring cwd,
+                                                            const winrt::hstring env,
+                                                            const bool forceFirstActionSynchronous)
     {
         const auto strong = get_strong();
 
@@ -3714,7 +3717,7 @@ namespace winrt::TerminalApp::implementation
         // This same logic is also applied to CreateTabFromConnection.
         //
         // See GH#13136.
-        auto suspend = _tabs.Size() > 0;
+        auto suspend = _tabs.Size() > 0 && !forceFirstActionSynchronous;
         const auto startupActionBatchId = ++_nextStartupActionBatchId;
 
         for (size_t i = 0; i < actions.size(); ++i)

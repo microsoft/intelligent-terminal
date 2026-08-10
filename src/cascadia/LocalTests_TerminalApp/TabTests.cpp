@@ -239,6 +239,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SuccessfulDetachedCloseDefersEndEventToContentManager);
         TEST_METHOD(CloseProtocolLastPaneKeepsRunningWithoutEmittingEndState);
         TEST_METHOD(CloseNonLastPaneEmitsOneEndStateWithoutKeepingTheTab);
+        TEST_METHOD(FocusProtocolShellSessionUsesDurableId);
         TEST_METHOD(ParseShellSessionSaveResponse);
 
         TEST_METHOD(TryDuplicateBadTab);
@@ -379,6 +380,20 @@ namespace TerminalAppLocalTests
 
     void TabTests::ShellSessionCloseActionsFollowStartupPreference()
     {
+        const auto tabId = ::Microsoft::Console::Utils::GuidFromString(L"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}");
+        const auto durableId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-2222-3333-4444-555555555555}");
+        const winrt::hstring tabIdString{ ::Microsoft::Console::Utils::GuidToString(tabId) };
+        VERIFY_IS_TRUE(!!::IsEqualGUID(
+            durableId,
+            winrt::TerminalApp::implementation::GetKeepRunningGroupId(
+                tabIdString,
+                L"11111111-2222-3333-4444-555555555555")));
+        VERIFY_IS_TRUE(!!::IsEqualGUID(
+            tabId,
+            winrt::TerminalApp::implementation::GetKeepRunningGroupId(
+                tabIdString,
+                L"not-a-durable-uuid")));
+
         const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile, false);
         VERIFY_IS_FALSE(disabled.save);
         VERIFY_IS_FALSE(disabled.detach);
@@ -1320,7 +1335,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup();
         VERIFY_IS_NOT_NULL(page);
 
-        const winrt::hstring shellSessionId{ L"shell-session-detach-metadata" };
+        const winrt::hstring shellSessionId{ L"12345678-1234-5678-9abc-def012345678" };
         constexpr int64_t shellSessionRevision{ 19 };
 
         TestOnUIThread([&]() {
@@ -1350,7 +1365,7 @@ namespace TerminalAppLocalTests
             }
 
             VERIFY_IS_TRUE(groupId != winrt::guid{});
-            VERIFY_IS_TRUE(!!::IsEqualGUID(groupId, ::Microsoft::Console::Utils::GuidFromString(tab->StableId().c_str())));
+            VERIFY_IS_TRUE(!!::IsEqualGUID(groupId, ::Microsoft::Console::Utils::GuidFromPlainString(shellSessionId.c_str())));
 
             auto restored = _contentManager->BeginReattachKeptGroup(groupId);
             VERIFY_IS_TRUE(!!restored);
@@ -2734,6 +2749,22 @@ namespace TerminalAppLocalTests
         const auto states = _statesForPane(connectionStates, closedPaneId);
         VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(states.size()));
         VERIFY_ARE_EQUAL(std::string{ "closed" }, states.at(0));
+    }
+
+    void TabTests::FocusProtocolShellSessionUsesDurableId()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        const winrt::hstring durableId{ L"11111111-2222-3333-4444-555555555555" };
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            tab->SetDurableShellSession(durableId, 1);
+        });
+
+        VERIFY_IS_TRUE(page->FocusProtocolShellSession(durableId).get());
+        VERIFY_IS_FALSE(page->FocusProtocolShellSession(L"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").get());
     }
 
     void TabTests::ParseShellSessionSaveResponse()

@@ -1118,7 +1118,9 @@ impl App {
             }
             AppEvent::ShellSessionRestored { tab_id, id, error } => {
                 tracing::debug!(target: "shell_sessions", %id, restored = error.is_none(), "shell-session restore completed");
-                self.tab_mut(&tab_id).shell_sessions_error = error;
+                let tab = self.tab_mut(&tab_id);
+                tab.shell_session_restore_in_flight = false;
+                tab.shell_sessions_error = error;
             }
             AppEvent::ShellSessionDeleted {
                 tab_id,

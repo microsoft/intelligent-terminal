@@ -860,6 +860,24 @@ namespace winrt::TerminalApp::implementation
             extraArgs);
     }
 
+    IAsyncOperation<bool> TerminalPage::FocusProtocolShellSession(hstring id)
+    {
+        co_await wil::resume_foreground(Dispatcher());
+
+        for (uint32_t index = 0; index < _tabs.Size(); ++index)
+        {
+            if (const auto tab = _GetTabImpl(_tabs.GetAt(index));
+                tab && tab->DurableShellSessionId() == id)
+            {
+                SummonWindowRequested.raise(*this, nullptr);
+                _SelectTab(index);
+                co_return true;
+            }
+        }
+
+        co_return false;
+    }
+
     IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring id)
     {
         co_await wil::resume_foreground(Dispatcher());
@@ -979,7 +997,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        ProcessStartupActions(std::move(actions));
+        // Publish the first tab before returning to the protocol caller. COM
+        // serializes restores, so the next request can now find and focus this
+        // durable id instead of racing a deferred first action.
+        ProcessStartupActions(std::move(actions), {}, {}, true);
         co_return true;
     }
 
