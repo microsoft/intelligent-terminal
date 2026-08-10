@@ -363,6 +363,8 @@ pub struct TabSession {
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
     pub shell_sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+    /// Durable ids whose shell is still detached and running.
+    pub shell_sessions_keep_running: std::collections::HashSet<String>,
     pub shell_sessions_query: String,
     pub shell_sessions_search_focused: bool,
     pub shell_sessions_list_state: ratatui::widgets::ListState,

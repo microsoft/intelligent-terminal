@@ -12,6 +12,7 @@ pub fn render(
     frame: &mut Frame,
     area: Rect,
     sessions: &[crate::shell_session_store::ShellSessionSummary],
+    keep_running: &std::collections::HashSet<String>,
     query: &str,
     search_focused: bool,
     list_state: &mut ListState,
@@ -104,7 +105,7 @@ pub fn render(
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs() as i64);
-        let row_width = list_area.width.saturating_sub(2) as usize;
+        let row_width = list_area.width.saturating_sub(4) as usize;
         let rows = visible_sessions
             .into_iter()
             .enumerate()
@@ -118,8 +119,15 @@ pub fn render(
                 } else {
                     Style::default()
                 };
+                // Reserved for every row so the name column stays aligned
+                // whether or not the session is still running.
+                let keep_running_marker = if keep_running.contains(&session.id) {
+                    Span::styled("● ", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("  ")
+                };
                 let row = format_row(session, row_width, now);
-                let mut spans = vec![Span::styled(marker, style)];
+                let mut spans = vec![Span::styled(marker, style), keep_running_marker];
                 spans.extend(highlight_matches(&row.name, query, style));
                 if !row.cwd.is_empty() {
                     spans.push(Span::raw("  "));
@@ -167,8 +175,7 @@ pub fn render(
             )
         } else {
             (
-                "(↑ ↓ Navigate • Enter Open/Focus • Esc Back • D Delete • F5 Refresh)"
-                    .to_string(),
+                "(↑ ↓ Navigate • Enter Open/Focus • Esc Back • D Delete • F5 Refresh)".to_string(),
                 Style::default().fg(Color::DarkGray),
             )
         };

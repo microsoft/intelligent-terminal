@@ -1098,10 +1098,12 @@ impl App {
             AppEvent::ShellSessionsLoaded {
                 tab_id,
                 sessions,
+                keep_running,
                 error,
             } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.shell_sessions = sessions;
+                tab.shell_sessions_keep_running = keep_running;
                 tab.shell_sessions_loading = false;
                 tab.shell_sessions_error = error;
                 let matching_count = tab.matching_shell_session_count();

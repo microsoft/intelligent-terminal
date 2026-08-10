@@ -91,6 +91,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             &tab.shell_sessions,
+            &tab.shell_sessions_keep_running,
             &tab.shell_sessions_query,
             tab.shell_sessions_search_focused,
             &mut tab.shell_sessions_list_state,

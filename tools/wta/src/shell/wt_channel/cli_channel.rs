@@ -450,6 +450,7 @@ impl WtChannel for CliChannel {
         // Map protocol method names to wtcli subcommands + args.
         match method {
             "list_shell_sessions" => self.run_wtcli(&["list-shell-sessions"]).await,
+            "list_detached_sessions" => self.run_wtcli(&["list-detached-sessions"]).await,
             "restore_shell_session" => {
                 let id = params
                     .get("id")
