@@ -21,7 +21,7 @@ Describe 'Feature: OpenCode built-in ACP agent' -Tag 'Feature' -Skip:(-not $scri
         $script:openCodeStatus = Get-AgentCliStatus -Agent opencode -TimeoutSec 60
     }
 
-    It 'OpenCode built-in agent connects through ACP and answers' {
+    It 'OpenCode built-in agent chat works' {
         if ($script:openCodeStatus -ne 'authed') {
             Set-ItResult -Skipped -Because "OpenCode cannot answer non-interactively ($script:openCodeStatus)"
             return
