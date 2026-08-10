@@ -215,6 +215,10 @@ namespace winrt::TerminalApp::implementation
             terminalArgs.DurableShellSessionId(L"");
             terminalArgs.DurableShellSessionRevision(0);
             terminalArgs.KeptSessionId(terminalArgs.SessionId());
+            // Survives the JSON hop into the target window, unlike
+            // KeptSessionId. The tab was explicitly opted into keep-running
+            // before it was detached, so restoring it keeps that opt-in.
+            terminalArgs.KeepRunning(true);
 
             if (actions.empty())
             {

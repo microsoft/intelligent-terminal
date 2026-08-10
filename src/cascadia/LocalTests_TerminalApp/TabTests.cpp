@@ -1487,6 +1487,20 @@ namespace TerminalAppLocalTests
         VERIFY_IS_NOT_NULL(renameAction);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Detached tab name" }, renameAction.Title());
 
+        // Restoring a detached tab hands these actions to the target window as
+        // JSON, so the keep-running opt-in has to survive a round trip.
+        const auto serialized = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::vector<ActionAndArgs>{ actions }));
+        const auto deserialized = ActionAndArgs::Deserialize(serialized);
+        VERIFY_ARE_EQUAL(3u, deserialized.Size());
+        const auto roundTrippedTab = deserialized.GetAt(0).Args().try_as<NewTabArgs>();
+        VERIFY_IS_NOT_NULL(roundTrippedTab);
+        const auto roundTrippedArgs = roundTrippedTab.ContentArgs().try_as<NewTerminalArgs>();
+        VERIFY_IS_NOT_NULL(roundTrippedArgs);
+        VERIFY_IS_TRUE(roundTrippedArgs.KeepRunning());
+        const auto roundTrippedRename = deserialized.GetAt(2).Args().try_as<RenameTabArgs>();
+        VERIFY_IS_NOT_NULL(roundTrippedRename);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Detached tab name" }, roundTrippedRename.Title());
+
         const auto untitled = winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
             std::vector<NewTerminalArgs>{ firstRestoreArgs },
             winrt::hstring{},

@@ -8880,8 +8880,9 @@ namespace winrt::TerminalApp::implementation
 
         // KeptSessionId identifies the live content we attempted to claim; it
         // is not a persisted keep-running preference. Reaching the fresh-shell
-        // path means no live reattach succeeded, so do not show a pin on the
-        // snapshot fallback tab.
+        // path means no live reattach succeeded, so a snapshot restore must not
+        // pin the tab. The explicit `KeepRunning` opt-in (set only when
+        // restoring a detached tab) is deliberately left alone.
         if (newTerminalArgs)
         {
             newTerminalArgs.KeptSessionId({});
