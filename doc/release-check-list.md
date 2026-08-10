@@ -224,6 +224,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C103` `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot submits a valid Direct Helper Proposal and the card presents a useful suggestion.
 - [ ] `C104` `[E2E]` **Autofix with non-Copilot agents works:** A non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent each execute the canonical command, complete permission arming, and submit a usable Direct Helper Proposal through the same path.
 - [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a nonexistent command. _(#306.)_
+- [ ] `C246` `[new]` `[E2E]` **Profile-defined PowerShell aliases resolve through packaged WTA:** A command defined only in the current user's PowerShell profile is reported as an alias with its real target by the shipped `wta resolve-command` CLI. _(#286/#418; E2E: `Feature.CommandResolution`.)_
 
 ### Autofix across layout changes
 
