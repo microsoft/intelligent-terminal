@@ -1,9 +1,11 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Wrap};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::{rec_card_height, App};
+use crate::app::App;
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendedAction};
 use crate::theme;
+use crate::ui::action_panel::{recommendation_card_height, PanelMode};
 use crate::ui::card::{self, CARD_MIN_SIZE};
 
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
@@ -20,25 +22,29 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode.
-pub fn render(frame: &mut Frame, app: &App, area: Rect) {
+pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) {
     let Some(recs) = app.current_tab().turn.recommendations() else { return };
-    if area.width == 0 || area.height == 0 {
+    if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
+        return;
+    }
+    if mode == PanelMode::Compact {
+        render_compact(frame, app, area);
         return;
     }
 
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
-    // `area` is `h_rec[1]` (post-padding), but `rec_card_height` /
-    // `rec_panel_height` / `sync_rec_scroll_max` all root their wrap math at
-    // `main_area.width` (see `CARD_H_CHROME`). Use the same basis here or
+    // `area` is `h_rec[1]` (post-padding), but card-height prediction and
+    // scroll bounds both root their wrap math at `main_area.width` (see
+    // `CARD_H_CHROME`). Use the same basis here or
     // wrap rows go 2 cells narrower at render than at predict, clipping the
     // bottom card and undercounting `rec_scroll.max`.
     let panel_width = app.main_area_width();
 
     let mut canvas_top = 0usize;
     for (idx, choice) in recs.choices.iter().enumerate() {
-        let h = rec_card_height(choice, panel_width);
+        let h = recommendation_card_height(choice, panel_width);
         if canvas_top >= rec_scroll {
             let card_h = h.saturating_sub(1) as u16; // last canvas row is inter-card gap
             let y = area.y + (canvas_top - rec_scroll) as u16;
@@ -60,6 +66,78 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
         canvas_top += h;
     }
+}
+
+fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(recommendations) = app.current_tab().turn.recommendations() else {
+        return;
+    };
+    let selected = app
+        .current_tab()
+        .selected_recommendation
+        .min(recommendations.choices.len().saturating_sub(1));
+    let Some(choice) = recommendations.choices.get(selected) else {
+        return;
+    };
+    let (summary, buttons, body_kind) = extract_card_content(choice, app, true);
+    let marker = "○";
+    let position = if recommendations.choices.len() > 1 {
+        format!(" ↑↓ {}/{} ", selected + 1, recommendations.choices.len())
+    } else {
+        " ".to_string()
+    };
+    let prefix = format!("{marker}{position}");
+    let summary_width =
+        (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
+    let summary = truncate_compact(&summary.replace(['\r', '\n'], " "), summary_width);
+    let body_style = match body_kind {
+        CardBodyKind::Code => theme::CARD_CODE,
+        CardBodyKind::Description => theme::CARD_DESCRIPTION,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(prefix, theme::TOOL_CALL_PENDING),
+            Span::styled(summary, body_style),
+        ])),
+        Rect {
+            height: 1,
+            ..area
+        },
+    );
+
+    if area.height > 1 {
+        let button_area = Rect {
+            y: area.y + 1,
+            height: 1,
+            ..area
+        };
+        let focused = (app.current_tab().recommendation_focus
+            == crate::app::RecommendationFocus::Button)
+            .then_some(app.current_tab().selected_button);
+        card::render_buttons(frame, button_area, &buttons, focused);
+    }
+}
+
+fn truncate_compact(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    if UnicodeWidthStr::width(text) <= width {
+        return text.to_string();
+    }
+    let content_width = width.saturating_sub(1);
+    let mut used = 0;
+    let mut result = String::new();
+    for character in text.chars() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if used + character_width > content_width {
+            break;
+        }
+        result.push(character);
+        used += character_width;
+    }
+    result.push('…');
+    result
 }
 
 /// Render the recommendations navigation hint. Called by `layout.rs` to

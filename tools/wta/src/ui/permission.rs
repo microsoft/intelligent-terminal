@@ -5,10 +5,9 @@ use crate::app::{App, PermissionState};
 use crate::theme;
 use crate::ui::card::{self, CARD_MIN_SIZE};
 
-/// Render the permission card. Embedded above the input box; `layout.rs`
-/// reserves the row budget via `App::permission_panel_height`, which is
-/// either ≥ `CARD_MIN_SIZE` (full card) or exactly 1 (compact fallback —
-/// the agent flow is blocked on this prompt, so we must remain visible).
+/// Render the permission card. The action-panel planner reserves either at
+/// least `CARD_MIN_SIZE` rows or a one-row compact fallback. The agent flow
+/// is blocked on this prompt, so it must remain visible.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let Some(perm) = app.current_tab().permission.front() else {
         return;
