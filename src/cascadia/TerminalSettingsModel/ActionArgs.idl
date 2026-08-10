@@ -213,6 +213,11 @@ namespace Microsoft.Terminal.Settings.Model
         // of a session that may still be detached and running. SessionId always
         // carries a fresh identity for the shell we would create if it isn't.
         Guid KeptSessionId;
+
+        // Set when restoring a tab the user had opted into keep-running.
+        // Unlike KeptSessionId this IS serialized, because restoring a
+        // detached tab hands the actions to the target window as JSON.
+        Boolean KeepRunning;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

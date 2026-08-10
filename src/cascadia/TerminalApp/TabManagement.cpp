@@ -99,7 +99,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tabImpl = _GetTabImpl(newTab))
             {
-                if (newTerminalArgs.KeptSessionId() != winrt::guid{})
+                if (newTerminalArgs.KeepRunning() || newTerminalArgs.KeptSessionId() != winrt::guid{})
                 {
                     tabImpl->KeepRunning(true);
                 }
