@@ -530,9 +530,12 @@ namespace TerminalAppLocalTests
 
             NewTerminalArgs args{};
             args.SessionId(sessionId);
-            const auto reattachedPane = page->_MakeTerminalPane(args);
-            VERIFY_IS_NOT_NULL(reattachedPane);
-            VERIFY_ARE_EQUAL(content.Id(), reattachedPane->GetTerminalControl().ContentId());
+            VERIFY_SUCCEEDED(page->_OpenNewTab(args));
+            const auto reattachedTab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(reattachedTab);
+            VERIFY_IS_TRUE(reattachedTab->KeepRunning());
+            VERIFY_IS_TRUE(reattachedTab->TabStatus().IsKeepRunning());
+            VERIFY_ARE_EQUAL(content.Id(), reattachedTab->GetActiveTerminalControl().ContentId());
             VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(sessionId));
         });
     }
@@ -1277,14 +1280,17 @@ namespace TerminalAppLocalTests
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
             VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
 
-            const auto activePane = tab->GetActivePane();
-            VERIFY_IS_FALSE(!!activePane->_keepRunningButton);
-            activePane->KeepRunning(true);
-            VERIFY_IS_TRUE(!!activePane->_keepRunningButton);
+            page->_SplitPane(nullptr, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+
+            tab->KeepRunning(true);
+            VERIFY_IS_TRUE(tab->KeepRunning());
+            VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
 
             const auto keptGroups = _contentManager->KeptGroups();
             VERIFY_ARE_EQUAL(1u, keptGroups.Size());
+            VERIFY_ARE_EQUAL(2u, _contentManager->DetachedSessions().Size());
 
             winrt::guid groupId{};
             for (const auto& group : keptGroups)
@@ -1297,15 +1303,15 @@ namespace TerminalAppLocalTests
 
             auto restored = _contentManager->BeginReattachKeptGroup(groupId);
             VERIFY_IS_TRUE(!!restored);
-            VERIFY_ARE_EQUAL(1u, restored.ContentIds().Size());
-            VERIFY_ARE_EQUAL(1u, restored.RestoreArgs().Size());
+            VERIFY_ARE_EQUAL(2u, restored.ContentIds().Size());
+            VERIFY_ARE_EQUAL(2u, restored.RestoreArgs().Size());
             VERIFY_IS_TRUE(restored.ShellSessionId() == shellSessionId);
             VERIFY_ARE_EQUAL(shellSessionRevision, restored.ShellSessionRevision());
             VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
             VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
             _contentManager->CancelKeptGroupReattach(groupId);
-            VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(2u, _contentManager->DetachedSessions().Size());
             VERIFY_ARE_EQUAL(1u, _contentManager->KeptGroups().Size());
 
             restored = _contentManager->BeginReattachKeptGroup(groupId);
@@ -2496,7 +2502,7 @@ namespace TerminalAppLocalTests
             expectedPaneId = _formatPaneId(sessionId);
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
 
-            tab->GetActivePane()->KeepRunning(true);
+            tab->KeepRunning(true);
             page->_DetachShellPanesForKeepRunning(tab.get(), winrt::hstring{}, 0);
 
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
@@ -2560,7 +2566,7 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
-            tab->GetActivePane()->KeepRunning(true);
+            tab->KeepRunning(true);
             page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, 41);
 
             VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
@@ -2625,7 +2631,7 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
             VERIFY_IS_NOT_NULL(tab);
             tab->SetDurableShellSession(L"existing-session", 8);
-            tab->GetActivePane()->KeepRunning(true);
+            tab->KeepRunning(true);
             page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::PersistedLayout);
         });
 
@@ -2657,6 +2663,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
+            tab->KeepRunning(true);
 
             page->_SplitPane(nullptr, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
             VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());

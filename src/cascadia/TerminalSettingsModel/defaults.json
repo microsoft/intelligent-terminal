@@ -633,7 +633,6 @@
         { "command": "togglePaneVisibility", "id": "Terminal.TogglePaneVisibility" },
         { "command": "toggleSplitOrientation", "id": "Terminal.ToggleSplitOrientation" },
         { "command": "toggleReadOnlyMode", "id": "Terminal.ToggleReadOnlyMode" },
-        { "command": "togglePaneKeepRunning", "id": "Terminal.TogglePaneKeepRunning" },
         { "command": "enableReadOnlyMode", "id": "Terminal.EnableReadOnlyMode" },
         { "command": "disableReadOnlyMode", "id": "Terminal.DisableReadOnlyMode" },
         { "command": { "action": "movePane", "index": 0 }, "id": "Terminal.MovePaneToTab0" },
@@ -820,7 +819,6 @@
         { "keys": "ctrl+shift+home", "id": "Terminal.ScrollToTop" },
         { "keys": "ctrl+shift+end", "id": "Terminal.ScrollToBottom" },
         { "keys": "ctrl+shift+k", "id": "Terminal.ClearBuffer" },
-        { "keys": "ctrl+alt+k", "id": "Terminal.TogglePaneKeepRunning" },
 
         // Visual Adjustments
         { "keys": "ctrl+plus", "id": "Terminal.IncreaseFontSize" },

@@ -1,7 +1,7 @@
 ---
 author: Intelligent Terminal
 created on: 2026-08-04
-last updated: 2026-08-04
+last updated: 2026-08-10
 issue id: durable-sessions (bucket 2)
 ---
 
@@ -10,13 +10,14 @@ issue id: durable-sessions (bucket 2)
 ## Abstract
 
 Durable Sessions combines saving sessions for restore with keeping their shells
-running. When "When Terminal starts" is set to either restore option, closing a
-tab persists its layout and cwd, preserves its shell and agent sessions, and
-detaches the live shell content so the terminal process can stay alive with
-nothing on screen. "Restore window layout and content" additionally persists
-scrollback for fallback restoration after the live session is unavailable.
-A build that was halfway through when the last window closed is still halfway
-through when the terminal comes back.
+running. Users opt in a whole tab from its context menu; the tab header then
+shows a pin. Closing that tab detaches all of its non-agent shell panes so the
+terminal process can stay alive with nothing on screen. When "When Terminal
+starts" is set to either restore option, the tab also persists its layout, cwd,
+shell sessions, and agent sessions. "Restore window layout and content"
+additionally persists scrollback for fallback restoration after the live
+session is unavailable. A build that was halfway through when the last window
+closed is still halfway through when the terminal comes back.
 
 ## Background: what the terminal already does with ConPTYs
 
@@ -122,12 +123,14 @@ any pane unconfirmed.
 
 ### Ordering with bucket 1
 
-Saving the session metadata and keeping a process alive are both enabled by
-either restore value of `firstWindowPreference`. A successful save supplies the
-durable database id and revision stored beside the detached group. Only
-`PersistedLayoutAndContent` writes scrollback into the snapshot;
-`PersistedLayout` restores the same shell sessions, agent panes, and agent
-sessions without replaying saved terminal content.
+Keeping a process alive is controlled by the tab's explicit keep-running
+selection. Saving fallback metadata remains controlled by
+`firstWindowPreference`. A successful save supplies the durable database id and
+revision stored beside the detached group. Only `PersistedLayoutAndContent`
+writes scrollback into the snapshot; `PersistedLayout` restores the same shell
+sessions, agent panes, and agent sessions without replaying saved terminal
+content. With `DefaultProfile`, an opted-in tab still stays live in the current
+process but has no persisted fallback after that process exits.
 
 `_PersistShellSession` is normally reached from `_HandleCloseTabRequested`, which
 a window close never goes through. Since "close the terminal" is the whole point
@@ -177,15 +180,19 @@ Groups from several former windows may be restored into one available window.
 The original window topology and pane split ratios are not retained; panes in a
 multi-pane group are currently rebuilt with equal splits.
 
-## Settings
+## Opt-in and settings
+
+Right-click a tab and select **Add tab to keep-running**. The item changes to
+**Remove tab from keep-running** after selection, and a pin in the tab header
+shows which tabs are selected. There is no pane-level opt-in or default keyboard
+shortcut.
 
 The existing `firstWindowPreference` setting under Settings → Startup → "When
-Terminal starts" controls durable sessions. Both "Restore window layout" and
-"Restore window layout and content" restore shell sessions, agent panes, and
-agent sessions and keep running commands alive while detached. The latter also
-restores persisted scrollback. "Open a new tab with the default profile"
-disables future save-and-detach decisions but does not prevent an
-already-detached live session from being reattached.
+Terminal starts" controls the persisted fallback. Both "Restore window layout"
+and "Restore window layout and content" restore shell sessions, agent panes, and
+agent sessions; the latter also restores persisted scrollback. "Open a new tab
+with the default profile" does not prevent an opted-in tab from staying live or
+an already-detached live tab from being reattached.
 
 ## Capabilities and limitations
 
@@ -199,9 +206,10 @@ already-detached live session from being reattached.
 * Detached sessions hold their whole `ControlCore` and buffer in memory. That is
   heavier than a raw output ring, and is what buys full scrollback, marks and
   search on reattach.
-* Only qualifying sessions are detached: a shell must have received user input
-  or already belong to a durable record. Blank or accidental tabs remain
-  excluded.
+* Keep-running is a tab-level opt-in. Closing an opted-in tab detaches all of
+  its shell panes into one group, so the notification-area menu shows one row
+  for that tab. Closing an individual pane while its tab remains open ends that
+  pane normally.
 * Restoring several detached tabs can coalesce them into one window. Multi-pane
   tabs retain their live panes but currently use equal split sizes.
 * Agent panes are excluded — their durability is the agent CLI's own resume
@@ -209,9 +217,5 @@ already-detached live session from being reattached.
 
 ## Future considerations
 
-* **Per-session opt-in.** The Durable Sessions spec asks for marking an
-  individual session to keep running, with a badge on the pane. Today the setting
-  is global. The plumbing is per-pane already, so this is a UI change plus a flag
-  consulted in `_DetachShellPanesForKeepRunning`.
 * **Releasing the renderer while detached.** Detached content does not need its
   renderer; dropping it would cut the memory cost of a long-detached session.

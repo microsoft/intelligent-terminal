@@ -95,21 +95,27 @@ namespace winrt::TerminalApp::implementation
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
         const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
-        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() };
-            newTerminalArgs && !newTerminalArgs.AgentPaneSessionId().empty())
+        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
         {
             if (const auto tabImpl = _GetTabImpl(newTab))
             {
-                _pendingDurableAgentPaneRestores.insert_or_assign(
-                    tabImpl->StableId(),
-                    _PendingDurableAgentPaneRestore{
-                        _currentStartupActionBatchId,
-                        winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
-                        newTerminalArgs.AgentPaneAgent(),
-                        winrt::to_string(newTerminalArgs.StartingDirectory()),
-                        winrt::to_string(newTerminalArgs.AgentPaneView()),
-                        newTerminalArgs.AgentPaneOpen(),
-                        newTerminalArgs.AgentPanePosition() });
+                if (newTerminalArgs.KeptSessionId() != winrt::guid{})
+                {
+                    tabImpl->KeepRunning(true);
+                }
+                if (!newTerminalArgs.AgentPaneSessionId().empty())
+                {
+                    _pendingDurableAgentPaneRestores.insert_or_assign(
+                        tabImpl->StableId(),
+                        _PendingDurableAgentPaneRestore{
+                            _currentStartupActionBatchId,
+                            winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                            newTerminalArgs.AgentPaneAgent(),
+                            winrt::to_string(newTerminalArgs.StartingDirectory()),
+                            winrt::to_string(newTerminalArgs.AgentPaneView()),
+                            newTerminalArgs.AgentPaneOpen(),
+                            newTerminalArgs.AgentPanePosition() });
+                }
             }
         }
         return S_OK;
@@ -742,11 +748,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
-        bool hasKeepRunningPane = false;
-        tab->GetRootPane()->WalkTree([&](const auto& pane) {
-            hasKeepRunningPane = hasKeepRunningPane || pane->KeepRunning();
-        });
-        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference(), hasKeepRunningPane);
+        const auto keepRunning = tab->KeepRunning();
+        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference(), keepRunning);
         if (!closeActions.save && !closeActions.detach)
         {
             _agentPaneLog("_PersistShellSession: skipped — saving and keep-running are off");
@@ -768,11 +771,11 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-        if (!ShouldPersistShellSession(hasUserInput, !tab->DurableShellSessionId().empty(), hasKeepRunningPane, hasAgentSession))
+        if (!ShouldPersistShellSession(hasUserInput, !tab->DurableShellSessionId().empty(), keepRunning, hasAgentSession))
         {
             // Profile startup commands alone do not qualify until the user
             // sends input or a resumable agent session binds to the pane.
-            _agentPaneLog("_PersistShellSession: skipped — no user input, durable id, keep-running pane, or agent session");
+            _agentPaneLog("_PersistShellSession: skipped — no user input, durable id, keep-running tab, or agent session");
             return;
         }
 
@@ -955,21 +958,23 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Detaches opted-in shell panes so the commands they are running survive
-    // closing. The content keeps its connection and buffer; only the
-    // TermControl is severed. Restoring the session reattaches to the same
-    // content.
-    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision, const std::shared_ptr<Pane>& subtree)
+    // Detaches every shell pane in an opted-in tab so its commands survive the
+    // tab closing. Agent panes use their own resume mechanism and are excluded.
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision)
     {
+        if (!tab->KeepRunning())
+        {
+            return;
+        }
+
         // One group per tab, so a multi-pane tab is offered back as the one
         // thing the user closed rather than as N indistinguishable panes.
         const auto groupId = ::Microsoft::Console::Utils::CreateGuid();
         const auto title = tab->Title();
         auto detached = 0;
 
-        const auto root = subtree ? subtree : tab->GetRootPane();
-        root->WalkTree([&](const auto& pane) {
-            if (pane->IsAgentPane() || !pane->KeepRunning())
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane())
             {
                 return;
             }
@@ -1542,11 +1547,6 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         }
-        else if (owningTab && pane->KeepRunning())
-        {
-            _DetachShellPanesForKeepRunning(owningTab.get(), owningTab->DurableShellSessionId(), owningTab->DurableShellSessionRevision(), pane);
-        }
-
         // If this is the last pane on the last tab of a named window, persist
         // the workspace after the shell-session save has updated the tab's
         // durable id and revision, while the pane content is still alive.

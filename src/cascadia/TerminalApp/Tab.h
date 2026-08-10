@@ -95,6 +95,9 @@ namespace winrt::TerminalApp::implementation
         void TogglePaneReadOnly();
         void SetPaneReadOnly(const bool readOnlyState);
         void ToggleBroadcastInput();
+        bool KeepRunning() const noexcept { return _keepRunning; }
+        void KeepRunning(bool value);
+        void ToggleKeepRunning();
 
         std::shared_ptr<Pane> GetActivePane() const;
         winrt::TerminalApp::TaskbarState GetCombinedTaskbarState() const;
@@ -242,6 +245,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _exportTabMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _findMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _restartConnectionMenuItem{};
+        winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _keepRunningMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeOtherTabsMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closeTabsAfterMenuItem{};
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _closePaneMenuItem{};
@@ -315,6 +319,7 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
+        bool _keepRunning{ false };
 
         winrt::hstring _stableId{};
         winrt::hstring _durableShellSessionId{};
@@ -341,6 +346,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
         void _UpdateMenuItemStates();
         void _UpdateAgentChipVisibility();
+        void _UpdateKeepRunningVisuals();
 
         winrt::hstring _GetActiveTitle() const;
 
