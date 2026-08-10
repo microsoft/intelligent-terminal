@@ -5484,7 +5484,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_keeps_thinking_until_turn_ends() {
+fn permission_request_replaces_thinking_until_dismissed() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -5522,7 +5522,10 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         responder,
     });
 
-    assert!(app.current_tab().should_show_thinking());
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "an actionable permission replaces passive Thinking feedback"
+    );
     app.current_tab_mut().permission.pop_front();
     assert!(app.current_tab().should_show_thinking());
     let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
@@ -5530,6 +5533,35 @@ fn permission_request_keeps_thinking_until_turn_ends() {
     };
     *end_pending = false;
     assert!(!app.current_tab().should_show_thinking());
+}
+
+#[test]
+fn surfaced_recommendation_hides_thinking_before_turn_end() {
+    let mut app = test_app();
+    let prompt = SubmittedPrompt {
+        id: 1,
+        text: "test".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    };
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::Recommendation(RecommendationSet {
+            recommended_choice: None,
+            choices: Vec::new(),
+        }),
+        end_pending: true,
+    };
+
+    assert!(
+        app.current_tab().turn.is_in_flight(),
+        "end_pending must continue to gate new prompts"
+    );
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "the surfaced result replaces Thinking"
+    );
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`
@@ -7123,13 +7155,11 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
 
 /// Render: when the pane is too short for a full permission card, the
 /// compact one-row fallback must paint the description and the `[Y/N]`
-/// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path
-/// is gated on `terminal_rows - 3 < CARD_MIN_SIZE`.
+/// hint. Lifts `render_compact` in `ui/permission.rs`.
 #[test]
 fn render_permission_compact_shows_hint() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.terminal_rows = 7; // ceiling = 4 < CARD_MIN_SIZE(5) → compact fallback
     app.current_tab_mut().permission.push_back(PermissionState {
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_COMPACT_XYZ".into(),
@@ -7153,7 +7183,7 @@ fn render_permission_compact_shows_hint() {
         responder: None,
     });
 
-    let text = render_to_text(&mut app, 80, 24);
+    let text = render_to_text(&mut app, 80, 7);
     assert!(
         text.contains("PERM_COMPACT_XYZ"),
         "the compact permission row must paint its description; rendered:\n{text}"
@@ -7161,6 +7191,33 @@ fn render_permission_compact_shows_hint() {
     assert!(
         text.contains("Y/N"),
         "the compact permission row must paint the [Y/N] hint; rendered:\n{text}"
+    );
+}
+
+#[test]
+fn render_recommendation_compact_keeps_summary_and_actions_visible() {
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    install_recs(
+        &mut app,
+        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
+    );
+
+    let text = render_to_text(&mut app, 80, 7);
+    assert!(
+        text.contains("COMPACT_RECOMMENDATION_XYZ"),
+        "compact recommendation must retain its selected summary; rendered:\n{text}"
+    );
+    let run_label = t!("recommendations.button_run_command").into_owned();
+    assert!(
+        text.contains(&run_label),
+        "compact recommendation must retain its primary action; rendered:\n{text}"
+    );
+    assert!(
+        text.contains('○') && !text.contains('✓'),
+        "compact recommendation must use the pending marker; rendered:\n{text}"
     );
 }
 
@@ -7728,6 +7785,9 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
 
 use crate::app::turn_state::{SubmittedPrompt, TurnOutcome, TurnState};
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction};
+use crate::ui::action_panel::{
+    permission_card_height, recommendation_card_height, recommendation_panel_height,
+};
 use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
 fn perm_with(desc: &str) -> PermissionState {
@@ -7826,13 +7886,45 @@ fn permission_card_height_treats_blank_lines_as_one_row() {
 }
 
 #[test]
+fn permission_card_height_counts_wrapped_formatted_command_rows() {
+    let mut perm = perm_with("Run command?");
+    perm.target = Some("a".repeat(150));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    // command_format truncates the statement to 100 chars plus an ellipsis,
+    // and permission rendering prepends "$ " before wrapping.
+    let rendered_command_width = 2_usize + 101;
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rendered_command_width.div_ceil(inner_width)
+    );
+}
+
+#[test]
+fn permission_card_height_counts_each_wrapped_split_command_line() {
+    let mut perm = perm_with("Run commands?");
+    perm.target = Some(format!("{}; {}", "a".repeat(45), "b".repeat(45)));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    let rows_per_command = (2_usize + 45).div_ceil(inner_width);
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rows_per_command * 2
+    );
+}
+
+#[test]
 fn rec_card_height_includes_inter_card_gap() {
-    let h = rec_card_height(&rec_send("ls"), 80);
+    let h = recommendation_card_height(&rec_send("ls"), 80);
     assert_eq!(h as u16, CARD_MIN_SIZE + 1);
 }
 
 #[test]
 fn rec_card_height_handles_open_action_synthesis() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let choice = RecommendationChoice {
         choice: 0,
         title: "t".into(),
@@ -7842,67 +7934,81 @@ fn rec_card_height_handles_open_action_synthesis() {
             parent: None,
             cwd: Some("C:/repo".into()),
             title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+    // The rendered "New tab (logs) in C:/repo" fits on one row at width 72.
+    // Directions are ignored for tab targets.
+    assert_eq!(
+        recommendation_card_height(&choice, 80) as u16,
+        CARD_MIN_SIZE + 1
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_panel_direction_display() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::Open {
+            target: OpenTarget::Panel,
+            parent: None,
+            cwd: Some("C:/repo".into()),
+            title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+
+    // The renderer displays "New panel (left) (logs) in C:/repo", which wraps
+    // at the 32-cell content width. The old planner omitted "(left)".
+    assert_eq!(
+        recommendation_card_height(&choice, 40) as u16,
+        CARD_MIN_SIZE + 2
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_and_send_fallback() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("es-ES");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::OpenAndSend {
+            target: OpenTarget::Tab,
+            parent: None,
+            input: "aaaaaaaa".into(),
+            agent: None,
+            cwd: None,
+            title: None,
             direction: None,
             profile: None,
         }],
     };
-    let h = rec_card_height(&choice, 80);
-    // "New tab (logs) in C:/repo" fits on one row at width 72.
-    assert_eq!(h as u16, CARD_MIN_SIZE + 1);
+
+    // The localized renderer text is "agente: aaaaaaaa" (16 chars), which
+    // wraps at the 15-character content width. The old hard-coded "agent"
+    // label fit on one row.
+    assert_eq!(
+        recommendation_card_height(&choice, 23) as u16,
+        CARD_MIN_SIZE + 2
+    );
 }
 
 #[test]
-fn permission_panel_height_zero_when_no_permission() {
+fn recommendation_panel_height_sums_card_canvases() {
     let mut app = test_app();
-    app.terminal_rows = 30;
-    assert_eq!(app.permission_panel_height(80), 0);
-}
-
-#[test]
-fn permission_panel_height_falls_back_to_compact_below_card_min() {
-    let mut app = test_app();
-    app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_SIZE
-    app.current_tab_mut().permission.push_back(perm_with("ok"));
-    // Must stay visible — agent flow blocks on this prompt. 1-row strip
-    // is the compact fallback rendered by `ui::permission::render`.
-    assert_eq!(app.permission_panel_height(80), 1);
-}
-
-#[test]
-fn permission_panel_height_admits_at_card_min_ceiling() {
-    let mut app = test_app();
-    app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_SIZE
-    app.current_tab_mut().permission.push_back(perm_with("ok"));
-    assert_eq!(app.permission_panel_height(80), CARD_MIN_SIZE);
-}
-
-#[test]
-fn rec_panel_height_floor_lets_tallest_card_render() {
-    let mut app = test_app();
-    app.terminal_rows = 20;
-    let tall = "x".repeat(500);
-    install_recs(&mut app, vec![rec_send(&tall)]);
-    let tall_h = rec_card_height(
-        &app.current_tab().turn.recommendations().unwrap().choices[0],
-        80,
-    ) as u16;
-    // ceiling = 20 - 5 = 15; tall card is much larger; floor wins.
-    assert_eq!(app.rec_panel_height(80), tall_h);
-}
-
-#[test]
-fn rec_panel_height_caps_at_ceiling_when_total_exceeds() {
-    let mut app = test_app();
-    app.terminal_rows = 30;
-    // Three short cards, each h=6 → total 18; ceiling 30-5=25.
     install_recs(&mut app, vec![rec_send("a"), rec_send("b"), rec_send("c")]);
-    assert_eq!(app.rec_panel_height(80), 18);
-}
-
-#[test]
-fn rec_panel_height_zero_when_no_recs() {
-    let app = test_app();
-    assert_eq!(app.rec_panel_height(80), 0);
+    assert_eq!(
+        recommendation_panel_height(app.current_tab().turn.recommendations().unwrap(), 80),
+        18
+    );
 }
 
 #[test]
@@ -7915,8 +8021,8 @@ fn main_area_width_reflects_debug_panel_split() {
 }
 
 /// Regression: `ui::recommendations::render` used `area.width` (= `h_rec[1]`
-/// = `main_area.width - 2`) when calling `rec_card_height`, while
-/// `rec_panel_height` / `sync_rec_scroll_max` used `main_area.width`. The
+/// = `main_area.width - 2`) when calling the card-height helper, while the
+/// panel planner / scroll bound used `main_area.width`. The
 /// 2-cell desync clipped the bottom card and undercounted scroll bounds
 /// whenever a card's wrap row count differed between the two widths.
 ///
@@ -7937,21 +8043,97 @@ fn rec_card_height_matches_predict_and_render_paths() {
     app.terminal_rows = 30;
     install_recs(&mut app, vec![choice.clone()]);
 
-    let predict = app.rec_panel_height(app.main_area_width()) as usize;
-    // Same width the renderer now uses (`app.main_area_width()`).
-    let render = rec_card_height(&choice, app.main_area_width());
+    let predict = recommendation_panel_height(
+        app.current_tab().turn.recommendations().unwrap(),
+        app.main_area_width(),
+    ) as usize;
+    let render = recommendation_card_height(&choice, app.main_area_width());
     assert_eq!(predict, render);
 
     // Sanity: confirm the chosen text *is* a sensitive input — i.e. the
     // old buggy basis (h_rec[1] width = W-2) would have produced a
     // different height. If this ever fails the test no longer guards
     // the regression.
-    let buggy = rec_card_height(&choice, app.main_area_width() - 2);
+    let buggy = recommendation_card_height(&choice, app.main_area_width() - 2);
     assert_ne!(
         render, buggy,
         "text length 42 should wrap differently at width 50 vs 48 — \
          pick a different critical input"
     );
+}
+
+#[test]
+fn recommendation_navigation_preserves_offset_for_fully_visible_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 12);
+    app.current_tab_mut().rec_scroll.set(2);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 2);
+}
+
+#[test]
+fn recommendation_navigation_scrolls_clipped_card_into_view() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 10);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(
+        app.current_tab().rec_scroll.offset,
+        recommendation_card_height(&rec_send("a"), 80)
+    );
+}
+
+#[test]
+fn compact_recommendation_navigation_resets_canvas_scroll() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, crate::ui::action_panel::COMPACT_RECOMMENDATION_HEIGHT);
+    app.current_tab_mut().rec_scroll.set(4);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 0);
 }
 
 // ─── Per-tab input history ──────────────────────────────────────────

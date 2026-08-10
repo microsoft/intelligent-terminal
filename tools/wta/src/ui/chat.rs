@@ -153,6 +153,11 @@ fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
     tab.should_show_thinking()
 }
 
+pub(crate) fn should_show_activity(app: &App) -> bool {
+    matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        || should_show_turn_activity(app.current_tab())
+}
+
 fn permission_tool_call_id(tab: &crate::app::TabSession) -> Option<&str> {
     tab.permission
         .front()
@@ -536,15 +541,10 @@ fn build_message_lines<'a>(
                 if let Some(command) = location {
                     for entry in crate::ui::command_format::command_display_lines(command) {
                         rendered_command = true;
-                        let text = match entry {
-                            crate::ui::command_format::CommandLine::Statement(s) => {
-                                format!("    $ {s}")
-                            }
-                            crate::ui::command_format::CommandLine::Folded { remaining } => {
-                                format!("    … (+{remaining} more)")
-                            }
-                        };
-                        lines.push(Line::from(Span::styled(text, theme::CARD_CODE)));
+                        lines.push(Line::from(Span::styled(
+                            entry.rendered_text("    "),
+                            theme::CARD_CODE,
+                        )));
                     }
                 }
             }

@@ -4233,7 +4233,7 @@ impl App {
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        self.current_tab().turn.is_in_flight()
+        self.current_tab().should_show_thinking()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).
@@ -4884,68 +4884,20 @@ impl App {
         }
     }
 
-    /// Height of the recommendations panel — grows to fit content, capped so
-    /// input and chat still have room, but floored at the tallest card's
-    /// height so any card is fully renderable when scrolled to. Using the
-    /// tallest (not just the recommended) means Down/Up navigation never
-    /// lands on a card too tall for the panel.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols` — passing the wrong one
-    /// under-counts wrap rows and clips the bottom card when the debug panel
-    /// is open.
-    pub fn rec_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(recs) = self.current_tab().turn.recommendations() else {
-            return 0;
-        };
-        let card_heights = recs
-            .choices
-            .iter()
-            .map(|c| rec_card_height(c, panel_width) as u16);
-        let total = card_heights.clone().sum::<u16>();
-        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_SIZE);
-        // Reserve: input(3) + chat_min(1) + rec_hint(1) = 5.
-        let ceiling = self.terminal_rows.saturating_sub(5);
-        total.min(ceiling).max(floor)
-    }
-
-    /// Height reserved for the embedded permission card. Returns 0 only when
-    /// no permission is pending — when one *is* pending, the user must be
-    /// able to see it (the agent flow is blocked until they answer), so we
-    /// fall back to a 1-row compact strip when the full card can't fit.
-    /// `permission::render` reads the actual reserved height and switches
-    /// between full and compact rendering.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols`.
-    pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(perm) = self.current_tab().permission.front() else {
-            return 0;
-        };
-        let card_h = permission_card_height(perm, panel_width) as u16;
-        // Permission is modal — only hard-reserve input(3).
-        let ceiling = self.terminal_rows.saturating_sub(3);
-        let h = card_h.min(ceiling);
-        if h >= ui::card::CARD_MIN_SIZE {
-            h
-        } else {
-            1
-        }
-    }
-
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
     /// `recommendations::render` so the renderer stays `&App` and any
     /// wheel-driven over-scroll is clamped before paint.
-    pub fn sync_rec_scroll_max(&mut self, panel_width: u16) {
-        let panel_cards_h = self.rec_panel_height(panel_width) as usize;
+    pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
+        let panel_cards_h = panel_height as usize;
+        self.current_tab_mut().rec_viewport_height = panel_height;
         let Some(recs) = self.current_tab().turn.recommendations() else {
             return;
         };
         let total: usize = recs
             .choices
             .iter()
-            .map(|c| rec_card_height(c, panel_width))
+            .map(|c| ui::action_panel::recommendation_card_height(c, panel_width))
             .sum();
         self.current_tab_mut()
             .rec_scroll
@@ -4956,22 +4908,31 @@ impl App {
         self.current_tab_mut().clear_recommendations();
     }
 
-    /// Scroll the rec panel so the selected card's top sits at the panel top.
+    /// Keep the selected recommendation visible without moving a card that
+    /// already fits in the full panel viewport. Compact mode renders only the
+    /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
-        let panel_height = self.rec_panel_height(panel_width) as usize;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
+        let viewport_height = self.current_tab().rec_viewport_height as usize;
+        if viewport_height < ui::card::CARD_MIN_SIZE as usize {
+            self.current_tab_mut().rec_scroll.set(0);
+            return;
+        }
 
         let mut line_top = 0usize;
         for (idx, choice) in recs.choices.iter().enumerate() {
-            let card_h = rec_card_height(choice, panel_width);
+            let card_h = ui::action_panel::recommendation_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
-                let tab = self.current_tab_mut();
-                if line_top < tab.rec_scroll.offset
-                    || line_top + card_h > tab.rec_scroll.offset + panel_height
-                {
-                    tab.rec_scroll.set(line_top);
+                let offset = self.current_tab().rec_scroll.offset;
+                // `card_h` includes the inter-card gap, so subtracting it
+                // yields the rendered card's exclusive bottom row.
+                let rendered_bottom_exclusive =
+                    line_top.saturating_add(card_h.saturating_sub(1));
+                let viewport_bottom = offset.saturating_add(viewport_height);
+                if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
+                    self.current_tab_mut().rec_scroll.set(line_top);
                 }
                 return;
             }
@@ -5491,97 +5452,6 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 
 #[path = "app_turn.rs"]
 mod app_turn;
-
-/// Computes the rendered height (in terminal rows) of a recommendation card.
-/// Includes one trailing row used as the inter-card gap in the rec panel.
-pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -> usize {
-    use crate::coordinator::RecommendedAction;
-    let inner_width = ui::card::card_content_width(panel_width);
-
-    let text = choice
-        .actions
-        .iter()
-        .find_map(|action| match action {
-            RecommendedAction::Send { input, .. } => Some(input.clone()),
-            RecommendedAction::OpenAndSend { agent, input, .. } => {
-                let label = agent.as_deref().unwrap_or("agent");
-                Some(format!("{}: {}", label, input))
-            }
-            RecommendedAction::Open {
-                target, cwd, title, ..
-            } => {
-                use crate::coordinator::OpenTarget;
-                let kind = match target {
-                    OpenTarget::Tab => "tab",
-                    OpenTarget::Panel => "panel",
-                };
-                Some(match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        format!("New {} ({}) in {}", kind, t, c)
-                    }
-                    (Some(t), _) if !t.is_empty() => format!("New {} ({})", kind, t),
-                    (_, Some(c)) if !c.is_empty() => format!("New {} in {}", kind, c),
-                    _ => format!("New {} (empty)", kind),
-                })
-            }
-        })
-        .unwrap_or_else(|| choice.title.clone());
-
-    let content_lines: usize = text
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
-
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows + 1 gap.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
-}
-
-/// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
-/// a header line (`{kind_label} {title}` or just `title`) plus, for a
-/// path target, one wrapped line, or for a command target, one line per
-/// split statement (see `ui::command_format`) — NOT `description`, which
-/// is only the fallback text for the 1-row compact card. No inter-card
-/// gap — only one card is ever shown.
-pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
-    let inner_width = ui::card::card_content_width(panel_width);
-    let wrap_lines = |text: &str| -> usize {
-        text.lines()
-            .map(|line| {
-                let chars = line.chars().count();
-                if chars == 0 {
-                    1
-                } else {
-                    chars.div_ceil(inner_width)
-                }
-            })
-            .sum::<usize>()
-            .max(1)
-    };
-
-    let header = match &perm.kind_label {
-        Some(icon) => format!("{icon} {}", perm.title),
-        None => perm.title.clone(),
-    };
-    let mut content_lines = wrap_lines(&header);
-    if let Some(target) = &perm.target {
-        if perm.target_is_command {
-            content_lines += ui::command_format::command_display_lines(target).len();
-        } else {
-            content_lines += wrap_lines(target);
-        }
-    }
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
-}
 
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
 ///

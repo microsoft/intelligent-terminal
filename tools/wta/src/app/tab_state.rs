@@ -301,6 +301,7 @@ pub struct TabSession {
     pub selected_button: usize,
     pub recommendation_focus: RecommendationFocus,
     pub rec_scroll: Scroll,
+    pub rec_viewport_height: u16,
 
     /// Last value the helper published for this tab in a
     /// `set_agent_chip_target` event.
@@ -363,6 +364,8 @@ impl TabSession {
 
     pub(crate) fn should_show_thinking(&self) -> bool {
         self.turn.is_in_flight()
+            && self.turn.recommendations().is_none()
+            && self.permission.is_empty()
     }
 
     /// Whether the input box is the live, enterable caret target.
@@ -381,6 +384,7 @@ impl TabSession {
         self.selected_button = 0;
         self.recommendation_focus = RecommendationFocus::Button;
         self.rec_scroll.reset();
+        self.rec_viewport_height = 0;
     }
 
     /// The pane the "Agent" chip should be pinned to while this tab has a
