@@ -4926,9 +4926,12 @@ impl App {
             let card_h = ui::action_panel::recommendation_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
                 let offset = self.current_tab().rec_scroll.offset;
-                let card_bottom = line_top.saturating_add(card_h.saturating_sub(1));
+                // `card_h` includes the inter-card gap, so subtracting it
+                // yields the rendered card's exclusive bottom row.
+                let rendered_bottom_exclusive =
+                    line_top.saturating_add(card_h.saturating_sub(1));
                 let viewport_bottom = offset.saturating_add(viewport_height);
-                if line_top < offset || card_bottom > viewport_bottom {
+                if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
                     self.current_tab_mut().rec_scroll.set(line_top);
                 }
                 return;

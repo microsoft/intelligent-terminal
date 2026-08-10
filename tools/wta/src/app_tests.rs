@@ -8113,7 +8113,7 @@ fn recommendation_navigation_scrolls_clipped_card_into_view() {
 }
 
 #[test]
-fn compact_recommendation_navigation_keeps_canvas_unscrolled() {
+fn compact_recommendation_navigation_resets_canvas_scroll() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut app = test_app();
