@@ -25,6 +25,7 @@ namespace TerminalApp
     {
         Windows.Foundation.Collections.IVectorView<UInt64> ContentIds { get; };
         Windows.Foundation.Collections.IVectorView<Microsoft.Terminal.Settings.Model.NewTerminalArgs> RestoreArgs { get; };
+        String Title { get; };
         String ShellSessionId { get; };
         Int64 ShellSessionRevision { get; };
     }

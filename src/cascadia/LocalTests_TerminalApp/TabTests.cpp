@@ -773,6 +773,7 @@ namespace TerminalAppLocalTests
             auto restored = _contentManager->BeginReattachKeptGroup(firstGroupId);
             VERIFY_IS_NOT_NULL(restored);
             VERIFY_ARE_EQUAL(1u, restored.RestoreArgs().Size());
+            VERIFY_IS_TRUE(restored.Title() == L"Renamed tab");
             VERIFY_IS_TRUE(restored.ShellSessionId() == shellSessionId);
             VERIFY_ARE_EQUAL(2LL, restored.ShellSessionRevision());
             _contentManager->CancelKeptGroupReattach(firstGroupId);
@@ -1474,11 +1475,24 @@ namespace TerminalAppLocalTests
 
         const auto restored = winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
             std::vector<NewTerminalArgs>{ firstRestoreArgs, secondRestoreArgs },
+            winrt::hstring{ L"Detached tab name" },
             winrt::hstring{ L"shell-session-restored" },
             55);
 
         const auto actions = winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(restored);
-        VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(actions.size()));
+        VERIFY_ARE_EQUAL(3u, static_cast<unsigned int>(actions.size()));
+
+        VERIFY_ARE_EQUAL(ShortcutAction::RenameTab, actions.at(2).Action());
+        const auto renameAction = actions.at(2).Args().try_as<RenameTabArgs>();
+        VERIFY_IS_NOT_NULL(renameAction);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Detached tab name" }, renameAction.Title());
+
+        const auto untitled = winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
+            std::vector<NewTerminalArgs>{ firstRestoreArgs },
+            winrt::hstring{},
+            winrt::hstring{ L"shell-session-restored" },
+            55);
+        VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(untitled).size()));
 
         VERIFY_ARE_EQUAL(ShortcutAction::NewTab, actions.at(0).Action());
         const auto firstAction = actions.at(0).Args().try_as<NewTabArgs>();

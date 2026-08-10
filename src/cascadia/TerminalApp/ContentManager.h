@@ -95,17 +95,20 @@ namespace winrt::TerminalApp::implementation
     {
     public:
         KeptGroupRestoreResult(std::vector<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> restoreArgs,
+                               winrt::hstring title,
                                winrt::hstring shellSessionId,
                                const int64_t shellSessionRevision);
 
         winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentIds() const noexcept { return _contentIds; }
         winrt::Windows::Foundation::Collections::IVectorView<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> RestoreArgs() const noexcept { return _restoreArgs; }
+        winrt::hstring Title() const noexcept { return _title; }
         winrt::hstring ShellSessionId() const noexcept { return _shellSessionId; }
         int64_t ShellSessionRevision() const noexcept { return _shellSessionRevision; }
 
     private:
         winrt::Windows::Foundation::Collections::IVectorView<uint64_t> _contentIds{ nullptr };
         winrt::Windows::Foundation::Collections::IVectorView<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs> _restoreArgs{ nullptr };
+        winrt::hstring _title;
         winrt::hstring _shellSessionId;
         int64_t _shellSessionRevision{ 0 };
     };
