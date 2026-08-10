@@ -118,6 +118,15 @@ pub fn master_pipe_file_path() -> Option<PathBuf> {
     intelligent_terminal_root().map(|root| root.join("master-pipe.txt"))
 }
 
+/// Persistent state for the standalone Remote Agent Host MVP.
+///
+/// This deliberately lives under the state root, rather than beside logs, so
+/// its host ID, resource catalogue, and sequence counter survive a host
+/// process restart.
+pub fn remote_agent_host_state_path() -> Option<PathBuf> {
+    intelligent_terminal_root().map(|root| root.join("remote-agent-host.json"))
+}
+
 /// Resolve the C++ Windows Terminal app's `state.json`.
 ///
 /// Resolution order:

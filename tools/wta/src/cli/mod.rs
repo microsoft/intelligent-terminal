@@ -8,7 +8,7 @@ pub(crate) mod wt;
 
 use anyhow::Result;
 
-use args::{Command, HooksAction, SessionsAction};
+use args::{Command, HooksAction, RemoteHostAction, SessionsAction};
 
 pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
     match command {
@@ -57,6 +57,49 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         Command::Sessions { action } => match action {
             SessionsAction::List { master, origin } => {
                 sessions::run_list(master, origin.to_filter(), json_mode).await
+            }
+        },
+        Command::RemoteHost { action } => match action {
+            RemoteHostAction::Start {
+                listen,
+                replay_capacity,
+                state_path,
+                auth_token_path,
+            } => {
+                crate::remote_agent::run_host(listen, replay_capacity, state_path, auth_token_path)
+                    .await
+            }
+            RemoteHostAction::Diagnose {
+                address,
+                client_id,
+                last_seen_server_seq,
+                auth_token_path,
+            } => {
+                crate::remote_agent::run_diagnostic(
+                    address,
+                    &client_id,
+                    last_seen_server_seq,
+                    auth_token_path,
+                )
+                .await
+            }
+            RemoteHostAction::IngestLegacySession {
+                address,
+                source,
+                session_key,
+                title,
+                auth_token_path,
+            } => {
+                crate::remote_agent::run_legacy_ingest(
+                    address,
+                    crate::remote_agent::legacy::LegacySessionSummary::new(
+                        source,
+                        session_key,
+                        title,
+                    ),
+                    auth_token_path,
+                )
+                .await
             }
         },
         Command::Hooks { action } => match action {

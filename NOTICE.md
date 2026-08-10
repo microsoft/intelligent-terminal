@@ -561,6 +561,8 @@ if it were canonical for the whole group.
 - **agent-client-protocol-derive** v1.3.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
 - **agent-client-protocol-schema** v1.4.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
 - **aho-corasick** v1.1.4 -- [https://github.com/BurntSushi/aho-corasick](https://github.com/BurntSushi/aho-corasick) -- `MIT OR Unlicense`
+- **ahp** v0.7.0 -- [https://github.com/microsoft/agent-host-protocol](https://github.com/microsoft/agent-host-protocol) -- `MIT`
+- **ahp-types** v0.7.0 -- [https://github.com/microsoft/agent-host-protocol](https://github.com/microsoft/agent-host-protocol) -- `MIT`
 - **allocator-api2** v0.2.21 -- [https://github.com/zakarumych/allocator-api2](https://github.com/zakarumych/allocator-api2) -- `Apache-2.0 OR MIT`
 - **anstream** v0.6.21 -- [https://github.com/rust-cli/anstyle.git](https://github.com/rust-cli/anstyle.git) -- `Apache-2.0 OR MIT`
 - **anstyle** v1.0.13 -- [https://github.com/rust-cli/anstyle.git](https://github.com/rust-cli/anstyle.git) -- `Apache-2.0 OR MIT`
@@ -749,6 +751,7 @@ if it were canonical for the whole group.
 - **serde_derive** v1.0.228 -- [https://github.com/serde-rs/serde](https://github.com/serde-rs/serde) -- `Apache-2.0 OR MIT`
 - **serde_derive_internals** v0.29.1 -- [https://github.com/serde-rs/serde](https://github.com/serde-rs/serde) -- `Apache-2.0 OR MIT`
 - **serde_json** v1.0.149 -- [https://github.com/serde-rs/json](https://github.com/serde-rs/json) -- `Apache-2.0 OR MIT`
+- **serde_repr** v0.1.21 -- [https://github.com/dtolnay/serde-repr](https://github.com/dtolnay/serde-repr) -- `Apache-2.0 OR MIT`
 - **serde_spanned** v0.6.9 -- [https://github.com/toml-rs/toml](https://github.com/toml-rs/toml) -- `Apache-2.0 OR MIT`
 - **serde_with** v3.21.0 -- [https://github.com/jonasbb/serde_with/](https://github.com/jonasbb/serde_with/) -- `Apache-2.0 OR MIT`
 - **serde_with_macros** v3.21.0 -- [https://github.com/jonasbb/serde_with/](https://github.com/jonasbb/serde_with/) -- `Apache-2.0 OR MIT`
@@ -772,6 +775,7 @@ if it were canonical for the whole group.
 - **symlink** v0.1.0 -- [https://gitlab.com/chris-morgan/symlink](https://gitlab.com/chris-morgan/symlink) -- `Apache-2.0 OR MIT`
 - **syn** v1.0.109 -- [https://github.com/dtolnay/syn](https://github.com/dtolnay/syn) -- `Apache-2.0 OR MIT`
 - **syn** v2.0.117 -- [https://github.com/dtolnay/syn](https://github.com/dtolnay/syn) -- `Apache-2.0 OR MIT`
+- **syn** v3.0.3 -- [https://github.com/dtolnay/syn](https://github.com/dtolnay/syn) -- `Apache-2.0 OR MIT`
 - **sys-locale** v0.3.2 -- [https://github.com/1Password/sys-locale](https://github.com/1Password/sys-locale) -- `Apache-2.0 OR MIT`
 - **terminfo** v0.9.0 -- [https://github.com/meh/rust-terminfo](https://github.com/meh/rust-terminfo) -- `WTFPL`
 - **termwiz** v0.23.3 -- [https://github.com/wezterm/wezterm](https://github.com/wezterm/wezterm) -- `MIT`
@@ -856,7 +860,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 190 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+182 more)
+Applies to 192 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+184 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -1214,7 +1218,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 266 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+258 more)
+Applies to 270 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, ahp v0.7.0, ahp-types v0.7.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+262 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 

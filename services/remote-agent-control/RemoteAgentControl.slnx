@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RemoteAgentControl.Api/RemoteAgentControl.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RemoteAgentControl.Api.Tests/RemoteAgentControl.Api.Tests.csproj" />
+  </Folder>
+</Solution>

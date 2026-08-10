@@ -28,6 +28,7 @@ mod master;
 mod osc52;
 mod pane_context;
 mod protocol;
+mod remote_agent;
 mod rtl;
 mod runtime_paths;
 mod session_history;

@@ -1,0 +1,16 @@
+name: intelligent-terminal-remote-agent-control
+metadata:
+  template: intelligent-terminal-remote-agent-control@0.1.0
+services:
+  remote-agent-control:
+    project: services/remote-agent-control/src/RemoteAgentControl.Api
+    host: containerapp
+    language: dotnet
+    resourceName: ${AZURE_CONTAINER_APP_NAME}
+    docker:
+      path: Dockerfile
+      context: .
+infra:
+  provider: bicep
+  path: infra
+  module: main

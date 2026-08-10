@@ -396,6 +396,15 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: SessionsAction,
     },
+    /// Run or diagnose the standalone loopback Remote Agent Host MVP.
+    ///
+    /// This is independent from the existing master/helper ACP bridge. It is
+    /// intended for local AHP interoperability diagnostics only; it is not a
+    /// cloud relay or Azure Web PubSub endpoint.
+    RemoteHost {
+        #[command(subcommand)]
+        action: RemoteHostAction,
+    },
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
     /// the model dropdown can populate before any real agent pane is
@@ -481,6 +490,61 @@ pub(crate) enum SessionsAction {
         /// WTA spawned for an Intelligent Terminal agent pane.
         #[arg(long, value_enum, default_value_t = SessionsOriginArg::All)]
         origin: SessionsOriginArg,
+    },
+}
+
+/// Subcommands for `wta remote-host`.
+#[derive(Subcommand, Debug)]
+pub(crate) enum RemoteHostAction {
+    /// Start a standalone Agent Host Protocol server on loopback.
+    Start {
+        /// Loopback address to listen on.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        listen: std::net::SocketAddr,
+        /// Number of relay envelopes retained for reconnect replay.
+        #[arg(long, default_value_t = 256)]
+        replay_capacity: usize,
+        /// Override the persistent host-state file. Intended for diagnostics.
+        #[arg(long, value_name = "PATH")]
+        state_path: Option<std::path::PathBuf>,
+        /// Override the local authentication token file.
+        #[arg(long, value_name = "PATH")]
+        auth_token_path: Option<std::path::PathBuf>,
+    },
+    /// Connect a diagnostic AHP client, initialize, list sessions, subscribe,
+    /// then reconnect and report whether the host replayed or snapshotted.
+    Diagnose {
+        /// Loopback address of a running `remote-host start` process.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        address: std::net::SocketAddr,
+        /// Stable client identifier used across the reconnect.
+        #[arg(long, default_value = "wta-remote-diagnostic")]
+        client_id: String,
+        /// Override the sequence passed to reconnect to exercise snapshot fallback.
+        #[arg(long)]
+        last_seen_server_seq: Option<i64>,
+        /// Authentication token file created by `remote-host start`.
+        #[arg(long, value_name = "PATH")]
+        auth_token_path: Option<std::path::PathBuf>,
+    },
+    /// Ingest one legacy hook/session summary through the isolated compatibility
+    /// boundary. It does not attach hooks to the existing master/helper flow.
+    IngestLegacySession {
+        /// Loopback address of a running `remote-host start` process.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        address: std::net::SocketAddr,
+        /// Originating legacy producer, for example `copilot-hook`.
+        #[arg(long)]
+        source: String,
+        /// Stable session key supplied by that producer.
+        #[arg(long)]
+        session_key: String,
+        /// Human-readable session title.
+        #[arg(long)]
+        title: String,
+        /// Authentication token file created by `remote-host start`.
+        #[arg(long, value_name = "PATH")]
+        auth_token_path: Option<std::path::PathBuf>,
     },
 }
 

@@ -50,6 +50,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "ahp",
+          "version": "0.7.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ahp-types",
+          "version": "0.7.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "allocator-api2",
           "version": "0.2.21"
         }
@@ -1742,6 +1760,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "serde_repr",
+          "version": "0.1.21"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "serde_spanned",
           "version": "0.6.9"
         }
@@ -1942,6 +1969,15 @@
         "cargo": {
           "name": "syn",
           "version": "2.0.117"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "syn",
+          "version": "3.0.3"
         }
       }
     },
