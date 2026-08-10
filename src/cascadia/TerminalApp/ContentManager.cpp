@@ -27,8 +27,10 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 namespace winrt::TerminalApp::implementation
 {
     KeptGroupRestoreResult::KeptGroupRestoreResult(std::vector<NewTerminalArgs> restoreArgs,
+                                                   winrt::hstring title,
                                                    winrt::hstring shellSessionId,
                                                    const int64_t shellSessionRevision) :
+        _title{ std::move(title) },
         _shellSessionId{ std::move(shellSessionId) },
         _shellSessionRevision{ shellSessionRevision }
     {
@@ -691,6 +693,7 @@ namespace winrt::TerminalApp::implementation
         std::vector<NewTerminalArgs> restoreArgs;
         auto changed = false;
 
+        const auto title = it->second.title;
         const auto shellSessionId = it->second.shellSessionId;
         const auto shellSessionRevision = it->second.shellSessionRevision;
 
@@ -757,6 +760,7 @@ namespace winrt::TerminalApp::implementation
 
             return winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
                 std::move(restoreArgs),
+                title,
                 shellSessionId,
                 shellSessionRevision);
     }

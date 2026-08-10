@@ -232,6 +232,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        // The tray row the user clicked is labeled with the detached tab's
+        // title. Reattaching only rebuilds panes, so without this the tab comes
+        // back labeled from its profile instead of the name it was closed under.
+        if (const auto title = restoredGroup.Title();
+            !actions.empty() && !title.empty())
+        {
+            actions.emplace_back(ShortcutAction::RenameTab, RenameTabArgs{ title });
+        }
+
         return actions;
     }
 }
