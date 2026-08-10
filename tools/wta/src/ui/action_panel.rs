@@ -123,8 +123,7 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .available_rows
         .saturating_sub(allocated_status_height)
         .saturating_sub(action_rows)
-        .saturating_sub(result.chat_height)
-        .max(super::input::INPUT_MIN_HEIGHT);
+        .saturating_sub(result.chat_height);
     result.input_height = request.input_height.min(input_capacity);
 
     let chat_capacity = request
@@ -204,6 +203,69 @@ mod tests {
             recommendation_natural_height: Some(6),
             permission_natural_height: None,
         }
+    }
+
+    fn allocated_height(layout: ActionPanelLayout) -> u32 {
+        [
+            layout.chat_height,
+            layout.recommendation_height,
+            layout.permission_height,
+            layout.hint_height,
+            layout.recommendation_hint_height,
+            layout.activity_height,
+            layout.input_height,
+        ]
+        .into_iter()
+        .map(u32::from)
+        .sum()
+    }
+
+    #[test]
+    fn input_shrinks_to_fit_hosts_below_its_minimum_height() {
+        for rows in 0..super::super::input::INPUT_MIN_HEIGHT {
+            let layout = plan(recommendation_request(rows));
+
+            assert_eq!(layout.input_height, rows);
+            assert_eq!(allocated_height(layout), u32::from(rows));
+        }
+    }
+
+    #[test]
+    fn planned_heights_never_exceed_available_rows() {
+        for rows in 0..=32 {
+            let requests = [
+                recommendation_request(rows),
+                LayoutRequest {
+                    available_rows: rows,
+                    input_height: 8,
+                    chat_natural_height: 20,
+                    hint_requested: true,
+                    activity_requested: true,
+                    recommendation_natural_height: None,
+                    permission_natural_height: Some(12),
+                },
+                LayoutRequest {
+                    available_rows: rows,
+                    input_height: 8,
+                    chat_natural_height: 20,
+                    hint_requested: true,
+                    activity_requested: true,
+                    recommendation_natural_height: None,
+                    permission_natural_height: None,
+                },
+            ];
+
+            for request in requests {
+                let available_rows = request.available_rows;
+                let layout = plan(request);
+                assert!(allocated_height(layout) <= u32::from(available_rows));
+            }
+        }
+
+        let five = plan(recommendation_request(5));
+        assert_eq!(five.recommendation_mode, PanelMode::Compact);
+        assert_eq!(five.recommendation_height, COMPACT_RECOMMENDATION_HEIGHT);
+        assert_eq!(five.input_height, super::super::input::INPUT_MIN_HEIGHT);
     }
 
     #[test]

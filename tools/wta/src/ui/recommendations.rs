@@ -95,10 +95,13 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
     };
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(prefix, theme::TOOL_CALL_PENDING),
-            Span::styled(summary, body_style),
-        ])),
+        compact_summary_paragraph(
+            Line::from(vec![
+                Span::styled(prefix, theme::TOOL_CALL_PENDING),
+                Span::styled(summary, body_style),
+            ]),
+            crate::rtl::text_alignment(),
+        ),
         Rect {
             height: 1,
             ..area
@@ -138,6 +141,10 @@ fn truncate_compact(text: &str, width: usize) -> String {
     }
     result.push('…');
     result
+}
+
+fn compact_summary_paragraph(line: Line<'static>, alignment: Alignment) -> Paragraph<'static> {
+    Paragraph::new(line).alignment(alignment)
 }
 
 /// Render the recommendations navigation hint. Called by `layout.rs` to
@@ -300,5 +307,27 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
             }
         }
         None => choice.title.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_summary_paragraph_right_aligns_for_rtl() {
+        let area = Rect::new(0, 0, 8, 1);
+        let mut buffer = Buffer::empty(area);
+
+        compact_summary_paragraph(
+            Line::from("RTL"),
+            crate::rtl::text_alignment_for_locale("qps-plocm"),
+        )
+        .render(area, &mut buffer);
+
+        assert_eq!(buffer[(4, 0)].symbol(), " ");
+        assert_eq!(buffer[(5, 0)].symbol(), "R");
+        assert_eq!(buffer[(6, 0)].symbol(), "T");
+        assert_eq!(buffer[(7, 0)].symbol(), "L");
     }
 }
