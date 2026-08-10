@@ -272,6 +272,10 @@ pub struct TabSession {
     /// agent message / thought / tool call starts, OR the load
     /// completes (SessionAttached for the loading tab).
     pub pending_user_replay: String,
+    /// ACP message id for `pending_user_replay`. Chunks with the same id
+    /// belong to one user message; an id change is a turn boundary even when
+    /// the preceding turn produced only an out-of-band recommendation card.
+    pub pending_user_replay_message_id: Option<String>,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
     /// call. While set, session/update chunk handlers accept chunks
@@ -477,6 +481,7 @@ impl TabSession {
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
+        self.pending_user_replay_message_id = None;
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -490,14 +495,19 @@ impl TabSession {
     }
 
     pub fn flush_load_replay_pending(&mut self) {
-        if !self.pending_user_replay.is_empty() {
-            let text = std::mem::take(&mut self.pending_user_replay);
-            self.messages.push(ChatMessage::User(text));
-        }
+        self.flush_pending_user_replay();
         if !self.pending_agent_response.is_empty() {
             let text = std::mem::take(&mut self.pending_agent_response);
             self.messages.push(ChatMessage::Agent(text));
         }
+    }
+
+    pub fn flush_pending_user_replay(&mut self) {
+        if !self.pending_user_replay.is_empty() {
+            let text = std::mem::take(&mut self.pending_user_replay);
+            self.messages.push(ChatMessage::User(text));
+        }
+        self.pending_user_replay_message_id = None;
     }
 
     pub fn pack_replayed_messages_into_turns(&mut self) {

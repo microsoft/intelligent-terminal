@@ -390,6 +390,7 @@ impl App {
                     .unwrap_or(false);
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
+                tab.pending_user_replay_message_id = None;
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
@@ -718,8 +719,7 @@ impl App {
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
                 if tab.loading_session && !tab.pending_user_replay.is_empty() {
-                    let text = std::mem::take(&mut tab.pending_user_replay);
-                    tab.messages.push(ChatMessage::User(text));
+                    tab.flush_pending_user_replay();
                 }
                 tab.pending_agent_response.push_str(&text);
 
@@ -727,7 +727,11 @@ impl App {
                 // late chunks and handles the stale-autofix generation check.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
-            AppEvent::UserMessageReplayChunk { session_id, text } => {
+            AppEvent::UserMessageReplayChunk {
+                session_id,
+                message_id,
+                text,
+            } => {
                 // Replayed historical user prompt from a `session/load`
                 // SessionUpdate. Only meaningful during the load window;
                 // dropped otherwise. A new user_message_chunk after a
@@ -740,6 +744,16 @@ impl App {
                 if !tab.pending_agent_response.is_empty() {
                     let prev = std::mem::take(&mut tab.pending_agent_response);
                     tab.messages.push(ChatMessage::Agent(prev));
+                }
+                let starts_new_message = matches!(
+                    (&tab.pending_user_replay_message_id, &message_id),
+                    (Some(current), Some(incoming)) if current != incoming
+                );
+                if starts_new_message {
+                    tab.flush_pending_user_replay();
+                }
+                if tab.pending_user_replay_message_id.is_none() {
+                    tab.pending_user_replay_message_id = message_id;
                 }
                 tab.pending_user_replay.push_str(&text);
             }
@@ -768,8 +782,7 @@ impl App {
                 // Turn boundary during replay (see AgentMessageChunk).
                 if tab.loading_session {
                     if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
-                        tab.messages.push(ChatMessage::User(text));
+                        tab.flush_pending_user_replay();
                     }
                     if !tab.pending_agent_response.is_empty() {
                         let text = std::mem::take(&mut tab.pending_agent_response);
@@ -826,6 +839,13 @@ impl App {
             }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
+                // Copilot currently omits ACP messageId during session/load,
+                // but recommendation-only turns still replay their hidden
+                // proposal tool call. Use that as the turn boundary without
+                // restoring the card itself.
+                if tab.loading_session && !tab.pending_user_replay.is_empty() {
+                    tab.flush_pending_user_replay();
+                }
                 tab.tool_calls.remove(&id);
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
@@ -841,8 +861,7 @@ impl App {
                 }
                 if tab.loading_session {
                     if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
-                        tab.messages.push(ChatMessage::User(text));
+                        tab.flush_pending_user_replay();
                     }
                     if !tab.pending_agent_response.is_empty() {
                         let text = std::mem::take(&mut tab.pending_agent_response);

@@ -1815,6 +1815,133 @@ fn session_attached_for_load_target_packs_replayed_history() {
     );
 }
 
+#[test]
+fn replay_message_ids_preserve_user_only_recommendation_turns() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "# Terminal Agent\n\n## User Request\nos ".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("chat-turn".to_string()),
+        text: "## User Request\nhow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0].prompt, "os version");
+    assert!(turns[0].details.is_empty());
+    assert_eq!(turns[1].prompt, "how is the day");
+    assert_eq!(
+        turns[1].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+#[test]
+fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nhow are you".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "I am doing well.".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nos version".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-os-version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nlist file size".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-file-size".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nhow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 4);
+    assert_eq!(turns[0].prompt, "how are you");
+    assert_eq!(
+        turns[0].details,
+        vec![ChatMessage::Agent("I am doing well.".to_string())]
+    );
+    assert_eq!(turns[1].prompt, "os version");
+    assert!(turns[1].details.is_empty());
+    assert_eq!(turns[2].prompt, "list file size");
+    assert!(turns[2].details.is_empty());
+    assert_eq!(turns[3].prompt, "how is the day");
+    assert_eq!(
+        turns[3].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+fn app_loading_replayed_session() -> App {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.session_to_tab
+        .insert("sess-target".to_string(), "OWNER-TAB".to_string());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+    app
+}
+
 // ─── WtNotification auto-dismiss ────────────────────────────────────────
 
 #[test]

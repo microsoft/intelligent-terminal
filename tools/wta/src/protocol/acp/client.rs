@@ -990,9 +990,11 @@ impl WtaClient {
                 // this branch only fires during a load replay. The
                 // App handler gates on `loading_session` and drops
                 // late-arrivers.
+                let message_id = chunk.message_id.map(|id| id.to_string());
                 if let acp::schema::v1::ContentBlock::Text(text_content) = chunk.content {
                     let _ = self.state.event_tx.send(AppEvent::UserMessageReplayChunk {
                         session_id: sid,
+                        message_id,
                         text: text_content.text,
                     });
                 }
