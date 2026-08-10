@@ -740,6 +740,7 @@ namespace TerminalAppLocalTests
         const auto firstGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-1111-2222-3333-444444444444}");
         const auto secondGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-5555-6666-7777-888888888888}");
         const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-aaaa-bbbb-cccc-dddddddddddd}");
+        const winrt::hstring shellSessionId{ L"61616161-9999-aaaa-bbbb-cccccccccccc" };
 
         TestOnUIThread([&]() {
             auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
@@ -755,18 +756,20 @@ namespace TerminalAppLocalTests
 
             const auto firstControl = makeControl();
             const auto replacementControl = makeControl();
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, firstControl));
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, replacementControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Tab", shellSessionId, 1, NewTerminalArgs{}, firstControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Renamed tab", shellSessionId, 2, NewTerminalArgs{}, replacementControl));
             VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
             VERIFY_ARE_EQUAL(1u, _contentManager->KeptGroups().Size());
 
             auto restored = _contentManager->BeginReattachKeptGroup(firstGroupId);
             VERIFY_IS_NOT_NULL(restored);
             VERIFY_ARE_EQUAL(1u, restored.RestoreArgs().Size());
+            VERIFY_IS_TRUE(restored.ShellSessionId() == shellSessionId);
+            VERIFY_ARE_EQUAL(2LL, restored.ShellSessionRevision());
             _contentManager->CancelKeptGroupReattach(firstGroupId);
 
             const auto movedControl = makeControl();
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(secondGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, movedControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(secondGroupId, sessionId, L"Renamed tab", shellSessionId, 3, NewTerminalArgs{}, movedControl));
             const auto groups = _contentManager->KeptGroups();
             VERIFY_ARE_EQUAL(1u, groups.Size());
             VERIFY_IS_FALSE(groups.HasKey(firstGroupId));

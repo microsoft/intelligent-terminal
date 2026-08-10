@@ -400,25 +400,17 @@ namespace winrt::TerminalApp::implementation
         _keptSessions.insert_or_assign(sessionId, std::move(kept));
 
         auto& group = _keptGroups[groupId];
-        if (group.title.empty())
+        if (!title.empty())
         {
             group.title = title;
         }
-        if (group.shellSessionId.empty())
+        if (!shellSessionId.empty())
         {
             group.shellSessionId = shellSessionId;
         }
-        else
-        {
-            WI_ASSERT(group.shellSessionId == shellSessionId || shellSessionId.empty());
-        }
-        if (group.shellSessionRevision == 0)
+        if (shellSessionRevision > group.shellSessionRevision)
         {
             group.shellSessionRevision = shellSessionRevision;
-        }
-        else
-        {
-            WI_ASSERT(group.shellSessionRevision == shellSessionRevision || shellSessionRevision == 0);
         }
         if (std::find(group.sessionIds.begin(), group.sessionIds.end(), sessionId) == group.sessionIds.end())
         {
