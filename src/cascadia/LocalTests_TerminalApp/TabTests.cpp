@@ -553,6 +553,15 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(reattachedTab->TabStatus().IsKeepRunning());
             VERIFY_ARE_EQUAL(content.Id(), reattachedTab->GetActiveTerminalControl().ContentId());
             VERIFY_ARE_EQUAL(0ull, _contentManager->TryReattachKeptSession(sessionId));
+
+            NewTerminalArgs fallbackArgs{};
+            fallbackArgs.KeptSessionId(::Microsoft::Console::Utils::GuidFromString(L"{42a75f00-eeee-ffff-1111-222222222222}"));
+            VERIFY_SUCCEEDED(page->_OpenNewTab(fallbackArgs));
+            const auto fallbackTab = page->_GetTabImpl(page->_tabs.GetAt(page->_tabs.Size() - 1));
+            VERIFY_IS_NOT_NULL(fallbackTab);
+            VERIFY_IS_FALSE(fallbackTab->KeepRunning());
+            VERIFY_IS_FALSE(fallbackTab->TabStatus().IsKeepRunning());
+            VERIFY_IS_TRUE(fallbackArgs.KeptSessionId() == winrt::guid{});
         });
     }
 
