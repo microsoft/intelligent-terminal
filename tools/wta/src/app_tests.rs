@@ -7886,6 +7886,36 @@ fn permission_card_height_treats_blank_lines_as_one_row() {
 }
 
 #[test]
+fn permission_card_height_counts_wrapped_formatted_command_rows() {
+    let mut perm = perm_with("Run command?");
+    perm.target = Some("a".repeat(150));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    // command_format truncates the statement to 100 chars plus an ellipsis,
+    // and permission rendering prepends "$ " before wrapping.
+    let rendered_command_width = 2_usize + 101;
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rendered_command_width.div_ceil(inner_width)
+    );
+}
+
+#[test]
+fn permission_card_height_counts_each_wrapped_split_command_line() {
+    let mut perm = perm_with("Run commands?");
+    perm.target = Some(format!("{}; {}", "a".repeat(45), "b".repeat(45)));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    let rows_per_command = (2_usize + 45).div_ceil(inner_width);
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rows_per_command * 2
+    );
+}
+
+#[test]
 fn rec_card_height_includes_inter_card_gap() {
     let h = recommendation_card_height(&rec_send("ls"), 80);
     assert_eq!(h as u16, CARD_MIN_SIZE + 1);

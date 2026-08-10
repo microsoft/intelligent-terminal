@@ -46,13 +46,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // card so it doesn't render as an unreadable wall of
                 // text (see `ui/command_format.rs`).
                 for entry in crate::ui::command_format::command_display_lines(target) {
-                    let text = match entry {
-                        crate::ui::command_format::CommandLine::Statement(s) => format!("$ {s}"),
-                        crate::ui::command_format::CommandLine::Folded { remaining } => {
-                            format!("… (+{remaining} more)")
-                        }
-                    };
-                    lines.push(Line::styled(text, theme::CARD_CODE));
+                    lines.push(Line::styled(entry.rendered_text(""), theme::CARD_CODE));
                 }
             } else {
                 // Paths are shown as-is — the code styling alone

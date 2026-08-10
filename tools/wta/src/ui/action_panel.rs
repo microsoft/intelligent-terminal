@@ -166,7 +166,10 @@ pub(crate) fn permission_card_height(permission: &PermissionState, panel_width: 
     let mut content_lines = wrapped_line_count(&header, inner_width);
     if let Some(target) = &permission.target {
         if permission.target_is_command {
-            content_lines += super::command_format::command_display_lines(target).len();
+            content_lines += super::command_format::command_display_lines(target)
+                .iter()
+                .map(|line| wrapped_line_count(&line.rendered_text(""), inner_width))
+                .sum::<usize>();
         } else {
             content_lines += wrapped_line_count(target, inner_width);
         }
