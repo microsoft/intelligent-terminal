@@ -1,6 +1,7 @@
 aci
 adbea
 affordance
+agente
 agentic
 aiagents
 alacritty
