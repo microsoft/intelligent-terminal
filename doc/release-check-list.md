@@ -132,6 +132,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C052` `[E2E]` **Hotkey hides pane:** `Ctrl+Shift+.` hides/stashes the agent pane without killing the session.
 - [ ] `C053` `[UT✓]` `[E2E]` **Focus hotkey works:** `Ctrl+Shift+I` focuses the agent pane when available. _(UT: `DefaultAgentKeybindings` binding; focus behavior E2E.)_
 - [ ] `C054` `[E2E]` **Different positions work:** Open/hide/focus works for bottom, right, left, and top pane positions.
+- [ ] `C252` `[new]` `[E2E]` **Agent pane move is isolated per tab and preserves input focus:** `/move` changes only the current tab's runtime pane position, leaves the global setting and sibling tabs unchanged, and returns keyboard focus to the moved agent input. _(#429; E2E: `Feature.AgentPaneMove`.)_
 - [ ] `C055` `[E2E]` **Stash preserves chat:** Hiding and restoring the pane preserves helper process, connection state, and chat history.
 - [ ] `C056` `[E2E]` **Tab close cleans up:** Closing the owning tab cleans up the helper and does not leave a broken pane.
 - [ ] `C247` `[new]` `[E2E]` **Closing a tab mid-turn leaves sibling agent tabs working:** When one tab closes with a prompt in flight, its orphaned result is discarded without terminating the shared agent CLI, and another tab can continue chatting without a restart. _(#419/#425; E2E: `Feature.SharedAgentLifecycle`.)_
