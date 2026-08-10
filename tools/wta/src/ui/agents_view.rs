@@ -142,7 +142,8 @@ pub fn render(
             let total = rows.len();
             if let Some(want) = cli_filter {
                 rows.retain(|s| {
-                    &s.cli_source == want
+                    s.location.is_remote()
+                        || &s.cli_source == want
                         || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
                 });
             }
@@ -633,6 +634,9 @@ fn origin_prefix_for(s: &AgentSession) -> Option<String> {
     if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
         return Some(format!("[WSL-{distro}] "));
     }
+    if let crate::agent_sessions::SessionLocation::Remote { host, .. } = &s.location {
+        return Some(format!("[REMOTE-{host}] "));
+    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -1113,6 +1117,19 @@ mod tests {
             location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
         };
         assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
+    }
+
+    #[test]
+    fn origin_prefix_shows_host_for_remote_rows() {
+        let mut s = sample_session();
+        s.location = crate::agent_sessions::SessionLocation::Remote {
+            host: "devbox:8787".to_string(),
+            resource: "ahp-session:/one".to_string(),
+        };
+        assert_eq!(
+            origin_prefix_for(&s).as_deref(),
+            Some("[REMOTE-devbox:8787] ")
+        );
     }
 
     /// Release checklist §4 "Session states": the inline activity badge shown next to a session

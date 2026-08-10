@@ -7,6 +7,7 @@
 
 pub(crate) mod legacy;
 
+pub(crate) mod client;
 mod host;
 mod mirror;
 mod persistence;
@@ -14,6 +15,7 @@ mod relay;
 mod replay;
 mod snapshot;
 mod state;
+mod terminal_bridge;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +23,10 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 
 use persistence::FileHostStateStore;
+
+pub(crate) use terminal_bridge::{
+    apply_terminal_client_event, terminal_client_config_from_env,
+};
 
 /// Start the standalone loopback host. This path is never entered by existing
 /// master/helper launches, so their behavior remains unchanged.
@@ -61,6 +67,51 @@ pub(crate) async fn run_diagnostic(
         mirror::run_diagnostic(address, client_id, last_seen_server_seq, &auth_token).await?;
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
+}
+
+/// List the current remote catalogue through the reusable client runtime.
+pub(crate) async fn run_client_list(
+    address: std::net::SocketAddr,
+    client_id: &str,
+    auth_token_path: Option<PathBuf>,
+) -> Result<()> {
+    let auth_token = load_auth_token(auth_token_path)?;
+    let catalogue = client::list_catalogue(address, client_id, &auth_token).await?;
+    println!("{}", serde_json::to_string_pretty(&catalogue)?);
+    Ok(())
+}
+
+/// Run a long-lived remote client and emit newline-delimited JSON events.
+pub(crate) async fn run_client_watch(
+    address: std::net::SocketAddr,
+    client_id: &str,
+    auth_token_path: Option<PathBuf>,
+    event_limit: Option<usize>,
+) -> Result<()> {
+    let auth_token = load_auth_token(auth_token_path)?;
+    client::watch(
+        client::RemoteClientConfig {
+            address,
+            client_id: client_id.to_string(),
+            auth_token,
+            event_limit,
+            ..client::RemoteClientConfig::default()
+        },
+        |event| {
+            use std::io::Write;
+
+            let mut value = serde_json::to_value(event)?;
+            value
+                .as_object_mut()
+                .context("serialize Remote Agent client event as an object")?
+                .insert("schemaVersion".to_string(), serde_json::json!(1));
+            let mut stdout = std::io::stdout().lock();
+            writeln!(stdout, "{}", serde_json::to_string(&value)?)?;
+            stdout.flush()?;
+            Ok(())
+        },
+    )
+    .await
 }
 
 /// Submit one compatibility-boundary legacy summary to a running local host.
@@ -500,4 +551,155 @@ mod tests {
         assert!(result.is_err());
         server.abort();
     }
+
+    #[tokio::test]
+    async fn long_lived_client_receives_catalogue_updates() {
+        let host = test_host(8);
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let address = listener.local_addr().expect("test listener address");
+        let server = tokio::spawn(super::host::serve_listener(host.clone(), listener));
+
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = tokio::spawn(async move {
+            super::client::watch(
+                super::client::RemoteClientConfig {
+                    address,
+                    client_id: "watch-client".to_string(),
+                    auth_token: "test-token".to_string(),
+                    event_limit: Some(3),
+                    ..super::client::RemoteClientConfig::default()
+                },
+                move |event| {
+                    event_tx.send(event.clone()).expect("capture client event");
+                    Ok(())
+                },
+            )
+            .await
+        });
+
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv())
+                .await
+                .expect("connected event timeout"),
+            Some(super::client::RemoteClientEvent::Connected { .. })
+        ));
+        host.ingest_legacy_summary(LegacySessionSummary::new(
+            "legacy-test".to_string(),
+            "watched-session".to_string(),
+            "Watched".to_string(),
+        ))
+        .expect("ingest watched summary");
+
+        let action = tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv())
+            .await
+            .expect("action event timeout")
+            .expect("action event");
+        assert!(matches!(
+            action,
+            super::client::RemoteClientEvent::Action { .. }
+        ));
+        let update = tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv())
+            .await
+            .expect("catalogue event timeout")
+            .expect("catalogue event");
+        assert!(
+            matches!(
+                &update,
+                super::client::RemoteClientEvent::CatalogueChanged { sessions, .. }
+                    if sessions.iter().any(|session| session.title == "Watched")
+            ),
+            "unexpected remote client event: {update:?}"
+        );
+        watcher
+            .await
+            .expect("watch task should finish")
+            .expect("watch should succeed");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn terminal_bridge_reconciles_and_marks_remote_catalogue() {
+        let registry = super::session_registry_for_test();
+        let summary: ahp_types::state::SessionSummary = serde_json::from_value(serde_json::json!({
+            "provider": "copilot",
+            "title": "Remote build fix",
+            "status": ahp_types::state::SessionStatus::InputNeeded.bits(),
+            "activity": "Approve terminal command",
+            "workingDirectories": ["file:///C:/remote/repo"],
+            "resource": "ahp-session:/remote-1",
+            "createdAt": "2026-08-10T00:00:00Z",
+            "modifiedAt": "2026-08-10T01:00:00Z"
+        }))
+        .expect("deserialize remote session summary");
+        let event = super::client::RemoteClientEvent::Connected {
+            address: "127.0.0.1:8787".to_string(),
+            recovery: "initialize",
+            server_seq: 1,
+            sessions: vec![summary],
+        };
+
+        assert!(
+            super::apply_terminal_client_event(&*registry, "127.0.0.1:8787", &event).await
+        );
+        let rows = registry.snapshot().await;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].status,
+            Some(crate::agent_sessions::AgentStatus::Attention)
+        );
+        assert!(matches!(
+            &rows[0].location,
+            crate::agent_sessions::SessionLocation::Remote { host, resource }
+                if host == "127.0.0.1:8787" && resource == "ahp-session:/remote-1"
+        ));
+
+        let empty = super::client::RemoteClientEvent::CatalogueChanged {
+            reason: "sessionRemoved",
+            sessions: Vec::new(),
+        };
+        assert!(
+            super::apply_terminal_client_event(&*registry, "127.0.0.1:8787", &empty).await
+        );
+        assert!(registry.snapshot().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn terminal_bridge_marks_remote_rows_disconnected() {
+        let registry = super::session_registry_for_test();
+        let summary: ahp_types::state::SessionSummary = serde_json::from_value(serde_json::json!({
+            "provider": "copilot",
+            "title": "Remote session",
+            "status": ahp_types::state::SessionStatus::Idle.bits(),
+            "resource": "ahp-session:/remote-2",
+            "createdAt": "2026-08-10T00:00:00Z",
+            "modifiedAt": "2026-08-10T01:00:00Z"
+        }))
+        .expect("deserialize remote session summary");
+        let connected = super::client::RemoteClientEvent::Connected {
+            address: "127.0.0.1:8787".to_string(),
+            recovery: "initialize",
+            server_seq: 0,
+            sessions: vec![summary],
+        };
+        super::apply_terminal_client_event(&*registry, "127.0.0.1:8787", &connected).await;
+
+        let disconnected = super::client::RemoteClientEvent::Disconnected {
+            address: "127.0.0.1:8787".to_string(),
+            retry_in_ms: 1000,
+            error: "connection lost".to_string(),
+        };
+        assert!(
+            super::apply_terminal_client_event(&*registry, "127.0.0.1:8787", &disconnected).await
+        );
+        let row = registry.snapshot().await.pop().expect("remote row remains");
+        assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+        assert_eq!(row.last_error.as_deref(), Some("connection lost"));
+    }
+}
+
+#[cfg(test)]
+fn session_registry_for_test() -> Arc<dyn crate::session_registry::SessionRegistry> {
+    crate::session_registry::InMemoryRegistry::shared()
 }

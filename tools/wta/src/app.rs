@@ -2330,6 +2330,15 @@ impl App {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
+        if s.location.is_remote() {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::warning(
+                t!("system.cannot_focus_session", session_id = s.key.as_str()).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+
         // WSL rows can only resume via the CLI `--resume` flag *inside*
         // the distro. ACP `session/load` (the Shift target for Class B
         // dead rows) can't rehydrate a Linux session into a host agent
@@ -2575,6 +2584,7 @@ impl App {
                 None => format!("wsl -d {distro} -- {login_invocation}"),
             },
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
+            crate::agent_sessions::SessionLocation::Remote { .. } => return,
         };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
@@ -2641,6 +2651,7 @@ impl App {
             crate::agent_sessions::SessionLocation::Host => {
                 format!("Resuming {cli_id} session {short_key}...")
             }
+            crate::agent_sessions::SessionLocation::Remote { .. } => return,
         };
         let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
@@ -3103,7 +3114,11 @@ impl App {
             let mut rows: Vec<_> = snapshot.iter().map(session_info_to_agent_session).collect();
             rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
             if let Some(want) = filter.as_ref() {
-                rows.retain(|s| &s.cli_source == want || matches!(&s.cli_source, crate::agent_sessions::CliSource::Unknown(v) if v.is_empty()));
+                rows.retain(|s| {
+                    s.location.is_remote()
+                        || &s.cli_source == want
+                        || matches!(&s.cli_source, crate::agent_sessions::CliSource::Unknown(v) if v.is_empty())
+                });
             }
             // Apply the MVP origin filter on top of the cli filter.
             // Snapshot rows come from master via SessionInfo where origin

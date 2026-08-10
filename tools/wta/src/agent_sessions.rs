@@ -184,6 +184,7 @@ pub enum SessionLocation {
     #[default]
     Host,
     Wsl { distro: String },
+    Remote { host: String, resource: String },
 }
 
 impl SessionLocation {
@@ -199,8 +200,12 @@ impl SessionLocation {
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
-            SessionLocation::Host => None,
+            SessionLocation::Host | SessionLocation::Remote { .. } => None,
         }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, SessionLocation::Remote { .. })
     }
 }
 
@@ -3070,9 +3075,18 @@ mod tests {
         use super::SessionLocation;
         assert_eq!(SessionLocation::default(), SessionLocation::Host);
         assert!(!SessionLocation::Host.is_wsl());
+        assert!(!SessionLocation::Host.is_remote());
         let w = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
         assert!(w.is_wsl());
+        assert!(!w.is_remote());
         assert_eq!(w.distro(), Some("Ubuntu"));
         assert_eq!(SessionLocation::Host.distro(), None);
+        let remote = SessionLocation::Remote {
+            host: "devbox:8787".to_string(),
+            resource: "ahp-session:/one".to_string(),
+        };
+        assert!(remote.is_remote());
+        assert!(!remote.is_wsl());
+        assert_eq!(remote.distro(), None);
     }
 }

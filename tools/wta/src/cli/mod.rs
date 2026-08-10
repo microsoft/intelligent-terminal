@@ -8,7 +8,7 @@ pub(crate) mod wt;
 
 use anyhow::Result;
 
-use args::{Command, HooksAction, RemoteHostAction, SessionsAction};
+use args::{Command, HooksAction, RemoteClientAction, RemoteHostAction, SessionsAction};
 
 pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
     match command {
@@ -98,6 +98,27 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                         title,
                     ),
                     auth_token_path,
+                )
+                .await
+            }
+        },
+        Command::RemoteClient { action } => match action {
+            RemoteClientAction::List {
+                address,
+                client_id,
+                auth_token_path,
+            } => crate::remote_agent::run_client_list(address, &client_id, auth_token_path).await,
+            RemoteClientAction::Watch {
+                address,
+                client_id,
+                auth_token_path,
+                event_limit,
+            } => {
+                crate::remote_agent::run_client_watch(
+                    address,
+                    &client_id,
+                    auth_token_path,
+                    event_limit,
                 )
                 .await
             }

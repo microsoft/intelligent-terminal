@@ -11,6 +11,14 @@ The repository now contains the first executable vertical slice:
 - a standalone Rust AHP 0.7 host core with authoritative sequencing, bounded
   replay, snapshot fallback, catalogue ingestion, atomic local persistence,
   authenticated loopback diagnostics, and slow-client limits;
+- a reusable long-lived Rust Remote Client with initialize/reconnect recovery,
+  mandatory catalogue refetch, exponential retry, explicit authentication
+  events, and versioned JSONL `remote-client list` / `remote-client watch`
+  diagnostics;
+- an opt-in Terminal IPC bridge that runs the same Remote Client inside
+  `wta-master`, merges remote summaries into its authoritative session registry,
+  and pushes `sessions/changed` over the existing hardened same-user helper
+  named pipe;
 - an Entra-protected .NET control API for host registration, discovery,
   heartbeat, RSA host proof, nonce replay protection, and scoped Web PubSub
   negotiation;
@@ -22,6 +30,14 @@ This is not yet the end-user remote-session MVP. The Azure Web PubSub transport,
 native Entra client, existing hook/ACP integration, host-owned PTY channels, and
 TerminalApp remote session UI remain to be connected through the contracts
 defined here.
+
+For the local loopback vertical slice, set `WTA_REMOTE_HOST_ADDRESS` in the
+Intelligent Terminal process environment before opening an agent pane. The
+master reads the host token from `WTA_REMOTE_HOST_AUTH_TOKEN_PATH`, or from the
+default local Remote Host token path when the override is absent. Remote rows
+then appear in the existing Agent Sessions view with a `REMOTE-<address>`
+marker. Selecting a row is intentionally read-only until attach/chat methods
+are implemented.
 
 ## Abstract
 

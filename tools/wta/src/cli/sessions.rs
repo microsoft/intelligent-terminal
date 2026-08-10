@@ -280,6 +280,9 @@ fn location_label(location: &crate::agent_sessions::SessionLocation) -> String {
     match location {
         crate::agent_sessions::SessionLocation::Host => "host".to_string(),
         crate::agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+        crate::agent_sessions::SessionLocation::Remote { host, .. } => {
+            format!("remote:{host}")
+        }
     }
 }
 

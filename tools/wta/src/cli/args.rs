@@ -405,6 +405,11 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: RemoteHostAction,
     },
+    /// Connect to a Remote Agent Host as a persistent AHP client.
+    RemoteClient {
+        #[command(subcommand)]
+        action: RemoteClientAction,
+    },
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
     /// the model dropdown can populate before any real agent pane is
@@ -545,6 +550,38 @@ pub(crate) enum RemoteHostAction {
         /// Authentication token file created by `remote-host start`.
         #[arg(long, value_name = "PATH")]
         auth_token_path: Option<std::path::PathBuf>,
+    },
+}
+
+/// Subcommands for `wta remote-client`.
+#[derive(Subcommand, Debug)]
+pub(crate) enum RemoteClientAction {
+    /// Print the current remote session catalogue as JSON.
+    List {
+        /// Loopback address of a running `remote-host start` process.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        address: std::net::SocketAddr,
+        /// Stable client identifier.
+        #[arg(long, default_value = "wta-remote-client")]
+        client_id: String,
+        /// Authentication token file created by `remote-host start`.
+        #[arg(long, value_name = "PATH")]
+        auth_token_path: Option<std::path::PathBuf>,
+    },
+    /// Emit connection, action, and catalogue updates as newline-delimited JSON.
+    Watch {
+        /// Loopback address of a running `remote-host start` process.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        address: std::net::SocketAddr,
+        /// Stable client identifier used across reconnects.
+        #[arg(long, default_value = "wta-remote-client")]
+        client_id: String,
+        /// Authentication token file created by `remote-host start`.
+        #[arg(long, value_name = "PATH")]
+        auth_token_path: Option<std::path::PathBuf>,
+        /// Stop after emitting this many events. Omit to watch until interrupted.
+        #[arg(long, value_name = "COUNT")]
+        event_limit: Option<usize>,
     },
 }
 

@@ -2422,6 +2422,55 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
+    let remote_config = match crate::remote_agent::terminal_client_config_from_env() {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!(
+                target: "remote_terminal_ipc",
+                error = %format!("{error:#}"),
+                "remote Terminal IPC configuration is invalid; remote catalogue disabled"
+            );
+            None
+        }
+    };
+    if let Some(remote_config) = remote_config {
+        let remote_host = remote_config.address.to_string();
+        let (remote_event_tx, mut remote_event_rx) =
+            tokio::sync::mpsc::unbounded_channel::<crate::remote_agent::client::RemoteClientEvent>();
+        tokio::task::spawn_local(async move {
+            let result = crate::remote_agent::client::watch(remote_config, move |event| {
+                remote_event_tx
+                    .send(event.clone())
+                    .map_err(|_| anyhow::anyhow!("remote Terminal IPC receiver stopped"))
+            })
+            .await;
+            if let Err(error) = result {
+                tracing::error!(
+                    target: "remote_terminal_ipc",
+                    error = %format!("{error:#}"),
+                    "remote client runtime stopped"
+                );
+            }
+        });
+        let remote_inner = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            while let Some(event) = remote_event_rx.recv().await {
+                if crate::remote_agent::apply_terminal_client_event(
+                    &*remote_inner.registry,
+                    &remote_host,
+                    &event,
+                )
+                .await
+                {
+                    broadcast_ext_to_helpers(
+                        &remote_inner,
+                        crate::session_registry::build_sessions_changed_notification(),
+                    )
+                    .await;
+                }
+            }
+        });
+    }
     {
         let proposal_mcp_state = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
