@@ -656,6 +656,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     const auto args = commandlineToArgArray(GetCommandLineW());
     const auto isEmbedding = args.size() == 2 && args[1] == L"-Embedding";
     _deferPersistedLayoutRestore = isEmbedding;
+    _ignoreBareHandoffsDuringInitialWindowCreation = !isEmbedding && args.size() == 1;
 
     _createMessageWindow(windowClassName.c_str());
     _setupGlobalHotkeys();
@@ -874,6 +875,11 @@ void WindowEmperor::_dispatchSpecialKey(const MSG& msg) const
     const auto scanCode = gsl::narrow_cast<uint8_t>(msg.lParam >> 16);
     const bool keyDown = (msg.message & 1) == 0;
     window->OnDirectKeyEvent(vkey, scanCode, keyDown);
+}
+
+void WindowEmperor::NotifyWindowInitialized() noexcept
+{
+    LOG_IF_WIN32_BOOL_FALSE(PostMessageW(_window.get(), WM_INITIAL_WINDOW_INITIALIZED, 0, 0));
 }
 
 void WindowEmperor::_dispatchCommandline(winrt::TerminalApp::CommandlineArgs args)
@@ -1269,6 +1275,9 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
     {
         switch (message)
         {
+        case WM_INITIAL_WINDOW_INITIALIZED:
+            _ignoreBareHandoffsDuringInitialWindowCreation = false;
+            return 0;
         case WM_CLOSE_TERMINAL_WINDOW:
         {
             const auto globalSettings = _app.Logic().Settings().GlobalSettings();
@@ -1565,6 +1574,15 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
+                    // Packaged debuggers can issue the same bare activation
+                    // twice while the first process is still restoring its
+                    // initial window. The second process hands off here; the
+                    // in-flight initial launch already owns that request.
+                    if (_ignoreBareHandoffsDuringInitialWindowCreation && argv.size() == 1)
+                    {
+                        return 0;
+                    }
+
                     // Coming back from the headless state that keep-running put
                     // us in. A bare launch means "give me my terminal back", so
                     // restore what was open when the last window closed rather

@@ -38,6 +38,7 @@ public:
         WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
         WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
         WM_GET_SHELL_SESSIONS_FOR_PROTOCOL,
+        WM_INITIAL_WINDOW_INITIALIZED,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -92,6 +93,7 @@ public:
     // CreateNewWindow is used for creating a new window from existing Content
     void CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args);
     void HandleCommandlineArgs(int nCmdShow);
+    void NotifyWindowInitialized() noexcept;
     void FocusTabInAnyWindow(const winrt::TerminalApp::Tab& tab) const;
     // OpenWindow is used for opening a new window or summoning an existing window by name.
     void OpenWindow(const winrt::hstring& name);
@@ -164,6 +166,7 @@ private:
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
     bool _deferPersistedLayoutRestore = false;
+    bool _ignoreBareHandoffsDuringInitialWindowCreation = false;
     SafeDispatcherTimer _persistStateTimer;
     std::wstring _startupCurrentDirectory;
     std::wstring _startupEnvironment;

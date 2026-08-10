@@ -1321,6 +1321,7 @@ safe_void_coroutine AppHost::_WindowInitializedHandler(const winrt::Windows::Fou
     // In AppHost::_WindowMoved, we'll make sure we're at least initialized
     // before dismissing open dialogs.
     _isWindowInitialized = WindowInitializedState::Initialized;
+    _windowManager->NotifyWindowInitialized();
 }
 
 winrt::TerminalApp::TerminalWindow AppHost::Logic()
