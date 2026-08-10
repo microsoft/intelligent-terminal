@@ -392,6 +392,11 @@ namespace winrt::TerminalApp::implementation
                 });
         }
 
+        if (const auto existing = _keptSessions.find(sessionId);
+            existing != _keptSessions.end() && existing->second.groupId != groupId)
+        {
+            _dropKeptSession(sessionId);
+        }
         _keptSessions.insert_or_assign(sessionId, std::move(kept));
 
         auto& group = _keptGroups[groupId];
@@ -415,7 +420,10 @@ namespace winrt::TerminalApp::implementation
         {
             WI_ASSERT(group.shellSessionRevision == shellSessionRevision || shellSessionRevision == 0);
         }
-        group.sessionIds.push_back(sessionId);
+        if (std::find(group.sessionIds.begin(), group.sessionIds.end(), sessionId) == group.sessionIds.end())
+        {
+            group.sessionIds.push_back(sessionId);
+        }
 
         // The connection may already have transitioned to Closed/Failed before
         // we finished recording the detached session, or a queued callback may

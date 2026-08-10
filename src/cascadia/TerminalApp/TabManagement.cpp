@@ -969,7 +969,7 @@ namespace winrt::TerminalApp::implementation
 
         // One group per tab, so a multi-pane tab is offered back as the one
         // thing the user closed rather than as N indistinguishable panes.
-        const auto groupId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(tab->StableId().c_str());
         const auto title = tab->Title();
         auto detached = 0;
 
