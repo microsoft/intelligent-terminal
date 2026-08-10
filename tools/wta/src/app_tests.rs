@@ -8032,6 +8032,80 @@ fn rec_card_height_matches_predict_and_render_paths() {
     );
 }
 
+#[test]
+fn recommendation_navigation_preserves_offset_for_fully_visible_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 12);
+    app.current_tab_mut().rec_scroll.set(2);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 2);
+}
+
+#[test]
+fn recommendation_navigation_scrolls_clipped_card_into_view() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 10);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(
+        app.current_tab().rec_scroll.offset,
+        recommendation_card_height(&rec_send("a"), 80)
+    );
+}
+
+#[test]
+fn compact_recommendation_navigation_keeps_canvas_unscrolled() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, crate::ui::action_panel::COMPACT_RECOMMENDATION_HEIGHT);
+    app.current_tab_mut().rec_scroll.set(4);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 0);
+}
+
 // ─── Per-tab input history ──────────────────────────────────────────
 
 #[test]

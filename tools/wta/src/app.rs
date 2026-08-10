@@ -4890,6 +4890,7 @@ impl App {
     /// wheel-driven over-scroll is clamped before paint.
     pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
         let panel_cards_h = panel_height as usize;
+        self.current_tab_mut().rec_viewport_height = panel_height;
         let Some(recs) = self.current_tab().turn.recommendations() else {
             return;
         };
@@ -4907,17 +4908,29 @@ impl App {
         self.current_tab_mut().clear_recommendations();
     }
 
-    /// Scroll the rec panel so the selected card's top sits at the panel top.
+    /// Keep the selected recommendation visible without moving a card that
+    /// already fits in the full panel viewport. Compact mode renders only the
+    /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
+        let viewport_height = self.current_tab().rec_viewport_height as usize;
+        if viewport_height < ui::card::CARD_MIN_SIZE as usize {
+            self.current_tab_mut().rec_scroll.set(0);
+            return;
+        }
 
         let mut line_top = 0usize;
         for (idx, choice) in recs.choices.iter().enumerate() {
             let card_h = ui::action_panel::recommendation_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
-                self.current_tab_mut().rec_scroll.set(line_top);
+                let offset = self.current_tab().rec_scroll.offset;
+                let card_bottom = line_top.saturating_add(card_h.saturating_sub(1));
+                let viewport_bottom = offset.saturating_add(viewport_height);
+                if line_top < offset || card_bottom > viewport_bottom {
+                    self.current_tab_mut().rec_scroll.set(line_top);
+                }
                 return;
             }
             line_top += card_h;
