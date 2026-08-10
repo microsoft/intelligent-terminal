@@ -208,6 +208,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
         TEST_METHOD(WindowCloseAcceptanceIsOneShot);
         TEST_METHOD(ContentMapOperationsUseOwnerThread);
+        TEST_METHOD(RepeatedKeepRunningDetachKeepsOneGroup);
         TEST_METHOD(ContentAttachRejectsDeadConnections);
         TEST_METHOD(ReattachEndEventOwnershipHandoff);
         TEST_METHOD(DetachedReapUsesConfiguredOwnerScheduler);
@@ -711,6 +712,55 @@ namespace TerminalAppLocalTests
         content.Close();
 
         VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+    }
+
+    void TabTests::RepeatedKeepRunningDetachKeepsOneGroup()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        _createContentManager();
+
+        const auto firstGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-1111-2222-3333-444444444444}");
+        const auto secondGroupId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-5555-6666-7777-888888888888}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{61616161-aaaa-bbbb-cccc-dddddddddddd}");
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            std::vector<winrt::Microsoft::Terminal::Control::ControlInteractivity> contents;
+            const auto makeControl = [&]() {
+                auto connection = winrt::make_self<TestConnection>(
+                    sessionId,
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+                contents.emplace_back(content);
+                return winrt::Microsoft::Terminal::Control::TermControl{ content };
+            };
+
+            const auto firstControl = makeControl();
+            const auto replacementControl = makeControl();
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, firstControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(firstGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, replacementControl));
+            VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
+            VERIFY_ARE_EQUAL(1u, _contentManager->KeptGroups().Size());
+
+            auto restored = _contentManager->BeginReattachKeptGroup(firstGroupId);
+            VERIFY_IS_NOT_NULL(restored);
+            VERIFY_ARE_EQUAL(1u, restored.RestoreArgs().Size());
+            _contentManager->CancelKeptGroupReattach(firstGroupId);
+
+            const auto movedControl = makeControl();
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(secondGroupId, sessionId, L"Tab", L"", 0, NewTerminalArgs{}, movedControl));
+            const auto groups = _contentManager->KeptGroups();
+            VERIFY_ARE_EQUAL(1u, groups.Size());
+            VERIFY_IS_FALSE(groups.HasKey(firstGroupId));
+            VERIFY_IS_TRUE(groups.HasKey(secondGroupId));
+
+            _contentManager->DiscardKeptGroup(secondGroupId);
+            contents.at(0).Close();
+            contents.at(1).Close();
+        });
     }
 
     void TabTests::ContentAttachRejectsDeadConnections()
@@ -1300,6 +1350,7 @@ namespace TerminalAppLocalTests
             }
 
             VERIFY_IS_TRUE(groupId != winrt::guid{});
+            VERIFY_IS_TRUE(!!::IsEqualGUID(groupId, ::Microsoft::Console::Utils::GuidFromString(tab->StableId().c_str())));
 
             auto restored = _contentManager->BeginReattachKeptGroup(groupId);
             VERIFY_IS_TRUE(!!restored);
