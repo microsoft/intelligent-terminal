@@ -666,6 +666,7 @@ namespace winrt::TerminalApp::implementation
             const auto agentSessionId = agentContent.AgentSessionId();
             if (!agentSessionId.empty())
             {
+                RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
                 for (const auto& action : actions)
                 {
                     if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())

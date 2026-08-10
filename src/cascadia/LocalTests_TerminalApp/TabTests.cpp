@@ -200,6 +200,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
         TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
+        TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
+        TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
@@ -418,6 +420,52 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true));
     }
 
+    void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
+    {
+        using winrt::TerminalApp::implementation::RemoveAgentPaneSessionFromShellBindings;
+        using winrt::TerminalApp::implementation::SetPersistedLayoutAgentRestorePaths;
+
+        const auto firstSessionId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto secondSessionId = ::Microsoft::Console::Utils::CreateGuid();
+
+        NewTerminalArgs firstArgs{};
+        firstArgs.SessionId(firstSessionId);
+        firstArgs.AgentSessionId(L"codex-session");
+        firstArgs.AgentPaneSessionId(L"copilot-pane-session");
+
+        NewTerminalArgs secondArgs{};
+        secondArgs.SessionId(secondSessionId);
+        secondArgs.AgentSessionId(L"copilot-pane-session");
+        secondArgs.AgentSessionAgent(L"copilot");
+        secondArgs.AgentResumeCommandline(L"copilot --resume copilot-pane-session");
+
+        std::vector<ActionAndArgs> actions;
+        actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ firstArgs });
+        actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, secondArgs });
+
+        RemoveAgentPaneSessionFromShellBindings(actions, firstArgs.AgentPaneSessionId());
+        SetPersistedLayoutAgentRestorePaths(actions, [](const winrt::guid& sessionId) {
+            return winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(sessionId) + L".txt" };
+        });
+
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(firstSessionId) + L".txt" },
+            firstArgs.ShellSessionRestorePath());
+        VERIFY_IS_TRUE(secondArgs.AgentSessionId().empty());
+        VERIFY_IS_TRUE(secondArgs.AgentSessionAgent().empty());
+        VERIFY_IS_TRUE(secondArgs.AgentResumeCommandline().empty());
+        VERIFY_IS_TRUE(secondArgs.ShellSessionRestorePath().empty());
+    }
+
+    void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
+    {
+        using winrt::TerminalApp::implementation::ShouldBindPaneAgentSession;
+
+        VERIFY_IS_FALSE(ShouldBindPaneAgentSession(true, false));
+        VERIFY_IS_TRUE(ShouldBindPaneAgentSession(true, true));
+        VERIFY_IS_TRUE(ShouldBindPaneAgentSession(false, false));
+    }
+
     void TabTests::PaneAgentSessionEndPreservesDurableBinding()
     {
         auto page = _commonSetup();
@@ -437,6 +485,7 @@ namespace TerminalAppLocalTests
                 evt["params"]["event"] = std::string{ name };
                 evt["params"]["agent_session_id"] = "agent-session-resumed";
                 evt["params"]["agent"] = "copilot";
+                evt["params"]["pane_bound"] = true;
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
                 page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, evt)));

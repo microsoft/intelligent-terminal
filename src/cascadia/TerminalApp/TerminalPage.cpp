@@ -5980,6 +5980,7 @@ namespace winrt::TerminalApp::implementation
         const bool sessionStarted = eventName == "agent.session.started" ||
                                     eventName == "agent.session.start" ||
                                     eventName == "agent.prompt.submit";
+        const auto paneBound = params.get("pane_bound", false).asBool();
         const auto agent = params.get("agent", params.get("cli_source", "")).asString();
         auto resumeCommandline = params.get("resume_commandline", "").asString();
         if (resumeCommandline.empty() && !agent.empty() && !agentSessionId.empty())
@@ -5987,6 +5988,15 @@ namespace winrt::TerminalApp::implementation
             resumeCommandline = winrt::to_string(_BuildAgentResumeCommandline(agent, agentSessionId));
         }
         if (!eventName.empty() && !sessionEnded && !sessionStarted)
+        {
+            return;
+        }
+        // Agent-pane CLIs run outside a shell pane and therefore have no
+        // WT_SESSION. wtcli falls back to the focused pane for transport, but
+        // that must not turn the agent-pane ACP session into a shell binding.
+        // Synthetic session_born_bound events have no lifecycle event name and
+        // remain accepted below.
+        if (!ShouldBindPaneAgentSession(sessionStarted, paneBound))
         {
             return;
         }

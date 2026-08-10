@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -49,6 +50,78 @@ namespace winrt::TerminalApp::implementation
     {
         return hasAgentSession &&
                (hasKeptSessionId || hasShellSessionRestorePath);
+    }
+
+    inline constexpr bool ShouldBindPaneAgentSession(
+        const bool sessionStarted,
+        const bool paneBound) noexcept
+    {
+        return !sessionStarted || paneBound;
+    }
+
+    inline winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs GetTerminalArgsForRestoreAction(
+        const winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs& action)
+    {
+        using namespace winrt::Microsoft::Terminal::Settings::Model;
+
+        if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+        {
+            return newTabArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+        if (const auto splitPaneArgs = action.Args().try_as<SplitPaneArgs>())
+        {
+            return splitPaneArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+        return nullptr;
+    }
+
+    inline void RemoveAgentPaneSessionFromShellBindings(
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
+        const winrt::hstring& agentPaneSessionId)
+    {
+        if (agentPaneSessionId.empty())
+        {
+            return;
+        }
+
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+                terminalArgs && terminalArgs.AgentSessionId() == agentPaneSessionId)
+            {
+                terminalArgs.AgentSessionId(L"");
+                terminalArgs.AgentSessionAgent(L"");
+                terminalArgs.AgentResumeCommandline(L"");
+            }
+        }
+    }
+
+    template<typename TPathForSession>
+    inline void SetPersistedLayoutAgentRestorePaths(
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
+        TPathForSession&& pathForSession)
+    {
+        std::vector<winrt::hstring> agentPaneSessionIds;
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+                terminalArgs && !terminalArgs.AgentPaneSessionId().empty())
+            {
+                agentPaneSessionIds.emplace_back(terminalArgs.AgentPaneSessionId());
+            }
+        }
+
+        for (const auto& action : actions)
+        {
+            const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+            if (terminalArgs &&
+                !terminalArgs.AgentSessionId().empty() &&
+                std::find(agentPaneSessionIds.begin(), agentPaneSessionIds.end(), terminalArgs.AgentSessionId()) == agentPaneSessionIds.end() &&
+                terminalArgs.SessionId() != winrt::guid{})
+            {
+                terminalArgs.ShellSessionRestorePath(pathForSession(terminalArgs.SessionId()));
+            }
+        }
     }
 
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
