@@ -26,6 +26,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
+| `Feature.BashPromptIntegration.Tests.ps1` | PR #468: Bash `PROMPT_COMMAND` PS1 rewrites preserve D/A/B boundaries; non-IT hosts remain gated | 1 (Git Bash-gated) |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 Direct Helper Proposal Insert/Run into the shell pane | 2 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.OpenCodeAgent.Tests.ps1` | PR #458: built-in OpenCode launches its native ACP server and completes agent-pane chat | 1 (environment-gated) |
@@ -36,11 +37,11 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.DelegateSource.Tests.ps1` | PR #488 profile-scoped delegate source: strict host/WSL `wta delegate` routing with no fallback in either direction | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**Coverage: 112 of 114 automatable `[E2E]` checklist items are implemented.**
-**Test status: 106 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
+**Coverage: 113 of 115 automatable `[E2E]` checklist items are implemented.**
+**Test status: 107 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
 PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 112 implemented checklist
+case, an installed+authenticated native agent) is available. The 113 implemented checklist
 items map to the baseline cases plus the deterministic settings/persistence assertions. The
 remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
 than being falsely credited by the JSON-level runtime tests. Other

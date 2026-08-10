@@ -200,6 +200,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
 - [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
+- [ ] `C250` `[new]` `[E2E]` **Bash PROMPT_COMMAND rewrites preserve semantic prompt boundaries:** In Intelligent Terminal, a user hook that rebuilds `PS1` still produces one ordered `OSC 133;D/A/B` cycle per command; the same user-wide integration script stays inert in other terminals. _(#468; E2E: `Feature.BashPromptIntegration`.)_
 - [ ] `C220` `[new]` `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so autofix suggests commands for the *current* shell (no PowerShell suggestions inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
 - [ ] `C088` `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
 - [x] `C089` `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
