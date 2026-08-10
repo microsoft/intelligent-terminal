@@ -5484,7 +5484,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_keeps_thinking_until_turn_ends() {
+fn permission_request_replaces_thinking_until_dismissed() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -5522,7 +5522,10 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         responder,
     });
 
-    assert!(app.current_tab().should_show_thinking());
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "an actionable permission replaces passive Thinking feedback"
+    );
     app.current_tab_mut().permission.pop_front();
     assert!(app.current_tab().should_show_thinking());
     let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
@@ -5530,6 +5533,35 @@ fn permission_request_keeps_thinking_until_turn_ends() {
     };
     *end_pending = false;
     assert!(!app.current_tab().should_show_thinking());
+}
+
+#[test]
+fn surfaced_recommendation_hides_thinking_before_turn_end() {
+    let mut app = test_app();
+    let prompt = SubmittedPrompt {
+        id: 1,
+        text: "test".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    };
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::Recommendation(RecommendationSet {
+            recommended_choice: None,
+            choices: Vec::new(),
+        }),
+        end_pending: true,
+    };
+
+    assert!(
+        app.current_tab().turn.is_in_flight(),
+        "end_pending must continue to gate new prompts"
+    );
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "the surfaced result replaces Thinking"
+    );
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`

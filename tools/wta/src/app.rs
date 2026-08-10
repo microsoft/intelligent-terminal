@@ -4233,7 +4233,7 @@ impl App {
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        self.current_tab().turn.is_in_flight()
+        self.current_tab().should_show_thinking()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).

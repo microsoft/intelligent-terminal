@@ -363,6 +363,8 @@ impl TabSession {
 
     pub(crate) fn should_show_thinking(&self) -> bool {
         self.turn.is_in_flight()
+            && self.turn.recommendations().is_none()
+            && self.permission.is_empty()
     }
 
     /// Whether the input box is the live, enterable caret target.
