@@ -2875,9 +2875,14 @@ fn dispatch_master_ext_request(
                     Ok(response) => (response.sessions, None),
                     Err(error) => (Vec::new(), Some(error.to_string())),
                 };
+                // Which of those durable rows still has a live detached shell
+                // is only known to Windows Terminal, not to the store. A
+                // failure here just means no row is marked.
+                let keep_running = fetch_keep_running_shell_session_ids().await;
                 let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
                     tab_id,
                     sessions,
+                    keep_running,
                     error,
                 });
             }
@@ -3781,14 +3786,55 @@ async fn dispatch_prompt_body(
     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
 }
 
+/// Durable ids from a `wtcli list-detached-sessions` payload. A detached
+/// session is a shell that Windows Terminal is keeping alive with no window,
+/// so its durable row is "keep running" rather than merely saved.
+fn parse_keep_running_shell_session_ids(
+    payload: &serde_json::Value,
+) -> std::collections::HashSet<String> {
+    payload
+        .get("detached_sessions")
+        .and_then(|sessions| sessions.as_array())
+        .map(|sessions| {
+            sessions
+                .iter()
+                .filter_map(|session| session.get("shell_session_id")?.as_str())
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn fetch_keep_running_shell_session_ids() -> std::collections::HashSet<String> {
+    use crate::shell::wt_channel::WtChannel;
+
+    let result = async {
+        let channel = crate::shell::wt_channel::CliChannel::connect().await?;
+        channel
+            .request("list_detached_sessions", serde_json::Value::Null)
+            .await
+    }
+    .await;
+
+    match result {
+        Ok(payload) => parse_keep_running_shell_session_ids(&payload),
+        Err(error) => {
+            tracing::debug!(target: "shell_sessions", %error, "could not list detached sessions");
+            std::collections::HashSet::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::acp;
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
         is_proposal_mcp_tool_title, is_redundant_startup_model_error,
-        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label,
-        ClientState, PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
+        parse_keep_running_shell_session_ids, post_login_authenticate_error,
+        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3796,6 +3842,27 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn keep_running_ids_come_from_detached_sessions() {
+        let payload = serde_json::json!({
+            "detached_sessions": [
+                { "session_id": "a", "shell_session_id": "durable-1" },
+                { "session_id": "b", "shell_session_id": "" },
+                { "session_id": "c" },
+                { "session_id": "d", "shell_session_id": "durable-2" },
+                { "session_id": "e", "shell_session_id": "durable-1" }
+            ]
+        });
+
+        let ids = parse_keep_running_shell_session_ids(&payload);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("durable-1"));
+        assert!(ids.contains("durable-2"));
+
+        assert!(parse_keep_running_shell_session_ids(&serde_json::json!({})).is_empty());
+        assert!(parse_keep_running_shell_session_ids(&serde_json::Value::Null).is_empty());
+    }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
         use acp::schema::v1::{

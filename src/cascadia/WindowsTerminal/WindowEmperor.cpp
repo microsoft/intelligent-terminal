@@ -2061,7 +2061,10 @@ try
         else
         {
             const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
-            _windows.front()->Logic().AttachContent(content, 0);
+            // -1 means "wherever a new tab normally goes". Passing a real index
+            // here would move the restored tab there — 0 dragged every restore
+            // to the front of the tab row.
+            _windows.front()->Logic().AttachContent(content, -1);
         }
     }
     catch (...)
