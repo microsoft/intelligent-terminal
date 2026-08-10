@@ -37,10 +37,10 @@ namespace winrt::TerminalApp::implementation
     inline constexpr bool ShouldPersistShellSession(
         const bool hasUserInput,
         const bool hasDurableId,
-        const bool hasKeepRunningPane,
+        const bool keepRunning,
         const bool hasAgentSession) noexcept
     {
-        return hasUserInput || hasDurableId || hasKeepRunningPane || hasAgentSession;
+        return hasUserInput || hasDurableId || keepRunning || hasAgentSession;
     }
 
     inline constexpr bool ShouldResumeAgentSession(

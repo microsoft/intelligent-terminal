@@ -997,8 +997,4 @@
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">
     <value>在新索引標籤中開啟背景代理</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="TogglePaneKeepRunningCommandKey" xml:space="preserve">
-    <value>切換窗格關閉後繼續執行</value>
-    <comment>Command name for opting the active terminal pane in or out of remaining alive after it is closed.</comment>
-  </data>
 </root>

@@ -1303,8 +1303,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 使用できるすべてのオプションについては、'wt new-tab --help' を実行します。</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
-  <data name="PaneKeepRunningButton.ToolTip" xml:space="preserve">
-    <value>このペインを閉じた後も実行し続ける設定を解除する</value>
-    <comment>Tooltip and accessible name for the pin button that opts the pane out of remaining alive after it is closed.</comment>
+  <data name="TabKeepRunningAdd" xml:space="preserve">
+    <value>タブを閉じた後も実行し続ける</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab into remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningRemove" xml:space="preserve">
+    <value>タブを閉じた後も実行し続ける設定を解除する</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab out of remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>このタブは閉じた後も実行され続けます。</value>
+    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>このタブは閉じた後も実行され続けます。</value>
+    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>

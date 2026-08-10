@@ -172,9 +172,6 @@ public:
 
     bool IsAgentPane() const noexcept;
     void IsAgentPane(bool value) noexcept;
-    bool KeepRunning() const noexcept { return _keepRunning; }
-    void KeepRunning(bool value);
-    void ToggleKeepRunning();
     bool IsSourceOfAgentPane() const noexcept;
     void SetSourceOfAgentPane(bool value) noexcept;
     void SetAgentChipVisible(bool value);
@@ -309,8 +306,6 @@ private:
     bool _broadcastEnabled{ false };
     bool _isAgentPane{ false };
     bool _isSourceOfAgentPane{ false };
-    bool _keepRunning{ false };
-    winrt::Windows::UI::Xaml::Controls::Button _keepRunningButton{ nullptr };
 
     // Mouse drag-to-resize state on the splitter.
     bool _splitterDragging{ false };
@@ -336,7 +331,6 @@ private:
     void _UpdateBorders();
     void _EnsureAgentChip();
     void _UpdateAgentChipBackground();
-    void _EnsureKeepRunningButton();
     Borders _GetCommonBorders();
     winrt::Windows::UI::Xaml::Media::SolidColorBrush _ComputeBorderColor();
 

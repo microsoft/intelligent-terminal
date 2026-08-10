@@ -471,6 +471,28 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void Tab::_UpdateKeepRunningVisuals()
+    {
+        const auto label = _keepRunning ? RS_(L"TabKeepRunningRemove") : RS_(L"TabKeepRunningAdd");
+        _keepRunningMenuItem.Text(label);
+        WUX::Controls::ToolTipService::SetToolTip(_keepRunningMenuItem, box_value(label));
+        Automation::AutomationProperties::SetHelpText(_keepRunningMenuItem, label);
+        _tabStatus.IsKeepRunning(_keepRunning);
+    }
+
+    void Tab::KeepRunning(const bool value)
+    {
+        ASSERT_UI_THREAD();
+
+        _keepRunning = value;
+        _UpdateKeepRunningVisuals();
+    }
+
+    void Tab::ToggleKeepRunning()
+    {
+        KeepRunning(!_keepRunning);
+    }
+
     // Method Description:
     // - Hide or show the bell indicator in the tab header
     // Arguments:
@@ -1619,6 +1641,11 @@ namespace winrt::TerminalApp::implementation
         _findMenuItem.IsEnabled(isTerm);
         _restartConnectionMenuItem.IsEnabled(isTerm);
 
+        const auto hasShellPane = _rootPane && _rootPane->WalkTree([](const auto& pane) {
+            return !pane->IsAgentPane() && pane->GetTerminalControl() != nullptr;
+        });
+        _keepRunningMenuItem.IsEnabled(hasShellPane || _keepRunning);
+
         // Snippets Pane can technically be split
         _splitTabMenuItem.IsEnabled(isTerm || (content && content.try_as<winrt::TerminalApp::SnippetsPaneContent>() != nullptr));
     }
@@ -2021,6 +2048,21 @@ namespace winrt::TerminalApp::implementation
             Automation::AutomationProperties::SetHelpText(_restartConnectionMenuItem, restartConnectionToolTip);
         }
 
+        {
+            Controls::FontIcon keepRunningSymbol;
+            keepRunningSymbol.FontFamily(Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+            keepRunningSymbol.Glyph(L"\xE718");
+
+            _keepRunningMenuItem.Click([weakThis](auto&&, auto&&) {
+                if (auto tab{ weakThis.get() })
+                {
+                    tab->ToggleKeepRunning();
+                }
+            });
+            _keepRunningMenuItem.Icon(keepRunningSymbol);
+            _UpdateKeepRunningVisuals();
+        }
+
         // Build the menu
         Controls::MenuFlyout contextMenuFlyout;
         Controls::MenuFlyoutSeparator menuSeparator;
@@ -2032,6 +2074,7 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Items().Append(_exportTabMenuItem);
         contextMenuFlyout.Items().Append(_findMenuItem);
         contextMenuFlyout.Items().Append(_restartConnectionMenuItem);
+        contextMenuFlyout.Items().Append(_keepRunningMenuItem);
         contextMenuFlyout.Items().Append(menuSeparator);
 
         auto closeSubMenu = _AppendCloseMenuItems(contextMenuFlyout);

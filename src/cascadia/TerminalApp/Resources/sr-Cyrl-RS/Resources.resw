@@ -1303,8 +1303,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Употреба</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>токени</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Контекстни прозор</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
-  <data name="PaneKeepRunningButton.ToolTip" xml:space="preserve">
-    <value>Не остављај овај панел покренутим након затварања</value>
-    <comment>Tooltip and accessible name for the pin button that opts the pane out of remaining alive after it is closed.</comment>
+  <data name="TabKeepRunningAdd" xml:space="preserve">
+    <value>Остави картицу покренутом након затварања</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab into remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningRemove" xml:space="preserve">
+    <value>Не остављај картицу покренутом након затварања</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab out of remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Ова картица ће наставити да ради након затварања.</value>
+    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Ова картица ће наставити да ради након затварања.</value>
+    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>

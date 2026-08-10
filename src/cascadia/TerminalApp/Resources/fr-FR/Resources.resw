@@ -1295,8 +1295,20 @@ Par exemple, « wt -p "Ubuntu" -d C:\ » est équivalent à « wt new-tab -p 
 Pour toutes les options disponibles, exécutez « wt new-tab --help ».</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
-  <data name="PaneKeepRunningButton.ToolTip" xml:space="preserve">
-    <value>Ne plus exécuter ce volet après sa fermeture</value>
-    <comment>Tooltip and accessible name for the pin button that opts the pane out of remaining alive after it is closed.</comment>
+  <data name="TabKeepRunningAdd" xml:space="preserve">
+    <value>Maintenir l’onglet en cours d’exécution après sa fermeture</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab into remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningRemove" xml:space="preserve">
+    <value>Ne plus maintenir l’onglet en cours d’exécution après sa fermeture</value>
+    <comment>Tab context menu item that opts every non-agent pane in this tab out of remaining alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Cet onglet continuera de s’exécuter après sa fermeture.</value>
+    <comment>Tooltip for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
+  </data>
+  <data name="TabKeepRunningIndicator.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Cet onglet continuera de s’exécuter après sa fermeture.</value>
+    <comment>Accessible name for the pin icon shown on a tab whose non-agent panes will remain alive after the tab is closed.</comment>
   </data>
 </root>
