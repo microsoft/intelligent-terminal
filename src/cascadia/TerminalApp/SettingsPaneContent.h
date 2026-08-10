@@ -33,6 +33,9 @@ namespace winrt::TerminalApp::implementation
         // See BasicPaneEvents for most generic event definitions
 
     private:
+        void _UpdateRichTabProviderCatalog();
+        static void _ApplyRichTabPreferences(const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globalSettings);
+
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _sui{ nullptr };
         winrt::Windows::UI::Xaml::ElementTheme _requestedTheme;
     };

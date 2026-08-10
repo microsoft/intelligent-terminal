@@ -14,6 +14,8 @@ namespace TerminalAppUnitTests
         TEST_CLASS(RichTabProviderBrokerTests);
 
         TEST_METHOD(ComposesDeclaredVisibleFields);
+        TEST_METHOD(ComposesConfiguredFieldsInOrder);
+        TEST_METHOD(ExplicitlyEmptyFieldsHideProviderMetadata);
         TEST_METHOD(EmptySnapshotsClearPresentation);
     };
 
@@ -42,6 +44,70 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"PR #42 \u00b7 3" }, presentation->text);
         VERIFY_ARE_EQUAL(std::wstring{ L"https://example.test/pr/42" }, presentation->tooltip);
         VERIFY_ARE_EQUAL(std::wstring{ L"Pull request 42, three checks" }, presentation->accessibilityText);
+    }
+
+    void RichTabProviderBrokerTests::ComposesConfiguredFieldsInOrder()
+    {
+        Registration provider;
+        provider.manifest.id = "tests.presentation";
+        provider.manifest.fields = {
+            FieldDeclaration{ "name", "Name", FieldType::String, true },
+            FieldDeclaration{ "hidden", "Hidden", FieldType::String, false },
+            FieldDeclaration{ "count", "Count", FieldType::Integer, true },
+        };
+
+        Snapshot snapshot;
+        snapshot.fields.emplace("name", std::string{ "PR #42" });
+        snapshot.fields.emplace("hidden", std::string{ "approved" });
+        snapshot.fields.emplace("count", int64_t{ 3 });
+
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { provider },
+            { { provider.manifest.id, snapshot } },
+            { ProviderPreference{
+                provider.manifest.id,
+                std::nullopt,
+                std::vector<std::string>{ "count", "unknown", "hidden" } } });
+
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"3 \u00b7 approved" }, presentation->text);
+    }
+
+    void RichTabProviderBrokerTests::ExplicitlyEmptyFieldsHideProviderMetadata()
+    {
+        Registration hiddenProvider;
+        hiddenProvider.manifest.id = "tests.hidden";
+        hiddenProvider.manifest.fields = {
+            FieldDeclaration{ "value", "Value", FieldType::String, true },
+        };
+        Registration visibleProvider;
+        visibleProvider.manifest.id = "tests.visible";
+        visibleProvider.manifest.fields = hiddenProvider.manifest.fields;
+
+        Snapshot hiddenSnapshot;
+        hiddenSnapshot.fields.emplace("value", std::string{ "hidden" });
+        hiddenSnapshot.tooltip = "hidden tooltip";
+        hiddenSnapshot.accessibilityText = "hidden accessibility";
+        Snapshot visibleSnapshot;
+        visibleSnapshot.fields.emplace("value", std::string{ "visible" });
+        visibleSnapshot.tooltip = "visible tooltip";
+        visibleSnapshot.accessibilityText = "visible accessibility";
+
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { hiddenProvider, visibleProvider },
+            {
+                { hiddenProvider.manifest.id, hiddenSnapshot },
+                { visibleProvider.manifest.id, visibleSnapshot },
+            },
+            { ProviderPreference{
+                hiddenProvider.manifest.id,
+                std::nullopt,
+                std::vector<std::string>{} } });
+
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"visible" }, presentation->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"visible tooltip" }, presentation->tooltip);
+        VERIFY_ARE_EQUAL(std::wstring{ L"visible accessibility" }, presentation->accessibilityText);
     }
 
     void RichTabProviderBrokerTests::EmptySnapshotsClearPresentation()

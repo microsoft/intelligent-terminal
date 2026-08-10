@@ -320,6 +320,33 @@ namespace winrt::TerminalApp::implementation
         }
         _settings = settings;
 
+        if constexpr (Feature_RichTabProviders::IsEnabled())
+        {
+            std::vector<::Microsoft::Terminal::RichTab::Provider::ProviderPreference> preferences;
+            const auto configured = _settings.GlobalSettings().RichTabProviders();
+            preferences.reserve(configured.Size());
+            for (const auto& provider : configured)
+            {
+                ::Microsoft::Terminal::RichTab::Provider::ProviderPreference preference;
+                preference.id = winrt::to_string(provider.Id());
+                if (const auto enabled = provider.Enabled())
+                {
+                    preference.enabled = enabled.Value();
+                }
+                if (const auto fields = provider.Fields())
+                {
+                    preference.fields.emplace();
+                    preference.fields->reserve(fields.Size());
+                    for (const auto& field : fields)
+                    {
+                        preference.fields->emplace_back(winrt::to_string(field));
+                    }
+                }
+                preferences.emplace_back(std::move(preference));
+            }
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().ApplyPreferences(std::move(preferences));
+        }
+
         // Seed the agent-settings baseline on first load so that later
         // in-memory mutations (e.g. the bottom-bar agent selector click,
         // which mutates AcpAgent *before* calling _RebuildAgentStack) are

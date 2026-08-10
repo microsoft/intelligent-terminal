@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "SettingsPaneContent.h"
 #include "Utils.h"
+#include "../RichTabProvider/ProviderBroker.h"
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
@@ -16,18 +17,88 @@ namespace winrt::TerminalApp::implementation
     SettingsPaneContent::SettingsPaneContent(CascadiaSettings settings)
     {
         _sui = winrt::Microsoft::Terminal::Settings::Editor::MainPage{ settings };
+        _UpdateRichTabProviderCatalog();
+        _sui.RichTabPreferencesChanged([](auto&&, const auto& globalSettings) {
+            _ApplyRichTabPreferences(globalSettings);
+        });
 
         // Stash away the current requested theme of the app. We'll need that in
         // _BackgroundBrush() to do a theme-aware resource lookup
         _requestedTheme = settings.GlobalSettings().CurrentTheme().RequestedTheme();
     }
 
+    void SettingsPaneContent::_ApplyRichTabPreferences(const GlobalAppSettings& globalSettings)
+    {
+        namespace Provider = ::Microsoft::Terminal::RichTab::Provider;
+
+        std::vector<Provider::ProviderPreference> preferences;
+        const auto configured = globalSettings.RichTabProviders();
+        preferences.reserve(configured.Size());
+        for (const auto& provider : configured)
+        {
+            Provider::ProviderPreference preference;
+            preference.id = winrt::to_string(provider.Id());
+            if (const auto enabled = provider.Enabled())
+            {
+                preference.enabled = enabled.Value();
+            }
+            if (const auto fields = provider.Fields())
+            {
+                preference.fields.emplace();
+                preference.fields->reserve(fields.Size());
+                for (const auto& field : fields)
+                {
+                    preference.fields->emplace_back(winrt::to_string(field));
+                }
+            }
+            preferences.emplace_back(std::move(preference));
+        }
+        Provider::ProviderBroker::Instance().ApplyPreferences(std::move(preferences));
+    }
+
     void SettingsPaneContent::UpdateSettings(const CascadiaSettings& settings)
     {
         ASSERT_UI_THREAD();
+        _UpdateRichTabProviderCatalog();
         _sui.UpdateSettings(settings);
 
         _requestedTheme = settings.GlobalSettings().CurrentTheme().RequestedTheme();
+    }
+
+    void SettingsPaneContent::_UpdateRichTabProviderCatalog()
+    {
+        namespace Provider = ::Microsoft::Terminal::RichTab::Provider;
+        using EditorSource = winrt::Microsoft::Terminal::Settings::Editor::RichTabProviderSourceKind;
+
+        auto descriptors = winrt::single_threaded_vector<winrt::Microsoft::Terminal::Settings::Editor::RichTabProviderDescriptor>();
+        for (const auto& descriptor : Provider::ProviderBroker::Instance().Catalog())
+        {
+            auto fields = winrt::single_threaded_vector<winrt::Microsoft::Terminal::Settings::Editor::RichTabFieldDescriptor>();
+            for (const auto& field : descriptor.fields)
+            {
+                fields.Append(winrt::Microsoft::Terminal::Settings::Editor::RichTabFieldDescriptor{
+                    winrt::to_hstring(field.id),
+                    winrt::to_hstring(field.displayName),
+                    field.defaultVisible });
+            }
+
+            const auto source = descriptor.source == Provider::ProviderSourceKind::BuiltIn ?
+                                    EditorSource::BuiltIn :
+                                descriptor.source == Provider::ProviderSourceKind::Development ?
+                                    EditorSource::Development :
+                                    EditorSource::Managed;
+            descriptors.Append(winrt::Microsoft::Terminal::Settings::Editor::RichTabProviderDescriptor{
+                winrt::to_hstring(descriptor.id),
+                winrt::to_hstring(descriptor.displayName),
+                source,
+                descriptor.consentEnabled,
+                descriptor.integrityValid,
+                descriptor.eligible,
+                descriptor.effectiveEnabled,
+                descriptor.shadowed,
+                fields.GetView() });
+        }
+        _sui.UpdateRichTabProviderCatalog(descriptors.GetView());
     }
 
     winrt::Windows::UI::Xaml::FrameworkElement SettingsPaneContent::GetRoot()

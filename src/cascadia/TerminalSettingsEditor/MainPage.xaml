@@ -203,6 +203,10 @@
                 </muxc:NavigationViewItem.InfoBadge>
             </muxc:NavigationViewItem>
 
+            <muxc:NavigationViewItem x:Name="RichTabsNavItem"
+                                     x:Uid="Nav_RichTabs"
+                                     Tag="RichTabs_Nav" />
+
             <muxc:NavigationViewItemHeader x:Uid="Nav_Profiles" />
 
             <muxc:NavigationViewItem x:Name="BaseLayerMenuItem"

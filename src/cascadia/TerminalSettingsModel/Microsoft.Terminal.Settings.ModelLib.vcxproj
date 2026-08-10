@@ -28,6 +28,9 @@
     <ClInclude Include="CustomModelProvider.h">
       <DependentUpon>CustomModelProvider.idl</DependentUpon>
     </ClInclude>
+    <ClInclude Include="RichTabProviderPreference.h">
+      <DependentUpon>RichTabProviderPreference.idl</DependentUpon>
+    </ClInclude>
     <ClInclude Include="SeparatorEntry.h">
       <DependentUpon>NewTabMenuEntry.idl</DependentUpon>
     </ClInclude>
@@ -194,6 +197,9 @@
     <ClCompile Include="CustomModelProvider.cpp">
       <DependentUpon>CustomModelProvider.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="RichTabProviderPreference.cpp">
+      <DependentUpon>RichTabProviderPreference.idl</DependentUpon>
+    </ClCompile>
     <ClCompile Include="SeparatorEntry.cpp">
       <DependentUpon>NewTabMenuEntry.idl</DependentUpon>
     </ClCompile>
@@ -234,6 +240,7 @@
     <Midl Include="ColorScheme.idl" />
     <Midl Include="NewTabMenuEntry.idl" />
     <Midl Include="CustomModelProvider.idl" />
+    <Midl Include="RichTabProviderPreference.idl" />
     <Midl Include="Theme.idl" />
     <Midl Include="Command.idl" />
     <Midl Include="DefaultTerminal.idl" />

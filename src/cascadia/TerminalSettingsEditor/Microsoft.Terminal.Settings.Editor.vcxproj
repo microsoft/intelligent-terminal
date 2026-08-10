@@ -87,6 +87,13 @@
       <DependentUpon>AIAgentsViewModel.idl</DependentUpon>
       <SubType>Code</SubType>
     </ClInclude>
+    <ClInclude Include="RichTabs.h">
+      <DependentUpon>RichTabs.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="RichTabsViewModel.h">
+      <DependentUpon>RichTabs.idl</DependentUpon>
+      <SubType>Code</SubType>
+    </ClInclude>
     <ClInclude Include="Compatibility.h">
       <DependentUpon>Compatibility.xaml</DependentUpon>
     </ClInclude>
@@ -220,6 +227,9 @@
     <Page Include="AIAgents.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="RichTabs.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Compatibility.xaml">
       <SubType>Designer</SubType>
     </Page>
@@ -306,6 +316,13 @@
     </ClCompile>
     <ClCompile Include="AIAgentsViewModel.cpp">
       <DependentUpon>AIAgentsViewModel.idl</DependentUpon>
+      <SubType>Code</SubType>
+    </ClCompile>
+    <ClCompile Include="RichTabs.cpp">
+      <DependentUpon>RichTabs.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="RichTabsViewModel.cpp">
+      <DependentUpon>RichTabs.idl</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="Compatibility.cpp">
@@ -461,6 +478,10 @@
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="AIAgentsViewModel.idl">
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="RichTabs.idl">
+      <DependentUpon>RichTabs.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="Compatibility.idl">

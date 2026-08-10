@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <thread>
+#include <unordered_set>
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
@@ -90,6 +91,116 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             target.append(value);
         }
+
+        bool _SameProvider(const Registration& first, const Registration& second)
+        {
+            const auto& left = first.manifest;
+            const auto& right = second.manifest;
+            const auto sameFields =
+                left.fields.size() == right.fields.size() &&
+                std::equal(
+                    left.fields.begin(),
+                    left.fields.end(),
+                    right.fields.begin(),
+                    [](const auto& firstField, const auto& secondField) {
+                        return firstField.id == secondField.id &&
+                               firstField.displayName == secondField.displayName &&
+                               firstField.type == secondField.type &&
+                               firstField.defaultVisible == secondField.defaultVisible;
+                    });
+            return left.schemaVersion == right.schemaVersion &&
+                   left.id == right.id &&
+                   left.displayName == right.displayName &&
+                   left.publisher == right.publisher &&
+                   left.version == right.version &&
+                   left.protocol.minimum == right.protocol.minimum &&
+                   left.protocol.maximum == right.protocol.maximum &&
+                   left.runtime.kind == right.runtime.kind &&
+                   left.runtime.entrypoint == right.runtime.entrypoint &&
+                   left.runtime.arguments == right.runtime.arguments &&
+                   left.activationEvents == right.activationEvents &&
+                   sameFields &&
+                   left.extensionRoot == right.extensionRoot &&
+                   first.kind == second.kind &&
+                   first.root == second.root &&
+                   first.payloadHash == second.payloadHash &&
+                   first.enabled == second.enabled &&
+                   first.integrityValid == second.integrityValid;
+        }
+
+        bool _SameProviders(
+            const std::vector<Registration>& first,
+            const std::vector<Registration>& second)
+        {
+            return first.size() == second.size() &&
+                   std::equal(first.begin(), first.end(), second.begin(), _SameProvider);
+        }
+
+        const Registration* _FindProvider(
+            const std::vector<Registration>& providers,
+            const std::string_view id)
+        {
+            const auto found = std::find_if(providers.begin(), providers.end(), [&](const auto& provider) {
+                return provider.manifest.id == id;
+            });
+            return found == providers.end() ? nullptr : &*found;
+        }
+
+        const ProviderPreference* _FindPreference(
+            const std::vector<ProviderPreference>& preferences,
+            const std::string_view id)
+        {
+            const auto found = std::find_if(preferences.begin(), preferences.end(), [&](const auto& preference) {
+                return preference.id == id;
+            });
+            return found == preferences.end() ? nullptr : &*found;
+        }
+
+        std::vector<ProviderPreference> _NormalizePreferences(std::vector<ProviderPreference> preferences)
+        {
+            std::vector<ProviderPreference> normalized;
+            std::unordered_set<std::string> providerIds;
+            normalized.reserve(preferences.size());
+            for (auto& preference : preferences)
+            {
+                if (preference.id.empty() || !providerIds.emplace(preference.id).second)
+                {
+                    continue;
+                }
+                if (preference.fields)
+                {
+                    std::vector<std::string> fields;
+                    std::unordered_set<std::string> fieldIds;
+                    fields.reserve(preference.fields->size());
+                    for (auto& field : *preference.fields)
+                    {
+                        if (!field.empty() && fieldIds.emplace(field).second)
+                        {
+                            fields.emplace_back(std::move(field));
+                        }
+                    }
+                    preference.fields = std::move(fields);
+                }
+                normalized.emplace_back(std::move(preference));
+            }
+            return normalized;
+        }
+
+        std::unordered_set<std::string> _ProvidersNeedingRefresh(
+            const std::vector<Registration>& previous,
+            const std::vector<Registration>& current)
+        {
+            std::unordered_set<std::string> result;
+            for (const auto& provider : current)
+            {
+                const auto old = _FindProvider(previous, provider.manifest.id);
+                if (!old || !_SameProvider(*old, provider))
+                {
+                    result.emplace(provider.manifest.id);
+                }
+            }
+            return result;
+        }
     }
 
     ProviderBroker& ProviderBroker::Instance()
@@ -154,7 +265,6 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::_ReloadProvidersIfChanged()
     {
         const auto stamp = _RegistryStamp();
-        std::lock_guard lock{ _reloadMutex };
         if (stamp != _registryStamp)
         {
             ReloadProviders();
@@ -163,56 +273,103 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     void ProviderBroker::ReloadProviders()
     {
+        std::lock_guard reloadLock{ _reloadMutex };
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
         auto listed = _registry.List();
-        std::vector<Registration> providers;
+        std::vector<Registration> available;
+        std::vector<ProviderDescriptor> catalog;
+        std::unordered_set<std::string> builtInIds;
         if (builtIns.value)
         {
-            providers = std::move(*builtIns.value);
+            available = std::move(*builtIns.value);
+            for (const auto& provider : available)
+            {
+                builtInIds.emplace(provider.manifest.id);
+                catalog.emplace_back(ProviderDescriptor{
+                    provider.manifest.id,
+                    provider.manifest.displayName,
+                    ProviderSourceKind::BuiltIn,
+                    true,
+                    true,
+                    true,
+                    true,
+                    false,
+                    provider.manifest.fields });
+            }
         }
         if (listed.value)
         {
             for (auto& provider : *listed.value)
             {
-                const auto duplicatesBuiltIn = std::any_of(
-                    providers.begin(),
-                    providers.end(),
-                    [&](const auto& current) {
-                        return current.manifest.id == provider.manifest.id;
-                    });
-                if (provider.enabled && provider.integrityValid && !duplicatesBuiltIn)
+                const auto shadowed = builtInIds.contains(provider.manifest.id);
+                const auto eligible = provider.enabled && provider.integrityValid && !shadowed;
+                catalog.emplace_back(ProviderDescriptor{
+                    provider.manifest.id,
+                    provider.manifest.displayName,
+                    provider.kind == RegistrationKind::Development ?
+                        ProviderSourceKind::Development :
+                        ProviderSourceKind::Managed,
+                    provider.enabled,
+                    provider.integrityValid,
+                    eligible,
+                    eligible,
+                    shadowed,
+                    provider.manifest.fields });
+                if (eligible)
                 {
-                    providers.emplace_back(std::move(provider));
+                    available.emplace_back(std::move(provider));
                 }
             }
         }
-        std::sort(providers.begin(), providers.end(), [](const auto& first, const auto& second) {
+        std::sort(available.begin(), available.end(), [](const auto& first, const auto& second) {
             return first.manifest.id < second.manifest.id;
+        });
+        std::sort(catalog.begin(), catalog.end(), [](const auto& first, const auto& second) {
+            if (first.id != second.id)
+            {
+                return first.id < second.id;
+            }
+            return first.source < second.source;
         });
 
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        std::vector<std::string> sessionsToRefresh;
+        std::unordered_set<std::string> refreshProviders;
         {
             std::lock_guard lock{ _mutex };
-            _providers = std::move(providers);
+            const auto previous = _providers;
+            _catalog = std::move(catalog);
+            _availableProviders = std::move(available);
+            _providers = _EffectiveProvidersLocked();
+            _UpdateCatalogEffectiveStateLocked();
+            refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
+            const auto presentationChanged = !_SameProviders(previous, _providers);
             for (auto& [sessionId, session] : _sessions)
             {
-                std::erase_if(session.providers, [&](const auto& item) {
-                    return std::none_of(_providers.begin(), _providers.end(), [&](const auto& provider) {
-                        return provider.manifest.id == item.first;
-                    });
-                });
-                for (auto& [_, provider] : session.providers)
+                for (auto& [id, provider] : session.providers)
                 {
-                    provider.generation = _nextGeneration++;
-                    provider.pending.reset();
-                    provider.snapshot.reset();
+                    const auto oldRegistration = _FindProvider(previous, id);
+                    const auto newRegistration = _FindProvider(_providers, id);
+                    if (!newRegistration || !oldRegistration || !_SameProvider(*oldRegistration, *newRegistration))
+                    {
+                        provider.generation = _nextGeneration++;
+                        provider.pending.reset();
+                        provider.snapshot.reset();
+                    }
                 }
 
-                ++session.updateSequence;
-                const auto update = _UpdateFor(sessionId, session);
-                for (const auto& [_, callback] : session.callbacks)
+                if (presentationChanged)
                 {
-                    notifications.emplace_back(callback, update);
+                    ++session.updateSequence;
+                    const auto update = _UpdateFor(sessionId, session);
+                    for (const auto& [_, callback] : session.callbacks)
+                    {
+                        notifications.emplace_back(callback, update);
+                    }
+                }
+                if (!session.callbacks.empty() && !refreshProviders.empty())
+                {
+                    sessionsToRefresh.emplace_back(sessionId);
                 }
             }
             _registryStamp = _RegistryStamp();
@@ -222,6 +379,110 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             callback(update);
         }
+        for (const auto& sessionId : sessionsToRefresh)
+        {
+            _Refresh(sessionId, ActivationEvent::ManualRefresh, true, refreshProviders);
+        }
+    }
+
+    std::vector<Registration> ProviderBroker::_EffectiveProvidersLocked() const
+    {
+        std::vector<Registration> effective;
+        effective.reserve(_availableProviders.size());
+        std::unordered_set<std::string> added;
+        for (const auto& preference : _preferences)
+        {
+            const auto provider = _FindProvider(_availableProviders, preference.id);
+            if (provider && preference.enabled.value_or(true))
+            {
+                effective.emplace_back(*provider);
+                added.emplace(preference.id);
+            }
+        }
+        for (const auto& provider : _availableProviders)
+        {
+            if (!added.contains(provider.manifest.id))
+            {
+                const auto preference = _FindPreference(_preferences, provider.manifest.id);
+                if (!preference || preference->enabled.value_or(true))
+                {
+                    effective.emplace_back(provider);
+                }
+            }
+        }
+        return effective;
+    }
+
+    void ProviderBroker::_UpdateCatalogEffectiveStateLocked()
+    {
+        for (auto& descriptor : _catalog)
+        {
+            const auto preference = _FindPreference(_preferences, descriptor.id);
+            descriptor.effectiveEnabled =
+                descriptor.eligible &&
+                (!preference || preference->enabled.value_or(true));
+        }
+    }
+
+    void ProviderBroker::ApplyPreferences(std::vector<ProviderPreference> preferences)
+    {
+        preferences = _NormalizePreferences(std::move(preferences));
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        std::vector<std::string> sessionsToRefresh;
+        std::unordered_set<std::string> refreshProviders;
+        {
+            std::lock_guard lock{ _mutex };
+            if (_preferences == preferences)
+            {
+                return;
+            }
+
+            const auto previous = _providers;
+            _preferences = std::move(preferences);
+            _providers = _EffectiveProvidersLocked();
+            _UpdateCatalogEffectiveStateLocked();
+            refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
+
+            for (auto& [sessionId, session] : _sessions)
+            {
+                for (auto& [id, provider] : session.providers)
+                {
+                    if (_FindProvider(previous, id) && !_FindProvider(_providers, id))
+                    {
+                        provider.generation = _nextGeneration++;
+                        provider.pending.reset();
+                        provider.snapshot.reset();
+                    }
+                }
+
+                ++session.updateSequence;
+                const auto update = _UpdateFor(sessionId, session);
+                for (const auto& [_, callback] : session.callbacks)
+                {
+                    notifications.emplace_back(callback, update);
+                }
+                if (!session.callbacks.empty() && !refreshProviders.empty())
+                {
+                    sessionsToRefresh.emplace_back(sessionId);
+                }
+            }
+        }
+
+        for (const auto& [callback, update] : notifications)
+        {
+            callback(update);
+        }
+        for (const auto& sessionId : sessionsToRefresh)
+        {
+            _Refresh(sessionId, ActivationEvent::ManualRefresh, true, refreshProviders);
+        }
+    }
+
+    std::vector<ProviderDescriptor> ProviderBroker::Catalog()
+    {
+        _ReloadProvidersIfChanged();
+        std::lock_guard lock{ _mutex };
+        return _catalog;
     }
 
     ProviderBroker::AttachmentId ProviderBroker::Attach(SessionContext context, Callback callback)
@@ -375,7 +636,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::_Refresh(
         const std::string& sessionId,
         const ActivationEvent reason,
-        const bool initial)
+        const bool initial,
+        const std::unordered_set<std::string>& providerIds)
     {
         struct Pending
         {
@@ -394,6 +656,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             auto& session = found->second;
             for (const auto& provider : _providers)
             {
+                if (!providerIds.empty() && !providerIds.contains(provider.manifest.id))
+                {
+                    continue;
+                }
                 auto activation = reason;
                 if (!_Handles(provider.manifest, activation))
                 {
@@ -420,7 +686,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.shellType = session.context.shellType;
                 if (providerState.running)
                 {
-                    providerState.pending = PendingRequest{ std::move(request), generation };
+                    providerState.pending = PendingRequest{ provider, std::move(request), generation };
                     continue;
                 }
                 providerState.running = true;
@@ -536,7 +802,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             _Enqueue(
                 [this,
-                 provider = std::move(provider),
+                 provider = std::move(next->provider),
                  request = std::move(next->request),
                  generation = next->generation]() mutable {
                     _RunProvider(std::move(provider), std::move(request), generation);
@@ -572,14 +838,15 @@ namespace Microsoft::Terminal::RichTab::Provider
             sessionId,
             state.contextRevision,
             state.updateSequence,
-            ComposePresentation(_providers, snapshots),
+            ComposePresentation(_providers, snapshots, _preferences),
             std::move(diagnostics)
         };
     }
 
     std::optional<Presentation> ProviderBroker::ComposePresentation(
         const std::vector<Registration>& providers,
-        const std::unordered_map<std::string, Snapshot>& snapshots)
+        const std::unordered_map<std::string, Snapshot>& snapshots,
+        const std::vector<ProviderPreference>& preferences)
     {
         Presentation result;
         for (const auto& provider : providers)
@@ -589,17 +856,48 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 continue;
             }
-            for (const auto& field : provider.manifest.fields)
+            const auto preference = _FindPreference(preferences, provider.manifest.id);
+            std::vector<const FieldDeclaration*> visibleFields;
+            if (preference && preference->fields)
             {
-                if (!field.defaultVisible)
+                visibleFields.reserve(preference->fields->size());
+                for (const auto& fieldId : *preference->fields)
                 {
-                    continue;
+                    const auto field = std::find_if(
+                        provider.manifest.fields.begin(),
+                        provider.manifest.fields.end(),
+                        [&](const auto& declaration) {
+                            return declaration.id == fieldId;
+                        });
+                    if (field != provider.manifest.fields.end())
+                    {
+                        visibleFields.emplace_back(&*field);
+                    }
                 }
-                if (const auto value = snapshot->second.fields.find(field.id);
+            }
+            else
+            {
+                for (const auto& field : provider.manifest.fields)
+                {
+                    if (field.defaultVisible)
+                    {
+                        visibleFields.emplace_back(&field);
+                    }
+                }
+            }
+
+            const auto previousLength = result.text.size();
+            for (const auto field : visibleFields)
+            {
+                if (const auto value = snapshot->second.fields.find(field->id);
                     value != snapshot->second.fields.end())
                 {
                     _Append(result.text, _ValueText(value->second), L" \u00b7 ");
                 }
+            }
+            if (result.text.size() == previousLength)
+            {
+                continue;
             }
             if (snapshot->second.tooltip)
             {

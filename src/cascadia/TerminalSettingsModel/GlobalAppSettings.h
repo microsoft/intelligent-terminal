@@ -25,6 +25,7 @@ Author(s):
 #include "Theme.h"
 #include "NewTabMenuEntry.h"
 #include "CustomModelProvider.h"
+#include "RichTabProviderPreference.h"
 #include "RemainingProfilesEntry.h"
 
 // fwdecl unittest classes

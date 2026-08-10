@@ -8,6 +8,7 @@ import "ColorScheme.idl";
 import "ActionMap.idl";
 import "NewTabMenuEntry.idl";
 import "CustomModelProvider.idl";
+import "RichTabProviderPreference.idl";
 
 namespace Microsoft.Terminal.Settings.Model
 {
@@ -119,6 +120,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, AcpModel);
         INHERITABLE_SETTING(String, CustomModelSelection);
         INHERITABLE_SETTING(IVector<CustomModelProvider>, CustomModelProviders);
+        INHERITABLE_SETTING(IVector<RichTabProviderPreference>, RichTabProviders);
         INHERITABLE_SETTING(String, DelegateAgent);
         INHERITABLE_SETTING(String, DelegateModel);
         INHERITABLE_SETTING(Boolean, AutoErrorDetectionEnabled);

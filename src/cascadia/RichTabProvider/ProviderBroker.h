@@ -14,9 +14,39 @@
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
+    enum class ProviderSourceKind
+    {
+        BuiltIn,
+        Managed,
+        Development,
+    };
+
+    struct ProviderPreference
+    {
+        std::string id;
+        std::optional<bool> enabled;
+        std::optional<std::vector<std::string>> fields;
+
+        bool operator==(const ProviderPreference&) const = default;
+    };
+
+    struct ProviderDescriptor
+    {
+        std::string id;
+        std::string displayName;
+        ProviderSourceKind source{ ProviderSourceKind::Managed };
+        bool consentEnabled{ false };
+        bool integrityValid{ false };
+        bool eligible{ false };
+        bool effectiveEnabled{ false };
+        bool shadowed{ false };
+        std::vector<FieldDeclaration> fields;
+    };
+
     struct Presentation
     {
         std::wstring text;
@@ -61,16 +91,20 @@ namespace Microsoft::Terminal::RichTab::Provider
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
+        void ApplyPreferences(std::vector<ProviderPreference> preferences);
+        std::vector<ProviderDescriptor> Catalog();
 
         uint64_t ProcessEpoch() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
-            const std::unordered_map<std::string, Snapshot>& snapshots);
+            const std::unordered_map<std::string, Snapshot>& snapshots,
+            const std::vector<ProviderPreference>& preferences = {});
 
     private:
         struct PendingRequest
         {
+            Registration provider;
             Request request;
             uint64_t generation{ 0 };
         };
@@ -99,7 +133,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         void _Refresh(
             const std::string& sessionId,
             ActivationEvent reason,
-            bool initial);
+            bool initial,
+            const std::unordered_set<std::string>& providerIds = {});
         void _RunProvider(
             Registration provider,
             Request request,
@@ -112,6 +147,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         void _ReloadProvidersIfChanged();
         void _PruneDetachedSessionsLocked();
         uint64_t _RegistryStamp() const noexcept;
+        std::vector<Registration> _EffectiveProvidersLocked() const;
+        void _UpdateCatalogEffectiveStateLocked();
 
         mutable std::mutex _mutex;
         std::mutex _reloadMutex;
@@ -120,7 +157,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::deque<std::function<void()>> _executorQueue;
         ProviderRegistry _registry;
         CommandRunner _runner;
+        std::vector<ProviderDescriptor> _catalog;
+        std::vector<Registration> _availableProviders;
         std::vector<Registration> _providers;
+        std::vector<ProviderPreference> _preferences;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         uint64_t _processEpoch{ 0 };

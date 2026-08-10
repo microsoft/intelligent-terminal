@@ -20,6 +20,8 @@
 #include "InteractionViewModel.h"
 #include "AIAgents.h"
 #include "AIAgentsViewModel.h"
+#include "RichTabs.h"
+#include "RichTabsViewModel.h"
 #include "LaunchViewModel.h"
 #include "NewTabMenuViewModel.h"
 #include "NewTabMenu.h"
@@ -301,6 +303,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _Navigate(firstItem.Tag(), BreadcrumbSubPage::None);
 
         _UpdateSearchIndex();
+    }
+
+    void MainPage::UpdateRichTabProviderCatalog(
+        const Windows::Foundation::Collections::IVectorView<Editor::RichTabProviderDescriptor>& descriptors)
+    {
+        _richTabProviderCatalog = descriptors;
     }
 
     void MainPage::NavigateToAIAgents()
@@ -674,6 +682,23 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     badge.Visibility(winrt::Windows::UI::Xaml::Visibility::Collapsed);
                 }
             }
+            else if (*clickedItemTag == richTabsTag)
+            {
+                auto descriptors = _richTabProviderCatalog;
+                if (!descriptors)
+                {
+                    descriptors = single_threaded_vector<Editor::RichTabProviderDescriptor>().GetView();
+                }
+                auto viewModel = winrt::make<RichTabsViewModel>(_settingsClone.GlobalSettings(), descriptors);
+                viewModel.PreferencesChanged([weak = get_weak()](auto&&, const auto& globalSettings) {
+                    if (const auto self = weak.get())
+                    {
+                        self->RichTabPreferencesChanged.raise(*self, globalSettings);
+                    }
+                });
+                contentFrame().Navigate(xaml_typename<Editor::RichTabs>(), winrt::make<NavigateToPageArgs>(viewModel, *this, elementToFocus));
+                _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_RichTabs/Content"), BreadcrumbSubPage::None));
+            }
             else if (*clickedItemTag == globalProfileTag)
             {
                 // lazy load profile defaults VM
@@ -915,6 +940,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void MainPage::ResetButton_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*args*/)
     {
         UpdateSettings(_settingsSource);
+        RichTabPreferencesChanged.raise(*this, _settingsClone.GlobalSettings());
     }
 
     void MainPage::BreadcrumbBar_ItemClicked(const Microsoft::UI::Xaml::Controls::BreadcrumbBar& /*sender*/, const Microsoft::UI::Xaml::Controls::BreadcrumbBarItemClickedEventArgs& args)
