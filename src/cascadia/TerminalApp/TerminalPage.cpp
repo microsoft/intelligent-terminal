@@ -8613,6 +8613,7 @@ namespace winrt::TerminalApp::implementation
                 std::optional<winrt::guid> ignoredSourceProfileGuid;
                 winrt::TerminalApp::implementation::AgentPaneDragStash::Take(contentId, ignoredOldTabId, ignoredSourceProfileGuid);
                 newTerminalArgs.ContentId(0);
+                newTerminalArgs.KeptSessionId({});
                 return _MakeTerminalPane(newTerminalArgs, sourceTab, existingConnection);
             }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
@@ -8875,6 +8876,15 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
+        }
+
+        // KeptSessionId identifies the live content we attempted to claim; it
+        // is not a persisted keep-running preference. Reaching the fresh-shell
+        // path means no live reattach succeeded, so do not show a pin on the
+        // snapshot fallback tab.
+        if (newTerminalArgs)
+        {
+            newTerminalArgs.KeptSessionId({});
         }
 
         if (hasSessionId &&
