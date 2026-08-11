@@ -185,6 +185,27 @@ namespace winrt::TerminalApp::implementation
                     filenamePrefix,
                     sessionId) };
             });
+
+            // Coming back to a process that keep-running held open: any shell
+            // still alive with no pane belongs to one of these tabs, so adopt
+            // it instead of starting a second one next to it.
+            if (_manager)
+            {
+                std::unordered_set<winrt::guid> keptSessionIds;
+                for (const auto& detached : _manager.DetachedSessions())
+                {
+                    keptSessionIds.emplace(detached.SessionId());
+                }
+
+                if (!keptSessionIds.empty())
+                {
+                    ReattachKeptPanesInPersistedLayout(
+                        actions,
+                        [&](const winrt::guid& sessionId) { return keptSessionIds.contains(sessionId); },
+                        []() { return ::Microsoft::Console::Utils::CreateGuid(); });
+                }
+            }
+
             _root->SetStartupActions(std::move(actions));
         }
         else if (_appArgs)

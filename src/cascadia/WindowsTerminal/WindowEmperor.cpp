@@ -1614,10 +1614,21 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                     {
                         return 0;
                     }
-                    if (_windows.empty() && _hasKeptSessions() && argv.size() == 1 &&
-                        _restoreAllKeptSessions())
+                    if (_windows.empty() && _hasKeptSessions() && argv.size() == 1)
                     {
-                        return 0;
+                        // Bring back the whole arrangement the user left, not
+                        // just the tabs that happened to be opted in: the kept
+                        // panes in it adopt their still-live shells (see
+                        // ReattachKeptPanesInPersistedLayout), so the result is
+                        // the last window rather than a subset of it. Only when
+                        // there is no layout to replay — persistence off, or a
+                        // session detached before anything was ever saved — do
+                        // we fall back to rebuilding from the kept groups alone.
+                        if (_restorePersistedLayouts(handoff.cwd, handoff.env, handoff.show) ||
+                            _restoreAllKeptSessions())
+                        {
+                            return 0;
+                        }
                     }
                     _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
                 }

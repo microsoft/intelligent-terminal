@@ -201,6 +201,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
+        TEST_METHOD(PersistedLayoutAdoptsStillLiveKeptPanes);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
@@ -449,6 +450,42 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false, false));
         VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true, false));
         VERIFY_IS_TRUE(ShouldResumeAgentSession(true, false, true));
+    }
+
+    void TabTests::PersistedLayoutAdoptsStillLiveKeptPanes()
+    {
+        using winrt::TerminalApp::implementation::ReattachKeptPanesInPersistedLayout;
+
+        const auto keptSessionId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto ordinarySessionId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto replacementSessionId = ::Microsoft::Console::Utils::CreateGuid();
+
+        NewTerminalArgs keptArgs{};
+        keptArgs.SessionId(keptSessionId);
+        keptArgs.ShellSessionRestorePath(L"buffer_kept.txt");
+
+        NewTerminalArgs ordinaryArgs{};
+        ordinaryArgs.SessionId(ordinarySessionId);
+
+        std::vector<ActionAndArgs> actions;
+        actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ keptArgs });
+        actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Right, 0.5f, ordinaryArgs });
+
+        ReattachKeptPanesInPersistedLayout(
+            actions,
+            [&](const winrt::guid& sessionId) { return !!::IsEqualGUID(sessionId, keptSessionId); },
+            [&]() { return replacementSessionId; });
+
+        // The still-live pane adopts its shell and takes a fresh identity.
+        VERIFY_IS_TRUE(!!::IsEqualGUID(keptSessionId, keptArgs.KeptSessionId()));
+        VERIFY_IS_TRUE(!!::IsEqualGUID(replacementSessionId, keptArgs.SessionId()));
+        // The snapshot stays as the fallback for a session that dies before the
+        // pane is built.
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"buffer_kept.txt" }, keptArgs.ShellSessionRestorePath());
+
+        // A pane with no live session is left alone and starts normally.
+        VERIFY_IS_TRUE(!!::IsEqualGUID(winrt::guid{}, ordinaryArgs.KeptSessionId()));
+        VERIFY_IS_TRUE(!!::IsEqualGUID(ordinarySessionId, ordinaryArgs.SessionId()));
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()

@@ -175,6 +175,49 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Rebinds a persisted layout to shells that are still running.
+    //
+    // A persisted layout describes what was on screen; keep-running means some
+    // of those shells outlived the window and are still alive with no pane. On
+    // the way back the two have to be reconciled, or replaying the layout would
+    // start fresh shells beside the live ones and strand them in the tray.
+    //
+    // `KeptSessionId` is what asks a pane to adopt live content, so stamp it
+    // onto every pane whose session is still being kept and give the pane a new
+    // identity of its own, exactly as the tray and protocol restores do. Panes
+    // with no live session are left untouched and start normally, which is also
+    // what makes a kept session that had no tab at close time stay closed: it
+    // never appears in the layout, so nothing here brings it back.
+    //
+    // Call after `SetPersistedLayoutAgentRestorePaths`, which keys off the
+    // original `SessionId`. The snapshot path it assigned is deliberately kept:
+    // if the live session dies before the pane is built, the reattach misses and
+    // the snapshot is the fallback.
+    template<typename TIsKeptSession, typename TNewSessionId>
+    inline void ReattachKeptPanesInPersistedLayout(
+        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
+        TIsKeptSession&& isKeptSession,
+        TNewSessionId&& newSessionId)
+    {
+        for (const auto& action : actions)
+        {
+            const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+            if (!terminalArgs)
+            {
+                continue;
+            }
+
+            const auto sessionId = terminalArgs.SessionId();
+            if (sessionId == winrt::guid{} || !isKeptSession(sessionId))
+            {
+                continue;
+            }
+
+            terminalArgs.KeptSessionId(sessionId);
+            terminalArgs.SessionId(newSessionId());
+        }
+    }
+
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
     {
         if (closeAccepted)
