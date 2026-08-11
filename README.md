@@ -81,7 +81,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 ## Get Started
 
 1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
-2. If you aren't already authenticated, the agent pane walks you through sign-in.
+2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
 3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
 
 > [!TIP]
@@ -105,6 +105,7 @@ All shortcuts are customizable through Intelligent Terminal settings.
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
 | <kbd>Alt+Shift+B</kbd> | Open an interactive delegate-agent tab with no startup prompt |
+| <kbd>Alt+V</kbd> | Paste a clipboard image into the agent pane |
 
 ---
 
@@ -115,10 +116,12 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Setting | Options |
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
+| Local models (BYOM) | Bring your own model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL and Model ID, then select it from `/model`. API keys aren't stored, so this suits local endpoints like Ollama that don't require one. |
 | Pane placement | Top, Bottom (default), Left, Right |
 | Error detection | Allows Intelligent Terminal to automatically detect command failures |
 | Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
 | Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
+| Token usage display | Show or hide token usage and cost in the agent status bar |
 
 ---
 
@@ -130,7 +133,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your current token usage and cost as you work; toggle this on or off in Agent settings.
 
 ### Agent Pane
 
@@ -138,13 +141,15 @@ The agent status bar sits at the bottom of the window and gives you quick access
   <img src="./images/intelligent-terminal-agent-pane.png" alt="Screenshot of the agent pane with a development conversation">
 </p>
 
-A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells (PowerShell, Bash/WSL). Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
+A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells (PowerShell, Bash/WSL). Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused. Paste a clipboard image straight into the chat with <kbd>Alt+V</kbd> to show the agent a screenshot, diagram, or mockup (acting on the image depends on your agent's image support).
 
 <p align="center">
   <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing multiple panes">
 </p>
 
 When you have multiple panes active, a small "Agent" indicator will appear on the pane that your agent has "focus" on.
+
+Inside the pane you can scroll and drag to select with the mouse, double-click a word or triple-click a line, and press <kbd>Ctrl+C</kbd> to copy. Press <kbd>Up</kbd> and <kbd>Down</kbd> in the input to recall recent prompts.
 
 #### Slash Commands
 
@@ -171,6 +176,17 @@ cannot start, the pane reports the failure without switching to another agent.
 and the interactive delegate action for that profile. Its host or WSL selection
 is also strict: if the selected agent is unavailable, delegation reports that
 error instead of falling back to another agent or execution environment.
+
+#### Local Models (BYOM)
+
+Run your agent against a model on your own machine instead of a cloud service. BYOM is supported through GitHub Copilot and OpenCode, using any OpenAI-compatible Chat Completions endpoint. Under Agent settings, add a provider with a Base URL and Model ID, then pick it from the `/model` picker (configured models show as `modelId (BYOM)`). No API key is stored, so a local Ollama model works with no key at all:
+
+```text
+Base URL:  http://localhost:11434/v1
+Model ID:  <your local model>
+```
+
+This first version is BYOM only (no API-key management), and covers OpenAI Chat Completions endpoints. Claude, Codex, and Gemini custom providers aren't supported through this path yet.
 
 ### Agent Management
 
