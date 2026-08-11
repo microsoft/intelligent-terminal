@@ -2690,6 +2690,22 @@
           ],
           "type": "string"
         },
+        "tabLayout": {
+          "default": "horizontal",
+          "description": "Whether tabs render as a horizontal strip across the top of the window (\"horizontal\", the classic layout) or as a resizable vertical rail down the left edge (\"vertical\"). When set to \"vertical\", the tab rail is hosted inside the page; \"showTabsInTitlebar\" controls whether the tab row chrome appears in the titlebar or at the top of the rail.",
+          "enum": [
+            "horizontal",
+            "vertical"
+          ],
+          "type": "string"
+        },
+        "tabLayoutVerticalWidth": {
+          "default": 220,
+          "description": "Width in pixels of the vertical tab rail when \"tabLayout\" is \"vertical\". Clamped to [180, 480]. Persisted automatically when the user drags the rail divider.",
+          "type": "integer",
+          "minimum": 180,
+          "maximum": 480
+        },
         "wordDelimiters": {
           "default": " ./\\()\"'-:,.;<>~!@#$%^&*|+=[]{}~?│",
           "description": "Determines the delimiters used in a double click selection.",

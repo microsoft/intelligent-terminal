@@ -2415,6 +2415,7 @@ async fn session_notification_bounds_tool_call_output_to_latest_text() {
 #[tokio::test]
 async fn session_notification_surfaces_execute_metadata_and_raw_output() {
     let (client, mut rx) = bare_client();
+    let expected_cwd = concat!("C:", "\\", "repo");
     client
         .session_notification(notif(
             "s1",
@@ -2427,7 +2428,7 @@ async fn session_notification_surfaces_execute_metadata_and_raw_output() {
                 .status(acp::schema::v1::ToolCallStatus::Completed)
                 .raw_input(Some(serde_json::json!({
                     "command": "cargo test",
-                    "cwd": "C:\\repo"
+                    "cwd": expected_cwd
                 })))
                 .raw_output(Some(serde_json::json!({
                     "stdout": "12 tests passed",
@@ -2452,7 +2453,7 @@ async fn session_notification_surfaces_execute_metadata_and_raw_output() {
             assert_eq!(kind, crate::app::ToolCallKind::Execute);
             assert_eq!(location.as_deref(), Some("cargo test"));
             assert!(location_is_command);
-            assert_eq!(cwd.as_deref(), Some(r"C:\repo"));
+            assert_eq!(cwd.as_deref(), Some(expected_cwd));
             assert_eq!(
                 output.expect("expected reported output").text,
                 "12 tests passed\none warning"

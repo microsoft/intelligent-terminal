@@ -441,67 +441,72 @@ fn tool_call_kind(kind: acp::schema::v1::ToolKind) -> crate::app::ToolCallKind {
     }
 }
 
-fn bounded_tool_output(text: String) -> crate::app::ToolCallOutput {
-    let char_count = text.chars().count();
-    if char_count <= TOOL_CALL_OUTPUT_MAX_CHARS {
-        return crate::app::ToolCallOutput {
-            text,
-            truncated: false,
-        };
+fn bounded_tool_output_parts<'a>(
+    parts: impl DoubleEndedIterator<Item = &'a str>,
+) -> Option<crate::app::ToolCallOutput> {
+    let mut reversed = String::new();
+    let mut kept_chars = 0;
+    let mut has_content = false;
+    let mut truncated = false;
+
+    'parts: for part in parts.rev().filter(|part| !part.is_empty()) {
+        if has_content {
+            if kept_chars == TOOL_CALL_OUTPUT_MAX_CHARS {
+                truncated = true;
+                break;
+            }
+            reversed.push('\n');
+            kept_chars += 1;
+        }
+        has_content = true;
+        for ch in part.chars().rev() {
+            if kept_chars == TOOL_CALL_OUTPUT_MAX_CHARS {
+                truncated = true;
+                break 'parts;
+            }
+            reversed.push(ch);
+            kept_chars += 1;
+        }
     }
 
-    let text = text
-        .chars()
-        .skip(char_count - TOOL_CALL_OUTPUT_MAX_CHARS)
-        .collect();
-    crate::app::ToolCallOutput {
-        text,
-        truncated: true,
-    }
+    has_content.then(|| crate::app::ToolCallOutput {
+        text: reversed.chars().rev().collect(),
+        truncated,
+    })
 }
 
 fn tool_call_content_text(
     content: &[acp::schema::v1::ToolCallContent],
 ) -> Option<crate::app::ToolCallOutput> {
-    let text = content
-        .iter()
-        .filter_map(|item| {
-            let acp::schema::v1::ToolCallContent::Content(content) = item else {
-                return None;
-            };
-            let acp::schema::v1::ContentBlock::Text(text) = &content.content else {
-                return None;
-            };
-            Some(text.text.as_str())
-        })
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    (!text.is_empty()).then(|| bounded_tool_output(text))
+    bounded_tool_output_parts(content.iter().filter_map(|item| {
+        let acp::schema::v1::ToolCallContent::Content(content) = item else {
+            return None;
+        };
+        let acp::schema::v1::ContentBlock::Text(text) = &content.content else {
+            return None;
+        };
+        Some(text.text.as_str())
+    }))
 }
 
 fn raw_output_text(raw_output: &serde_json::Value) -> Option<crate::app::ToolCallOutput> {
     if let Some(text) = raw_output.as_str().filter(|text| !text.is_empty()) {
-        return Some(bounded_tool_output(text.to_string()));
+        return bounded_tool_output_parts(std::iter::once(text));
     }
 
     let object = raw_output.as_object()?;
-    let stream_text = ["stdout", "stderr"]
+    let streams = ["stdout", "stderr"]
         .into_iter()
         .filter_map(|key| object.get(key)?.as_str())
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-    if !stream_text.is_empty() {
-        return Some(bounded_tool_output(stream_text));
+        .filter(|text| !text.is_empty());
+    if let Some(output) = bounded_tool_output_parts(streams) {
+        return Some(output);
     }
 
     ["output", "text"]
         .into_iter()
         .find_map(|key| object.get(key)?.as_str().filter(|text| !text.is_empty()))
-        .map(str::to_string)
-        .map(bounded_tool_output)
+        .and_then(|text| bounded_tool_output_parts(std::iter::once(text)))
 }
 
 fn tool_call_output(
@@ -3858,8 +3863,8 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::acp;
     use super::{
-        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        is_proposal_mcp_tool_title, is_redundant_startup_model_error,
+        acp_result_failure_fields, bounded_tool_output_parts, complete_prompt_request,
+        inject_wta_pane_meta, is_proposal_mcp_tool_title, is_redundant_startup_model_error,
         post_login_authenticate_error,
         timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
         PromptUsageIdentity, SoftStopReason, WtaClient,
@@ -3870,6 +3875,17 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn bounded_tool_output_parts_keeps_unicode_tail_without_joining_full_input() {
+        let prefix = "界".repeat(4000);
+        let output = bounded_tool_output_parts([prefix.as_str(), "TAIL"].into_iter())
+            .expect("expected bounded output");
+
+        assert!(output.truncated);
+        assert_eq!(output.text.chars().count(), 4000);
+        assert!(output.text.ends_with("\nTAIL"));
+    }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
         use acp::schema::v1::{

@@ -7455,6 +7455,7 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
 #[test]
 fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
     let mut app = test_app();
+    let expected_cwd = concat!("C:", "\\", "repo");
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
         session_id: DEFAULT_TAB_ID.into(),
@@ -7480,7 +7481,7 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
             text: "running tests".into(),
             truncated: false,
         }),
-        cwd: Some(r"C:\repo".into()),
+        cwd: Some(expected_cwd.into()),
         exit_code: None,
     });
 
@@ -7500,7 +7501,7 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
     assert_eq!(status, "InProgress");
     assert_eq!(*kind, ToolCallKind::Execute);
     assert_eq!(location.as_deref(), Some("cargo test"));
-    assert_eq!(cwd.as_deref(), Some(r"C:\repo"));
+    assert_eq!(cwd.as_deref(), Some(expected_cwd));
     assert_eq!(
         output.as_ref().map(|output| output.text.as_str()),
         Some("running tests")
