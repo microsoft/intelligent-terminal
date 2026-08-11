@@ -159,15 +159,15 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show the command list |
-| `/clear` | Clear the chat scrollback (keeps the current session) |
-| `/new` | Start a fresh agent session (drops history) |
-| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
-| `/restart` | Restart the agent with a clean session |
-| `/stop` | Cancel the in-flight prompt |
-| `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
 | `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
+| `/clear` | Clear the chat scrollback (keeps the current session) |
+| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
+| `/help` | Show the command list |
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
+| `/new` | Start a fresh agent session (drops history) |
+| `/restart` | Restart the agent with a clean session |
+| `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
+| `/stop` | Cancel the in-flight prompt |
 
 #### Local Models (BYOM)
 
