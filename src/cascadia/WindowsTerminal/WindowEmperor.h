@@ -136,6 +136,7 @@ private:
     bool _restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
+    bool _shouldPreservePersistedLayout() const noexcept;
     void _finalizeSessionPersistence() const;
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
@@ -163,6 +164,10 @@ private:
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
     bool _deferPersistedLayoutRestore = false;
+    // Set when the last window closes with keep-running sessions holding the
+    // process open. Persisting from an empty window list would then overwrite
+    // the layout the user left behind with nothing.
+    bool _windowsOutlivedByKeptSessions = false;
     SafeDispatcherTimer _persistStateTimer;
     std::wstring _startupCurrentDirectory;
     std::wstring _startupEnvironment;

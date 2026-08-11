@@ -390,6 +390,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     _deferPersistedLayoutRestore = false;
     _skipPersistence = false;
+    _windowsOutlivedByKeptSessions = false;
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
@@ -1318,6 +1319,17 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
 
             if (!shouldKeepWindow)
             {
+                // Kept sessions are about to make this process outlive its
+                // windows, and unlike the ordinary last-window close there is
+                // no window left behind to persist from. Remember that, so the
+                // persistence passes that follow — the periodic one and the
+                // final one on exit — leave the layout on disk alone instead of
+                // replacing it with the nothing we now have.
+                if (hasKeptSessions && _windows.size() == 1)
+                {
+                    _windowsOutlivedByKeptSessions = true;
+                }
+
                 // Did the window counter get out of sync? It shouldn't.
                 assert(_windowCount == gsl::narrow_cast<int32_t>(_windows.size()));
 
@@ -1672,9 +1684,22 @@ void WindowEmperor::_setupSessionPersistence(bool enabled)
     _persistStateTimer.Start();
 }
 
+// True once keep-running has made the process outlive its last window.
+//
+// Persisting is a snapshot of the current windows, so running it with none left
+// would clear the saved layout and, in `_finalizeSessionPersistence`, treat
+// every buffer file as an orphan to delete. The arrangement already on disk is
+// the last real one and is exactly what the headless comeback path restores, so
+// leave it be. Ordinary shutdowns keep the final window in `_windows` for this
+// very purpose and are unaffected.
+bool WindowEmperor::_shouldPreservePersistedLayout() const noexcept
+{
+    return _windowsOutlivedByKeptSessions && _windows.empty();
+}
+
 void WindowEmperor::_persistState(const ApplicationState& state) const
 {
-    if (_deferPersistedLayoutRestore)
+    if (_deferPersistedLayoutRestore || _shouldPreservePersistedLayout())
     {
         return;
     }
@@ -1702,7 +1727,7 @@ void WindowEmperor::_finalizeSessionPersistence() const
 {
     using namespace std::string_view_literals;
 
-    if (_deferPersistedLayoutRestore)
+    if (_deferPersistedLayoutRestore || _shouldPreservePersistedLayout())
     {
         return;
     }
