@@ -1321,12 +1321,22 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             {
                 // Kept sessions are about to make this process outlive its
                 // windows, and unlike the ordinary last-window close there is
-                // no window left behind to persist from. Remember that, so the
-                // persistence passes that follow — the periodic one and the
-                // final one on exit — leave the layout on disk alone instead of
-                // replacing it with the nothing we now have.
+                // no window left behind to persist from.
                 if (hasKeptSessions && _windows.size() == 1)
                 {
+                    // So take the snapshot now, while the arrangement still
+                    // exists. An ordinary shutdown can defer this because it
+                    // keeps the final window in `_windows` for the exit-time
+                    // pass to read; here the window is about to go, and the
+                    // only other record would be whatever the periodic persist
+                    // last happened to catch — up to five minutes stale, and
+                    // missing every tab opened since.
+                    _persistState(ApplicationState::SharedInstance());
+
+                    // Remember that we are now outliving our windows, so the
+                    // persistence passes that follow — the periodic one and the
+                    // final one on exit — leave what we just wrote alone
+                    // instead of replacing it with the nothing we then have.
                     _windowsOutlivedByKeptSessions = true;
                 }
 
