@@ -219,9 +219,11 @@ pub enum AppEvent {
     ShellSessionsLoaded {
         tab_id: String,
         sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
-        /// Durable ids whose shell is still detached and running, so the row
-        /// can be marked as keep-running.
+        /// Durable ids whose shell is still detached and running, or whose tab
+        /// is open and opted into keep-running.
         keep_running: std::collections::HashSet<String>,
+        /// Durable ids that are already open in a tab.
+        open: std::collections::HashSet<String>,
         error: Option<String>,
     },
     ShellSessionRestored {
