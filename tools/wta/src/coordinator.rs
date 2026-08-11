@@ -715,7 +715,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {
-            target,
             parent,
             input,
             agent,
@@ -729,10 +728,9 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(agent) = agent.as_deref() {
                 ensure_non_empty("agent", agent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
         RecommendedAction::Open {
-            target,
             parent,
             direction,
             ..
@@ -740,22 +738,19 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
     }
 
     Ok(())
 }
 
-fn validate_direction(direction: Option<&str>, target: &OpenTarget) -> Result<()> {
+fn validate_direction(direction: Option<&str>) -> Result<()> {
     let Some(value) = direction else {
         return Ok(());
     };
     if value.is_empty() {
         bail!("field 'direction' must not be empty");
-    }
-    if matches!(target, OpenTarget::Tab) {
-        bail!("field 'direction' is only valid when target is 'panel'");
     }
     match value {
         "right" | "left" | "up" | "down" | "auto" | "automatic" => Ok(()),
@@ -2615,7 +2610,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_open_tab_with_direction() {
+    fn accepts_open_tab_with_direction() {
         let text = r#"```json
 {
   "recommended_choice": 1,
@@ -2635,7 +2630,7 @@ mod tests {
 }
 ```"#;
 
-        assert!(parse_recommendation_set(text).is_err());
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
