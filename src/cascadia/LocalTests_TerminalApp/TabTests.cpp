@@ -202,6 +202,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
+        TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
@@ -480,6 +481,18 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(ShouldBindPaneAgentSession(true, false));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(true, true));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(false, false));
+    }
+
+    void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
+    {
+        using winrt::TerminalApp::implementation::ShouldRestoreAgentPane;
+
+        // An agent pane the user opened but never chatted in has no ACP
+        // session id, yet its open/view state must still be restored.
+        VERIFY_IS_TRUE(ShouldRestoreAgentPane(false, true, false));
+        VERIFY_IS_TRUE(ShouldRestoreAgentPane(false, false, true));
+        VERIFY_IS_TRUE(ShouldRestoreAgentPane(true, false, false));
+        VERIFY_IS_FALSE(ShouldRestoreAgentPane(false, false, false));
     }
 
     void TabTests::PaneAgentSessionEndPreservesDurableBinding()

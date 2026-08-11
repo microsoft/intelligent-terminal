@@ -85,6 +85,18 @@ namespace winrt::TerminalApp::implementation
         return !sessionStarted || paneBound;
     }
 
+    // A persisted agent pane is worth restoring as soon as it carries any
+    // user-visible state. The ACP session id is optional: wta only projects one
+    // after the conversation becomes meaningful, so requiring it would drop the
+    // open/view/position of a pane the user opened but never chatted in.
+    inline constexpr bool ShouldRestoreAgentPane(
+        const bool hasAgentPaneSessionId,
+        const bool hasAgentPaneView,
+        const bool agentPaneOpen) noexcept
+    {
+        return hasAgentPaneSessionId || hasAgentPaneView || agentPaneOpen;
+    }
+
     inline winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs GetTerminalArgsForRestoreAction(
         const winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs& action)
     {

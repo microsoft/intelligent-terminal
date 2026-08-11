@@ -103,7 +103,9 @@ namespace winrt::TerminalApp::implementation
                 {
                     tabImpl->KeepRunning(true);
                 }
-                if (!newTerminalArgs.AgentPaneSessionId().empty())
+                if (ShouldRestoreAgentPane(!newTerminalArgs.AgentPaneSessionId().empty(),
+                                           !newTerminalArgs.AgentPaneView().empty(),
+                                           newTerminalArgs.AgentPaneOpen()))
                 {
                     _pendingDurableAgentPaneRestores.insert_or_assign(
                         tabImpl->StableId(),
@@ -669,27 +671,30 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto agentContent = tab->FindAgentPaneContent())
         {
+            // Whether the pane is open, which view it shows, and where it sits
+            // are user intent and must survive a restore on their own. wta only
+            // projects an agent_session_id once the tab has a meaningful
+            // conversation, so gating this block on that id would silently drop
+            // the layout of every agent pane the user opened but never chatted
+            // in. An empty id simply means "restore the pane, load no session".
             const auto agentSessionId = agentContent.AgentSessionId();
-            if (!agentSessionId.empty())
+            RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
+            for (const auto& action : actions)
             {
-                RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
-                for (const auto& action : actions)
+                if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
                 {
-                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                    if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
                     {
-                        if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
-                        {
-                            terminalArgs.AgentPaneSessionId(agentSessionId);
-                            terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
-                                                            tab->AgentIdOverride() :
-                                                            _settings.GlobalSettings().EffectiveAcpAgent());
-                            terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
-                                                       agentContent.IsSessionsView() ? L"sessions" :
-                                                                                       L"chat");
-                            terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
-                            terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
-                            break;
-                        }
+                        terminalArgs.AgentPaneSessionId(agentSessionId);
+                        terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
+                                                        tab->AgentIdOverride() :
+                                                        _settings.GlobalSettings().EffectiveAcpAgent());
+                        terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
+                                                   agentContent.IsSessionsView() ? L"sessions" :
+                                                                                   L"chat");
+                        terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                        terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
+                        break;
                     }
                 }
             }
