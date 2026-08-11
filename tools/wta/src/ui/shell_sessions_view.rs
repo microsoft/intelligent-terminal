@@ -255,9 +255,10 @@ struct FormattedRow {
     age: String,
 }
 
-/// Width reserved for the open column on every row, so the age column stays
-/// right-aligned whether or not a session is currently open in a tab.
-const OPEN_COLUMN_WIDTH: usize = 6;
+/// Width reserved for the opened column on every row, so the age column stays
+/// right-aligned whether or not a session is currently open in a tab. The
+/// label itself is left-aligned inside that column.
+const OPEN_COLUMN_WIDTH: usize = 8;
 
 fn format_row(
     session: &crate::shell_session_store::ShellSessionSummary,
@@ -297,7 +298,7 @@ fn format_row(
         padding: " ".repeat(gap),
         open: format!(
             "{:<width$}",
-            if is_open { "open" } else { "" },
+            if is_open { "opened" } else { "" },
             width = OPEN_COLUMN_WIDTH
         ),
         age,
@@ -422,7 +423,9 @@ mod tests {
         let closed = format_row(&summary(), 50, 172_800, false);
         let open = format_row(&summary(), 50, 172_800, true);
 
-        assert_eq!(open.open.trim(), "open");
+        assert_eq!(open.open.trim(), "opened");
+        // Left-aligned inside a fixed-width column.
+        assert!(open.open.starts_with("opened"));
         assert!(closed.open.trim().is_empty());
         // Same reserved width either way, so the age column does not shift.
         assert_eq!(
