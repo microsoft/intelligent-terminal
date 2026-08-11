@@ -2875,14 +2875,15 @@ fn dispatch_master_ext_request(
                     Ok(response) => (response.sessions, None),
                     Err(error) => (Vec::new(), Some(error.to_string())),
                 };
-                // Which of those durable rows still has a live detached shell
-                // is only known to Windows Terminal, not to the store. A
-                // failure here just means no row is marked.
-                let keep_running = fetch_keep_running_shell_session_ids().await;
+                // Which of those durable rows still has a live detached shell,
+                // and which are already open in a tab, is only known to Windows
+                // Terminal. A failure here just means no row is marked.
+                let marks = fetch_shell_session_marks().await;
                 let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
                     tab_id,
                     sessions,
-                    keep_running,
+                    keep_running: marks.keep_running,
+                    open: marks.open,
                     error,
                 });
             }
@@ -3830,36 +3831,66 @@ fn parse_keep_running_tab_shell_session_ids(
         .unwrap_or_default()
 }
 
-async fn fetch_keep_running_shell_session_ids() -> std::collections::HashSet<String> {
+/// Durable ids of tabs that are open right now, whatever their keep-running
+/// state, so the list can show which saved sessions are already on screen.
+fn parse_open_tab_shell_session_ids(
+    payload: &serde_json::Value,
+) -> std::collections::HashSet<String> {
+    payload
+        .get("tabs")
+        .and_then(|tabs| tabs.as_array())
+        .map(|tabs| {
+            tabs.iter()
+                .filter_map(|tab| tab.get("durable_shell_session_id")?.as_str())
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// How the shell-session list should annotate each saved row.
+#[derive(Default)]
+struct ShellSessionMarks {
+    keep_running: std::collections::HashSet<String>,
+    open: std::collections::HashSet<String>,
+}
+
+async fn fetch_shell_session_marks() -> ShellSessionMarks {
     use crate::shell::wt_channel::WtChannel;
 
     let channel = match crate::shell::wt_channel::CliChannel::connect().await {
         Ok(channel) => channel,
         Err(error) => {
-            tracing::debug!(target: "shell_sessions", %error, "no wt channel for keep-running marks");
-            return std::collections::HashSet::new();
+            tracing::debug!(target: "shell_sessions", %error, "no wt channel for shell-session marks");
+            return ShellSessionMarks::default();
         }
     };
 
-    let mut ids = match channel
+    let mut marks = ShellSessionMarks::default();
+    match channel
         .request("list_detached_sessions", serde_json::Value::Null)
         .await
     {
-        Ok(payload) => parse_detached_shell_session_ids(&payload),
+        Ok(payload) => marks.keep_running = parse_detached_shell_session_ids(&payload),
         Err(error) => {
             tracing::debug!(target: "shell_sessions", %error, "could not list detached sessions");
-            std::collections::HashSet::new()
         }
-    };
+    }
 
     match channel.request("list_tabs", serde_json::Value::Null).await {
-        Ok(payload) => ids.extend(parse_keep_running_tab_shell_session_ids(&payload)),
+        Ok(payload) => {
+            marks
+                .keep_running
+                .extend(parse_keep_running_tab_shell_session_ids(&payload));
+            marks.open = parse_open_tab_shell_session_ids(&payload);
+        }
         Err(error) => {
             tracing::debug!(target: "shell_sessions", %error, "could not list tabs");
         }
     }
 
-    ids
+    marks
 }
 
 #[cfg(test)]
@@ -3869,8 +3900,9 @@ mod tests {
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
         is_proposal_mcp_tool_title, is_redundant_startup_model_error,
         parse_detached_shell_session_ids, parse_keep_running_tab_shell_session_ids,
-        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label,
-        ClientState, PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
+        parse_open_tab_shell_session_ids, post_login_authenticate_error,
+        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3916,6 +3948,25 @@ mod tests {
         assert!(ids.contains("durable-3"));
 
         assert!(parse_keep_running_tab_shell_session_ids(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn open_ids_cover_every_tab_with_a_durable_session() {
+        let payload = serde_json::json!({
+            "tabs": [
+                { "tab_id": 0, "keep_running": true, "durable_shell_session_id": "durable-3" },
+                { "tab_id": 1, "keep_running": false, "durable_shell_session_id": "durable-4" },
+                { "tab_id": 2, "keep_running": false, "durable_shell_session_id": "" },
+                { "tab_id": 3 }
+            ]
+        });
+
+        let ids = parse_open_tab_shell_session_ids(&payload);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("durable-3"));
+        assert!(ids.contains("durable-4"));
+
+        assert!(parse_open_tab_shell_session_ids(&serde_json::json!({})).is_empty());
     }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {

@@ -13,6 +13,7 @@ pub fn render(
     area: Rect,
     sessions: &[crate::shell_session_store::ShellSessionSummary],
     keep_running: &std::collections::HashSet<String>,
+    open: &std::collections::HashSet<String>,
     query: &str,
     search_focused: bool,
     list_state: &mut ListState,
@@ -126,7 +127,7 @@ pub fn render(
                 } else {
                     Span::raw("  ")
                 };
-                let row = format_row(session, row_width, now);
+                let row = format_row(session, row_width, now, open.contains(&session.id));
                 let mut spans = vec![Span::styled(marker, style), keep_running_marker];
                 spans.extend(highlight_matches(&row.name, query, style));
                 if !row.cwd.is_empty() {
@@ -138,6 +139,7 @@ pub fn render(
                     ));
                 }
                 spans.push(Span::raw(row.padding));
+                spans.push(Span::styled(row.open, Style::default().fg(Color::Cyan)));
                 spans.push(Span::styled(row.age, style));
                 ListItem::new(Line::from(spans))
             });
@@ -249,26 +251,34 @@ struct FormattedRow {
     name: String,
     cwd: String,
     padding: String,
+    open: String,
     age: String,
 }
+
+/// Width reserved for the open column on every row, so the age column stays
+/// right-aligned whether or not a session is currently open in a tab.
+const OPEN_COLUMN_WIDTH: usize = 6;
 
 fn format_row(
     session: &crate::shell_session_store::ShellSessionSummary,
     width: usize,
     now: i64,
+    is_open: bool,
 ) -> FormattedRow {
     let age = format_relative_age(session.last_used_at, now);
     let age_width = UnicodeWidthStr::width(age.as_str());
-    if width <= age_width + 2 {
+    let right_width = age_width + OPEN_COLUMN_WIDTH;
+    if width <= right_width + 2 {
         return FormattedRow {
             name: super::layout::truncate_to_width(&session.name, width),
             cwd: String::new(),
             padding: String::new(),
+            open: String::new(),
             age: String::new(),
         };
     }
 
-    let left_width = width - age_width - 2;
+    let left_width = width - right_width - 2;
     let name = super::layout::truncate_to_width(&session.name, left_width);
     let name_width = UnicodeWidthStr::width(name.as_str());
     let cwd = if session.active_pane_cwd.is_empty() || name_width + 2 >= left_width {
@@ -280,11 +290,16 @@ fn format_row(
     let content_width = name_width + separator_width + UnicodeWidthStr::width(cwd.as_str());
     let gap = width
         .saturating_sub(content_width)
-        .saturating_sub(age_width);
+        .saturating_sub(right_width);
     FormattedRow {
         name,
         cwd,
         padding: " ".repeat(gap),
+        open: format!(
+            "{:<width$}",
+            if is_open { "open" } else { "" },
+            width = OPEN_COLUMN_WIDTH
+        ),
         age,
     }
 }
@@ -387,7 +402,7 @@ mod tests {
 
     #[test]
     fn row_places_age_at_right_edge() {
-        let row = format_row(&summary(), 50, 172_800);
+        let row = format_row(&summary(), 50, 172_800, false);
         assert_eq!(row.name, "2panes");
         assert_eq!(row.cwd, r"C:\Windows\system32");
         assert_eq!(row.age, "1 day ago");
@@ -396,16 +411,33 @@ mod tests {
                 + 2
                 + UnicodeWidthStr::width(row.cwd.as_str())
                 + row.padding.len()
+                + UnicodeWidthStr::width(row.open.as_str())
                 + UnicodeWidthStr::width(row.age.as_str()),
             50
         );
     }
 
     #[test]
+    fn open_column_keeps_the_age_aligned() {
+        let closed = format_row(&summary(), 50, 172_800, false);
+        let open = format_row(&summary(), 50, 172_800, true);
+
+        assert_eq!(open.open.trim(), "open");
+        assert!(closed.open.trim().is_empty());
+        // Same reserved width either way, so the age column does not shift.
+        assert_eq!(
+            UnicodeWidthStr::width(open.open.as_str()),
+            UnicodeWidthStr::width(closed.open.as_str())
+        );
+        assert_eq!(open.padding.len(), closed.padding.len());
+    }
+
+    #[test]
     fn narrow_row_truncates_without_overflowing() {
-        let row = format_row(&summary(), 10, 172_800);
+        let row = format_row(&summary(), 10, 172_800, false);
         assert!(UnicodeWidthStr::width(row.name.as_str()) <= 10);
         assert!(row.cwd.is_empty());
+        assert!(row.open.is_empty());
         assert!(row.age.is_empty());
     }
 }
