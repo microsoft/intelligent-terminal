@@ -427,3 +427,15 @@ The Developer Kit must explain:
 - How protocol versions evolve compatibly.
 
 `wtcli provider validate/test` is the executable part of the Developer Kit.
+
+## 7. Demo Screenshots
+
+### 7.1 Rich Tabs Display
+If we are in a git root folder
+![alt text](image.png)
+
+If we are not in a git root folder
+![alt text](image-1.png)
+
+### 7.2 How to customize content showing in tabs
+![alt text](image-2.png)
