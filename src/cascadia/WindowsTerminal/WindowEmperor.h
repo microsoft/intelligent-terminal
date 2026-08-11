@@ -71,8 +71,7 @@ public:
 
     struct KillDetachedSessionProtocolRequest
     {
-        GUID SessionId{};
-        bool Found{ false };
+        GUID ShellSessionId{};
         bool Killed{ false };
     };
 
@@ -102,7 +101,7 @@ public:
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
     std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
     std::vector<DetachedSessionProtocolEntry> GetDetachedSessionsForProtocol() const noexcept;
-    bool KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept;
+    bool KillDetachedSessionForProtocol(const GUID& shellSessionId) const noexcept;
     ShellSessionsProtocolRequest GetShellSessionsForProtocol() const noexcept;
 
 private:

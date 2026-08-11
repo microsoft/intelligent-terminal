@@ -61,7 +61,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP FocusPane(GUID sessionId) override;
     STDMETHODIMP SetSessionVariable(GUID sessionId, BSTR name, BSTR value) override;
     STDMETHODIMP RestoreShellSession(unsigned __int64 windowId, BSTR id) override;
-    STDMETHODIMP KillDetachedSession(GUID sessionId) override;
+    STDMETHODIMP KillDetachedSession(GUID shellSessionId) override;
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;

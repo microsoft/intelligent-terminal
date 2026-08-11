@@ -7,7 +7,7 @@ running after their tab or window was detached:
 
 ```text
 wtcli list-detached-sessions
-wtcli kill-detached-session <session-guid>
+wtcli kill-detached-session <shell-session-guid>
 ```
 
 The commands operate on **live detached panes**, not on the saved snapshots
@@ -19,9 +19,9 @@ Three identifiers are involved:
 
 | Field | Meaning |
 | --- | --- |
-| `SESSION_ID` | The live pane's connection session GUID; also exposed to the shell as `WT_SESSION`. This is the input to `kill-detached-session`. |
+| `SESSION_ID` | The live pane's connection session GUID; also exposed to the shell as `WT_SESSION`. Reported for diagnostics and for the pane-targeted commands. |
 | `GROUP_ID` | The in-memory identifier for the detached tab. Multiple pane sessions may share one group. This is included in JSON output for diagnostics. |
-| `SHELL_SESSION_ID` | The `shell_sessions.id` primary key in the durable-session SQLite database. All panes detached from the same saved tab share it. |
+| `SHELL_SESSION_ID` | The `shell_sessions.id` primary key in the durable-session SQLite database. All panes detached from the same saved tab share it. This is the input to `kill-detached-session`. |
 
 The human-readable list is one row per pane:
 
@@ -60,12 +60,14 @@ JSON output:
 - Produces an empty table/array when nothing is detached.
 - Supports the existing global `--json` option.
 
-### `kill-detached-session <session-guid>`
+### `kill-detached-session <shell-session-guid>`
 
-- Closes only the pane identified by the live connection session GUID.
-- Other panes from the same detached tab remain alive and remain listed.
-- If it was the final pane in the detached tab, the group disappears from the
-  notification-area menu.
+- Takes the durable `SHELL_SESSION_ID`, so the command and the notification-area
+  menu act on the same thing: a saved tab. Both close every pane in it.
+- A tab that was opted into keep-running but never saved has no durable id; its
+  group is keyed by the tab's stable id instead, and that key is accepted too so
+  the tab stays reachable.
+- The detached tab disappears from the notification-area menu.
 - The command exits nonzero when the GUID is invalid or is not currently
   detached.
 - Closing the final detached session allows an otherwise idle, windowless
@@ -111,9 +113,14 @@ Add a projected `DetachedSessionInfo` value with:
 
 `ContentManager::DetachedSessions()` returns one value per detached pane.
 
-`ContentManager::DiscardKeptSession(sessionId)` returns whether a live detached
-session was found and closed. The existing group bookkeeping removes the pane
-from its tab and removes the tab when its final pane is gone.
+`ContentManager::DiscardKeptGroup(groupId)` ends every session in a detached
+tab. `WindowEmperor` resolves the caller's `SHELL_SESSION_ID` to that group by
+scanning `DetachedSessions()` for a matching `ShellSessionId`, falling back to a
+direct `KeptGroups()` key match for a tab that has no durable id yet.
+
+`ContentManager::DiscardKeptSession(sessionId)` remains as the single-pane
+primitive underneath, and reports whether a live detached session was found and
+closed.
 
 ### Classic COM API
 
@@ -122,7 +129,7 @@ remain stable:
 
 ```idl
 HRESULT ListDetachedSessions([out, retval] BSTR* json);
-HRESULT KillDetachedSession([in] GUID sessionId);
+HRESULT KillDetachedSession([in] GUID shellSessionId);
 ```
 
 `TerminalProtocolComServer` reads live data from the process-wide
@@ -141,7 +148,7 @@ The returned COM JSON is an array. `wtcli` is responsible for wrapping it as
 | Empty detached-session set | Success with empty output |
 | Invalid GUID text | wtcli diagnostic and exit code 1; no COM call |
 | Well-formed but unknown/non-detached GUID | `HRESULT_FROM_WIN32(ERROR_NOT_FOUND)`, diagnostic, exit code 1 |
-| Session exits between list and kill | Same not-found result; this is normal race handling |
+| Session exits between list and kill | Once every pane of the tab has exited the group is reaped, so the kill reports not found; this is normal race handling |
 | PID unavailable | List row remains valid with `pid: 0` |
 
 ## Alternatives rejected
@@ -168,12 +175,12 @@ is already the integration boundary for wtcli.
 1. Detach a single-pane tab:
    - list contains one row with the correct pane GUID, PID, tab title, and
      durable database id;
-   - kill terminates the shell and removes the row.
+   - kill by `SHELL_SESSION_ID` terminates the shell and removes the row.
 2. Detach a two-pane tab:
    - list contains two rows with different `SESSION_ID` values;
    - both rows share `TAB`, `GROUP_ID`, and `SHELL_SESSION_ID`;
-   - killing one leaves the other running and listed;
-   - killing the second removes the tray group and permits headless exit.
+   - killing that one `SHELL_SESSION_ID` closes both panes, removes the tray
+     group, and permits headless exit — the same outcome as the tray's Close.
 3. Race:
    - let the shell exit naturally, then kill its old GUID;
    - command returns not found without affecting another session.

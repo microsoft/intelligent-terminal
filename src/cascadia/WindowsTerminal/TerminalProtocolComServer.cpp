@@ -1067,11 +1067,11 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::KillDetachedSession(GUID sessionId)
+STDMETHODIMP TerminalProtocolComServer::KillDetachedSession(GUID shellSessionId)
 try
 {
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    return s_emperor->KillDetachedSessionForProtocol(sessionId) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    return s_emperor->KillDetachedSessionForProtocol(shellSessionId) ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

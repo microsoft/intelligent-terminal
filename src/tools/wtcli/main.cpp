@@ -716,14 +716,14 @@ int main()
     });
 
     // ── kill-detached-session ──
-    std::string killDetachedSessionId;
-    auto* killDetachedSessionCmd = app.add_subcommand("kill-detached-session", "Close a detached session");
-    killDetachedSessionCmd->add_option("session-id", killDetachedSessionId, "Detached session GUID")->required();
+    std::string killDetachedShellSessionId;
+    auto* killDetachedSessionCmd = app.add_subcommand("kill-detached-session", "Close a detached shell session and every pane in it");
+    killDetachedSessionCmd->add_option("shell-session-id", killDetachedShellSessionId, "Durable shell session GUID (SHELL_SESSION_ID)")->required();
     killDetachedSessionCmd->callback([&]() {
-        GUID sessionId{};
-        if (!TryGuidFromString(killDetachedSessionId, sessionId))
+        GUID shellSessionId{};
+        if (!TryGuidFromString(killDetachedShellSessionId, shellSessionId))
         {
-            fprintf(stderr, "[wtcli] Invalid session ID: %s\n", killDetachedSessionId.c_str());
+            fprintf(stderr, "[wtcli] Invalid shell session ID: %s\n", killDetachedShellSessionId.c_str());
             exitCode = 1;
             return;
         }
@@ -733,10 +733,10 @@ int main()
         if (!SupportsMethod(server.get(), "kill_detached_session", exitCode))
             return;
 
-        const auto hr = server->KillDetachedSession(sessionId);
+        const auto hr = server->KillDetachedSession(shellSessionId);
         if (hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND))
         {
-            fprintf(stderr, "[wtcli] Detached session not found: %s\n", killDetachedSessionId.c_str());
+            fprintf(stderr, "[wtcli] Detached shell session not found: %s\n", killDetachedShellSessionId.c_str());
             exitCode = 1;
             return;
         }
@@ -745,7 +745,7 @@ int main()
         {
             Json::Value result(Json::objectValue);
             result["ok"] = true;
-            result["session_id"] = killDetachedSessionId;
+            result["shell_session_id"] = killDetachedShellSessionId;
             PrintJson(result);
         }
     });

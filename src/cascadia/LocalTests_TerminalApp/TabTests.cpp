@@ -395,6 +395,20 @@ namespace TerminalAppLocalTests
                 tabIdString,
                 L"not-a-durable-uuid")));
 
+        // `wtcli kill-detached-session` resolves its SHELL_SESSION_ID argument
+        // with this, so it has to read the same spellings the group id is
+        // derived from — the durable id reaches us as bare text from the
+        // database, and as a braced GUID everywhere else.
+        using winrt::TerminalApp::implementation::TryParseShellSessionId;
+        VERIFY_IS_TRUE(!!::IsEqualGUID(
+            durableId,
+            TryParseShellSessionId(L"11111111-2222-3333-4444-555555555555").value()));
+        VERIFY_IS_TRUE(!!::IsEqualGUID(
+            durableId,
+            TryParseShellSessionId(L"{11111111-2222-3333-4444-555555555555}").value()));
+        VERIFY_IS_FALSE(TryParseShellSessionId(L"").has_value());
+        VERIFY_IS_FALSE(TryParseShellSessionId(L"not-a-durable-uuid").has_value());
+
         const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile, false);
         VERIFY_IS_FALSE(disabled.save);
         VERIFY_IS_FALSE(disabled.detach);

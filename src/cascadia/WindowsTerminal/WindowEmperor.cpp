@@ -138,6 +138,38 @@ static std::string formatPaneId(const winrt::guid& sessionId)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
+// Resolves a durable shell-session id to the detached tab holding it.
+//
+// The tray and the protocol have to agree on what closing a kept session
+// means, and the tray works in whole tabs — so this is the lookup that lets
+// `kill-detached-session` take the same id the tray row stands for. A tab that
+// was opted in but never saved has no durable id, and its group is keyed by
+// the tab's stable id instead (see `GetKeepRunningGroupId`); match those keys
+// too so such a tab is still reachable.
+static std::optional<winrt::guid> _findKeptGroup(
+    const winrt::TerminalApp::ContentManager& manager,
+    const winrt::guid& shellSessionId)
+{
+    for (const auto& session : manager.DetachedSessions())
+    {
+        const auto parsed = winrt::TerminalApp::implementation::TryParseShellSessionId(session.ShellSessionId());
+        if (parsed && *parsed == shellSessionId)
+        {
+            return session.GroupId();
+        }
+    }
+
+    for (const auto& group : manager.KeptGroups())
+    {
+        if (group.Key() == shellSessionId)
+        {
+            return group.Key();
+        }
+    }
+
+    return std::nullopt;
+}
+
 static void notifyDetachedSessionEnded(const winrt::TerminalApp::DetachedSessionEndedArgs& detachedSession)
 {
     Json::Value evt;
@@ -296,9 +328,9 @@ std::vector<WindowEmperor::DetachedSessionProtocolEntry> WindowEmperor::GetDetac
     return std::move(request.Rows);
 }
 
-bool WindowEmperor::KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept
+bool WindowEmperor::KillDetachedSessionForProtocol(const GUID& shellSessionId) const noexcept
 {
-    KillDetachedSessionProtocolRequest request{ sessionId };
+    KillDetachedSessionProtocolRequest request{ shellSessionId };
     SendMessageW(_window.get(),
                  WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
                  0,
@@ -1470,22 +1502,15 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             auto* request = reinterpret_cast<KillDetachedSessionProtocolRequest*>(lParam);
             if (request)
             {
-                request->Found = false;
                 request->Killed = false;
                 if (const auto manager = _keptSessionManager())
                 {
-                    const auto sessionId = winrt::guid{ request->SessionId };
-                    for (const auto& session : manager.DetachedSessions())
+                    const auto shellSessionId = winrt::guid{ request->ShellSessionId };
+                    if (const auto groupId = _findKeptGroup(manager, shellSessionId))
                     {
-                        if (session.SessionId() == sessionId)
-                        {
-                            request->Found = true;
-                            break;
-                        }
+                        manager.DiscardKeptGroup(*groupId);
+                        request->Killed = true;
                     }
-
-                    request->Killed = manager.DiscardKeptSession(sessionId);
-                    request->Found |= request->Killed;
                 }
             }
             return 0;

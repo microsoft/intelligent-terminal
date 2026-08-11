@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,24 +45,36 @@ namespace winrt::TerminalApp::implementation
         return hasUserInput || hasDurableId || keepRunning || hasAgentSession;
     }
 
+    inline std::optional<winrt::guid> TryParseShellSessionId(
+        const winrt::hstring& durableShellSessionId)
+    {
+        if (durableShellSessionId.empty())
+        {
+            return std::nullopt;
+        }
+
+        std::wstring text{ durableShellSessionId };
+        if (text.front() != L'{')
+        {
+            text.insert(text.begin(), L'{');
+            text.push_back(L'}');
+        }
+
+        GUID durableId{};
+        if (FAILED(IIDFromString(text.c_str(), &durableId)))
+        {
+            return std::nullopt;
+        }
+        return winrt::guid{ durableId };
+    }
+
     inline winrt::guid GetKeepRunningGroupId(
         const winrt::hstring& tabStableId,
         const winrt::hstring& durableShellSessionId)
     {
-        if (!durableShellSessionId.empty())
+        if (const auto durableId = TryParseShellSessionId(durableShellSessionId))
         {
-            std::wstring text{ durableShellSessionId };
-            if (text.front() != L'{')
-            {
-                text.insert(text.begin(), L'{');
-                text.push_back(L'}');
-            }
-
-            GUID durableId{};
-            if (SUCCEEDED(IIDFromString(text.c_str(), &durableId)))
-            {
-                return winrt::guid{ durableId };
-            }
+            return *durableId;
         }
 
         GUID tabId{};

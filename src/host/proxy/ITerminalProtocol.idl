@@ -83,5 +83,5 @@ import "unknwn.idl";
     HRESULT ListShellSessions([out, retval] BSTR* json);
     HRESULT RestoreShellSession([in] unsigned hyper windowId, [in] BSTR id);
     HRESULT ListDetachedSessions([out, retval] BSTR* json);
-    HRESULT KillDetachedSession([in] GUID sessionId);
+    HRESULT KillDetachedSession([in] GUID shellSessionId);
 };
