@@ -7619,7 +7619,14 @@ namespace winrt::TerminalApp::implementation
         }
         const auto contentWidth = static_cast<float>(_tabContent.ActualWidth());
         const auto contentHeight = static_cast<float>(_tabContent.ActualHeight());
-        const winrt::Windows::Foundation::Size availableSpace{ contentWidth, contentHeight };
+        // A tab created moments ago in the same synchronous batch (a durable
+        // session restore, a multi-pane tab dropped in from another window) has
+        // not been measured yet. Falling back to the window's own size keeps the
+        // split from being silently dropped for want of a layout pass.
+        const winrt::Windows::Foundation::Size availableSpace{
+            contentWidth > 0 ? contentWidth : static_cast<float>(ActualWidth()),
+            contentHeight > 0 ? contentHeight : static_cast<float>(ActualHeight())
+        };
 
         const auto realSplitType = activeTab->PreCalculateCanSplit(splitDirection, splitSize, availableSpace);
         if (!realSplitType)
