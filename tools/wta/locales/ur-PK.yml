@@ -101,10 +101,10 @@ recommendations.open_new_empty: "نیا خالی %{kind}"
 permission.compact.default_description: "اجازت کی درخواست کی گئی"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N جواب دیں · مکمل کارڈ کے لیے سائز تبدیل کریں]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal کی پالیسی کے تحت خودکار طور پر منظور شدہ"
+permission.allow_directory_session: "یہ سیشن"
+permission.allow_directory_global: "ہمیشہ"
+permission.directory_to_store: "ڈائریکٹری: %{path}"
 
 # ── ایجنٹ حالت (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "نہیں ملا"

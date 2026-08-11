@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} folamh nua"
 permission.compact.default_description: "Cead iarrtha"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N le freagairt · athraigh méid le haghaidh cárta iomlán]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Faofa go huathoibríoch de réir pholasaí ceadanna Intelligent Terminal"
+permission.allow_directory_session: "An seisiún seo"
+permission.allow_directory_global: "I gcónaí"
+permission.directory_to_store: "Eolaire: %{path}"
 
 # ── Stádas gníomhaire (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Nár aimsíodh"

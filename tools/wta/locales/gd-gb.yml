@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} falamh ùr"
 permission.compact.default_description: "Cead air iarraidh"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N gus freagairt · atharraich meud airson cairt iomlan]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Air aontachadh gu fèin-obrachail a rèir poileasaidh cheadan Intelligent Terminal"
+permission.allow_directory_session: "An seisean seo"
+permission.allow_directory_global: "An-còmhnaidh"
+permission.directory_to_store: "Eòlaire: %{path}"
 
 # ── Inbhe àidseant (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Cha deach a lorg"

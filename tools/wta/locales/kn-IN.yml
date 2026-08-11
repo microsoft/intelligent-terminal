@@ -101,10 +101,10 @@ recommendations.open_new_empty: "ಹೊಸ ಖಾಲಿ %{kind}"
 permission.compact.default_description: "ಅನುಮತಿ ವಿನಂತಿಸಲಾಗಿದೆ"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ಉತ್ತರಿಸಿ · ಪೂರ್ಣ ಕಾರ್ಡ್‌ಗಾಗಿ ಗಾತ್ರ ಬದಲಿಸಿ]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal ನೀತಿಯಿಂದ ಸ್ವಯಂ-ಅನುಮೋದಿಸಲಾಗಿದೆ"
+permission.allow_directory_session: "ಈ ಸೆಶನ್‌ಗೆ"
+permission.allow_directory_global: "ಯಾವಾಗಲೂ"
+permission.directory_to_store: "ಡೈರೆಕ್ಟರಿ: %{path}"
 
 # ── ಏಜೆಂಟ್ ಸ್ಥಿತಿ (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ಕಂಡುಬಂದಿಲ್ಲ"

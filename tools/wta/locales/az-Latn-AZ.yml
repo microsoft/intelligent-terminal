@@ -102,10 +102,10 @@ recommendations.open_new_empty: "Yeni boş %{kind}"
 permission.compact.default_description: "İcazə tələb olunur"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N cavab üçün · tam kart üçün ölçüsünü dəyişin]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal icazə siyasətinə əsasən avtomatik təsdiqləndi"
+permission.allow_directory_session: "Bu sessiya"  # Button: allow this directory for the current session
+permission.allow_directory_global: "Həmişə"  # Button: always allow this directory globally
+permission.directory_to_store: "Kataloq: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Tapılmadı"

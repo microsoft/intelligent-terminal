@@ -101,10 +101,10 @@ recommendations.open_new_empty: "ନୂଆ ଖାଲି %{kind}"
 permission.compact.default_description: "ଅନୁମତି ଅନୁରୋଧ କରାଯାଇଛି"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ଉତ୍ତର ଦିଅନ୍ତୁ · ସମ୍ପୂର୍ଣ୍ଣ କାର୍ଡ ପାଇଁ ଆକାର ବଦଳାନ୍ତୁ]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal ନୀତି ଦ୍ୱାରା ସ୍ୱତଃ ଅନୁମୋଦିତ"
+permission.allow_directory_session: "ଏହି ଅଧିବେଶନ"
+permission.allow_directory_global: "ସର୍ବଦା"
+permission.directory_to_store: "ଡିରେକ୍ଟୋରୀ: %{path}"
 
 # ── ଏଜେଣ୍ଟ ସ୍ଥିତି (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ମିଳିଲା ନାହିଁ"

@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} kosong baru"
 permission.compact.default_description: "Izin diminta"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N untuk menjawab · ubah ukuran untuk kartu penuh]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Disetujui otomatis oleh kebijakan Intelligent Terminal"
+permission.allow_directory_session: "Sesi ini"
+permission.allow_directory_global: "Selalu"
+permission.directory_to_store: "Direktori: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Tidak ditemukan"

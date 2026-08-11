@@ -96,10 +96,10 @@ recommendations.open_new_empty: "%{kind} ទទេថ្មី"
 permission.compact.default_description: "សំណើសុំការអនុញ្ញាត"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ដើម្បីឆ្លើយ · ផ្លាស់ប្តូរទំហំសម្រាប់កាតពេញ]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "បានអនុម័តដោយស្វ័យប្រវត្តិតាមគោលការណ៍ Intelligent Terminal"
+permission.allow_directory_session: "វគ្គនេះ"
+permission.allow_directory_global: "ជានិច្ច"
+permission.directory_to_store: "ថត៖ %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
 # Status badge when agent CLI binary is not on PATH

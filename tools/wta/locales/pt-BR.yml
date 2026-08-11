@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Nova %{kind} vazia"
 permission.compact.default_description: "Permissão solicitada"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para responder · redimensionar para o cartão completo]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Aprovado automaticamente pela política do Intelligent Terminal"
+permission.allow_directory_session: "Esta sessão"
+permission.allow_directory_global: "Sempre"
+permission.directory_to_store: "Diretório: %{path}"
 
 # ── Status do agente (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Não encontrado"

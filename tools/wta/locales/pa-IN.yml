@@ -101,10 +101,10 @@ recommendations.open_new_empty: "ਨਵਾਂ ਖਾਲੀ %{kind}"
 permission.compact.default_description: "ਇਜਾਜ਼ਤ ਬੇਨਤੀ ਕੀਤੀ ਗਈ"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ਜਵਾਬ ਦਿਓ · ਪੂਰਾ ਕਾਰਡ ਵੇਖਣ ਲਈ ਆਕਾਰ ਬਦਲੋ]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal ਨੀਤੀ ਵੱਲੋਂ ਸਵੈਚਲਿਤ ਤੌਰ 'ਤੇ ਮਨਜ਼ੂਰ"
+permission.allow_directory_session: "ਇਹ ਸੈਸ਼ਨ"
+permission.allow_directory_global: "ਹਮੇਸ਼ਾ"
+permission.directory_to_store: "ਡਾਇਰੈਕਟਰੀ: %{path}"
 
 # ── ਏਜੰਟ ਸਥਿਤੀ (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ਨਹੀਂ ਮਿਲਿਆ"

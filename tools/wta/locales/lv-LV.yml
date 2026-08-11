@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Jauns tukšs %{kind}"
 permission.compact.default_description: "Pieprasīta atļauja"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N lai atbildētu · mainiet izmēru pilnai kartītei]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automātiski apstiprināts saskaņā ar Intelligent Terminal politiku"
+permission.allow_directory_session: "Šai sesijai"
+permission.allow_directory_global: "Vienmēr"
+permission.directory_to_store: "Direktorijs: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nav atrasts"

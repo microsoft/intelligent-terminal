@@ -420,7 +420,7 @@ is not reliable enough to turn a path grant into execute approval.
 7. For deny:
      a. select reject_once when provided;
      b. otherwise return cancelled.
-8. Otherwise emit the existing blocking permission card.
+8. Otherwise, emit the existing blocking permission card.
 ```
 
 The engine never invents an option ID and never upgrades `allow_once` into
@@ -544,7 +544,7 @@ or an existing broader grant.
 Global grants live in Terminal settings and survive application and Agent
 restarts. Removing a global grant affects future lifecycle requests and local
 policy decisions immediately. It cannot revoke access already held by an
-unsandboxed Agent process; the UI must not claim otherwise.
+Agent process with direct filesystem access; the UI must not claim otherwise.
 
 ### Session grants
 

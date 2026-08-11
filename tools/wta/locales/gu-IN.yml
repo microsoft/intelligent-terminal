@@ -101,10 +101,10 @@ recommendations.open_new_empty: "નવું ખાલી %{kind}"
 permission.compact.default_description: "પરવાનગી વિનંતી કરવામાં આવી"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N જવાબ આપો · પૂર્ણ કાર્ડ માટે કદ બદલો]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal ની પરવાનગી નીતિ દ્વારા આપમેળે મંજૂર"
+permission.allow_directory_session: "આ સત્ર"
+permission.allow_directory_global: "હંમેશાં"
+permission.directory_to_store: "ડિરેક્ટરી: %{path}"
 
 # ── એજન્ટ સ્થિતિ (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "મળ્યો નથી"

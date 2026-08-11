@@ -89,10 +89,10 @@ recommendations.open_new_empty: "Nou %{kind} buit"
 permission.compact.default_description: "Permís sol·licitat"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N per respondre · redimensioneu per veure la targeta completa]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Aprovat automàticament segons la política de permisos d'Intelligent Terminal"
+permission.allow_directory_session: "Aquesta sessió"  # Button: allow this directory for the current session
+permission.allow_directory_global: "Sempre"  # Button: always allow this directory globally
+permission.directory_to_store: "Directori: %{path}"
 
 # ── Estat de l'agent (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "No s'ha trobat"

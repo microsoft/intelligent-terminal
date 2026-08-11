@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Új üres %{kind}"
 permission.compact.default_description: "Engedély kérve"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N a válaszhoz · méretezze át a teljes kártyához]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Az Intelligent Terminal szabályzata automatikusan jóváhagyta"
+permission.allow_directory_session: "Ez a munkamenet"
+permission.allow_directory_global: "Mindig"
+permission.directory_to_store: "Könyvtár: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nem található"

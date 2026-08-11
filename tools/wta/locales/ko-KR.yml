@@ -84,10 +84,10 @@ recommendations.open_new_empty: "새 빈 %{kind}"
 permission.compact.default_description: "권한 요청됨"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N으로 응답 · 전체 카드를 보려면 크기 조정]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal 정책에 따라 자동 승인됨"
+permission.allow_directory_session: "이 세션"
+permission.allow_directory_global: "항상"
+permission.directory_to_store: "디렉터리: %{path}"
 
 # ── 에이전트 상태 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "찾을 수 없음"

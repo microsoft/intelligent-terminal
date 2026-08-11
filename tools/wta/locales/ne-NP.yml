@@ -101,10 +101,10 @@ recommendations.open_new_empty: "नयाँ खाली %{kind}"
 permission.compact.default_description: "अनुमति अनुरोध गरिएको"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N जवाफ दिनुहोस् · पूर्ण कार्ड हेर्न साइज बदल्नुहोस्]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal नीतिद्वारा स्वतः स्वीकृत"
+permission.allow_directory_session: "यो सत्र"
+permission.allow_directory_global: "सधैं"
+permission.directory_to_store: "डाइरेक्टरी: %{path}"
 
 # ── एजेन्ट स्थिति (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "भेटिएन"

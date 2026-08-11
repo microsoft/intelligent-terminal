@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Naujas tuščias %{kind}"
 permission.compact.default_description: "Prašomas leidimas"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N atsakyti · pakeiskite dydį pilnai kortelei]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatiškai patvirtinta pagal „Intelligent Terminal“ strategiją"
+permission.allow_directory_session: "Šiam seansui"
+permission.allow_directory_global: "Visada"
+permission.directory_to_store: "Katalogas: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nerasta"

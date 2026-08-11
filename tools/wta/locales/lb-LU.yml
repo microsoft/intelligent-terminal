@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Neien eidelen %{kind}"
 permission.compact.default_description: "Erlaabnes ugefrot"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N fir z'äntwerten · Gréisst änneren fir voll Kaart]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatesch duerch d'Intelligent Terminal-Richtlinn guttgeheescht"
+permission.allow_directory_session: "Dës Sessioun"
+permission.allow_directory_global: "Ëmmer"
+permission.directory_to_store: "Verzeechnes: %{path}"
 
 # ── Agent-Status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Net fonnt"

@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} bosh e re"
 permission.compact.default_description: "Leje e kërkuar"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N për të përgjigjur · ndryshoni madhësinë për kartën e plotë]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Miratuar automatikisht nga politika e Intelligent Terminal"
+permission.allow_directory_session: "Kjo seancë"
+permission.allow_directory_global: "Gjithmonë"
+permission.directory_to_store: "Direktoria: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nuk u gjet"

@@ -97,10 +97,10 @@ recommendations.open_new_empty: "Нова порожня %{kind}"
 permission.compact.default_description: "Запитано дозвіл"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N для відповіді · змініть розмір для повної картки]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Автоматично схвалено політикою Intelligent Terminal"
+permission.allow_directory_session: "Цей сеанс"
+permission.allow_directory_global: "Завжди"
+permission.directory_to_store: "Каталог: %{path}"
 
 # ── Стан агента (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Не знайдено"

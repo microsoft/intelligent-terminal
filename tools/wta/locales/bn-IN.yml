@@ -102,10 +102,10 @@ recommendations.open_new_empty: "নতুন খালি %{kind}"
 permission.compact.default_description: "অনুমতি অনুরোধ করা হয়েছে"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N উত্তর দিন · পূর্ণ কার্ড দেখতে আকার পরিবর্তন করুন]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal-এর অনুমতি নীতি অনুযায়ী স্বয়ংক্রিয়ভাবে অনুমোদিত"
+permission.allow_directory_session: "এই সেশন"  # Button: allow this directory for the current session
+permission.allow_directory_global: "সর্বদা"  # Button: always allow this directory globally
+permission.directory_to_store: "ডিরেক্টরি: %{path}"
 
 # ── এজেন্ট স্থিতি (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "খুঁজে পাওয়া যায়নি"

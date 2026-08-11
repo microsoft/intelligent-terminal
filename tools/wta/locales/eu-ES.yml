@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} huts berria"
 permission.compact.default_description: "Baimena eskatuta"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N erantzuteko · aldatu tamaina txartel osoa ikusteko]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal produktuaren politikak automatikoki onartua"
+permission.allow_directory_session: "Saio hau"
+permission.allow_directory_global: "Beti"
+permission.directory_to_store: "Direktorioa: %{path}"
 
 # ── Agentearen egoera (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Ez da aurkitu"

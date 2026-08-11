@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Ny tom %{kind}"
 permission.compact.default_description: "Behörighet begärd"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N för att svara · ändra storlek för fullständigt kort]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Godkändes automatiskt enligt principen i Intelligent Terminal"
+permission.allow_directory_session: "Den här sessionen"
+permission.allow_directory_global: "Alltid"
+permission.directory_to_store: "Katalog: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Hittades inte"

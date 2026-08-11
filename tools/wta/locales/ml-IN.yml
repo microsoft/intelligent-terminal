@@ -101,10 +101,10 @@ recommendations.open_new_empty: "പുതിയ ശൂന്യമായ %{kind
 permission.compact.default_description: "അനുമതി അഭ്യര്‍ഥിച്ചു"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ഉത്തരം നല്‍കുക · മുഴുവന്‍ കാര്‍ഡിനായി വലുപ്പം മാറ്റുക]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal നയപ്രകാരം സ്വയമേവ അംഗീകരിച്ചു"
+permission.allow_directory_session: "ഈ സെഷൻ"
+permission.allow_directory_global: "എപ്പോഴും"
+permission.directory_to_store: "ഡയറക്ടറി: %{path}"
 
 # ── ഏജന്റ് നില (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "കണ്ടെത്തിയില്ല"

@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} ว่างใหม่"
 permission.compact.default_description: "ขอสิทธิ์การเข้าถึง"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N เพื่อตอบ · ปรับขนาดเพื่อดูการ์ดเต็ม]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "อนุมัติโดยอัตโนมัติตามนโยบาย Intelligent Terminal"
+permission.allow_directory_session: "เซสชันนี้"
+permission.allow_directory_global: "เสมอ"
+permission.directory_to_store: "ไดเรกทอรี: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ไม่พบ"

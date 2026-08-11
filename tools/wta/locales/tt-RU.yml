@@ -101,10 +101,10 @@ recommendations.open_new_empty: "Яңа буш %{kind}"
 permission.compact.default_description: "Рөхсәт соралды"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N җавап өчен · тулы карта өчен үлчәмне үзгәртегез]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal сәясәте буенча автоматик рәвештә рөхсәт ителде"
+permission.allow_directory_session: "Бу сеанс"
+permission.allow_directory_global: "Һәрвакыт"
+permission.directory_to_store: "Каталог: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Табылмады"

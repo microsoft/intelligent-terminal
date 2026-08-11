@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Uusi tyhjä %{kind}"
 permission.compact.default_description: "Käyttöoikeus pyydetty"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N vastataksesi · muuta kokoa nähdäksesi täyden kortin]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Hyväksytty automaattisesti Intelligent Terminalin käyttöoikeuskäytännön perusteella"
+permission.allow_directory_session: "Tämä istunto"
+permission.allow_directory_global: "Aina"
+permission.directory_to_store: "Hakemisto: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Ei löytynyt"

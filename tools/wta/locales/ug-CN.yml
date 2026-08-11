@@ -106,10 +106,10 @@ recommendations.open_new_empty: "يېڭى قۇرۇق %{kind}"
 permission.compact.default_description: "ئىجازەت سورىلدى"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N جاۋاپ بېرىش · تولۇق كارتىنى كۆرۈش ئۈچۈن چوڭلۇقنى ئۆزگەرتىڭ]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal سىياسىتى بويىچە ئاپتوماتىك تەستىقلاندى"
+permission.allow_directory_session: "بۇ ئولتۇرۇش"
+permission.allow_directory_global: "ھەمىشە"
+permission.directory_to_store: "مۇندەرىجە: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
 agent.status.not_found: "تېپىلمىدى"

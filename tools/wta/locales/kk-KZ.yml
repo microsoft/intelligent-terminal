@@ -101,10 +101,10 @@ recommendations.open_new_empty: "Жаңа бос %{kind}"
 permission.compact.default_description: "Рұқсат сұралуда"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N жауап үшін · толық карта үшін өлшемін өзгертіңіз]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal саясаты бойынша автоматты түрде мақұлданды"
+permission.allow_directory_session: "Осы сеанс"
+permission.allow_directory_global: "Әрқашан"
+permission.directory_to_store: "Каталог: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Табылмады"

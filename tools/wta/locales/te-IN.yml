@@ -101,10 +101,10 @@ recommendations.open_new_empty: "కొత్త ఖాళీ %{kind}"
 permission.compact.default_description: "అనుమతి అభ్యర్థించబడింది"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N సమాధానం ఇవ్వండి · పూర్తి కార్డ్ కోసం రీసైజ్ చేయండి]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal విధానం ప్రకారం స్వయంచాలకంగా ఆమోదించబడింది"
+permission.allow_directory_session: "ఈ సెషన్"
+permission.allow_directory_global: "ఎల్లప్పుడూ"
+permission.directory_to_store: "డైరెక్టరీ: %{path}"
 
 # ── ఏజెంట్ స్థితి (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "కనుగొనబడలేదు"

@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Nouveau %{kind} vide"
 permission.compact.default_description: "Autorisation demandée"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N pour répondre · redimensionner pour la carte complète]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Approuvé automatiquement par la stratégie d’autorisation d’Intelligent Terminal"
+permission.allow_directory_session: "Cette session"
+permission.allow_directory_global: "Toujours"
+permission.directory_to_store: "Répertoire : %{path}"
 
 # ── Statut de l'agent (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Introuvable"

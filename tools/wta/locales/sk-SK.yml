@@ -97,10 +97,10 @@ recommendations.open_new_empty: "Nová prázdna %{kind}"
 permission.compact.default_description: "Vyžiadané povolenie"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N na odpoveď · zmeňte veľkosť pre úplnú kartu]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automaticky schválené politikou Intelligent Terminal"
+permission.allow_directory_session: "Táto relácia"
+permission.allow_directory_global: "Vždy"
+permission.directory_to_store: "Adresár: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nenájdený"

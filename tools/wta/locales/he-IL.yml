@@ -101,10 +101,10 @@ recommendations.open_new_empty: "%{kind} ריק חדש"
 permission.compact.default_description: "התבקשה הרשאה"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N לתשובה · שנה גודל לכרטיס מלא]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "אושר אוטומטית על-ידי מדיניות ההרשאות של Intelligent Terminal"
+permission.allow_directory_session: "הפעלה זו"
+permission.allow_directory_global: "תמיד"
+permission.directory_to_store: "ספרייה: %{path}"
 
 # ── מצב סוכן (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "לא נמצא"

@@ -109,10 +109,10 @@ recommendations.open_new_empty: "Նոր դատարկ %{kind}"
 permission.compact.default_description: "Թույլտվություն պահանջված է"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N պատասխանելու համար · չափը փոխեք լիարժեք քարտի համար]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Ավտոմատ հաստատվել է Intelligent Terminal-ի քաղաքականությամբ"
+permission.allow_directory_session: "Այս նստաշրջանը"
+permission.allow_directory_global: "Միշտ"
+permission.directory_to_store: "Գրացուցակ՝ %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
 # Status badge when agent CLI binary is not on PATH

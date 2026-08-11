@@ -101,10 +101,10 @@ recommendations.open_new_empty: "Yangi bo‘sh %{kind}"
 permission.compact.default_description: "Ruxsat soʻralmoqda"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N javob uchun · toʻliq karta uchun oʻlchamni oʻzgartiring]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal siyosatiga ko‘ra avtomatik tasdiqlandi"
+permission.allow_directory_session: "Bu seans uchun"
+permission.allow_directory_global: "Doim ruxsat berish"
+permission.directory_to_store: "Katalog: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Topilmadi"

@@ -88,9 +88,9 @@ recommendations.open_new_empty: "Nuova %{kind} vuota"
 permission.compact.default_description: "Autorizzazione richiesta"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N per rispondere · ridimensiona per la scheda completa]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
+permission.auto_approved: "Approvato automaticamente dai criteri di Intelligent Terminal"
+permission.allow_directory_session: "Questa sessione"
+permission.allow_directory_global: "Sempre"
 permission.directory_to_store: "Directory: %{path}"
 
 # ── Stato dell'agente (src/agent_check.rs) ───────────────────────────────────────

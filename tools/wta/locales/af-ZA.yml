@@ -89,10 +89,10 @@ recommendations.open_new_empty: "Nuwe leë %{kind}"
 permission.compact.default_description: "Toestemming versoek"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N om te antwoord · verander grootte vir volle kaart]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Outomaties goedgekeur volgens Intelligent Terminal se toestemmingsbeleid"
+permission.allow_directory_session: "Hierdie sessie"  # Button: allow this directory for the current session
+permission.allow_directory_global: "Altyd"  # Button: always allow this directory globally
+permission.directory_to_store: "Gids: %{path}"
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nie gevind nie"

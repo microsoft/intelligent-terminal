@@ -89,10 +89,10 @@ recommendations.open_new_empty: "Neue(r) leere(r) %{kind}"
 permission.compact.default_description: "Berechtigung angefordert"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N zum Antworten · Größe ändern für vollständige Karte]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatisch durch die Intelligent Terminal-Richtlinie genehmigt"
+permission.allow_directory_session: "Diese Sitzung"
+permission.allow_directory_global: "Immer"
+permission.directory_to_store: "Verzeichnis: %{path}"
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nicht gefunden"

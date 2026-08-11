@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Musuq ch’usaq %{kind}"
 permission.compact.default_description: "Kamachiyta mañakusqa"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N kutchinapaq · hunt'a tarjeta rikunapaq t'ikray]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal kamachiyninwan kikinmanta saqisqa"
+permission.allow_directory_session: "Kay tiyay"
+permission.allow_directory_global: "Sapa kuti"
+permission.directory_to_store: "Directorio: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Mana tarikusqachu"

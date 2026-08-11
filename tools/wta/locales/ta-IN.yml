@@ -101,10 +101,10 @@ recommendations.open_new_empty: "புதிய காலி %{kind}"
 permission.compact.default_description: "அனுமதி கோரப்பட்டது"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N பதிலளிக்கவும் · முழு அட்டையைக் காண அளவை மாற்றவும்]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal கொள்கையின்படி தானாக அங்கீகரிக்கப்பட்டது"
+permission.allow_directory_session: "இந்த அமர்வு"
+permission.allow_directory_global: "எப்போதும்"
+permission.directory_to_store: "கோப்பகம்: %{path}"
 
 # ── ஏஜெண்ட் நிலை (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "கிடைக்கவில்லை"

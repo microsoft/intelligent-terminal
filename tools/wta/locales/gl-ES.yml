@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Novo %{kind} baleiro"
 permission.compact.default_description: "Permiso solicitado"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para responder · redimensione para ver a tarxeta completa]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Aprobado automaticamente pola política de permisos de Intelligent Terminal"
+permission.allow_directory_session: "Esta sesión"
+permission.allow_directory_global: "Sempre"
+permission.directory_to_store: "Directorio: %{path}"
 
 # ── Estado do axente (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Non atopado"

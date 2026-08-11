@@ -102,10 +102,10 @@ recommendations.open_new_empty: "নতুন খালী %{kind}"
 permission.compact.default_description: "অনুমতি অনুৰোধ কৰা হৈছে"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N উত্তৰ দিয়ক · সম্পূৰ্ণ কাৰ্ড চাবলৈ আকাৰ সলনি কৰক]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal-ৰ অনুমতি নীতিৰ অধীনত স্বয়ংক্ৰিয়ভাৱে অনুমোদিত"
+permission.allow_directory_session: "এই ছেশ্যন"  # Button: allow this directory for the current session
+permission.allow_directory_global: "সদায়"  # Button: always allow this directory globally
+permission.directory_to_store: "ডাইৰেক্টৰী: %{path}"
 
 # ── এজেণ্ট স্থিতি (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "পোৱা নগল"

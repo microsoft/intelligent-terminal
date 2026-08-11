@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Bagong walang laman na %{kind}"
 permission.compact.default_description: "Hinihiling ang pahintulot"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para sumagot · i-resize para sa buong card]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Awtomatikong inaprubahan ng patakaran sa pahintulot ng Intelligent Terminal"
+permission.allow_directory_session: "Session na ito"
+permission.allow_directory_global: "Palagi"
+permission.directory_to_store: "Direktoryo: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Hindi nahanap"

@@ -84,10 +84,10 @@ recommendations.open_new_empty: "新建空白 %{kind}"
 permission.compact.default_description: "已要求權限"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N 回答 · 調整視窗大小以檢視完整卡片]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "已依 Intelligent Terminal 原則自動核准"
+permission.allow_directory_session: "此工作階段"
+permission.allow_directory_global: "一律允許"
+permission.directory_to_store: "目錄：%{path}"
 
 # ── 智能體狀態 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "找不到"

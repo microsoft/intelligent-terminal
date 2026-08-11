@@ -97,10 +97,10 @@ recommendations.open_new_empty: "Nova prazna %{kind}"
 permission.compact.default_description: "Zatražena dozvola"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N za odgovor · promijenite veličinu za punu karticu]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatski odobreno prema pravilima za Intelligent Terminal"
+permission.allow_directory_session: "Ova sesija"
+permission.allow_directory_global: "Uvijek"
+permission.directory_to_store: "Direktorij: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nije pronađeno"

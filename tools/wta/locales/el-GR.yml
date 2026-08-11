@@ -89,10 +89,10 @@ recommendations.open_new_empty: "Νέο κενό %{kind}"
 permission.compact.default_description: "Ζητήθηκε άδεια"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N για απάντηση · αλλάξτε μέγεθος για πλήρη κάρτα]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Εγκρίθηκε αυτόματα από την πολιτική του Intelligent Terminal"
+permission.allow_directory_session: "Αυτή η περίοδος λειτουργίας"
+permission.allow_directory_global: "Πάντα"
+permission.directory_to_store: "Κατάλογος: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Δεν βρέθηκε"

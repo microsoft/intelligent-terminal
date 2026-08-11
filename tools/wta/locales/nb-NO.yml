@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Ny tom %{kind}"
 permission.compact.default_description: "Tillatelse forespurt"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N for å svare · endre størrelse for fullstendig kort]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatisk godkjent av Intelligent Terminal-policyen"
+permission.allow_directory_session: "Denne økten"
+permission.allow_directory_global: "Alltid"
+permission.directory_to_store: "Mappe: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Ikke funnet"

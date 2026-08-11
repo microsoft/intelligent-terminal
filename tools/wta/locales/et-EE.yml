@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Uus tühi %{kind}"
 permission.compact.default_description: "Luba taotletud"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N vastamiseks · muutke suurust täiskaardi jaoks]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Rakenduse Intelligent Terminal poliitika alusel automaatselt heaks kiidetud"
+permission.allow_directory_session: "See seanss"
+permission.allow_directory_global: "Alati"
+permission.directory_to_store: "Kataloog: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Ei leitud"

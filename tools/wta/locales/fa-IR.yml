@@ -101,10 +101,10 @@ recommendations.open_new_empty: "%{kind} خالی جدید"
 permission.compact.default_description: "مجوز درخواست شده است"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N برای پاسخ · تغییر اندازه برای کارت کامل]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "تأیید خودکار بر اساس خط‌مشی Intelligent Terminal"
+permission.allow_directory_session: "این جلسه"
+permission.allow_directory_global: "همیشه"
+permission.directory_to_store: "پوشه: %{path}"
 
 # ── وضعیت عامل هوش مصنوعی (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "یافت نشد"

@@ -84,10 +84,10 @@ recommendations.open_new_empty: "新しい空の%{kind}"
 permission.compact.default_description: "アクセス許可が要求されました"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N で応答 · リサイズでフル カードを表示]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal ポリシーにより自動承認されました"
+permission.allow_directory_session: "このセッション"
+permission.allow_directory_global: "常に"
+permission.directory_to_store: "ディレクトリ: %{path}"
 
 # ── エージェント ステータス (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "見つかりません"

@@ -89,10 +89,10 @@ recommendations.open_new_empty: "አዲስ ባዶ %{kind}"
 permission.compact.default_description: "Permission requested"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "በIntelligent Terminal የፈቃድ መመሪያ በራስ-ሰር ጸድቋል"
+permission.allow_directory_session: "ይህ ክፍለ ጊዜ"  # Button: allow this directory for the current session
+permission.allow_directory_global: "ሁልጊዜ"  # Button: always allow this directory globally
+permission.directory_to_store: "ማውጫ፦ %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "አልተገኙም"

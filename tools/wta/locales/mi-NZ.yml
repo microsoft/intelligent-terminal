@@ -88,10 +88,10 @@ recommendations.open_new_empty: "%{kind} hou kau"
 permission.compact.default_description: "Kua tonoa te whakaaetanga"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ki te whakautu · hurihia te rahi mo te kaari katoa]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "I whakaaetia aunoatia e te kaupapahere Intelligent Terminal"
+permission.allow_directory_session: "Tēnei wātū"
+permission.allow_directory_global: "I ngā wā katoa"
+permission.directory_to_store: "Whaiaronga: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Kaore i kitea"

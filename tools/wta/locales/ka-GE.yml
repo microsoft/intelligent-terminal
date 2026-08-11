@@ -101,10 +101,10 @@ recommendations.open_new_empty: "ახალი ცარიელი %{kind}"
 permission.compact.default_description: "ნებართვა მოთხოვნილია"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N პასუხისთვის · ზომის შეცვლა სრული ბარათისთვის]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Intelligent Terminal-ის პოლიტიკით ავტომატურად დამტკიცდა"
+permission.allow_directory_session: "ეს სესია"
+permission.allow_directory_global: "ყოველთვის"
+permission.directory_to_store: "დირექტორია: %{path}"
 
 # ── აგენტის სტატუსი (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "ვერ მოიძებნა"

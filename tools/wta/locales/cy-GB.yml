@@ -89,10 +89,10 @@ recommendations.open_new_empty: "%{kind} gwag newydd"
 permission.compact.default_description: "Caniatâd wedi'i ofyn"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N i ateb · newidiwch faint ar gyfer cerdyn llawn]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Wedi'i gymeradwyo'n awtomatig gan bolisi Intelligent Terminal"
+permission.allow_directory_session: "Y sesiwn hon"
+permission.allow_directory_global: "Bob amser"
+permission.directory_to_store: "Cyfeiriadur: %{path}"
 
 # ── Statws asiant (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Heb ei ganfod"

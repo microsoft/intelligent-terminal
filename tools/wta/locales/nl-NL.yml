@@ -88,10 +88,10 @@ recommendations.open_new_empty: "Nieuw leeg %{kind}"
 permission.compact.default_description: "Machtiging gevraagd"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N om te antwoorden · formaat wijzigen voor volledige kaart]"  # {Locked="Y/N"}
-permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
-permission.allow_directory_session: "This session"
-permission.allow_directory_global: "Always"
-permission.directory_to_store: "Directory: %{path}"
+permission.auto_approved: "Automatisch goedgekeurd door het beleid van Intelligent Terminal"
+permission.allow_directory_session: "Deze sessie"
+permission.allow_directory_global: "Altijd"
+permission.directory_to_store: "Map: %{path}"
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Niet gevonden"
