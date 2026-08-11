@@ -99,18 +99,45 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
 }
 
 fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
-    // Collapsed view = single Line "▶ > <prompt>" + trailing blank.
+    // Collapsed view = prompt header + trailing blank. Expanded turns put
+    // details immediately after the header, so only add a trailing blank when
+    // the final detail does not already render one.
     let chars = "▶ > ".chars().count() + turn.prompt.chars().count();
     let prompt_rows = chars.div_ceil(wrap_width.max(1)).max(1);
-    let mut h = prompt_rows + 1;
+    let mut h = prompt_rows;
     if turn.expanded {
         h += turn
             .details
             .iter()
             .map(|m| message_height(m, wrap_width))
             .sum::<usize>();
+        if !turn.details.last().is_some_and(message_has_trailing_blank) {
+            h += 1;
+        }
+    } else {
+        h += 1;
     }
     h
+}
+
+fn message_has_trailing_blank(message: &ChatMessage) -> bool {
+    match message {
+        ChatMessage::User(_)
+        | ChatMessage::Agent(_)
+        | ChatMessage::System(_)
+        | ChatMessage::Notice { .. }
+        | ChatMessage::Plan(_)
+        | ChatMessage::Error(_)
+        | ChatMessage::AgentEvent(_) => true,
+        ChatMessage::ToolCall {
+            location,
+            location_is_command,
+            ..
+        } => {
+            *location_is_command && location.as_deref().is_some_and(|value| !value.is_empty())
+        }
+        ChatMessage::Disclaimer => false,
+    }
 }
 
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
@@ -823,6 +850,44 @@ mod tests {
 
         assert_eq!(line_text(&lines[0]), "i Notice text");
         assert_eq!(lines.len(), message_height(&message, 20));
+    }
+
+    #[test]
+    fn expanded_turn_height_matches_rendered_agent_turn() {
+        let turn = CompletedTurn {
+            prompt: "What changed?".into(),
+            details: vec![ChatMessage::Agent(
+                "I checked the working tree and found one change.".into(),
+            )],
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        assert_eq!(
+            turn_height(&turn, 80),
+            build_completed_turn_lines(&turn, false, true, 80).len()
+        );
+    }
+
+    #[test]
+    fn expanded_turn_height_adds_blank_after_compact_tool_call() {
+        let turn = CompletedTurn {
+            prompt: "What changed?".into(),
+            details: vec![ChatMessage::ToolCall {
+                id: "tool".into(),
+                title: "Read source".into(),
+                status: "Completed".into(),
+                location: Some(r"C:\src\main.rs".into()),
+                location_is_command: false,
+            }],
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        assert_eq!(
+            turn_height(&turn, 80),
+            build_completed_turn_lines(&turn, false, true, 80).len()
+        );
     }
 
     fn assert_tool_call(
