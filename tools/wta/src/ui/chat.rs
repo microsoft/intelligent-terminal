@@ -618,7 +618,7 @@ fn build_message_lines<'a>(
                 if let Some(cwd) = cwd
                     .as_deref()
                     .filter(|cwd| !cwd.is_empty())
-                    .filter(|cwd| !title.to_lowercase().contains(&cwd.to_lowercase()))
+                    .filter(|cwd| !title.contains(cwd))
                 {
                     spans.push(Span::styled(
                         format!(" ({})", truncate_render_text(cwd)),
