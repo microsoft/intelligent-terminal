@@ -389,6 +389,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::IsAllowedHostDirectoriesExpanded(const bool value)
+    {
+        if (_isAllowedHostDirectoriesExpanded != value)
+        {
+            _isAllowedHostDirectoriesExpanded = value;
+            _NotifyChanges(L"IsAllowedHostDirectoriesExpanded");
+        }
+    }
+
+    void AIAgentsViewModel::BeginAddAllowedHostDirectory()
+    {
+        IsAllowedHostDirectoriesExpanded(true);
+        if (!_isAddingAllowedHostDirectory)
+        {
+            _isAddingAllowedHostDirectory = true;
+            _NotifyChanges(L"IsAddingAllowedHostDirectory");
+        }
+    }
+
     bool AIAgentsViewModel::CanAddAllowedHostDirectory() const
     {
         const auto path = _TrimWhitespace(_newAllowedHostDirectory);
@@ -413,8 +432,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }));
         _newAllowedHostDirectory.clear();
+        _isAddingAllowedHostDirectory = false;
         _CommitAllowedHostDirectories();
-        _NotifyChanges(L"NewAllowedHostDirectory");
+        _NotifyChanges(L"NewAllowedHostDirectory", L"IsAddingAllowedHostDirectory");
     }
 
     bool AIAgentsViewModel::_ContainsAllowedHostDirectory(const std::wstring_view path) const

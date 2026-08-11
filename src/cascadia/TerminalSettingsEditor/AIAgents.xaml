@@ -247,41 +247,61 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Uid="AIAgents_AllowedHostDirectories">
-                <StackPanel Spacing="8">
+            <local:SettingContainer x:Name="AllowedHostDirectoriesExpander"
+                                    x:Uid="AIAgents_AllowedHostDirectories"
+                                    StartExpanded="{x:Bind ViewModel.IsAllowedHostDirectoriesExpanded, Mode=TwoWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
+                <local:SettingContainer.CurrentValue>
+                    <Button x:Uid="AIAgents_AllowedHostDirectoryAdd"
+                            VerticalAlignment="Center"
+                            Click="{x:Bind ViewModel.BeginAddAllowedHostDirectory}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                </local:SettingContainer.CurrentValue>
+                <StackPanel>
                     <ItemsControl ItemsSource="{x:Bind ViewModel.AllowedHostDirectories, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:AllowedDirectoryEntry">
-                                <Grid Padding="0,4,0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock VerticalAlignment="Center"
-                                               Text="{x:Bind Path, Mode=OneWay}"
-                                               TextTrimming="CharacterEllipsis"
-                                               TextWrapping="NoWrap" />
-                                    <Button Grid.Column="1"
-                                            x:Uid="AIAgents_AllowedHostDirectoryRemove"
-                                            Click="{x:Bind Remove}"
-                                            Margin="8,0,0,0" />
-                                </Grid>
+                                <Border BorderThickness="0,1,0,0"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        Padding="0,16,0,16">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="{x:Bind Path, Mode=OneWay}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap" />
+                                        <Button Grid.Column="1"
+                                                x:Uid="AIAgents_AllowedHostDirectoryRemove"
+                                                VerticalAlignment="Center"
+                                                Click="{x:Bind Remove}"
+                                                MinWidth="120" />
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Uid="AIAgents_AllowedHostDirectoryInput"
-                                 Text="{x:Bind ViewModel.NewAllowedHostDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="1"
-                                x:Uid="AIAgents_AllowedHostDirectoryAdd"
-                                IsEnabled="{x:Bind ViewModel.CanAddAllowedHostDirectory, Mode=OneWay}"
-                                Click="{x:Bind ViewModel.AddAllowedHostDirectory}"
-                                Style="{StaticResource AccentButtonStyle}" />
-                    </Grid>
+                    <Border BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16"
+                            Visibility="{x:Bind ViewModel.IsAddingAllowedHostDirectory, Mode=OneWay}">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Uid="AIAgents_AllowedHostDirectoryInput"
+                                     Text="{x:Bind ViewModel.NewAllowedHostDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_AllowedHostDirectoryAdd"
+                                    IsEnabled="{x:Bind ViewModel.CanAddAllowedHostDirectory, Mode=OneWay}"
+                                    Click="{x:Bind ViewModel.AddAllowedHostDirectory}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    MinWidth="120" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </local:SettingContainer>
 

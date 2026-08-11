@@ -104,8 +104,11 @@ namespace Microsoft.Terminal.Settings.Editor
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
         Windows.Foundation.Collections.IObservableVector<AllowedDirectoryEntry> AllowedHostDirectories { get; };
+        Boolean IsAllowedHostDirectoriesExpanded;
+        Boolean IsAddingAllowedHostDirectory { get; };
         String NewAllowedHostDirectory;
         Boolean CanAddAllowedHostDirectory { get; };
+        void BeginAddAllowedHostDirectory();
         void AddAllowedHostDirectory();
 
         // GPO policy lock indicators.

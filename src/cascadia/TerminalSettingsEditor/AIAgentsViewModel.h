@@ -166,9 +166,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         bool CanSuggestErrors() const;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AllowedDirectoryEntry> AllowedHostDirectories() const { return _allowedHostDirectories; }
+        bool IsAllowedHostDirectoriesExpanded() const { return _isAllowedHostDirectoriesExpanded; }
+        void IsAllowedHostDirectoriesExpanded(bool value);
+        bool IsAddingAllowedHostDirectory() const { return _isAddingAllowedHostDirectory; }
         winrt::hstring NewAllowedHostDirectory() const { return _newAllowedHostDirectory; }
         void NewAllowedHostDirectory(const winrt::hstring& value);
         bool CanAddAllowedHostDirectory() const;
+        void BeginAddAllowedHostDirectory();
         void AddAllowedHostDirectory();
 
         // GPO policy lock indicators
@@ -253,6 +257,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _isAddingCustomDelegateAgent{ false };
         bool _isCustomModelProvidersExpanded{ false };
         bool _isAddingCustomModelProvider{ false };
+        bool _isAllowedHostDirectoriesExpanded{ false };
+        bool _isAddingAllowedHostDirectory{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
         winrt::hstring _newCustomModelProviderBaseUrl;
