@@ -193,6 +193,8 @@ namespace winrt::TerminalApp::implementation
                 });
             }
             info.PaneCount = terminalPaneCount;
+            info.DurableShellSessionId = tabImpl->DurableShellSessionId();
+            info.KeepRunning = tabImpl->KeepRunning();
             tabs.Append(info);
         }
 

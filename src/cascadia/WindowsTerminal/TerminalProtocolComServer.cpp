@@ -272,6 +272,8 @@ static Json::Value _toJson(const Protocol::TabInfo& t)
     v["title"] = winrt::to_string(t.Title);
     v["is_active"] = static_cast<bool>(t.IsActive);
     v["pane_count"] = static_cast<Json::UInt>(t.PaneCount);
+    v["durable_shell_session_id"] = winrt::to_string(t.DurableShellSessionId);
+    v["keep_running"] = static_cast<bool>(t.KeepRunning);
     return v;
 }
 
