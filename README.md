@@ -186,8 +186,6 @@ Base URL:  http://localhost:11434/v1
 Model ID:  <your local model>
 ```
 
-This first version is BYOM only (no API-key management), and covers OpenAI Chat Completions endpoints. Claude, Codex, and Gemini custom providers aren't supported through this path yet.
-
 ### Agent Management
 
 <p align="center">
