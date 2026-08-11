@@ -66,16 +66,37 @@ fn dot_wrap_count(text: &str, width: usize) -> usize {
     wrap_count(text.trim_start_matches('\n'), width)
 }
 
-fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
+struct MessageLayout {
+    height: usize,
+    has_trailing_blank: bool,
+}
+
+fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
     // Most variants render with a 2-cell prefix ("● " for agent/error,
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
-        ChatMessage::User(t) => wrap_count(t, body_width) + 1,
-        ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
-        ChatMessage::Notice { text, .. } => dot_wrap_count(text, body_width) + 1,
-        ChatMessage::ToolCall { location, location_is_command, .. } => {
+        ChatMessage::Agent(t) | ChatMessage::Error(t) => MessageLayout {
+            height: dot_wrap_count(t, body_width) + 1,
+            has_trailing_blank: true,
+        },
+        ChatMessage::User(t) => MessageLayout {
+            height: wrap_count(t, body_width) + 1,
+            has_trailing_blank: true,
+        },
+        ChatMessage::System(t) | ChatMessage::AgentEvent(t) => MessageLayout {
+            height: wrap_count(t, wrap_width) + 1,
+            has_trailing_blank: true,
+        },
+        ChatMessage::Notice { text, .. } => MessageLayout {
+            height: dot_wrap_count(text, body_width) + 1,
+            has_trailing_blank: true,
+        },
+        ChatMessage::ToolCall {
+            location,
+            location_is_command,
+            ..
+        } => {
             // Command targets render one line per split statement (see
             // the render arm below, and `command_format`) — must count
             // the same number of rows here, or the chat area's height
@@ -89,13 +110,26 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
             } else {
                 0
             };
-            1 + command_lines + usize::from(command_lines > 0)
+            MessageLayout {
+                height: 1 + command_lines + usize::from(command_lines > 0),
+                has_trailing_blank: command_lines > 0,
+            }
         }
-        ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
+        ChatMessage::Plan(entries) => MessageLayout {
+            height: 2 + entries.len(), // header + each entry + blank
+            has_trailing_blank: true,
+        },
         // Disclaimer is a single dim row — terminal min-width guarantees the
         // short text fits without wrapping, and no trailing blank is needed.
-        ChatMessage::Disclaimer => 1,
+        ChatMessage::Disclaimer => MessageLayout {
+            height: 1,
+            has_trailing_blank: false,
+        },
     }
+}
+
+fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
+    message_layout(msg, wrap_width).height
 }
 
 fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
@@ -106,38 +140,19 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
     let prompt_rows = chars.div_ceil(wrap_width.max(1)).max(1);
     let mut h = prompt_rows;
     if turn.expanded {
-        h += turn
-            .details
-            .iter()
-            .map(|m| message_height(m, wrap_width))
-            .sum::<usize>();
-        if !turn.details.last().is_some_and(message_has_trailing_blank) {
+        let mut has_trailing_blank = false;
+        for message in &turn.details {
+            let layout = message_layout(message, wrap_width);
+            h += layout.height;
+            has_trailing_blank = layout.has_trailing_blank;
+        }
+        if !has_trailing_blank {
             h += 1;
         }
     } else {
         h += 1;
     }
     h
-}
-
-fn message_has_trailing_blank(message: &ChatMessage) -> bool {
-    match message {
-        ChatMessage::User(_)
-        | ChatMessage::Agent(_)
-        | ChatMessage::System(_)
-        | ChatMessage::Notice { .. }
-        | ChatMessage::Plan(_)
-        | ChatMessage::Error(_)
-        | ChatMessage::AgentEvent(_) => true,
-        ChatMessage::ToolCall {
-            location,
-            location_is_command,
-            ..
-        } => {
-            *location_is_command && location.as_deref().is_some_and(|value| !value.is_empty())
-        }
-        ChatMessage::Disclaimer => false,
-    }
 }
 
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
@@ -853,41 +868,52 @@ mod tests {
     }
 
     #[test]
-    fn expanded_turn_height_matches_rendered_agent_turn() {
-        let turn = CompletedTurn {
-            prompt: "What changed?".into(),
-            details: vec![ChatMessage::Agent(
-                "I checked the working tree and found one change.".into(),
-            )],
-            expanded: true,
-            trailing_marker: None,
-        };
+    fn expanded_turn_height_matches_rendered_detail_endings() {
+        let cases = [
+            (
+                "agent text",
+                vec![ChatMessage::Agent(
+                    "I checked the working tree and found one change.".into(),
+                )],
+            ),
+            (
+                "compact tool call",
+                vec![ChatMessage::ToolCall {
+                    id: "tool".into(),
+                    title: "Read source".into(),
+                    status: "Completed".into(),
+                    location: Some(r"C:\src\main.rs".into()),
+                    location_is_command: false,
+                }],
+            ),
+            (
+                "command tool call",
+                vec![ChatMessage::ToolCall {
+                    id: "tool".into(),
+                    title: "Run tests".into(),
+                    status: "Completed".into(),
+                    location: Some("cargo test --workspace".into()),
+                    location_is_command: true,
+                }],
+            ),
+            ("disclaimer", vec![ChatMessage::Disclaimer]),
+            ("empty details", Vec::new()),
+        ];
 
-        assert_eq!(
-            turn_height(&turn, 80),
-            build_completed_turn_lines(&turn, false, true, 80).len()
-        );
-    }
+        for (name, details) in cases {
+            let turn = CompletedTurn {
+                prompt: "What changed?".into(),
+                details,
+                expanded: true,
+                trailing_marker: None,
+            };
 
-    #[test]
-    fn expanded_turn_height_adds_blank_after_compact_tool_call() {
-        let turn = CompletedTurn {
-            prompt: "What changed?".into(),
-            details: vec![ChatMessage::ToolCall {
-                id: "tool".into(),
-                title: "Read source".into(),
-                status: "Completed".into(),
-                location: Some(r"C:\src\main.rs".into()),
-                location_is_command: false,
-            }],
-            expanded: true,
-            trailing_marker: None,
-        };
-
-        assert_eq!(
-            turn_height(&turn, 80),
-            build_completed_turn_lines(&turn, false, true, 80).len()
-        );
+            assert_eq!(
+                turn_height(&turn, 80),
+                build_completed_turn_lines(&turn, false, true, 80).len(),
+                "{name}"
+            );
+        }
     }
 
     fn assert_tool_call(
