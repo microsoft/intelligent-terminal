@@ -528,7 +528,7 @@ fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
 
 fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
     let object = raw_output?.as_object()?;
-    ["exitCode", "exit_code", "code"]
+    ["exitCode", "exit_code"]
         .into_iter()
         .find_map(|key| object.get(key)?.as_i64())
 }
@@ -3866,8 +3866,8 @@ mod tests {
         acp_result_failure_fields, bounded_tool_output_parts, complete_prompt_request,
         inject_wta_pane_meta, is_proposal_mcp_tool_title, is_redundant_startup_model_error,
         post_login_authenticate_error,
-        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SoftStopReason, WtaClient,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
+        PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3885,6 +3885,22 @@ mod tests {
         assert!(output.truncated);
         assert_eq!(output.text.chars().count(), 4000);
         assert!(output.text.ends_with("\nTAIL"));
+    }
+
+    #[test]
+    fn tool_call_exit_code_ignores_generic_code_fields() {
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "code": 200 }))),
+            None
+        );
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "exitCode": 7 }))),
+            Some(7)
+        );
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "exit_code": 9 }))),
+            Some(9)
+        );
     }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {

@@ -17,26 +17,28 @@ const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
-    let normalized = output.text.replace("\r\n", "\n").replace('\r', "\n");
-    let all_lines: Vec<&str> = normalized.lines().collect();
-    let start = all_lines.len().saturating_sub(MAX_TOOL_OUTPUT_LINES);
-    let omitted = output.truncated || start > 0;
+    let mut lines = output.text.lines().rev();
+    let mut tail: Vec<String> = lines
+        .by_ref()
+        .take(MAX_TOOL_OUTPUT_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            if chars.next().is_some() {
+                format!("{head}…")
+            } else {
+                head
+            }
+        })
+        .collect();
+    let omitted = output.truncated || lines.next().is_some();
+    tail.reverse();
+
     let mut lines = Vec::with_capacity(MAX_TOOL_OUTPUT_LINES + usize::from(omitted));
     if omitted {
         lines.push("…".to_string());
     }
-    lines.extend(all_lines[start..].iter().map(|line| {
-        if line.chars().count() > MAX_TOOL_OUTPUT_LINE_CHARS {
-            format!(
-                "{}…",
-                line.chars()
-                    .take(MAX_TOOL_OUTPUT_LINE_CHARS)
-                    .collect::<String>()
-            )
-        } else {
-            (*line).to_string()
-        }
-    }));
+    lines.extend(tail);
     lines
 }
 
@@ -630,11 +632,13 @@ fn build_message_lines<'a>(
                     theme::DIM,
                 ));
             }
-            if let Some(exit_code) = exit_code.filter(|_| {
-                !starts_with_ignore_ascii_case(status, "exited (")
-                    && !starts_with_ignore_ascii_case(status, "failed:")
-            }) {
-                spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
+            if *kind == ToolCallKind::Execute || *location_is_command {
+                if let Some(exit_code) = exit_code.filter(|_| {
+                    !starts_with_ignore_ascii_case(status, "exited (")
+                        && !starts_with_ignore_ascii_case(status, "failed:")
+                }) {
+                    spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
+                }
             }
             lines.push(Line::from(spans));
             // A command target can be several `;`-chained PowerShell
@@ -1186,12 +1190,13 @@ mod tests {
                 text: "the entire file contents".into(),
                 truncated: false,
             }),
-            exit_code: None,
+            exit_code: Some(200),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 120);
 
         assert_eq!(lines.len(), 1);
         assert!(!line_text(&lines[0]).contains("entire file contents"));
+        assert!(!line_text(&lines[0]).contains("exit 200"));
     }
 
     #[test]
