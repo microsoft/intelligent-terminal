@@ -421,6 +421,112 @@ struct WtaClient {
 /// that a runaway `raw_input` value (e.g. a full file-edit payload) can't
 /// blow up the chat card into a wall of text.
 const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
+const TOOL_CALL_OUTPUT_MAX_CHARS: usize = 4000;
+
+fn tool_call_kind(kind: acp::schema::v1::ToolKind) -> crate::app::ToolCallKind {
+    use acp::schema::v1::ToolKind;
+    use crate::app::ToolCallKind as AppKind;
+
+    match kind {
+        ToolKind::Read => AppKind::Read,
+        ToolKind::Edit => AppKind::Edit,
+        ToolKind::Delete => AppKind::Delete,
+        ToolKind::Move => AppKind::Move,
+        ToolKind::Search => AppKind::Search,
+        ToolKind::Execute => AppKind::Execute,
+        ToolKind::Think => AppKind::Think,
+        ToolKind::Fetch => AppKind::Fetch,
+        ToolKind::SwitchMode => AppKind::SwitchMode,
+        _ => AppKind::Other,
+    }
+}
+
+fn bounded_tool_output(text: String) -> crate::app::ToolCallOutput {
+    let char_count = text.chars().count();
+    if char_count <= TOOL_CALL_OUTPUT_MAX_CHARS {
+        return crate::app::ToolCallOutput {
+            text,
+            truncated: false,
+        };
+    }
+
+    let text = text
+        .chars()
+        .skip(char_count - TOOL_CALL_OUTPUT_MAX_CHARS)
+        .collect();
+    crate::app::ToolCallOutput {
+        text,
+        truncated: true,
+    }
+}
+
+fn tool_call_content_text(
+    content: &[acp::schema::v1::ToolCallContent],
+) -> Option<crate::app::ToolCallOutput> {
+    let text = content
+        .iter()
+        .filter_map(|item| {
+            let acp::schema::v1::ToolCallContent::Content(content) = item else {
+                return None;
+            };
+            let acp::schema::v1::ContentBlock::Text(text) = &content.content else {
+                return None;
+            };
+            Some(text.text.as_str())
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (!text.is_empty()).then(|| bounded_tool_output(text))
+}
+
+fn raw_output_text(raw_output: &serde_json::Value) -> Option<crate::app::ToolCallOutput> {
+    if let Some(text) = raw_output.as_str().filter(|text| !text.is_empty()) {
+        return Some(bounded_tool_output(text.to_string()));
+    }
+
+    let object = raw_output.as_object()?;
+    let stream_text = ["stdout", "stderr"]
+        .into_iter()
+        .filter_map(|key| object.get(key)?.as_str())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !stream_text.is_empty() {
+        return Some(bounded_tool_output(stream_text));
+    }
+
+    ["output", "text"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_str().filter(|text| !text.is_empty()))
+        .map(str::to_string)
+        .map(bounded_tool_output)
+}
+
+fn tool_call_output(
+    content: &[acp::schema::v1::ToolCallContent],
+    raw_output: Option<&serde_json::Value>,
+) -> Option<crate::app::ToolCallOutput> {
+    tool_call_content_text(content).or_else(|| raw_output.and_then(raw_output_text))
+}
+
+fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
+    let object = raw_input?.as_object()?;
+    ["cwd", "workingDirectory", "working_directory"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_str())
+        .map(str::trim)
+        .filter(|cwd| !cwd.is_empty())
+        .map(str::to_string)
+}
+
+fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
+    let object = raw_output?.as_object()?;
+    ["exitCode", "exit_code", "code"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_i64())
+}
 
 /// Best-effort extraction of *what* a tool call is touching: a file path
 /// (from `locations`/`raw_input.path`/`raw_input.file_path`) or a shell
@@ -1030,8 +1136,12 @@ impl WtaClient {
                     id: tool_call_id,
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
+                    kind: tool_call_kind(tool_call.kind),
                     location,
                     location_is_command,
+                    cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
+                    output: tool_call_output(&tool_call.content, tool_call.raw_output.as_ref()),
+                    exit_code: tool_call_exit_code(tool_call.raw_output.as_ref()),
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
@@ -1049,33 +1159,44 @@ impl WtaClient {
                 if self.tool_call_is_hidden(&sid, &tool_call_id) {
                     return Ok(());
                 }
-                if let Some(status) = &update.fields.status {
-                    // Failed updates frequently carry a `raw_output.message`
-                    // explaining *why* (e.g. Copilot in non-interactive ACP
-                    // mode emits `{"code":"rejected","message":"The user
-                    // rejected this tool call."}` when permission is auto-
-                    // denied). Surface it through the existing status string
-                    // so the chat view renders something more useful than a
-                    // bare "Failed".
+                // Failed updates frequently carry a `raw_output.message`
+                // explaining why. Keep that concise reason in the status
+                // while also forwarding any reported output independently.
+                let status = update.fields.status.as_ref().map(|status| {
                     let reason = update
                         .fields
                         .raw_output
                         .as_ref()
                         .and_then(|v| v.get("message"))
                         .and_then(|m| m.as_str())
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty());
-                    let status_str = match reason {
-                        Some(msg) => format!("{:?}: {}", status, msg),
-                        None => format!("{:?}", status),
-                    };
-                    // Only compute a location when this update actually
-                    // carried fresh `locations`/`raw_input` — otherwise send
-                    // `None` so `app_events.rs` leaves the card's existing
-                    // hint alone instead of blanking it on every status-only
-                    // update (e.g. Pending -> InProgress -> Completed).
-                    let (location, location_is_command) =
-                        if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
+                        .map(str::trim)
+                        .filter(|message| !message.is_empty());
+                    match reason {
+                        Some(message) if matches!(status, acp::schema::v1::ToolCallStatus::Failed) => {
+                            format!("{:?}: {}", status, message)
+                        }
+                        _ => format!("{:?}", status),
+                    }
+                });
+                // Collections in ACP updates replace their previous value.
+                // An empty content collection therefore emits an empty output
+                // patch so the reducer clears stale text.
+                let output = if let Some(content) = &update.fields.content {
+                    Some(
+                        tool_call_content_text(content)
+                            .or_else(|| {
+                                update.fields.raw_output.as_ref().and_then(raw_output_text)
+                            })
+                            .unwrap_or(crate::app::ToolCallOutput {
+                                text: String::new(),
+                                truncated: false,
+                            }),
+                    )
+                } else {
+                    update.fields.raw_output.as_ref().and_then(raw_output_text)
+                };
+                let (location, location_is_command) =
+                    if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
                         match tool_call_location_hint(
                             update.fields.title.as_deref().unwrap_or(""),
                             update.fields.locations.as_deref().unwrap_or(&[]),
@@ -1087,12 +1208,27 @@ impl WtaClient {
                     } else {
                         (None, false)
                     };
+                let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
+                let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
+                if update.fields.title.is_some()
+                    || status.is_some()
+                    || update.fields.kind.is_some()
+                    || location.is_some()
+                    || output.is_some()
+                    || cwd.is_some()
+                    || exit_code.is_some()
+                {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: tool_call_id,
-                        status: status_str,
+                        title: update.fields.title,
+                        status,
+                        kind: update.fields.kind.map(tool_call_kind),
                         location,
                         location_is_command,
+                        output,
+                        cwd,
+                        exit_code,
                     });
                 }
             }
@@ -1195,8 +1331,12 @@ impl WtaClient {
                     id: id.clone(),
                     title,
                     status: "running".to_string(),
+                    kind: crate::app::ToolCallKind::Execute,
                     location,
                     location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
                 });
                 Ok(acp::schema::v1::CreateTerminalResponse::new(id))
             }
@@ -1239,9 +1379,14 @@ impl WtaClient {
                 let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                     session_id,
                     id: tid,
-                    status: format!("exited ({})", code),
+                    title: None,
+                    status: Some(format!("exited ({})", code)),
+                    kind: None,
                     location: None,
                     location_is_command: false,
+                    output: None,
+                    cwd: None,
+                    exit_code: Some(i64::from(code)),
                 });
                 Ok(acp::schema::v1::WaitForTerminalExitResponse::new(
                     acp::schema::v1::TerminalExitStatus::new().exit_code(code),

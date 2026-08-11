@@ -107,6 +107,13 @@ Key ACP message types handled:
 - `create_terminal` / `terminal_output` / `wait_for_terminal_exit` -- agent-managed shells
 - `release_terminal` / `kill_terminal` -- cleanup
 
+Agent-owned tool calls and ACP Client Terminals are distinct. For ordinary
+`tool_call` / `tool_call_update` notifications, WTA displays only the command,
+cwd, status, output, and exit information the Agent reports; it does not own
+the process or provide process controls. The `terminal/*` callbacks remain the
+separate v1 path where WTA owns execution. `request_terminal_actions` remains
+the user-owned, confirmation-gated pane mutation path.
+
 ### WT COM Protocol
 
 All WT operations flow through `wtcli.exe` to WT's out-of-process COM server.

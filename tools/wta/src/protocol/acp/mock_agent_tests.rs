@@ -2349,9 +2349,117 @@ async fn session_notification_routes_tool_call_update_status_only() {
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
-            assert_eq!(status, "Completed");
+            assert_eq!(status.as_deref(), Some("Completed"));
         }
         _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_tool_call_content_without_status() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .content(vec!["step 1 of 3".into()]),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate { status, output, .. }) => {
+            assert_eq!(status, None);
+            assert_eq!(output.expect("expected text content").text, "step 1 of 3");
+        }
+        _ => panic!("expected content-only ToolCallUpdate"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_bounds_tool_call_output_to_latest_text() {
+    let (client, mut rx) = bare_client();
+    let reported = format!("{}TAIL", "x".repeat(5000));
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .content(vec![reported.into()]),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            output: Some(output),
+            ..
+        }) => {
+            assert!(output.truncated);
+            assert_eq!(output.text.chars().count(), 4000);
+            assert!(output.text.ends_with("TAIL"));
+        }
+        _ => panic!("expected bounded ToolCallUpdate output"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_surfaces_execute_metadata_and_raw_output() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "bash",
+                )
+                .kind(acp::schema::v1::ToolKind::Execute)
+                .status(acp::schema::v1::ToolCallStatus::Completed)
+                .raw_input(Some(serde_json::json!({
+                    "command": "cargo test",
+                    "cwd": "C:\\repo"
+                })))
+                .raw_output(Some(serde_json::json!({
+                    "stdout": "12 tests passed",
+                    "stderr": "one warning",
+                    "exitCode": 0
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            kind,
+            location,
+            location_is_command,
+            cwd,
+            output,
+            exit_code,
+            ..
+        }) => {
+            assert_eq!(kind, crate::app::ToolCallKind::Execute);
+            assert_eq!(location.as_deref(), Some("cargo test"));
+            assert!(location_is_command);
+            assert_eq!(cwd.as_deref(), Some(r"C:\repo"));
+            assert_eq!(
+                output.expect("expected reported output").text,
+                "12 tests passed\none warning"
+            );
+            assert_eq!(exit_code, Some(0));
+        }
+        _ => panic!("expected execute ToolCall"),
     }
 }
 
@@ -2377,6 +2485,7 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
         .unwrap();
     match rx.try_recv() {
         Ok(AppEvent::ToolCallUpdate { status, .. }) => {
+            let status = status.as_deref().expect("expected status update");
             assert!(status.contains("Failed"), "got: {status}");
             assert!(
                 status.contains("The user rejected this tool call."),
@@ -2387,7 +2496,7 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
     }
 }
 
-/// A `ToolCallUpdate` with no status is dropped (nothing actionable to show).
+/// A `ToolCallUpdate` with no supported fields is dropped.
 #[tokio::test]
 async fn session_notification_tool_call_update_without_status_is_dropped() {
     let (client, mut rx) = bare_client();
