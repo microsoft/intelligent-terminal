@@ -27,6 +27,7 @@ mod logging;
 mod master;
 mod osc52;
 mod pane_context;
+mod path_grants;
 mod protocol;
 mod rtl;
 mod runtime_paths;
@@ -120,6 +121,10 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
+        confirmation_read_operations: cli.confirmation_read_operations,
+        confirmation_create_operations: cli.confirmation_create_operations,
+        confirmation_input_operations: cli.confirmation_input_operations,
+        allowed_directories: cli.allowed_directory,
         setup: cli.setup,
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,

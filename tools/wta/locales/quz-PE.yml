@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Musuq ch’usaq %{kind}"
 permission.compact.default_description: "Kamachiyta mañakusqa"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N kutchinapaq · hunt'a tarjeta rikunapaq t'ikray]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Mana tarikusqachu"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
 commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Kay ACP tiyaypaq huk willañiqita saqiy (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Kay ACP tiyaypaq saqisqa willañiqikunata qillqay"  # {Locked="ACP"}
+commands.remove_dir.summary: "Huk tiyay directorio yanapakuyta hurquy (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Tukuy pacha directorio yanapakuykuna Intelligent Terminal Ajustes kaqpi kamachisqa."
+path_grants.no_active_session: "Manam kanchu ACP llamk'aq tiyay."
+path_grants.added: "Kay tiyaypaq %{path} saqisqa. Yuyaysapa Terminal kunan permiso tanteanapaq llamk'achiyta atin; ACP chayta willan qatiq tiyay kawsay muyu mañakuypi."
+path_grants.already_present: "%{path} nisqaqa kay tiyanapaq saqisqañam."
+path_grants.removed: "%{path} kaqpaq tiyay directorio yanapakuyta hurqusqa."
+path_grants.not_found: "%{path} nisqaqa manam tiyay willañiqip quyninchu."
+path_grants.failed: "Manam atirqanchu directorio yanapakuykunata musuqchay: %{error} ."
+path_grants.list_header: "Saqisqa directoriokuna"
+path_grants.global_header: "Tukuy pachantinpi alcance:"
+path_grants.session_header: "Sesión nisqapa alcance nisqa:"
+path_grants.none: "  (mana directoriokunayuq)"
+path_grants.not_advertised: "Llaqtapi waqaychasqa; chay ruwaq AI Agente mana ACP additionalDirectories yanapakuyta willarqanchu."
+path_grants.updating_global: "Tukuynin willañiqi qillqana qunakuykunata musuqchachkan..."
+path_grants.global_host_only: "Tukuynin willañiqi qillqana qunakuykuna kunanqa Windows-pi qurpachasqa agentekunallatam yanapan."
+path_grants.absolute_required: "Hunt'asqa willañiqi qillqana ñanta qillqay."
+path_grants.global_added: "%{path} tukuynin willañiqi qillqana qunakuykunaman yapasqa."
+path_grants.global_already_present: "%{path} ñam tukuynin willañiqi qillqana qunakuyña."
+path_grants.global_removed: "%{path} tukuynin willañiqi qillqana qunakuykunamanta hurqusqa."
+path_grants.global_not_found: "%{path} mana tukuynin willañiqi qillqana qunakuychu."
+path_grants.global_failed: "Tukuynin willañiqi qillqana qunakuykunata manam musuqchayta atikunchu: %{error}"
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}

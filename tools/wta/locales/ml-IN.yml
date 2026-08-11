@@ -101,6 +101,10 @@ recommendations.open_new_empty: "പുതിയ ശൂന്യമായ %{kind
 permission.compact.default_description: "അനുമതി അഭ്യര്‍ഥിച്ചു"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ഉത്തരം നല്‍കുക · മുഴുവന്‍ കാര്‍ഡിനായി വലുപ്പം മാറ്റുക]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── ഏജന്റ് നില (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "കണ്ടെത്തിയില്ല"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "വിൻഡോസ് ടെർമിനൽ �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ഈ ടാബിന്റെ ഏജന്റ് പേൻ നീക്കുക (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ഈ ACP സെഷനായി ഒരു ഡയറക്‌ടറി അനുവദിക്കുക (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ഈ ACP സെഷനായി അനുവദിച്ചിട്ടുള്ള ഡയറക്ടറികൾ ലിസ്റ്റ് ചെയ്യുക"  # {Locked="ACP"}
+commands.remove_dir.summary: "ഒരു സെഷൻ ഡയറക്ടറി ഗ്രാൻ്റ് നീക്കം ചെയ്യുക (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "ഇൻ്റലിജൻ്റ് ടെർമിനൽ ക്രമീകരണത്തിലാണ് ഗ്ലോബൽ ഡയറക്ടറി ഗ്രാൻ്റുകൾ കൈകാര്യം ചെയ്യുന്നത്."
+path_grants.no_active_session: "സജീവമായ ACP സെഷൻ ഒന്നുമില്ല."
+path_grants.added: "ഈ സെഷനായി %{path} അനുവദിച്ചു. ഇന്റലിജന്റ് ടെർമിനലിന് ഇപ്പോൾ അനുമതി തീരുമാനങ്ങൾക്കായി ഇത് ഉപയോഗിക്കാം; ACP അടുത്ത സെഷൻ ലൈഫ് സൈക്കിൾ അഭ്യർത്ഥനയിൽ ഇത് പരസ്യം ചെയ്യുന്നു."
+path_grants.already_present: "ഈ സെഷനായി %{path} ഇതിനകം അനുവദിച്ചിട്ടുണ്ട്."
+path_grants.removed: "%{path} എന്നതിനായുള്ള സെഷൻ ഡയറക്‌ടറി ഗ്രാൻ്റ് നീക്കം ചെയ്‌തു."
+path_grants.not_found: "%{path} ഒരു സെഷൻ ഡയറക്‌ടറി ഗ്രാൻ്റല്ല."
+path_grants.failed: "ഡയറക്ടറി ഗ്രാൻ്റുകൾ അപ്ഡേറ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല: %{error}"
+path_grants.list_header: "അനുവദനീയമായ ഡയറക്ടറികൾ"
+path_grants.global_header: "ആഗോള വ്യാപ്തി:"
+path_grants.session_header: "സെഷൻ വ്യാപ്തി:"
+path_grants.none: "  (ഡയറക്ടറികൾ ഇല്ല)"
+path_grants.not_advertised: "പ്രാദേശികമായി സംഭരിച്ചിരിക്കുന്നു; സജീവ AI ഏജൻ്റ് ACP additionalDirectories പിന്തുണ പരസ്യം ചെയ്തില്ല."
+path_grants.updating_global: "ആഗോള ഡയറക്ടറി അനുമതികൾ അപ്ഡേറ്റ് ചെയ്യുന്നു..."
+path_grants.global_host_only: "ആഗോള ഡയറക്ടറി അനുമതികൾ നിലവിൽ Windows-ൽ ഹോസ്റ്റ് ചെയ്ത ഏജന്റുമാരെ മാത്രമേ പിന്തുണയ്ക്കൂ."
+path_grants.absolute_required: "ഒരു സമ്പൂർണ്ണ ഡയറക്ടറി പാത്ത് നൽകുക."
+path_grants.global_added: "ആഗോള ഡയറക്ടറി അനുമതികളിലേക്ക് %{path} ചേർത്തു."
+path_grants.global_already_present: "%{path} ഇതിനകം ഒരു ആഗോള ഡയറക്ടറി അനുമതിയാണ്."
+path_grants.global_removed: "ആഗോള ഡയറക്ടറി അനുമതികളിൽ നിന്ന് %{path} നീക്കി."
+path_grants.global_not_found: "%{path} ഒരു ആഗോള ഡയറക്ടറി അനുമതിയല്ല."
+path_grants.global_failed: "ആഗോള ഡയറക്ടറി അനുമതികൾ അപ്ഡേറ്റ് ചെയ്യാനായില്ല: %{error}"
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}

@@ -101,6 +101,10 @@ recommendations.open_new_empty: "نیا خالی %{kind}"
 permission.compact.default_description: "اجازت کی درخواست کی گئی"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N جواب دیں · مکمل کارڈ کے لیے سائز تبدیل کریں]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── ایجنٹ حالت (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "نہیں ملا"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "ونڈوز ٹرمینل ٹیب سے باہر �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "اس ٹیب کے ایجنٹ پین کو منتقل کریں (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "اس ACP سیشن کے لیے ڈائریکٹری کی اجازت دیں (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "اس ACP سیشن کے لیے اجازت شدہ ڈائریکٹریز کی فہرست بنائیں"  # {Locked="ACP"}
+commands.remove_dir.summary: "سیشن ڈائرکٹری گرانٹ کو ہٹا دیں (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "عالمی ڈائرکٹری گرانٹس کا انتظام انٹیلجنٹ ٹرمینل سیٹنگز میں کیا جاتا ہے۔"
+path_grants.no_active_session: "کوئی فعال ACP سیشن نہیں ہے۔"
+path_grants.added: "اس سیشن کے لیے %{path} کی اجازت ہے۔ ذہین ٹرمینل اسے اب اجازت کے فیصلوں کے لیے استعمال کر سکتا ہے۔ ACP اگلے سیشن لائف سائیکل کی درخواست پر اس کی تشہیر کرتا ہے۔"
+path_grants.already_present: "%{path} اس سیشن کے لیے پہلے سے ہی اجازت ہے۔"
+path_grants.removed: "%{path} کے لیے سیشن ڈائرکٹری گرانٹ کو ہٹا دیا گیا۔"
+path_grants.not_found: "%{path} سیشن ڈائرکٹری گرانٹ نہیں ہے۔"
+path_grants.failed: "ڈائریکٹری گرانٹس کو اپ ڈیٹ نہیں کیا جا سکا: %{error}"
+path_grants.list_header: "اجازت یافتہ ڈائریکٹریز"
+path_grants.global_header: "عالمی دائرہ کار:"
+path_grants.session_header: "سیشن کا دائرہ کار:"
+path_grants.none: "  (کوئی ڈائریکٹریز نہیں)"
+path_grants.not_advertised: "مقامی طور پر ذخیرہ شدہ؛ فعال AI ایجنٹ نے ACP additionalDirectories سپورٹ کی تشہیر نہیں کی۔"
+path_grants.updating_global: "عالمی ڈائریکٹری اجازتیں اپ ڈیٹ کی جا رہی ہیں..."
+path_grants.global_host_only: "عالمی ڈائریکٹری اجازتیں فی الحال صرف Windows پر ہوسٹ کیے گئے ایجنٹس کو سپورٹ کرتی ہیں۔"
+path_grants.absolute_required: "ایک مطلق ڈائریکٹری پاتھ درج کریں۔"
+path_grants.global_added: "عالمی ڈائریکٹری اجازتوں میں %{path} شامل کیا گیا۔"
+path_grants.global_already_present: "%{path} پہلے ہی ایک عالمی ڈائریکٹری اجازت ہے۔"
+path_grants.global_removed: "عالمی ڈائریکٹری اجازتوں سے %{path} ہٹا دیا گیا۔"
+path_grants.global_not_found: "%{path} عالمی ڈائریکٹری اجازت نہیں ہے۔"
+path_grants.global_failed: "عالمی ڈائریکٹری اجازتیں اپ ڈیٹ نہیں کی جا سکیں: %{error}"
 model_picker.title: "ماڈل منتخب کریں (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "منسلک ایجنٹ نے کوئی قابلِ انتخاب ماڈل ظاہر نہیں کیا۔"
 system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر دیا گیا۔"  # {Locked="%{model}"}

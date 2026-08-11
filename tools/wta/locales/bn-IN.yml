@@ -102,6 +102,10 @@ recommendations.open_new_empty: "নতুন খালি %{kind}"
 permission.compact.default_description: "অনুমতি অনুরোধ করা হয়েছে"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N উত্তর দিন · পূর্ণ কার্ড দেখতে আকার পরিবর্তন করুন]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── এজেন্ট স্থিতি (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "খুঁজে পাওয়া যায়নি"
@@ -219,6 +223,32 @@ system.agent_switch_unavailable: "উইন্ডোজ টার্মিনা
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনের জন্য মডেল নির্বাচন করুন (সরাসরি পরিবর্তন করতে /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "এই ট্যাবের এজেন্ট পেনটি সরান (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "এই ACP সেশনের জন্য একটি ডিরেক্টরিকে অনুমতি দিন (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "এই ACP সেশনের জন্য অনুমোদিত ডিরেক্টরিগুলির তালিকা করুন৷"  # {Locked="ACP"}
+commands.remove_dir.summary: "একটি সেশন ডিরেক্টরি অনুদান সরান (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "গ্লোবাল ডিরেক্টরি অনুদান ইন্টেলিজেন্ট টার্মিনাল সেটিংসে পরিচালিত হয়।"
+path_grants.no_active_session: "কোনো সক্রিয় ACP সেশন নেই।"
+path_grants.added: "এই সেশনের জন্য %{path} অনুমোদিত৷ ইন্টেলিজেন্ট টার্মিনাল এখন অনুমতির সিদ্ধান্তের জন্য এটি ব্যবহার করতে পারে; ACP পরবর্তী সেশন লাইফসাইকেল অনুরোধে এটির বিজ্ঞাপন দেয়।"
+path_grants.already_present: "%{path} ইতিমধ্যেই এই সেশনের জন্য অনুমোদিত৷"
+path_grants.removed: "%{path} এর জন্য সেশন ডিরেক্টরি অনুদান সরানো হয়েছে।"
+path_grants.not_found: "%{path} একটি সেশন ডিরেক্টরি অনুদান নয়।"
+path_grants.failed: "ডিরেক্টরি অনুদান আপডেট করা যায়নি: %{error}"
+path_grants.list_header: "অনুমোদিত ডিরেক্টরি"
+path_grants.global_header: "বিশ্বব্যাপী সুযোগ:"
+path_grants.session_header: "সেশনের সুযোগ:"
+path_grants.none: "  (কোন ডিরেক্টরি নেই)"
+path_grants.not_advertised: "স্থানীয়ভাবে সংরক্ষিত; সক্রিয় এআই এজেন্ট ACP additionalDirectories সমর্থনের বিজ্ঞাপন দেয়নি।"
+path_grants.updating_global: "গ্লোবাল ডিরেক্টরি অনুদান আপডেট করা হচ্ছে..."
+path_grants.global_host_only: "গ্লোবাল ডিরেক্টরি অনুদান বর্তমানে শুধুমাত্র Windows-এ হোস্ট করা এজেন্ট সমর্থন করে।"
+path_grants.absolute_required: "একটি সম্পূর্ণ ডিরেক্টরি পাথ লিখুন।"
+path_grants.global_added: "গ্লোবাল ডিরেক্টরি অনুদানে %{path} যোগ করা হয়েছে।"
+path_grants.global_already_present: "%{path} ইতিমধ্যেই একটি গ্লোবাল ডিরেক্টরি অনুদান।"
+path_grants.global_removed: "গ্লোবাল ডিরেক্টরি অনুদান থেকে %{path} সরানো হয়েছে।"
+path_grants.global_not_found: "%{path} একটি গ্লোবাল ডিরেক্টরি অনুদান নয়।"
+path_grants.global_failed: "গ্লোবাল ডিরেক্টরি অনুদান আপডেট করা যায়নি: %{error}"
 model_picker.title: "মডেল নির্বাচন করুন (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}

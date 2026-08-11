@@ -89,6 +89,10 @@ recommendations.open_new_empty: "%{kind} gwag newydd"
 permission.compact.default_description: "Caniatâd wedi'i ofyn"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N i ateb · newidiwch faint ar gyfer cerdyn llawn]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Statws asiant (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Heb ei ganfod"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "Nid yw newid asiant ar gael y tu allan i dab W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
 commands.move.summary: "Symud paen asiant y tab hwn (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Caniatáu cyfeiriadur ar gyfer y sesiwn ACP hwn ( /add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Rhestrwch gyfeiriaduron a ganiateir ar gyfer y sesiwn ACP hon"  # {Locked="ACP"}
+commands.remove_dir.summary: "Dileu grant cyfeiriadur sesiwn ( /remove-dir <absolute-path> )"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Rheolir grantiau cyfeiriadur byd-eang mewn Gosodiadau Terfynell Deallus."
+path_grants.no_active_session: "Nid oes sesiwn ACP gweithredol."
+path_grants.added: "Wedi'i ganiatáu %{path} ar gyfer y sesiwn hon. Gall Terfynell Ddeallus ei ddefnyddio ar gyfer penderfyniadau caniatâd nawr; ACP yn ei hysbysebu ar gais cylch bywyd y sesiwn nesaf."
+path_grants.already_present: "Mae %{path} eisoes wedi'i ganiatáu ar gyfer y sesiwn hon."
+path_grants.removed: "Wedi dileu'r grant cyfeiriadur sesiwn ar gyfer %{path}."
+path_grants.not_found: "Nid yw %{path} yn grant cyfeiriadur sesiwn."
+path_grants.failed: "Methu â diweddaru grantiau cyfeiriadur: %{error}"
+path_grants.list_header: "Cyfeiriaduron a ganiateir"
+path_grants.global_header: "Cwmpas byd-eang:"
+path_grants.session_header: "Cwmpas y sesiwn:"
+path_grants.none: "  (dim cyfeiriaduron)"
+path_grants.not_advertised: "Wedi'i storio'n lleol; ni hysbysebodd yr Asiant AI gweithredol gefnogaeth ACP additionalDirectories."
+path_grants.updating_global: "Wrthi'n diweddaru grantiau cyfeiriadur byd-eang..."
+path_grants.global_host_only: "Ar hyn o bryd, dim ond asiantau sy'n cael eu lletya ar Windows y mae grantiau cyfeiriadur byd-eang yn eu cefnogi."
+path_grants.absolute_required: "Rhowch lwybr cyfeiriadur absoliwt."
+path_grants.global_added: "Ychwanegwyd %{path} at grantiau cyfeiriadur byd-eang."
+path_grants.global_already_present: "Mae %{path} eisoes yn grant cyfeiriadur byd-eang."
+path_grants.global_removed: "Tynnwyd %{path} o grantiau cyfeiriadur byd-eang."
+path_grants.global_not_found: "Nid yw %{path} yn grant cyfeiriadur byd-eang."
+path_grants.global_failed: "Methu diweddaru grantiau cyfeiriadur byd-eang: %{error}"
 model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}

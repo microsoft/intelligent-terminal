@@ -101,6 +101,10 @@ recommendations.open_new_empty: "नवें रिकामें %{kind}"
 permission.compact.default_description: "परवानगी मागल्या"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N जाप दियात · पुराय कार्ड पळोवपाक आकार बदलात]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── एजेंट स्थिती (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "मेळलो ना"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ह्या पेना खातीर मॉडेल निवडात (थेट बदलपाक /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ह्या टॅबाचें एजंट पेन हलायात (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ह्या ACP सत्राखातीर निर्देशिका परवानगी दिवची (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ह्या ACP सत्राखातीर परवानगी दिल्ल्या निर्देशिकांची वळेरी करात"  # {Locked="ACP"}
+commands.remove_dir.summary: "सत्र निर्देशिका अनुदान काडून उडोवचो (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "जागतीक निर्देशिका अनुदान बुद्धीमान टर्मिनल सेटिंग्जांत वेवस्थापन करतात."
+path_grants.no_active_session: "सक्रिय ACP सत्र ना."
+path_grants.added: "ह्या सत्राक %{path} परवानगी दिल्या. इंटेलिजंट टर्मिनल आतां परवानगी निर्णया खातीर ताचो वापर करूंक शकता; ACP फुडल्या सत्र जिवीत चक्र विनंतीचेर ताची जायरात करता."
+path_grants.already_present: "%{path} ह्या सत्राक पयलींच परवानगी आसा."
+path_grants.removed: "%{path} खातीर सत्र निर्देशिका अनुदान काडून उडयलां."
+path_grants.not_found: "%{path} हें सत्र निर्देशिका अनुदान न्हय."
+path_grants.failed: "निर्देशिका अनुदान अद्ययावत करूंक शकले नात: %{error}"
+path_grants.list_header: "परवानगी दिल्ले निर्देशिका"
+path_grants.global_header: "जागतीक व्याप्ती:"
+path_grants.session_header: "सत्राची व्याप्ती:"
+path_grants.none: "  (निर्देशिका नात)"
+path_grants.not_advertised: "थळाव्या स्वरुपांत सांठोवन दवरतात; सक्रिय AI एजंटान ACP additionalDirectories समर्थनाची जायरात करूंक ना."
+path_grants.updating_global: "जागतिक निर्देशिका परवानगीं अपडेट करतात..."
+path_grants.global_host_only: "जागतिक निर्देशिका परवानगीं सद्या फकत Windows चेर होस्ट केल्ल्या एजंटांक आदार दितात."
+path_grants.absolute_required: "एक पूर्ण निर्देशिका मार्ग घालात."
+path_grants.global_added: "जागतिक निर्देशिका परवानगींनी %{path} जोडला."
+path_grants.global_already_present: "%{path} पयलींच जागतिक निर्देशिका परवानगी आसा."
+path_grants.global_removed: "जागतिक निर्देशिका परवानगींतल्यान %{path} काडलो."
+path_grants.global_not_found: "%{path} जागतिक निर्देशिका परवानगी न्हय."
+path_grants.global_failed: "जागतिक निर्देशिका परवानगीं अपडेट करूंक शकले ना: %{error}"
 model_picker.title: "मॉडेल निवडात (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिल्ल्या एजंटान कसलेच निवडपायोग्य मॉडेल जाहीर केलें ना."
 system.model_set: "ह्या पेना खातीर मॉडेल %{model} चेर सेट केलें."  # {Locked="%{model}"}

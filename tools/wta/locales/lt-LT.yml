@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Naujas tuščias %{kind}"
 permission.compact.default_description: "Prašomas leidimas"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N atsakyti · pakeiskite dydį pilnai kortelei]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nerasta"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Window
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
 commands.move.summary: "Perkelti šios kortelės agento skydelį (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Leisti šios ACP seanso katalogą (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Išvardykite leidžiamus šios ACP seanso katalogus"  # {Locked="ACP"}
+commands.remove_dir.summary: "Pašalinkite seanso katalogo suteikimą (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Visuotinės katalogų dotacijos tvarkomos išmaniųjų terminalų nustatymuose."
+path_grants.no_active_session: "Nėra aktyvios ACP sesijos."
+path_grants.added: "Šiam seansui leidžiama %{path}. Išmanusis Terminalas dabar gali jį naudoti priimdamas sprendimus dėl leidimo; ACP skelbia jį kitos sesijos gyvavimo ciklo užklausoje."
+path_grants.already_present: "%{path} jau leidžiama šiai sesijai."
+path_grants.removed: "Pašalintas %{path} seanso katalogo leidimas."
+path_grants.not_found: "%{path} nėra seanso katalogo leidimas."
+path_grants.failed: "Nepavyko atnaujinti katalogo dotacijų: %{error}"
+path_grants.list_header: "Leidžiami katalogai"
+path_grants.global_header: "Pasaulinė apimtis:"
+path_grants.session_header: "Sesijos apimtis:"
+path_grants.none: "  (jokių katalogų)"
+path_grants.not_advertised: "Saugomas vietoje; aktyvus AI agentas nereklamavo ACP additionalDirectories palaikymo."
+path_grants.updating_global: "Atnaujinami visuotiniai katalogų leidimai..."
+path_grants.global_host_only: "Visuotiniai katalogų leidimai šiuo metu palaiko tik sistemoje „Windows“ nuomojamus agentus."
+path_grants.absolute_required: "Įveskite absoliutų katalogo kelią."
+path_grants.global_added: "%{path} įtrauktas į visuotinius katalogų leidimus."
+path_grants.global_already_present: "%{path} jau yra visuotinis katalogo leidimas."
+path_grants.global_removed: "%{path} pašalintas iš visuotinių katalogų leidimų."
+path_grants.global_not_found: "%{path} nėra visuotinis katalogo leidimas."
+path_grants.global_failed: "Nepavyko atnaujinti visuotinių katalogų leidimų: %{error}"
 model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
 system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}

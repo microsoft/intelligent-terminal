@@ -96,6 +96,10 @@ recommendations.open_new_empty: "%{kind} ទទេថ្មី"
 permission.compact.default_description: "សំណើសុំការអនុញ្ញាត"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ដើម្បីឆ្លើយ · ផ្លាស់ប្តូរទំហំសម្រាប់កាតពេញ]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
 # Status badge when agent CLI binary is not on PATH
@@ -232,6 +236,32 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "អនុញ្ញាតឱ្យថតឯកសារសម្រាប់វគ្គនេះ ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "រាយបញ្ជីថតដែលបានអនុញ្ញាតសម្រាប់វគ្គ ACP នេះ។"  # {Locked="ACP"}
+commands.remove_dir.summary: "យកជំនួយថតសម័យចេញ (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "ជំនួយថតសកលត្រូវបានគ្រប់គ្រងនៅក្នុងការកំណត់ស្ថានីយឆ្លាតវៃ។"
+path_grants.no_active_session: "មិនមានដំណើរការ ACP session ទេ។"
+path_grants.added: "បានអនុញ្ញាត %{path} សម្រាប់វគ្គនេះ។ ស្ថានីយឆ្លាតវៃអាចប្រើវាសម្រាប់ការសម្រេចចិត្តការអនុញ្ញាតឥឡូវនេះ។ ACP ផ្សាយពាណិជ្ជកម្មវានៅលើសំណើវដ្តជីវិតវគ្គបន្ទាប់។"
+path_grants.already_present: "%{path} ត្រូវបានអនុញ្ញាតរួចហើយសម្រាប់វគ្គនេះ។"
+path_grants.removed: "បានលុបជំនួយថតសម័យសម្រាប់ %{path} ។"
+path_grants.not_found: "%{path} មិនមែនជាការផ្តល់ជំនួយថតសម័យទេ។"
+path_grants.failed: "មិន​អាច​ធ្វើ​បច្ចុប្បន្នភាព​ជំនួយ​ថត​ឯកសារ៖ %{error}"
+path_grants.list_header: "ថតដែលបានអនុញ្ញាត"
+path_grants.global_header: "វិសាលភាពសកល:"
+path_grants.session_header: "វិសាលភាពនៃសម័យ:"
+path_grants.none: "  (គ្មាន​ថត)"
+path_grants.not_advertised: "រក្សាទុកក្នុងមូលដ្ឋាន; ភ្នាក់ងារ AI សកម្មមិនបានផ្សព្វផ្សាយ ACP additionalDirectories support ទេ។"
+path_grants.updating_global: "កំពុងធ្វើបច្ចុប្បន្នភាពការអនុញ្ញាតថតសកល..."
+path_grants.global_host_only: "បច្ចុប្បន្ន ការអនុញ្ញាតថតសកលគាំទ្រតែភ្នាក់ងារដែលបង្ហោះនៅលើ Windows ប៉ុណ្ណោះ។"
+path_grants.absolute_required: "បញ្ចូលផ្លូវថតដាច់ខាត។"
+path_grants.global_added: "បានបន្ថែម %{path} ទៅការអនុញ្ញាតថតសកល។"
+path_grants.global_already_present: "%{path} ជាការអនុញ្ញាតថតសកលរួចហើយ។"
+path_grants.global_removed: "បានលុប %{path} ចេញពីការអនុញ្ញាតថតសកល។"
+path_grants.global_not_found: "%{path} មិនមែនជាការអនុញ្ញាតថតសកលទេ។"
+path_grants.global_failed: "មិនអាចធ្វើបច្ចុប្បន្នភាពការអនុញ្ញាតថតសកលបានទេ៖ %{error}"
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}

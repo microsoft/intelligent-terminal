@@ -84,6 +84,10 @@ recommendations.open_new_empty: "新建空白 %{kind}"
 permission.compact.default_description: "已要求權限"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N 回答 · 調整視窗大小以檢視完整卡片]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── 智能體狀態 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "找不到"
@@ -211,6 +215,32 @@ system.agent_switch_unavailable: "在 Windows Terminal 分頁之外，無法切�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}
 commands.move.summary: "移動此分頁的智能體窗格 (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "允許此 ACP 會話使用目錄 (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "列出此 ACP 會話允許的目錄"  # {Locked="ACP"}
+commands.remove_dir.summary: "刪除會話目錄授權 (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "全域目錄授權在智慧終端設定中進行管理。"
+path_grants.no_active_session: "沒有活動的 ACP 會話。"
+path_grants.added: "此會話允許使用 %{path}。智能終端現在可以使用它來進行權限決策； ACP 在下一個會話生命週期請求中公佈它。"
+path_grants.already_present: "此會話已允許使用 %{path}。"
+path_grants.removed: "刪除了 %{path} 的會話目錄授予。"
+path_grants.not_found: "%{path} 不是會話目錄授權。"
+path_grants.failed: "無法更新目錄授權：%{error}"
+path_grants.list_header: "允許的目錄"
+path_grants.global_header: "全球範圍:"
+path_grants.session_header: "會話範圍:"
+path_grants.none: "  (沒有目錄)"
+path_grants.not_advertised: "儲存在本地；活動 AI 代理未宣傳 ACP additionalDirectories 支援。"
+path_grants.updating_global: "正在更新全域目錄授權..."
+path_grants.global_host_only: "全域目錄授權目前僅支援裝載於 Windows 的代理程式。"
+path_grants.absolute_required: "請輸入絕對目錄路徑。"
+path_grants.global_added: "已將 %{path} 新增至全域目錄授權。"
+path_grants.global_already_present: "%{path} 已是全域目錄授權。"
+path_grants.global_removed: "已從全域目錄授權移除 %{path}。"
+path_grants.global_not_found: "%{path} 不是全域目錄授權。"
+path_grants.global_failed: "無法更新全域目錄授權: %{error}"
 model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已連線的智能體未公布任何可選取的模型。"
 system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}

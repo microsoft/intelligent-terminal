@@ -97,6 +97,10 @@ recommendations.open_new_empty: "Nova prazna %{kind}"
 permission.compact.default_description: "Zatražena dozvola"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N za odgovor · promijenite veličinu za punu karticu]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nije pronađeno"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Prebacivanje agenata nije dostupno izvan karti
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Odaberite model za ovo okno (/model <id> za izravno prebacivanje)"  # {Locked="/model","<id>"}
 commands.move.summary: "Premjesti okno agenta ove kartice (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Dopusti direktorij za ovu ACP sesiju (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Popis dopuštenih direktorija za ovu ACP sesiju"  # {Locked="ACP"}
+commands.remove_dir.summary: "Ukloni odobrenje direktorija sesije (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Dodjelama globalnog imenika upravlja se u postavkama inteligentnog terminala."
+path_grants.no_active_session: "Nema aktivne ACP sesije."
+path_grants.added: "Dopušteno %{path} za ovu sesiju. Inteligentni Terminal sada ga može koristiti za donošenje odluka o dopuštenjima; ACP ga oglašava na zahtjevu za životni ciklus sljedeće sesije."
+path_grants.already_present: "%{path} već je dopušten za ovu sesiju."
+path_grants.removed: "Uklonjeno je odobrenje direktorija sesije za %{path}."
+path_grants.not_found: "%{path} nije odobrenje direktorija sesije."
+path_grants.failed: "Nije moguće ažurirati odobrenja imenika: %{error}"
+path_grants.list_header: "Dopušteni direktoriji"
+path_grants.global_header: "Globalni opseg:"
+path_grants.session_header: "Opseg sesije:"
+path_grants.none: "  (nema imenika)"
+path_grants.not_advertised: "Pohranjeno lokalno; aktivni AI agent nije oglašavao ACP additionalDirectories podršku."
+path_grants.updating_global: "Ažuriranje globalnih dodjela direktorija..."
+path_grants.global_host_only: "Globalne dodjele direktorija trenutačno podržavaju samo agente smještene u sustavu Windows."
+path_grants.absolute_required: "Unesite apsolutni put direktorija."
+path_grants.global_added: "%{path} dodan je u globalne dodjele direktorija."
+path_grants.global_already_present: "%{path} već je globalna dodjela direktorija."
+path_grants.global_removed: "%{path} uklonjen je iz globalnih dodjela direktorija."
+path_grants.global_not_found: "%{path} nije globalna dodjela direktorija."
+path_grants.global_failed: "Nije moguće ažurirati globalne dodjele direktorija: %{error}"
 model_picker.title: "Odaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Povezani agent nije oglasio nijedan model koji se može odabrati."
 system.model_set: "Model za ovo okno postavljen je na %{model}."  # {Locked="%{model}"}

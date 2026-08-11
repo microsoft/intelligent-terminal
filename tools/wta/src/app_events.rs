@@ -39,6 +39,15 @@ impl App {
                 self.handle_key(key);
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::Down(
+                    crossterm::event::MouseButton::Right,
+                ) if self.current_tab().input_has_nav_focus() =>
+                {
+                    self.text_selection.clear();
+                    if self.accept_command_ghost() {
+                        self.refresh_add_dir_ghost_cwd();
+                    }
+                }
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
@@ -752,12 +761,17 @@ impl App {
                 }
                 tab.tool_calls
                     .insert(id.clone(), (title.clone(), status.clone()));
+                let policy_note = tab
+                    .auto_approved_tool_calls
+                    .contains(&id)
+                    .then(|| t!("permission.auto_approved").into_owned());
                 tab.messages.push(ChatMessage::ToolCall {
                     id,
                     title,
                     status,
                     location,
                     location_is_command,
+                    policy_note,
                 });
                 tab.scroll_to_bottom();
             }
@@ -798,9 +812,50 @@ impl App {
                     }
                 }
             }
+            AppEvent::ToolCallAutoApproved { session_id, id } => {
+                let tab = self.session_tab_mut(&session_id);
+                tab.auto_approved_tool_calls.insert(id.clone());
+                for message in &mut tab.messages {
+                    if let ChatMessage::ToolCall {
+                        id: message_id,
+                        policy_note,
+                        ..
+                    } = message
+                    {
+                        if message_id == &id {
+                            *policy_note = Some(t!("permission.auto_approved").into_owned());
+                        }
+                    }
+                }
+            }
+            AppEvent::AllowedDirectoryUpdateTimedOut { request_id } => {
+                if self
+                    .pending_global_permissions
+                    .remove(&request_id)
+                    .is_some()
+                {
+                    self.push_path_grant_message(ChatMessage::warning(
+                        t!("path_grants.global_failed", error = "request timed out").into_owned(),
+                    ));
+                }
+            }
+            AppEvent::AddDirGhostCwdResolved {
+                generation,
+                input,
+                cwd,
+            } => {
+                if generation == self.add_dir_ghost_generation
+                    && self.current_tab().input == input
+                    && self.current_tab().cursor_pos == input.len()
+                    && commands::add_dir_default_is_global(&input).is_some()
+                {
+                    self.source_cwd = cwd;
+                }
+            }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
                 tab.tool_calls.remove(&id);
+                tab.auto_approved_tool_calls.remove(&id);
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
                 );
@@ -834,6 +889,8 @@ impl App {
                 kind_label,
                 target,
                 target_is_command,
+                grant_directory,
+                allow_once_id,
                 options,
                 responder,
             } => {
@@ -849,12 +906,15 @@ impl App {
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
                 tab.permission.push_back(PermissionState {
+                    session_id,
                     tool_call_id,
                     description,
                     title,
                     kind_label,
                     target,
                     target_is_command,
+                    grant_directory,
+                    allow_once_id,
                     options,
                     selected: 0,
                     responder: Some(responder),
@@ -1191,6 +1251,11 @@ impl App {
                     return;
                 }
 
+                if method == "allowed_directories_changed" {
+                    self.handle_allowed_directories_changed(&params);
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -1217,6 +1282,29 @@ impl App {
                             "autofix_enabled hot-reloaded from settings change",
                         );
                         self.autofix_enabled = enabled;
+                    }
+
+                    if matches!(
+                        self.current_agent_source,
+                        crate::agent_source::AgentSource::Host
+                    ) {
+                        if let Some(values) = params
+                            .get("allowed_host_directories")
+                            .and_then(|v| v.as_array())
+                        {
+                            let Some(directories) = values
+                                .iter()
+                                .map(|value| value.as_str().map(std::path::PathBuf::from))
+                                .collect::<Option<Vec<_>>>()
+                            else {
+                                tracing::warn!(
+                                    target: "path_grants",
+                                    "ignoring malformed allowed_host_directories update"
+                                );
+                                return;
+                            };
+                            self.path_grants.replace_configured_directories(directories);
+                        }
                     }
 
                     // delegate_agent + delegate_model travel together so the
@@ -2184,6 +2272,10 @@ impl App {
                             acp_model: None,
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
+                            operation_policies:
+                                crate::protocol::acp::permission_policy::OperationPolicies::default(
+                                ),
+                            path_grants: Arc::clone(&self.path_grants),
                             prompt_rx: None, // try_start_acp will create fresh channels
                             cancel_rx: None,
                             new_session_rx: None,

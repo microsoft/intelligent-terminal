@@ -102,6 +102,10 @@ recommendations.open_new_empty: "%{kind} فارغ جديد"
 permission.compact.default_description: "تم طلب الإذن"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N للإجابة · غيّر الحجم لعرض البطاقة الكاملة]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── حالة عامل الذكاء الاصطناعي (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "غير موجود"
@@ -218,6 +222,32 @@ system.agent_switch_unavailable: "تبديل عامل الذكاء الاصطن�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
 commands.move.summary: "نقل لوحة عامل الذكاء الاصطناعي لعلامة التبويب هذه (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "السماح بدليل لهذه الجلسة ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "قم بإدراج الأدلة المسموح بها لهذه الجلسة ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "إزالة منحة دليل الجلسة (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "تتم إدارة منح الدليل العالمي في إعدادات المحطة الطرفية الذكية."
+path_grants.no_active_session: "لا توجد جلسة ACP نشطة."
+path_grants.added: "%{path} مسموح به لهذه الجلسة. يمكن للوحدة الطرفية الذكية استخدامه لاتخاذ قرارات الأذونات الآن؛ ACP يعلن عنه في طلب دورة حياة الجلسة التالية."
+path_grants.already_present: "%{path} مسموح به بالفعل لهذه الجلسة."
+path_grants.removed: "تمت إزالة منحة دليل الجلسة لـ %{path}."
+path_grants.not_found: "%{path} ليس منحة دليل الجلسة."
+path_grants.failed: "تعذر تحديث منح الدليل: %{error}"
+path_grants.list_header: "الدلائل المسموح بها"
+path_grants.global_header: "النطاق العالمي:"
+path_grants.session_header: "نطاق الجلسة:"
+path_grants.none: "  (لا الدلائل)"
+path_grants.not_advertised: "مخزنة محليا. لم يعلن وكيل الذكاء الاصطناعي النشط عن دعم ACP additionalDirectories."
+path_grants.updating_global: "جارٍ تحديث منح الدلائل العمومية..."
+path_grants.global_host_only: "تدعم منح الدلائل العمومية حاليًا الوكلاء المستضافين على Windows فقط."
+path_grants.absolute_required: "أدخل مسار دليل مطلقًا."
+path_grants.global_added: "تمت إضافة %{path} إلى منح الدلائل العمومية."
+path_grants.global_already_present: "%{path} هو بالفعل منحة دليل عمومية."
+path_grants.global_removed: "تمت إزالة %{path} من منح الدلائل العمومية."
+path_grants.global_not_found: "%{path} ليس منحة دليل عمومية."
+path_grants.global_failed: "تعذر تحديث منح الدلائل العمومية: %{error}"
 model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}

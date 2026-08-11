@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Novo %{kind} baleiro"
 permission.compact.default_description: "Permiso solicitado"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para responder · redimensione para ver a tarxeta completa]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Estado do axente (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Non atopado"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "O cambio de axente non está dispoñible fóra
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Escolla o modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mover o panel de axente desta pestana (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Permitir un directorio para esta sesión ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Lista os directorios permitidos para esta sesión ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "Eliminar unha concesión de directorio de sesión (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "As subvencións de directorios globais xestionanse na configuración do terminal intelixente."
+path_grants.no_active_session: "Non hai ningunha sesión activa ACP."
+path_grants.added: "%{path} permitido para esta sesión. Terminal Intelixente pode usalo para tomar decisións de permiso agora; ACP anúnciao na seguinte solicitude de ciclo de vida da sesión."
+path_grants.already_present: "%{path} xa está permitido para esta sesión."
+path_grants.removed: "Eliminouse a concesión do directorio de sesión para %{path}."
+path_grants.not_found: "%{path} non é unha concesión de directorio de sesión."
+path_grants.failed: "Non se puideron actualizar as subvencións do directorio: %{error}"
+path_grants.list_header: "Directorios permitidos"
+path_grants.global_header: "Ámbito global:"
+path_grants.session_header: "Ámbito da sesión:"
+path_grants.none: "  (sen directorios)"
+path_grants.not_advertised: "Almacenado localmente; o axente de IA activo non anunciou o soporte ACP additionalDirectories."
+path_grants.updating_global: "Actualizando as concesións globais de directorios..."
+path_grants.global_host_only: "Actualmente, as concesións globais de directorios só admiten axentes aloxados en Windows."
+path_grants.absolute_required: "Introduza unha ruta absoluta de directorio."
+path_grants.global_added: "Engadiuse %{path} ás concesións globais de directorios."
+path_grants.global_already_present: "%{path} xa é unha concesión global de directorio."
+path_grants.global_removed: "Quitouse %{path} das concesións globais de directorios."
+path_grants.global_not_found: "%{path} non é unha concesión global de directorio."
+path_grants.global_failed: "Non se puideron actualizar as concesións globais de directorios: %{error}"
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O axente conectado non anunciou ningún modelo seleccionable."
 system.model_set: "O modelo deste panel estableceuse en %{model}."  # {Locked="%{model}"}

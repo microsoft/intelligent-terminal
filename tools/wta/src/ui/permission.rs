@@ -38,8 +38,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             None => perm.title.clone(),
         };
         let mut lines = vec![Line::styled(header, theme::CARD_DESCRIPTION)];
-        if let Some(target) = &perm.target {
-            if perm.target_is_command {
+        let display_target = perm
+            .grant_directory
+            .as_ref()
+            .map(|directory| (directory, false))
+            .or_else(|| perm.target.as_ref().map(|target| (target, perm.target_is_command)));
+        if let Some((target, target_is_command)) = display_target {
+            if target_is_command {
                 // A command target can be several `;`-chained statements
                 // (agents commonly batch multiple checks into one tool
                 // call) — split it the same way as the chat tool-call
@@ -110,8 +115,7 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
     // eat the separator — and forced `.max(1)` so 1 char of description
     // would render even when there was genuinely no room, pushing the hint
     // off-screen.
-    let overhead =
-        prefix.chars().count() + separator.chars().count() + hint.chars().count();
+    let overhead = prefix.chars().count() + separator.chars().count() + hint.chars().count();
     let budget = (area.width as usize).saturating_sub(overhead);
     let total = desc_one_line.chars().count();
     let desc: String = if budget == 0 {

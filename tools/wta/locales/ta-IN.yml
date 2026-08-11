@@ -101,6 +101,10 @@ recommendations.open_new_empty: "புதிய காலி %{kind}"
 permission.compact.default_description: "அனுமதி கோரப்பட்டது"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N பதிலளிக்கவும் · முழு அட்டையைக் காண அளவை மாற்றவும்]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── ஏஜெண்ட் நிலை (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "கிடைக்கவில்லை"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "இந்த ACP அமர்வுக்கான கோப்பகத்தை அனுமதிக்கவும் (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "இந்த ACP அமர்வுக்கு அனுமதிக்கப்பட்ட கோப்பகங்களைப் பட்டியலிடுங்கள்"  # {Locked="ACP"}
+commands.remove_dir.summary: "அமர்வு அடைவு மானியத்தை அகற்று (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "உலகளாவிய அடைவு மானியங்கள் நுண்ணறிவு முனைய அமைப்புகளில் நிர்வகிக்கப்படுகின்றன."
+path_grants.no_active_session: "செயலில் ACP அமர்வு இல்லை."
+path_grants.added: "இந்த அமர்வுக்கு அனுமதிக்கப்பட்ட %{path}. அறிவாண் முனையம் இப்போது அனுமதி முடிவுகளுக்கு இதைப் பயன்படுத்தலாம்; ACP அடுத்த அமர்வு வாழ்க்கைச் சுழற்சி கோரிக்கையில் அதை விளம்பரப்படுத்துகிறது."
+path_grants.already_present: "இந்த அமர்வுக்கு ஏற்கனவே %{path} அனுமதிக்கப்பட்டுள்ளது."
+path_grants.removed: "%{path} க்கான அமர்வு அடைவு மானியம் அகற்றப்பட்டது."
+path_grants.not_found: "%{path} அமர்வு அடைவு மானியம் அல்ல."
+path_grants.failed: "கோப்பக மானியங்களைப் புதுப்பிக்க முடியவில்லை: %{error}"
+path_grants.list_header: "அனுமதிக்கப்பட்ட கோப்பகங்கள்"
+path_grants.global_header: "உலகளாவிய நோக்கம்:"
+path_grants.session_header: "அமர்வு நோக்கம்:"
+path_grants.none: "  (கோப்பகங்கள் இல்லை)"
+path_grants.not_advertised: "உள்நாட்டில் சேமிக்கப்படுகிறது; செயலில் உள்ள AI முகவர் ACP additionalDirectories ஆதரவை விளம்பரப்படுத்தவில்லை."
+path_grants.updating_global: "உலகளாவிய அடைவு அனுமதிகளைப் புதுப்பிக்கிறது..."
+path_grants.global_host_only: "உலகளாவிய அடைவு அனுமதிகள் தற்போது Windows-இல் ஹோஸ்ட் செய்யப்பட்ட முகவர்களை மட்டுமே ஆதரிக்கின்றன."
+path_grants.absolute_required: "ஒரு முழுமையான அடைவுப் பாதையை உள்ளிடவும்."
+path_grants.global_added: "உலகளாவிய அடைவு அனுமதிகளில் %{path} சேர்க்கப்பட்டது."
+path_grants.global_already_present: "%{path} ஏற்கனவே ஒரு உலகளாவிய அடைவு அனுமதியாகும்."
+path_grants.global_removed: "உலகளாவிய அடைவு அனுமதிகளிலிருந்து %{path} அகற்றப்பட்டது."
+path_grants.global_not_found: "%{path} ஒரு உலகளாவிய அடைவு அனுமதி அல்ல."
+path_grants.global_failed: "உலகளாவிய அடைவு அனுமதிகளைப் புதுப்பிக்க முடியவில்லை: %{error}"
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}

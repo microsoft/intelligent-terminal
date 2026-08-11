@@ -254,6 +254,7 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
+        void OnAllowedDirectoryUpdateRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
@@ -456,6 +457,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring delegateModel;
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
+            std::vector<std::wstring> allowedHostDirectories;
             bool autofixEnabled{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};

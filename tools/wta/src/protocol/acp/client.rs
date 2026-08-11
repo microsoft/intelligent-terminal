@@ -35,6 +35,8 @@ const POST_LOGIN_MASTER_PIPE_BACKOFF_MS: &[u64] = &[
     50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000,
 ];
 
+use crate::path_grants::SessionRoots;
+
 fn post_login_authenticate_error(method_id: &str, e: &acp::Error) -> anyhow::Error {
     let failure = AgentFailure::from_acp_error(e);
     if failure.is_auth() {
@@ -375,6 +377,8 @@ struct ClientState {
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     hidden_tool_calls: std::sync::Mutex<HashSet<(String, String)>>,
+    operation_policies: super::permission_policy::OperationPolicies,
+    session_roots: Arc<SessionRoots>,
 }
 
 #[derive(Default)]
@@ -629,6 +633,108 @@ fn is_proposal_mcp_tool_call(title: Option<&str>, raw_input: Option<&serde_json:
         crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
             .is_ok()
     })
+}
+
+fn permission_grant_directory(
+    args: &acp::schema::v1::RequestPermissionRequest,
+    source: &crate::agent_source::AgentSource,
+) -> Option<std::path::PathBuf> {
+    if !matches!(source, crate::agent_source::AgentSource::Host) {
+        return None;
+    }
+    let locations = args.tool_call.fields.locations.as_deref()?;
+    if locations.is_empty() {
+        return None;
+    }
+
+    let mut directory: Option<std::path::PathBuf> = None;
+    for location in locations {
+        let metadata = std::fs::metadata(&location.path).ok()?;
+        let candidate = if metadata.is_dir() {
+            location.path.clone()
+        } else {
+            location.path.parent()?.to_path_buf()
+        };
+        let candidate = normalize_windows_canonical_path(std::fs::canonicalize(candidate).ok()?);
+        if candidate.components().count() <= 2 || is_user_home_directory(&candidate) {
+            return None;
+        }
+        match &directory {
+            Some(existing)
+                if !existing
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(&candidate.to_string_lossy()) =>
+            {
+                return None;
+            }
+            None => directory = Some(candidate),
+            _ => {}
+        }
+    }
+    directory
+}
+
+fn permission_options(
+    args: &acp::schema::v1::RequestPermissionRequest,
+    allow_once_id: Option<&str>,
+    has_directory_scope: bool,
+) -> Vec<PermOption> {
+    let agent_options: Vec<PermOption> = args
+        .options
+        .iter()
+        .map(|option| PermOption {
+            id: option.option_id.to_string(),
+            name: option.name.clone(),
+            kind: format!("{:?}", option.kind),
+        })
+        .collect();
+    if !has_directory_scope {
+        return agent_options;
+    }
+
+    let mut options = Vec::with_capacity(4);
+    if let Some(allow_once) = allow_once_id
+        .and_then(|id| agent_options.iter().find(|option| option.id == id))
+        .cloned()
+    {
+        options.push(allow_once);
+    }
+    options.push(PermOption {
+        id: "intellterm-session-directory-grant".to_string(),
+        name: t!("permission.allow_directory_session").into_owned(),
+        kind: crate::app_contracts::SESSION_DIRECTORY_GRANT_KIND.to_string(),
+    });
+    options.push(PermOption {
+        id: "intellterm-global-directory-grant".to_string(),
+        name: t!("permission.allow_directory_global").into_owned(),
+        kind: crate::app_contracts::GLOBAL_DIRECTORY_GRANT_KIND.to_string(),
+    });
+    if let Some(reject) = agent_options.iter().find(|option| option.is_reject()).cloned() {
+        options.push(reject);
+    }
+    options
+}
+
+fn normalize_windows_canonical_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    let value = path.to_string_lossy();
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return std::path::PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return std::path::PathBuf::from(rest);
+    }
+    path
+}
+
+fn is_user_home_directory(path: &std::path::Path) -> bool {
+    let Some(home) = std::env::var_os("USERPROFILE") else {
+        return false;
+    };
+    let Ok(home) = std::fs::canonicalize(home) else {
+        return false;
+    };
+    path.to_string_lossy()
+        .eq_ignore_ascii_case(&normalize_windows_canonical_path(home).to_string_lossy())
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -888,15 +994,90 @@ impl WtaClient {
             ));
         }
 
-        let options: Vec<PermOption> = args
+        let effective_roots = self.state.session_roots.effective(&session_id);
+        match super::permission_policy::evaluate(
+            args.tool_call.fields.kind.as_ref(),
+            args.tool_call.fields.locations.as_deref().unwrap_or(&[]),
+            &args.options,
+            &effective_roots,
+            self.state.session_roots.source(),
+            self.state.operation_policies,
+        ) {
+            super::permission_policy::PermissionDecision::AutoApprove {
+                option_id,
+                operation,
+            } => {
+                tracing::info!(
+                    target: "permission_policy",
+                    session_id = %session_id,
+                    tool_call_id = %tool_call_id,
+                    decision = "auto_approve",
+                    operation = ?operation,
+                    "automatically resolving ACP permission"
+                );
+                let _ = self.state.event_tx.send(AppEvent::ToolCallAutoApproved {
+                    session_id: session_id.clone(),
+                    id: tool_call_id.clone(),
+                });
+                self.state
+                    .prompt_timing
+                    .permission_resolved(&session_id, "policy_allow_once");
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    acp::schema::v1::RequestPermissionOutcome::Selected(
+                        acp::schema::v1::SelectedPermissionOutcome::new(option_id),
+                    ),
+                ));
+            }
+            super::permission_policy::PermissionDecision::AutoReject {
+                option_id,
+                operation,
+            } => {
+                tracing::info!(
+                    target: "permission_policy",
+                    session_id = %session_id,
+                    tool_call_id = %tool_call_id,
+                    decision = "auto_reject",
+                    operation = ?operation,
+                    has_reject_once = option_id.is_some(),
+                    "automatically resolving ACP permission"
+                );
+                self.state
+                    .prompt_timing
+                    .permission_resolved(&session_id, "policy_reject_once");
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    match option_id {
+                        Some(option_id) => acp::schema::v1::RequestPermissionOutcome::Selected(
+                            acp::schema::v1::SelectedPermissionOutcome::new(option_id),
+                        ),
+                        None => acp::schema::v1::RequestPermissionOutcome::Cancelled,
+                    },
+                ));
+            }
+            super::permission_policy::PermissionDecision::Prompt { reason } => {
+                tracing::info!(
+                    target: "permission_policy",
+                    session_id = %session_id,
+                    tool_call_id = %tool_call_id,
+                    decision = "prompt",
+                    reason = ?reason,
+                    "showing ACP permission request"
+                );
+            }
+        }
+
+        let allow_once_id = args
             .options
             .iter()
-            .map(|o| PermOption {
-                id: o.option_id.to_string(),
-                name: o.name.clone(),
-                kind: format!("{:?}", o.kind),
-            })
-            .collect();
+            .find(|option| option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce)
+            .map(|option| option.option_id.to_string());
+        let grant_directory = allow_once_id
+            .as_ref()
+            .and_then(|_| permission_grant_directory(&args, self.state.session_roots.source()));
+        let options = permission_options(
+            &args,
+            allow_once_id.as_deref(),
+            grant_directory.is_some(),
+        );
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
@@ -912,6 +1093,8 @@ impl WtaClient {
             kind_label: kind_label.map(str::to_string),
             target,
             target_is_command,
+            grant_directory: grant_directory.map(|path| path.to_string_lossy().into_owned()),
+            allow_once_id,
             options,
             responder: resp_tx,
         });
@@ -1039,8 +1222,7 @@ impl WtaClient {
                 if is_proposal_mcp_tool_call(
                     update.fields.title.as_deref(),
                     update.fields.raw_input.as_ref(),
-                )
-                    || proposal_command_candidate(update.fields.raw_input.as_ref())
+                ) || proposal_command_candidate(update.fields.raw_input.as_ref())
                         .is_some_and(looks_like_proposal_command)
                 {
                     self.hide_proposal_tool_call(&sid, &tool_call_id);
@@ -1294,8 +1476,9 @@ impl WtaClient {
                 ))
             })?;
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
-            acp::Error::internal_error()
-                .data(format!("failed to encode terminal action arguments: {error}"))
+            acp::Error::internal_error().data(format!(
+                "failed to encode terminal action arguments: {error}"
+            ))
         })?;
         if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
             let response = ProposalValidationResponse {
@@ -1349,12 +1532,8 @@ impl WtaClient {
                 .reject_validation(&proposal_id, false);
             return Err(acp::Error::internal_error().data("Helper UI is unavailable"));
         }
-        let decision = match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            validation_rx,
-        )
-        .await
-        {
+        let decision =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), validation_rx).await {
             Ok(Ok(decision)) => decision,
             Ok(Err(_)) => ProposalValidationDecision {
                 status: ProposalValidationStatus::Unavailable,
@@ -1660,10 +1839,7 @@ fn helper_owner_tab_id() -> Option<String> {
 /// No-op for whichever fields are unavailable: `pane_session_id` when
 /// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
 /// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
-fn inject_wta_pane_meta(
-    meta: &mut Option<acp::schema::v1::Meta>,
-    proposal_mcp_enabled: bool,
-) {
+fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>, proposal_mcp_enabled: bool) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
     let pane_session_id = {
         let normalized = wt_session
@@ -1765,10 +1941,9 @@ async fn handle_load_failure(
     tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     error_message: String,
-    _proposal_channels: Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    session_roots: Arc<SessionRoots>,
 ) {
     if let Some(old) = old_sid {
         // Mid-life session management load failure path: restore prior binding.
@@ -1790,7 +1965,7 @@ async fn handle_load_failure(
         tab_id: tab_id.clone(),
         message: format!("{} Starting a fresh session instead.", error_message),
     });
-    let mut new_req = acp::schema::v1::NewSessionRequest::new(cwd);
+    let mut new_req = session_roots.new_request(cwd.clone());
     inject_wta_pane_meta(&mut new_req.meta, proposal_mcp_enabled);
     let fallback_started = std::time::Instant::now();
     let fallback = conn.new_session(new_req).await;
@@ -1798,6 +1973,7 @@ async fn handle_load_failure(
     match fallback {
         Ok(resp) => {
             let new_sid = resp.session_id.clone();
+            session_roots.remember(&new_sid, &cwd);
             tracing::info!(
                 target: "acp_load_session",
                 tab = %tab_id,
@@ -1857,6 +2033,8 @@ pub async fn run_acp_client_over_pipe(
     source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
+    operation_policies: super::permission_policy::OperationPolicies,
+    session_roots: Arc<SessionRoots>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
     mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
@@ -1970,7 +2148,6 @@ pub async fn run_acp_client_over_pipe(
     let prompt_timing = Arc::new(PromptTimingState::default());
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
-
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
@@ -1979,6 +2156,8 @@ pub async fn run_acp_client_over_pipe(
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+        operation_policies,
+        session_roots,
     });
 
     let client = WtaClient {
@@ -2198,8 +2377,7 @@ pub async fn run_acp_client_over_pipe(
             anyhow::anyhow!("initialize over master pipe failed: {}", e)
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    let cloud_catalog =
-        crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+    let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
     {
@@ -2217,6 +2395,15 @@ pub async fn run_acp_client_over_pipe(
     };
     let proposal_commands_supported = init_resp.agent_capabilities.mcp_capabilities.http
         && wta_meta.proposal_mcp.as_deref() == Some("http-v1");
+    let additional_directories_supported = init_resp
+        .agent_capabilities
+        .session_capabilities
+        .additional_directories
+        .is_some();
+    client
+        .state
+        .session_roots
+        .set_additional_directories_supported(additional_directories_supported);
     // Connection milestone at info so a clean handshake is visible in release.
     tracing::info!(
         target: "helper",
@@ -2403,7 +2590,7 @@ pub async fn run_acp_client_over_pipe(
         } else {
             let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
             startup_probe.log("Creating session (over pipe)");
-            let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
+        let mut new_session_req = client.state.session_roots.new_request(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta, proposal_commands_supported);
             let new_session_started = std::time::Instant::now();
             let new_session_result = conn.new_session(new_session_req).await;
@@ -2453,6 +2640,10 @@ pub async fn run_acp_client_over_pipe(
                 anyhow::Error::new(failure)
                     .context(format!("new_session over master pipe failed: {e}"))
             })?;
+        client
+            .state
+            .session_roots
+            .remember(&session.session_id, &cwd);
 
             let session_id = session.session_id.clone();
             startup_probe.log(&format!("Session created (over pipe): {}", session_id));
@@ -2538,8 +2729,8 @@ pub async fn run_acp_client_over_pipe(
     let load_session_supported = init_resp.agent_capabilities.load_session;
     let image_supported = init_resp.agent_capabilities.prompt_capabilities.image;
     startup_probe.log(&format!(
-        "Agent capabilities (over pipe): loadSession={} image={}",
-        load_session_supported, image_supported
+        "Agent capabilities (over pipe): loadSession={} image={} additionalDirectories={}",
+        load_session_supported, image_supported, additional_directories_supported
     ));
     let _ = event_tx.send(AppEvent::AgentConnected {
         name: agent_name,
@@ -2665,6 +2856,7 @@ pub async fn run_acp_client_over_pipe(
                     "HelperPipeNewSessionForTab",
                     &proposal_channels,
                     proposal_commands_supported,
+                    &client.state.session_roots,
                 );
             }
             Some(req) = load_session_rx.recv() => {
@@ -2679,10 +2871,18 @@ pub async fn run_acp_client_over_pipe(
                     std::time::Duration::from_secs(60),
                     &proposal_channels,
                     proposal_commands_supported,
+                    &client.state.session_roots,
                 );
             }
             Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
+                dispatch_drop_session(
+                    req,
+                    &conn,
+                    &tab_to_session,
+                    &template_memo,
+                    &cancel_signals,
+                    &client.state.session_roots,
+                );
             }
             Some(req) = rename_session_rx.recv() => {
                 dispatch_rename_session(req, &tab_to_session);
@@ -2932,10 +3132,9 @@ fn dispatch_load_session(
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
     timeout: std::time::Duration,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    session_roots: &Arc<SessionRoots>,
 ) {
     tracing::info!(
         target: "acp_load_session",
@@ -2951,6 +3150,7 @@ fn dispatch_load_session(
     let cancel_signals = Arc::clone(cancel_signals);
     let event_tx = event_tx.clone();
     let proposal_channels = Arc::clone(proposal_channels);
+    let session_roots = Arc::clone(session_roots);
     tokio::task::spawn_local(async move {
         let cwd = req
             .cwd
@@ -2977,8 +3177,7 @@ fn dispatch_load_session(
         }
 
         let session_id = acp::schema::v1::SessionId::new(req.session_id.clone());
-        let mut load_req =
-            acp::schema::v1::LoadSessionRequest::new(session_id.clone(), cwd.clone());
+        let mut load_req = session_roots.load_request(session_id.clone(), cwd.clone());
         // Tell master which WT pane owns the session we're about to
         // rehydrate, so the registry row for the resumed sid carries
         // `pane_session_id = <this pane's GUID>` and cross-helper Focus
@@ -2994,6 +3193,7 @@ fn dispatch_load_session(
 
         match load_result {
             Ok(Ok(resp)) => {
+                session_roots.remember(&session_id, &cwd);
                 tracing::info!(
                     target: "acp_load_session",
                     tab = %req.tab_id,
@@ -3054,6 +3254,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    &session_roots,
                 )
                 .await;
             }
@@ -3084,6 +3285,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    &session_roots,
                 )
                 .await;
             }
@@ -3105,10 +3307,9 @@ async fn dispatch_load_failure(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     message: String,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    session_roots: &Arc<SessionRoots>,
 ) {
     if use_load_failure_handler {
         handle_load_failure(
@@ -3121,6 +3322,7 @@ async fn dispatch_load_failure(
             message,
             Arc::clone(proposal_channels),
             proposal_mcp_enabled,
+            Arc::clone(session_roots),
         )
         .await;
     } else {
@@ -3156,10 +3358,9 @@ fn dispatch_new_session(
     is_agent_pane: bool,
     inject_pane_meta: bool,
     log_label: &'static str,
-    _proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    session_roots: &Arc<SessionRoots>,
 ) {
     tracing::info!(
         target: "acp_new_session",
@@ -3171,6 +3372,7 @@ fn dispatch_new_session(
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
     let event_tx = event_tx.clone();
+    let session_roots = Arc::clone(session_roots);
     tokio::task::spawn_local(async move {
         let cwd = req
             .cwd
@@ -3184,6 +3386,7 @@ fn dispatch_new_session(
         };
 
         if let Some(ref old) = old_sid {
+            session_roots.forget(old);
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
             template_memo.forget(&old_str).await;
@@ -3200,7 +3403,7 @@ fn dispatch_new_session(
         // RPCs against the new sid return {"focused": false, "reason":
         // "no_pane"} because master has the row but no pane GUID to feed
         // wtcli focus-pane. Only the helper pipe path needs this.
-        let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd);
+        let mut new_session_req = session_roots.new_request(cwd.clone());
         if inject_pane_meta {
             inject_wta_pane_meta(&mut new_session_req.meta, proposal_mcp_enabled);
         }
@@ -3220,6 +3423,7 @@ fn dispatch_new_session(
         };
 
         let new_sid = new_session.session_id.clone();
+        session_roots.remember(&new_sid, &cwd);
         if is_agent_pane {
             let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
             let pane_for_index = if pane_session_id.is_empty() {
@@ -3264,6 +3468,7 @@ fn dispatch_drop_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    session_roots: &Arc<SessionRoots>,
 ) {
     tracing::info!(
         target: "acp_drop_session",
@@ -3274,12 +3479,14 @@ fn dispatch_drop_session(
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
+    let session_roots = Arc::clone(session_roots);
     tokio::task::spawn_local(async move {
         let old_sid: Option<acp::schema::v1::SessionId> = {
             let mut g = tab_to_session.lock().await;
             g.remove(&req.tab_id)
         };
         if let Some(old) = old_sid {
+            session_roots.forget(&old);
             // Signal any in-flight prompt for this session to bail out of
             // conn.prompt().await immediately, then send a session/cancel
             // to the agent. Mirrors the new_session cancel path, minus the
@@ -3481,7 +3688,7 @@ async fn dispatch_prompt_body(
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let new_session_started = std::time::Instant::now();
-            let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd);
+            let mut new_session_req = client_task.state.session_roots.new_request(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta, proposal_commands_supported);
             let new_session_result = conn_task.new_session(new_session_req).await;
             log_acp_new_session_result(
@@ -3502,6 +3709,7 @@ async fn dispatch_prompt_body(
                 }
             };
             let new_sid = new_session.session_id.clone();
+            client_task.state.session_roots.remember(&new_sid, &cwd);
             if is_agent_pane {
                 let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
                 let pane_for_index = if pane_session_id.is_empty() {
@@ -3715,9 +3923,10 @@ mod tests {
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
         is_proposal_mcp_tool_title, is_redundant_startup_model_error,
-        post_login_authenticate_error,
-        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SoftStopReason, WtaClient,
+        normalize_windows_canonical_path, permission_grant_directory, permission_options,
+        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label,
+        ClientState, PromptTimingState, PromptUsageIdentity, SessionRoots, SoftStopReason,
+        WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3725,6 +3934,144 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    fn permission_request_for_locations(
+        locations: Vec<std::path::PathBuf>,
+    ) -> acp::schema::v1::RequestPermissionRequest {
+        use acp::schema::v1::{
+            PermissionOption, PermissionOptionId, PermissionOptionKind, RequestPermissionRequest,
+            SessionId, ToolCallId, ToolCallLocation, ToolCallUpdate, ToolCallUpdateFields,
+        };
+
+        RequestPermissionRequest::new(
+            SessionId::new("session"),
+            ToolCallUpdate::new(
+                ToolCallId::new("tool"),
+                ToolCallUpdateFields::new().locations(
+                    locations
+                        .into_iter()
+                        .map(ToolCallLocation::new)
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            vec![PermissionOption::new(
+                PermissionOptionId::new("allow-once"),
+                "Allow once",
+                PermissionOptionKind::AllowOnce,
+            )],
+        )
+    }
+
+    #[test]
+    fn permission_grant_directory_requires_one_existing_host_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "wta-permission-grant-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let first = root.join("first");
+        let second = root.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let file = first.join("file.txt");
+        std::fs::write(&file, "test").unwrap();
+
+        let file_request = permission_request_for_locations(vec![file]);
+        assert_eq!(
+            permission_grant_directory(&file_request, &crate::agent_source::AgentSource::Host),
+            std::fs::canonicalize(&first)
+                .ok()
+                .map(normalize_windows_canonical_path)
+        );
+
+        let unrelated_request =
+            permission_request_for_locations(vec![first.clone(), second.clone()]);
+        assert_eq!(
+            permission_grant_directory(&unrelated_request, &crate::agent_source::AgentSource::Host),
+            None
+        );
+        assert_eq!(
+            permission_grant_directory(
+                &permission_request_for_locations(vec![first.join("missing.txt")]),
+                &crate::agent_source::AgentSource::Host
+            ),
+            None
+        );
+        assert_eq!(
+            permission_grant_directory(
+                &permission_request_for_locations(vec![first]),
+                &crate::agent_source::AgentSource::Wsl {
+                    distro: "Ubuntu".to_string()
+                }
+            ),
+            None
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_permission_options_are_compact_and_scope_specific() {
+        use acp::schema::v1::{
+            PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
+            ToolCallUpdate, ToolCallUpdateFields,
+        };
+
+        let request = RequestPermissionRequest::new(
+            acp::schema::v1::SessionId::new("session"),
+            ToolCallUpdate::new(ToolCallId::new("tool"), ToolCallUpdateFields::new()),
+            vec![
+                PermissionOption::new(
+                    "allow-once",
+                    "Allow once",
+                    PermissionOptionKind::AllowOnce,
+                ),
+                PermissionOption::new(
+                    "allow-always",
+                    "Always allow",
+                    PermissionOptionKind::AllowAlways,
+                ),
+                PermissionOption::new("reject-once", "Deny", PermissionOptionKind::RejectOnce),
+            ],
+        );
+
+        let options = permission_options(&request, Some("allow-once"), true);
+        assert_eq!(
+            options.iter().map(|option| option.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "allow-once",
+                "intellterm-session-directory-grant",
+                "intellterm-global-directory-grant",
+                "reject-once",
+            ]
+        );
+        assert_eq!(permission_options(&request, Some("allow-once"), false).len(), 3);
+    }
+
+    #[test]
+    fn session_roots_are_capability_gated_and_exclude_cwd() {
+        let cwd = std::env::current_dir().expect("current directory");
+        let additional = cwd.join("additional");
+        let roots = SessionRoots::new(
+            "copilot".to_string(),
+            crate::agent_source::AgentSource::Host,
+            vec![cwd.clone(), additional.clone(), additional.clone()],
+        );
+
+        assert!(roots
+            .new_request(cwd.clone())
+            .additional_directories
+            .is_empty());
+
+        roots.set_additional_directories_supported(true);
+        assert_eq!(
+            roots.new_request(cwd).additional_directories,
+            vec![additional]
+        );
+    }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
         use acp::schema::v1::{
@@ -3789,6 +4136,13 @@ mod tests {
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
             hidden_tool_calls: Mutex::new(HashSet::new()),
+            operation_policies: crate::protocol::acp::permission_policy::OperationPolicies::default(
+            ),
+            session_roots: Arc::new(SessionRoots::new(
+                "copilot".to_string(),
+                crate::agent_source::AgentSource::Host,
+                Vec::new(),
+            )),
         });
         (WtaClient { state }, event_rx)
     }
@@ -4418,6 +4772,13 @@ mod tests {
                     crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
                 ),
                 hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+                operation_policies:
+                    crate::protocol::acp::permission_policy::OperationPolicies::default(),
+                session_roots: Arc::new(super::super::SessionRoots::new(
+                    "copilot".to_string(),
+                    crate::agent_source::AgentSource::Host,
+                    Vec::new(),
+                )),
             });
             (WtaClient { state }, rx)
         }

@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} huts berria"
 permission.compact.default_description: "Baimena eskatuta"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N erantzuteko · aldatu tamaina txartel osoa ikusteko]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agentearen egoera (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Ez da aurkitu"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Agente-aldaketa ez dago erabilgarri Windows Te
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mugitu fitxa honen agente-panela (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Baimendu direktorio bat ACP saio honetarako (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Zerrenda ezazu ACP saio honetarako baimendutako direktorioa"  # {Locked="ACP"}
+commands.remove_dir.summary: "Kendu saio-direktorioaren esleipena (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Direktorio globalaren diru-laguntzak terminal adimendunen ezarpenetan kudeatzen dira."
+path_grants.no_active_session: "Ez dago ACP saio aktiborik."
+path_grants.added: "%{path} baimenduta dago saio honetarako. Terminal Adimendunak baimenak erabakitzeko erabil dezake orain; ACP-k hurrengo saioaren bizi-zikloaren eskaeran iragartzen du."
+path_grants.already_present: "%{path} dagoeneko baimenduta dago saio honetarako."
+path_grants.removed: "%{path}-rako saio-direktorioaren esleipena kendu du."
+path_grants.not_found: "%{path} ez da saio-direktorioaren beka bat."
+path_grants.failed: "Ezin izan dira eguneratu direktorio-laguntzak: %{error}"
+path_grants.list_header: "Baimendutako direktorioak"
+path_grants.global_header: "Esparru globala:"
+path_grants.session_header: "Saioaren esparrua:"
+path_grants.none: "  (direktoriorik ez)"
+path_grants.not_advertised: "Tokian gordeta; AI Agent aktiboak ez zuen ACP additionalDirectories laguntza iragartzen."
+path_grants.updating_global: "Direktorio-emate globalak eguneratzen..."
+path_grants.global_host_only: "Direktorio-emate globalek Windows-en ostatatutako agenteak soilik onartzen dituzte une honetan."
+path_grants.absolute_required: "Idatzi direktorio-bide absolutu bat."
+path_grants.global_added: "%{path} direktorio-emate globaletara gehitu da."
+path_grants.global_already_present: "%{path} dagoeneko direktorio-emate global bat da."
+path_grants.global_removed: "%{path} direktorio-emate globaletatik kendu da."
+path_grants.global_not_found: "%{path} ez da direktorio-emate global bat."
+path_grants.global_failed: "Ezin izan dira direktorio-emate globalak eguneratu: %{error}"
 model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}

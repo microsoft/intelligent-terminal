@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} kosong baharu"
 permission.compact.default_description: "Kebenaran diminta"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N untuk menjawab · ubah saiz untuk kad penuh]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Tidak ditemui"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Wind
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
 commands.move.summary: "Alihkan anak tetingkap ejen tab ini (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Benarkan direktori untuk sesi ACP ini (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Senaraikan direktori yang dibenarkan untuk sesi ACP ini"  # {Locked="ACP"}
+commands.remove_dir.summary: "Alih keluar geran direktori sesi (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Pemberian direktori global diuruskan dalam Tetapan Terminal Pintar."
+path_grants.no_active_session: "Tiada sesi ACP aktif."
+path_grants.added: "Dibenarkan %{path} untuk sesi ini. Terminal Pintar boleh menggunakannya untuk keputusan kebenaran sekarang; ACP mengiklankannya pada permintaan kitaran hayat sesi seterusnya."
+path_grants.already_present: "%{path} sudah pun dibenarkan untuk sesi ini."
+path_grants.removed: "Mengalih keluar geran direktori sesi untuk %{path}."
+path_grants.not_found: "%{path} bukan geran direktori sesi."
+path_grants.failed: "Tidak dapat mengemas kini geran direktori: %{error}"
+path_grants.list_header: "Direktori yang dibenarkan"
+path_grants.global_header: "Skop global:"
+path_grants.session_header: "Skop sesi:"
+path_grants.none: "  (tiada direktori)"
+path_grants.not_advertised: "Disimpan secara tempatan; Ejen AI yang aktif tidak mengiklankan sokongan ACP additionalDirectories."
+path_grants.updating_global: "Mengemas kini pemberian direktori global..."
+path_grants.global_host_only: "Pemberian direktori global pada masa ini hanya menyokong ejen yang dihoskan pada Windows."
+path_grants.absolute_required: "Masukkan laluan direktori mutlak."
+path_grants.global_added: "Menambahkan %{path} pada pemberian direktori global."
+path_grants.global_already_present: "%{path} sudah menjadi pemberian direktori global."
+path_grants.global_removed: "Mengalih keluar %{path} daripada pemberian direktori global."
+path_grants.global_not_found: "%{path} bukan pemberian direktori global."
+path_grants.global_failed: "Tidak dapat mengemas kini pemberian direktori global: %{error}"
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}

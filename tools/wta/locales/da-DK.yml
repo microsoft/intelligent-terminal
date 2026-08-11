@@ -89,6 +89,10 @@ recommendations.open_new_empty: "Ny tom %{kind}"
 permission.compact.default_description: "Tilladelse anmodet"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N for at svare · tilpas størrelse for fuldt kort]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Ikke fundet"
@@ -218,6 +222,32 @@ system.agent_switch_unavailable: "Agentskift er ikke tilgængeligt uden for en W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vælg modellen til denne panel (/model <id> for at skifte direkte)"  # {Locked="/model","<id>"}
 commands.move.summary: "Flyt denne fanes agentpanel (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Tillad en mappe for denne ACP session (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Liste tilladte mapper for denne ACP session"  # {Locked="ACP"}
+commands.remove_dir.summary: "Fjern en sessionsmappebevilling (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Globale katalogbevillinger administreres i intelligente terminalindstillinger."
+path_grants.no_active_session: "Der er ingen aktiv ACP session."
+path_grants.added: "Tilladt %{path} for denne session. Intelligent Terminal kan bruge den til tilladelsesbeslutninger nu; ACP annoncerer det på den næste sessions livscyklusanmodning."
+path_grants.already_present: "%{path} er allerede tilladt for denne session."
+path_grants.removed: "Fjernede sessionsmappebevillingen for %{path}."
+path_grants.not_found: "%{path} er ikke en sessionskatalogbevilling."
+path_grants.failed: "Kunne ikke opdatere mappebevillinger: %{error}"
+path_grants.list_header: "Tilladte mapper"
+path_grants.global_header: "Globalt omfang:"
+path_grants.session_header: "Sessionsomfang:"
+path_grants.none: "  (ingen mapper)"
+path_grants.not_advertised: "Opbevares lokalt; den aktive AI-agent annoncerede ikke ACP additionalDirectories support."
+path_grants.updating_global: "Opdaterer globale mappetilladelser..."
+path_grants.global_host_only: "Globale mappetilladelser understøtter i øjeblikket kun agenter, der hostes på Windows."
+path_grants.absolute_required: "Angiv en absolut mappesti."
+path_grants.global_added: "Føjede %{path} til globale mappetilladelser."
+path_grants.global_already_present: "%{path} er allerede en global mappetilladelse."
+path_grants.global_removed: "Fjernede %{path} fra globale mappetilladelser."
+path_grants.global_not_found: "%{path} er ikke en global mappetilladelse."
+path_grants.global_failed: "Globale mappetilladelser kunne ikke opdateres: %{error}"
 model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
 system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}

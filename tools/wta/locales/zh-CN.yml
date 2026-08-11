@@ -84,6 +84,10 @@ recommendations.open_new_empty: "新建空 %{kind}"
 permission.compact.default_description: "已请求权限"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N 回答 · 调整窗口大小查看完整卡片]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "本会话"
+permission.allow_directory_global: "始终"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── 智能体状态 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "未找到"
@@ -211,6 +215,32 @@ system.agent_switch_unavailable: "在 Windows Terminal 标签页之外，智能�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
 commands.move.summary: "移动此标签页的智能体窗格 (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "允许此 ACP 会话使用目录 (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "列出此 ACP 会话允许的目录"  # {Locked="ACP"}
+commands.remove_dir.summary: "删除会话目录授权 (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "全局目录授权在智能终端设置中进行管理。"
+path_grants.no_active_session: "没有活动的 ACP 会话。"
+path_grants.added: "此会话允许使用 %{path}。智能终端现在可以使用它来进行权限决策； ACP 在下一个会话生命周期请求中公布它。"
+path_grants.already_present: "此会话已允许使用 %{path}。"
+path_grants.removed: "删除了 %{path} 的会话目录授予。"
+path_grants.not_found: "%{path} 不是会话目录授权。"
+path_grants.failed: "无法更新目录授权：%{error}"
+path_grants.list_header: "允许的目录"
+path_grants.global_header: "全球范围:"
+path_grants.session_header: "会话范围:"
+path_grants.none: "  (没有目录)"
+path_grants.not_advertised: "存储在本地；活动 AI 代理未宣传 ACP additionalDirectories 支持。"
+path_grants.updating_global: "正在更新全局目录授权..."
+path_grants.global_host_only: "全局目录授权目前仅支持托管在 Windows 上的代理。"
+path_grants.absolute_required: "请输入绝对目录路径。"
+path_grants.global_added: "已将 %{path} 添加到全局目录授权。"
+path_grants.global_already_present: "%{path} 已是全局目录授权。"
+path_grants.global_removed: "已从全局目录授权中删除 %{path}。"
+path_grants.global_not_found: "%{path} 不是全局目录授权。"
+path_grants.global_failed: "无法更新全局目录授权: %{error}"
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}

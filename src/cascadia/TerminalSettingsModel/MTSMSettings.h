@@ -90,9 +90,10 @@ Author(s):
     X(bool, AiCoordinatorEnabled, "aiIntegration.coordinator.enabled", false)                                                                                                                          \
     X(hstring, AiCoordinatorCommandline, "aiIntegration.coordinator.commandline", L"wta")                                                                                                                     \
     X(hstring, AiCoordinatorProfile, "aiIntegration.coordinator.profile", L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}")                                                                                   \
+    X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, AiAllowedHostDirectories, "aiIntegration.allowedDirectories.host", winrt::single_threaded_vector<winrt::hstring>())                   \
     X(hstring, AiConfirmationReadOps, "aiIntegration.confirmation.readOperations", L"auto")                                                                                                             \
-    X(hstring, AiConfirmationCreateOps, "aiIntegration.confirmation.createOperations", L"auto")                                                                                                         \
-    X(hstring, AiConfirmationInputOps, "aiIntegration.confirmation.inputOperations", L"auto")
+    X(hstring, AiConfirmationCreateOps, "aiIntegration.confirmation.createOperations", L"prompt")                                                                                                       \
+    X(hstring, AiConfirmationInputOps, "aiIntegration.confirmation.inputOperations", L"prompt")
 
 // Also add these settings to:
 // * Profile.idl

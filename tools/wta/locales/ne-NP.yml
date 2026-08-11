@@ -101,6 +101,10 @@ recommendations.open_new_empty: "नयाँ खाली %{kind}"
 permission.compact.default_description: "अनुमति अनुरोध गरिएको"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N जवाफ दिनुहोस् · पूर्ण कार्ड हेर्न साइज बदल्नुहोस्]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── एजेन्ट स्थिति (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "भेटिएन"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "विन्डोज टर्मिनल �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "यो पेनका लागि मोडेल छान्नुहोस् (सिधै बदल्न /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "यो ट्याबको एजेन्ट पेन सार्नुहोस् (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "यस ACP सत्रको लागि डाइरेक्टरीलाई अनुमति दिनुहोस् (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "यस ACP सत्रका लागि अनुमति दिइएको डाइरेक्टरीहरू सूची गर्नुहोस्"  # {Locked="ACP"}
+commands.remove_dir.summary: "सत्र निर्देशिका अनुदान हटाउनुहोस् (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "ग्लोबल डाइरेक्टरी अनुदानहरू इन्टेलिजेन्ट टर्मिनल सेटिङहरूमा व्यवस्थित गरिन्छ।"
+path_grants.no_active_session: "त्यहाँ कुनै सक्रिय ACP सत्र छैन।"
+path_grants.added: "अनुमति दिइएको %{path} यस सत्रको लागि। इन्टेलिजेन्ट टर्मिनलले यसलाई अब अनुमति निर्णयहरूको लागि प्रयोग गर्न सक्छ; ACP यसलाई अर्को सत्र जीवनचक्र अनुरोधमा विज्ञापन गर्दछ।"
+path_grants.already_present: "%{path} यस सत्रको लागि पहिले नै अनुमति दिइएको छ।"
+path_grants.removed: "%{path} को लागि सत्र डाइरेक्टरी अनुदान हटाइयो।"
+path_grants.not_found: "%{path} सत्र डाइरेक्टरी अनुदान होइन।"
+path_grants.failed: "निर्देशिका अनुदान अद्यावधिक गर्न सकिएन: %{error}"
+path_grants.list_header: "अनुमति दिइएको निर्देशिकाहरू"
+path_grants.global_header: "विश्वव्यापी दायरा:"
+path_grants.session_header: "सत्र दायरा:"
+path_grants.none: "  (कुनै निर्देशिका छैन)"
+path_grants.not_advertised: "स्थानीय रूपमा भण्डारण; सक्रिय एआई एजेन्टले ACP additionalDirectories समर्थनको विज्ञापन गरेन।"
+path_grants.updating_global: "विश्वव्यापी डाइरेक्टरी अनुमतिहरू अद्यावधिक गरिँदै छ..."
+path_grants.global_host_only: "विश्वव्यापी डाइरेक्टरी अनुमतिहरूले हाल Windows मा होस्ट गरिएका एजेन्टहरूलाई मात्र समर्थन गर्छन्।"
+path_grants.absolute_required: "एउटा निरपेक्ष डाइरेक्टरी पथ प्रविष्ट गर्नुहोस्।"
+path_grants.global_added: "विश्वव्यापी डाइरेक्टरी अनुमतिहरूमा %{path} थपियो।"
+path_grants.global_already_present: "%{path} पहिले नै विश्वव्यापी डाइरेक्टरी अनुमति हो।"
+path_grants.global_removed: "विश्वव्यापी डाइरेक्टरी अनुमतिहरूबाट %{path} हटाइयो।"
+path_grants.global_not_found: "%{path} विश्वव्यापी डाइरेक्टरी अनुमति होइन।"
+path_grants.global_failed: "विश्वव्यापी डाइरेक्टरी अनुमतिहरू अद्यावधिक गर्न सकिएन: %{error}"
 model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}

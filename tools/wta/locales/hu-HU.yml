@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Új üres %{kind}"
 permission.compact.default_description: "Engedély kérve"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N a válaszhoz · méretezze át a teljes kártyához]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nem található"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
 commands.move.summary: "A lap ügynökpanelének áthelyezése (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Könyvtár engedélyezése ehhez a ACP munkamenethez (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Sorolja fel az ehhez a ACP munkamenethez engedélyezett könyvtárakat"  # {Locked="ACP"}
+commands.remove_dir.summary: "Munkamenet-címtár-engedély eltávolítása (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "A globális címtárengedélyek kezelése az Intelligens terminálbeállításokban történik."
+path_grants.no_active_session: "Nincs aktív ACP munkamenet."
+path_grants.added: "Engedélyezett %{path} ehhez a munkamenethez. Az Intelligens Terminál most már használhatja az engedélyezési döntésekhez; A ACP a következő munkamenet-életciklus-kérelemben hirdeti."
+path_grants.already_present: "A %{path} már engedélyezett ehhez a munkamenethez."
+path_grants.removed: "Eltávolította a %{path} munkamenet-könyvtár-engedélyét."
+path_grants.not_found: "A %{path} nem munkamenet-könyvtár-engedély."
+path_grants.failed: "Nem sikerült frissíteni a címtárengedélyeket: %{error}"
+path_grants.list_header: "Engedélyezett könyvtárak"
+path_grants.global_header: "Globális hatókör:"
+path_grants.session_header: "A munkamenet hatóköre:"
+path_grants.none: "  (nincs könyvtár)"
+path_grants.not_advertised: "Helyben tárolva; az aktív AI-ügynök nem hirdette a ACP additionalDirectories támogatást."
+path_grants.updating_global: "Globális könyvtárengedélyek frissítése..."
+path_grants.global_host_only: "A globális könyvtárengedélyek jelenleg csak a Windows rendszeren üzemeltetett ügynököket támogatják."
+path_grants.absolute_required: "Adjon meg egy abszolút könyvtárelérési utat."
+path_grants.global_added: "A(z) %{path} hozzá lett adva a globális könyvtárengedélyekhez."
+path_grants.global_already_present: "A(z) %{path} már globális könyvtárengedély."
+path_grants.global_removed: "A(z) %{path} el lett távolítva a globális könyvtárengedélyek közül."
+path_grants.global_not_found: "A(z) %{path} nem globális könyvtárengedély."
+path_grants.global_failed: "Nem sikerült frissíteni a globális könyvtárengedélyeket: %{error}"
 model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}

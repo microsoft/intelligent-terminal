@@ -34,6 +34,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
+        AllowedDirectoryUpdate, // Direct to TerminalPage — mutate persistent global Host roots
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
@@ -80,6 +81,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "switch_agent")
             {
                 return SendEventRoute::AgentSwitch;
+            }
+            if (method == "update_allowed_directory")
+            {
+                return SendEventRoute::AllowedDirectoryUpdate;
             }
             if (method == "close_agent_pane")
             {

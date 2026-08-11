@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} ເປົ່າໃໝ່"
 permission.compact.default_description: "Permission requested"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ບໍ່ພົບ"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "ການສະຫຼັບຕົວແທນ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
 commands.move.summary: "ຍ້າຍແຜງຕົວແທນຂອງແທັບນີ້ (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ອະ​ນຸ​ຍາດ​ໃຫ້​ລະ​ບົບ​ສໍາ​ລັບ​ການ​ນີ້ ACP session (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ລາຍຊື່ໄດເລກະທໍລີທີ່ອະນຸຍາດສໍາລັບ ACP session ນີ້"  # {Locked="ACP"}
+commands.remove_dir.summary: "ເອົາການໃຫ້ການຊ່ວຍເຫຼືອໄດເລກະທໍລີຂອງເຊດຊັນ (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "ການຊ່ວຍເຫຼືອລ້າຂອງໄດເລກະທໍລີທົ່ວໂລກຖືກຈັດການຢູ່ໃນການຕັ້ງຄ່າ Terminal Intelligent."
+path_grants.no_active_session: "ບໍ່ມີການເຮັດວຽກ ACP session."
+path_grants.added: "ອະນຸຍາດ %{path} ສໍາລັບເຊດຊັນນີ້. ເທອຮ໌ມິນັລອັດຊະລິຍະສາມາດນໍາໃຊ້ມັນສໍາລັບການຕັດສິນໃຈອະນຸຍາດໃນປັດຈຸບັນ; ACP ໂຄສະນາມັນຢູ່ໃນຄໍາຮ້ອງຂໍວົງຈອນຊີວິດຂອງເຊດຊັນຕໍ່ໄປ."
+path_grants.already_present: "%{path} ຖືກອະນຸຍາດແລ້ວສຳລັບເຊດຊັນນີ້."
+path_grants.removed: "ລຶບການໃຫ້ການຊ່ວຍເຫຼືອໄດເລກະທໍລີຂອງເຊດຊັນສໍາລັບ %{path}."
+path_grants.not_found: "%{path} ບໍ່ແມ່ນການໃຫ້ການຊ່ວຍເຫຼືອໄດເລກະທໍລີຂອງເຊດຊັນ."
+path_grants.failed: "ບໍ່ສາມາດອັບເດດໄດເລກະທໍລີການຊ່ວຍເຫຼືອລ້າ: %{error}"
+path_grants.list_header: "ໄດເລກະທໍລີທີ່ອະນຸຍາດ"
+path_grants.global_header: "ຂອບເຂດທົ່ວໂລກ:"
+path_grants.session_header: "ຂອບເຂດຂອງເຊດຊັນ:"
+path_grants.none: "  (ບໍ່ມີລາຍຊື່)"
+path_grants.not_advertised: "ເກັບຮັກສາຢູ່ໃນທ້ອງຖິ່ນ; ຕົວແທນ AI ທີ່ໃຊ້ວຽກບໍ່ໄດ້ໂຄສະນາ ACP additionalDirectories support."
+path_grants.updating_global: "ກຳລັງອັບເດດສິດໄດເຣັກທໍຣີທົ່ວໄປ..."
+path_grants.global_host_only: "ປັດຈຸບັນ ສິດໄດເຣັກທໍຣີທົ່ວໄປຮອງຮັບສະເພາະເອເຈັນທີ່ໂຮສຢູ່ໃນ Windows ເທົ່ານັ້ນ."
+path_grants.absolute_required: "ປ້ອນເສັ້ນທາງໄດເຣັກທໍຣີແບບສົມບູນ."
+path_grants.global_added: "ເພີ່ມ %{path} ໃສ່ສິດໄດເຣັກທໍຣີທົ່ວໄປແລ້ວ."
+path_grants.global_already_present: "%{path} ເປັນສິດໄດເຣັກທໍຣີທົ່ວໄປຢູ່ແລ້ວ."
+path_grants.global_removed: "ລຶບ %{path} ອອກຈາກສິດໄດເຣັກທໍຣີທົ່ວໄປແລ້ວ."
+path_grants.global_not_found: "%{path} ບໍ່ແມ່ນສິດໄດເຣັກທໍຣີທົ່ວໄປ."
+path_grants.global_failed: "ບໍ່ສາມາດອັບເດດສິດໄດເຣັກທໍຣີທົ່ວໄປໄດ້: %{error}"
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}

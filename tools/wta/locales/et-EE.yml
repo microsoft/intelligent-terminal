@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Uus tühi %{kind}"
 permission.compact.default_description: "Luba taotletud"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N vastamiseks · muutke suurust täiskaardi jaoks]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Ei leitud"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Agendi vahetamine pole väljaspool Windows Ter
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
 commands.move.summary: "Teisalda selle vahekaardi agendipaneel (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Lubage selle ACP seansi jaoks kataloog (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Loetlege selle ACP seansi jaoks lubatud kataloogid"  # {Locked="ACP"}
+commands.remove_dir.summary: "Eemaldage seansikataloogi luba (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Globaalseid kataloogitoetusi hallatakse intelligentsete terminali seadetes."
+path_grants.no_active_session: "Aktiivne ACP seanss puudub."
+path_grants.added: "Selle seansi jaoks lubatud %{path}. Nutikas Terminal saab seda nüüd loaotsuste tegemiseks kasutada; ACP reklaamib seda järgmise seansi elutsükli taotlusel."
+path_grants.already_present: "%{path} on selle seansi jaoks juba lubatud."
+path_grants.removed: "Eemaldati %{path} seansikataloogi toetus."
+path_grants.not_found: "%{path} ei ole seansikataloogi toetus."
+path_grants.failed: "Kataloogitoetusi ei saanud värskendada: %{error}"
+path_grants.list_header: "Lubatud kataloogid"
+path_grants.global_header: "Globaalne ulatus:"
+path_grants.session_header: "Seansi ulatus:"
+path_grants.none: "  (katalooge pole)"
+path_grants.not_advertised: "Säilitatakse kohapeal; aktiivne AI agent ei reklaaminud ACP additionalDirectories tuge."
+path_grants.updating_global: "Globaalsete kataloogilubade värskendamine..."
+path_grants.global_host_only: "Globaalsed kataloogiload toetavad praegu ainult Windowsis hostitud agente."
+path_grants.absolute_required: "Sisestage absoluutne kataloogitee."
+path_grants.global_added: "%{path} lisati globaalsetesse kataloogilubadesse."
+path_grants.global_already_present: "%{path} on juba globaalne kataloogiluba."
+path_grants.global_removed: "%{path} eemaldati globaalsetest kataloogilubadest."
+path_grants.global_not_found: "%{path} ei ole globaalne kataloogiluba."
+path_grants.global_failed: "Globaalsete kataloogilubade värskendamine nurjus: %{error}"
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}

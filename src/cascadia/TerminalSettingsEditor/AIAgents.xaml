@@ -247,6 +247,44 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <local:SettingContainer x:Uid="AIAgents_AllowedHostDirectories">
+                <StackPanel Spacing="8">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.AllowedHostDirectories, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:AllowedDirectoryEntry">
+                                <Grid Padding="0,4,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock VerticalAlignment="Center"
+                                               Text="{x:Bind Path, Mode=OneWay}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap" />
+                                    <Button Grid.Column="1"
+                                            x:Uid="AIAgents_AllowedHostDirectoryRemove"
+                                            Click="{x:Bind Remove}"
+                                            Margin="8,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Uid="AIAgents_AllowedHostDirectoryInput"
+                                 Text="{x:Bind ViewModel.NewAllowedHostDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1"
+                                x:Uid="AIAgents_AllowedHostDirectoryAdd"
+                                IsEnabled="{x:Bind ViewModel.CanAddAllowedHostDirectory, Mode=OneWay}"
+                                Click="{x:Bind ViewModel.AddAllowedHostDirectory}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </Grid>
+                </StackPanel>
+            </local:SettingContainer>
+
             <local:SettingContainer x:Name="ShowTokenUsageAndCost"
                         x:Uid="AIAgents_ShowTokenUsageAndCost">
                 <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"

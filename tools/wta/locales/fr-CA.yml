@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Nouveau %{kind} vide"
 permission.compact.default_description: "Autorisation demandée"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N pour répondre · redimensionner pour la carte complète]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Statut de l'agent (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Introuvable"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Le changement d'agent n'est pas disponible en 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Choisissez le modèle pour ce volet (/model <id> pour changer directement)"  # {Locked="/model","<id>"}
 commands.move.summary: "Déplacer le volet de l'agent de cet onglet (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Autoriser un répertoire pour cette session ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Liste des répertoires autorisés pour cette session ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "Supprimer une autorisation d'annuaire de session (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Les autorisations d'annuaire globales sont gérées dans les paramètres du terminal intelligent."
+path_grants.no_active_session: "Il n’y a pas de session ACP active."
+path_grants.added: "Autorisé %{path} pour cette session. Terminal Intelligent peut désormais l’utiliser pour les décisions d’autorisation ; ACP l'annonce lors de la prochaine demande de cycle de vie de session."
+path_grants.already_present: "%{path} est déjà autorisé pour cette session."
+path_grants.removed: "Suppression de l'octroi du répertoire de session pour %{path}."
+path_grants.not_found: "%{path} n'est pas une subvention d'annuaire de session."
+path_grants.failed: "Impossible de mettre à jour les autorisations d'annuaire : %{error}"
+path_grants.list_header: "Répertoires autorisés"
+path_grants.global_header: "Portée mondiale:"
+path_grants.session_header: "Portée de la session:"
+path_grants.none: "  (pas de répertoires)"
+path_grants.not_advertised: "Stocké localement ; l'agent AI actif n'a pas annoncé la prise en charge de ACP additionalDirectories."
+path_grants.updating_global: "Mise à jour des autorisations globales de répertoires..."
+path_grants.global_host_only: "Les autorisations globales de répertoires prennent actuellement en charge uniquement les agents hébergés sur Windows."
+path_grants.absolute_required: "Entrez un chemin d’accès absolu au répertoire."
+path_grants.global_added: "%{path} a été ajouté aux autorisations globales de répertoires."
+path_grants.global_already_present: "%{path} est déjà une autorisation globale de répertoire."
+path_grants.global_removed: "%{path} a été supprimé des autorisations globales de répertoires."
+path_grants.global_not_found: "%{path} n’est pas une autorisation globale de répertoire."
+path_grants.global_failed: "Impossible de mettre à jour les autorisations globales de répertoires : %{error}"
 model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
 system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}

@@ -54,6 +54,12 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Add a persistent directory grant to the active ACP session.
+    AddDir,
+    /// List the active session and configured global directory grants.
+    ListDirs,
+    /// Remove a persistent directory grant from the active ACP session.
+    RemoveDir,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -129,6 +135,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
+    },
+    CommandSpec {
+        name: "add-dir",
+        summary_key: "commands.add_dir.summary",
+        kind: CommandKind::AddDir,
+    },
+    CommandSpec {
+        name: "list-dirs",
+        summary_key: "commands.list_dirs.summary",
+        kind: CommandKind::ListDirs,
+    },
+    CommandSpec {
+        name: "remove-dir",
+        summary_key: "commands.remove_dir.summary",
+        kind: CommandKind::RemoveDir,
     },
 ];
 
@@ -313,6 +334,29 @@ pub fn agent_id_prefix(input: &str) -> Option<&str> {
 /// argument hides the popup because `/move` accepts exactly one position.
 pub fn move_position_prefix(input: &str) -> Option<&str> {
     single_argument_prefix(input, "move")
+}
+
+/// Whether `/add-dir` is waiting for its default active-pane directory.
+///
+/// A trailing whitespace is required so the ghost never overlaps command-name
+/// completion or attaches directly to `--global`. Any manually typed path
+/// makes this return `None`, which clears the ghost immediately.
+pub fn add_dir_default_is_global(input: &str) -> Option<bool> {
+    let trimmed = input.trim_start();
+    let command = "/add-dir";
+    let command_end = trimmed.get(..command.len())?;
+    if !command_end.eq_ignore_ascii_case(command) {
+        return None;
+    }
+    let arguments = trimmed.get(command.len()..)?;
+    if !arguments.starts_with(char::is_whitespace) || !input.ends_with(char::is_whitespace) {
+        return None;
+    }
+    match arguments.trim() {
+        "" => Some(false),
+        value if value.eq_ignore_ascii_case("--global") => Some(true),
+        _ => None,
+    }
 }
 
 fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {

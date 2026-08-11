@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +40,9 @@ pub enum ChatMessage {
         /// Commands render on their own indented line below the title.
         #[serde(default)]
         location_is_command: bool,
+        /// Non-interactive explanation for a client-side permission decision.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        policy_note: Option<String>,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -138,6 +141,7 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
 }
 
 pub struct PermissionState {
+    pub session_id: String,
     pub tool_call_id: String,
     /// Fallback single-line text used when the panel cannot fit a full card.
     pub description: String,
@@ -149,6 +153,10 @@ pub struct PermissionState {
     pub target: Option<String>,
     /// True when `target` is a shell command rather than a file path.
     pub target_is_command: bool,
+    /// Exact directory stored by an Intelligent Terminal lifetime action.
+    pub grant_directory: Option<String>,
+    /// Agent-provided option used to approve the current request after storage.
+    pub allow_once_id: Option<String>,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
@@ -291,6 +299,8 @@ pub struct TabSession {
 
     // Tool calls / permission
     pub tool_calls: HashMap<String, (String, String)>,
+    /// Tool calls approved before their `session/update` row arrived.
+    pub auto_approved_tool_calls: HashSet<String>,
     /// FIFO of pending permission requests for this session. The front
     /// entry is the one currently rendered and accepting keys; the rest
     /// queue up.

@@ -84,6 +84,10 @@ recommendations.open_new_empty: "新しい空の%{kind}"
 permission.compact.default_description: "アクセス許可が要求されました"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N で応答 · リサイズでフル カードを表示]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── エージェント ステータス (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "見つかりません"
@@ -211,6 +215,32 @@ system.agent_switch_unavailable: "Windows Terminal タブの外ではエージ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
 commands.move.summary: "このタブのエージェント ペインを移動 (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "この ACP セッションのディレクトリを許可します (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "この ACP セッションで許可されるディレクトリをリストします。"  # {Locked="ACP"}
+commands.remove_dir.summary: "セッション ディレクトリ許可の削除 (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "グローバル ディレクトリ許可は、インテリジェント ターミナル設定で管理されます。"
+path_grants.no_active_session: "アクティブな ACP セッションはありません。"
+path_grants.added: "このセッションでは %{path} が許可されました。インテリジェント ターミナルは、これを許可の決定に使用できるようになりました。 ACP は、次のセッション ライフサイクル リクエストでそれをアドバタイズします。"
+path_grants.already_present: "%{path} はこのセッションに対してすでに許可されています。"
+path_grants.removed: "%{path} のセッション ディレクトリ許可を削除しました。"
+path_grants.not_found: "%{path} はセッション ディレクトリ許可ではありません。"
+path_grants.failed: "ディレクトリ許可を更新できませんでした: %{error}"
+path_grants.list_header: "許可されたディレクトリ"
+path_grants.global_header: "グローバルな範囲:"
+path_grants.session_header: "セッションスコープ:"
+path_grants.none: "  (ディレクトリがありません)"
+path_grants.not_advertised: "ローカルに保存されます。アクティブな AI エージェントは ACP additionalDirectories サポートをアドバタイズしませんでした。"
+path_grants.updating_global: "グローバル ディレクトリ許可を更新しています..."
+path_grants.global_host_only: "現在、グローバル ディレクトリ許可でサポートされるのは、Windows でホストされているエージェントのみです。"
+path_grants.absolute_required: "絶対ディレクトリ パスを入力してください。"
+path_grants.global_added: "%{path} をグローバル ディレクトリ許可に追加しました。"
+path_grants.global_already_present: "%{path} は既にグローバル ディレクトリ許可です。"
+path_grants.global_removed: "%{path} をグローバル ディレクトリ許可から削除しました。"
+path_grants.global_not_found: "%{path} はグローバル ディレクトリ許可ではありません。"
+path_grants.global_failed: "グローバル ディレクトリ許可を更新できませんでした: %{error}"
 model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}

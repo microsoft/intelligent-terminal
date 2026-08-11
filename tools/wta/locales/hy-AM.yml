@@ -109,6 +109,10 @@ recommendations.open_new_empty: "Նոր դատարկ %{kind}"
 permission.compact.default_description: "Թույլտվություն պահանջված է"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N պատասխանելու համար · չափը փոխեք լիարժեք քարտի համար]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────────────────────────────
 # Status badge when agent CLI binary is not on PATH
@@ -232,6 +236,32 @@ system.agent_switch_unavailable: "Գործակալի փոխարկումը հաս
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
 commands.move.summary: "Տեղափոխել այս ներդիրի ագենտի վահանակը (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Թույլատրել գրացուցակ այս ACP նիստի համար (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Ցուցակեք թույլատրված գրացուցակները այս ACP նիստի համար"  # {Locked="ACP"}
+commands.remove_dir.summary: "Հեռացնել նստաշրջանի գրացուցակի դրամաշնորհը (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Համաշխարհային գրացուցակային դրամաշնորհները կառավարվում են Intelligent Terminal Settings-ում:"
+path_grants.no_active_session: "Ակտիվ ACP նիստ չկա:"
+path_grants.added: "Թույլատրված է %{path} այս նստաշրջանի համար: Խելացի տերմինալ-ը կարող է օգտագործել այն թույլտվության որոշումների համար հիմա. ACP-ը գովազդում է այն հաջորդ նստաշրջանի կյանքի ցիկլի հարցումով:"
+path_grants.already_present: "%{path}-ն արդեն թույլատրված է այս նստաշրջանի համար:"
+path_grants.removed: "Հեռացվել է %{path}-ի նստաշրջանի գրացուցակի տրամադրումը:"
+path_grants.not_found: "%{path}-ը նիստերի գրացուցակի դրամաշնորհ չէ:"
+path_grants.failed: "Չհաջողվեց թարմացնել գրացուցակի դրամաշնորհները՝ %{error}"
+path_grants.list_header: "Թույլատրված գրացուցակներ"
+path_grants.global_header: "Համաշխարհային շրջանակ:"
+path_grants.session_header: "Նիստի շրջանակը:"
+path_grants.none: "  (գրացուցակներ չկան)"
+path_grants.not_advertised: "Պահպանվում է տեղում; ակտիվ AI գործակալը չի ​​գովազդել ACP additionalDirectories աջակցությունը:"
+path_grants.updating_global: "Ընդհանուր գրացուցակների թույլտվությունները թարմացվում են..."
+path_grants.global_host_only: "Ընդհանուր գրացուցակների թույլտվություններն այժմ աջակցում են միայն Windows-ում տեղակայված գործակալներին։"
+path_grants.absolute_required: "Մուտքագրեք գրացուցակի բացարձակ ուղի։"
+path_grants.global_added: "%{path}-ն ավելացվեց ընդհանուր գրացուցակների թույլտվություններին։"
+path_grants.global_already_present: "%{path}-ն արդեն ընդհանուր գրացուցակի թույլտվություն է։"
+path_grants.global_removed: "%{path}-ը հեռացվեց ընդհանուր գրացուցակների թույլտվություններից։"
+path_grants.global_not_found: "%{path}-ը ընդհանուր գրացուցակի թույլտվություն չէ։"
+path_grants.global_failed: "Չհաջողվեց թարմացնել ընդհանուր գրացուցակների թույլտվությունները. %{error}"
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}

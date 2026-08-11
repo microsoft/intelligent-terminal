@@ -101,6 +101,10 @@ recommendations.open_new_empty: "ಹೊಸ ಖಾಲಿ %{kind}"
 permission.compact.default_description: "ಅನುಮತಿ ವಿನಂತಿಸಲಾಗಿದೆ"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ಉತ್ತರಿಸಿ · ಪೂರ್ಣ ಕಾರ್ಡ್‌ಗಾಗಿ ಗಾತ್ರ ಬದಲಿಸಿ]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── ಏಜೆಂಟ್ ಸ್ಥಿತಿ (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "ಕಂಡುಬಂದಿಲ್ಲ"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ಈ ಟ್ಯಾಬ್‌ನ ಏಜೆಂ트 ಪೇನ್ ಅನ್ನು ಸರಿಸಿ (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ಈ ACP ಸೆಶನ್‌ಗಾಗಿ ಡೈರೆಕ್ಟರಿಯನ್ನು ಅನುಮತಿಸಿ (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ಈ ACP ಸೆಶನ್‌ಗಾಗಿ ಅನುಮತಿಸಲಾದ ಡೈರೆಕ್ಟರಿಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ"  # {Locked="ACP"}
+commands.remove_dir.summary: "ಸೆಷನ್ ಡೈರೆಕ್ಟರಿ ಅನುದಾನವನ್ನು ತೆಗೆದುಹಾಕಿ (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುದಾನವನ್ನು ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ನಿರ್ವಹಿಸಲಾಗುತ್ತದೆ."
+path_grants.no_active_session: "ಯಾವುದೇ ಸಕ್ರಿಯ ACP ಸೆಷನ್ ಇಲ್ಲ."
+path_grants.added: "ಈ ಸೆಶನ್‌ಗಾಗಿ %{path} ಅನ್ನು ಅನುಮತಿಸಲಾಗಿದೆ. ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ ಈಗ ಅನುಮತಿ ನಿರ್ಧಾರಗಳಿಗಾಗಿ ಇದನ್ನು ಬಳಸಬಹುದು; ACP ಮುಂದಿನ ಅವಧಿಯ ಜೀವನಚಕ್ರ ವಿನಂತಿಯಲ್ಲಿ ಅದನ್ನು ಜಾಹೀರಾತು ಮಾಡುತ್ತದೆ."
+path_grants.already_present: "%{path} ಅನ್ನು ಈಗಾಗಲೇ ಈ ಸೆಶನ್‌ಗೆ ಅನುಮತಿಸಲಾಗಿದೆ."
+path_grants.removed: "%{path} ಗಾಗಿ ಸೆಷನ್ ಡೈರೆಕ್ಟರಿ ಅನುದಾನವನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ."
+path_grants.not_found: "%{path} ಸೆಷನ್ ಡೈರೆಕ್ಟರಿ ಅನುದಾನವಲ್ಲ."
+path_grants.failed: "ಡೈರೆಕ್ಟರಿ ಅನುದಾನವನ್ನು ನವೀಕರಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ: %{error}"
+path_grants.list_header: "ಅನುಮತಿಸಲಾದ ಡೈರೆಕ್ಟರಿಗಳು"
+path_grants.global_header: "ಜಾಗತಿಕ ವ್ಯಾಪ್ತಿ:"
+path_grants.session_header: "ಅಧಿವೇಶನ ವ್ಯಾಪ್ತಿ:"
+path_grants.none: "  (ಯಾವುದೇ ಡೈರೆಕ್ಟರಿಗಳಿಲ್ಲ)"
+path_grants.not_advertised: "ಸ್ಥಳೀಯವಾಗಿ ಸಂಗ್ರಹಿಸಲಾಗಿದೆ; ಸಕ್ರಿಯ AI ಏಜೆಂಟ್ ACP additionalDirectories ಬೆಂಬಲವನ್ನು ಜಾಹೀರಾತು ಮಾಡಿಲ್ಲ."
+path_grants.updating_global: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳನ್ನು ನವೀಕರಿಸಲಾಗುತ್ತಿದೆ..."
+path_grants.global_host_only: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳು ಪ್ರಸ್ತುತ Windows ನಲ್ಲಿ ಹೋಸ್ಟ್ ಮಾಡಲಾದ ಏಜೆಂಟ್‌ಗಳನ್ನು ಮಾತ್ರ ಬೆಂಬಲಿಸುತ್ತವೆ."
+path_grants.absolute_required: "ಸಂಪೂರ್ಣ ಡೈರೆಕ್ಟರಿ ಮಾರ್ಗವನ್ನು ನಮೂದಿಸಿ."
+path_grants.global_added: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳಿಗೆ %{path} ಅನ್ನು ಸೇರಿಸಲಾಗಿದೆ."
+path_grants.global_already_present: "%{path} ಈಗಾಗಲೇ ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಯಾಗಿದೆ."
+path_grants.global_removed: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳಿಂದ %{path} ಅನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ."
+path_grants.global_not_found: "%{path} ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಯಲ್ಲ."
+path_grants.global_failed: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳನ್ನು ನವೀಕರಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ: %{error}"
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}

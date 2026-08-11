@@ -128,6 +128,18 @@ pub enum AppEvent {
         /// meaningful when `location.is_some()`.
         location_is_command: bool,
     },
+    ToolCallAutoApproved {
+        session_id: String,
+        id: String,
+    },
+    AllowedDirectoryUpdateTimedOut {
+        request_id: String,
+    },
+    AddDirGhostCwdResolved {
+        generation: u64,
+        input: String,
+        cwd: Option<String>,
+    },
     HideToolCall {
         session_id: String,
         id: String,
@@ -148,6 +160,8 @@ pub enum AppEvent {
         target: Option<String>,
         /// See `PermissionState::target_is_command`.
         target_is_command: bool,
+        grant_directory: Option<String>,
+        allow_once_id: Option<String>,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
     },

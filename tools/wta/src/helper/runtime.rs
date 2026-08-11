@@ -522,6 +522,18 @@ async fn run_acp_app(
             } else {
                 "resolved-from-cmd"
             };
+            let operation_policies =
+                protocol::acp::permission_policy::OperationPolicies::new(
+                    &config.confirmation_read_operations,
+                    &config.confirmation_create_operations,
+                    &config.confirmation_input_operations,
+                );
+            let allowed_directories = config.allowed_directories.clone();
+            let path_grants = Arc::new(crate::path_grants::SessionRoots::new(
+                canonical_agent_id.clone(),
+                agent_source.clone(),
+                allowed_directories,
+            ));
             let initial_load_requested = config
                 .initial_load_session_id
                 .as_deref()
@@ -696,6 +708,8 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let operation_policies_for_client = operation_policies;
+                let path_grants_for_client = Arc::clone(&path_grants);
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
@@ -707,6 +721,8 @@ async fn run_acp_app(
                         source_cwd,
                         owner_tab,
                         initial_load_sid,
+                        operation_policies_for_client,
+                        path_grants_for_client,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
                         cancel_rx,
@@ -776,6 +792,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            app_state.set_path_grants(Arc::clone(&path_grants));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
@@ -845,6 +862,8 @@ async fn run_acp_app(
                 config.acp_model.clone(),
                 agent_source.clone(),
                 agent_source_cwd.clone(),
+                operation_policies,
+                Arc::clone(&path_grants),
                 config.owner_tab_id.clone(),
                 Arc::clone(&shell_mgr),
                 wt_connected,

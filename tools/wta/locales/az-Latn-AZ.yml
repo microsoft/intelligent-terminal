@@ -102,6 +102,10 @@ recommendations.open_new_empty: "Yeni boş %{kind}"
 permission.compact.default_description: "İcazə tələb olunur"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N cavab üçün · tam kart üçün ölçüsünü dəyişin]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Tapılmadı"
@@ -218,6 +222,32 @@ system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kəna
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bu tabın agent panelini köçür (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Bu ACP sessiyası üçün qovluğa icazə verin (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Bu ACP sessiyası üçün icazə verilən qovluqları siyahıya salın"  # {Locked="ACP"}
+commands.remove_dir.summary: "Sessiya kataloqu qrantını silin (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Qlobal kataloq qrantları İntellektual Terminal Parametrlərində idarə olunur."
+path_grants.no_active_session: "Aktiv ACP sessiyası yoxdur."
+path_grants.added: "Bu sessiya üçün %{path} icazəsi verilib. Ağıllı Terminal indi ondan icazə qərarları üçün istifadə edə bilər; ACP onu növbəti sessiyanın həyat dövrü sorğusunda reklam edir."
+path_grants.already_present: "%{path} artıq bu sessiya üçün icazəlidir."
+path_grants.removed: "%{path} üçün sessiya kataloqu qrantı silindi."
+path_grants.not_found: "%{path} sessiya kataloqu qrantı deyil."
+path_grants.failed: "Kataloq qrantlarını yeniləmək mümkün olmadı: %{error}"
+path_grants.list_header: "İcazə verilən qovluqlar"
+path_grants.global_header: "Qlobal əhatə dairəsi:"
+path_grants.session_header: "Sessiyanın əhatə dairəsi:"
+path_grants.none: "  (kataloqlar yoxdur)"
+path_grants.not_advertised: "Yerli olaraq saxlanılır; aktiv AI Agent ACP additionalDirectories dəstəyini reklam etmədi."
+path_grants.updating_global: "Qlobal kataloq qrantları yenilənir..."
+path_grants.global_host_only: "Qlobal kataloq qrantları hazırda yalnız Windows-da yerləşdirilən agentləri dəstəkləyir."
+path_grants.absolute_required: "Mütləq kataloq yolu daxil edin."
+path_grants.global_added: "%{path} qlobal kataloq qrantlarına əlavə edildi."
+path_grants.global_already_present: "%{path} artıq qlobal kataloq qrantıdır."
+path_grants.global_removed: "%{path} qlobal kataloq qrantlarından silindi."
+path_grants.global_not_found: "%{path} qlobal kataloq qrantı deyil."
+path_grants.global_failed: "Qlobal kataloq qrantlarını yeniləmək mümkün olmadı: %{error}"
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}

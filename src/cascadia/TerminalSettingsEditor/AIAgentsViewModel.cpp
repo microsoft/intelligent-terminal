@@ -182,7 +182,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // new model list.
         _acpModelList = winrt::single_threaded_observable_vector<Editor::AcpModelEntry>();
         _customModelProviders = winrt::single_threaded_observable_vector<Editor::CustomModelProviderEntry>();
+        _allowedHostDirectories = winrt::single_threaded_observable_vector<Editor::AllowedDirectoryEntry>();
         _LoadCustomModelProviders();
+        _LoadAllowedHostDirectories();
         _RebuildAcpModelListFromCache();
         _acpRuntimeChangedToken = Model::AcpRuntimeState::Current().Changed(
             [weakThis = get_weak()](const auto&, const auto&) {
@@ -335,6 +337,145 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _GlobalSettings.CustomModelSelection(L"");
         }
         _CommitCustomModelProviders();
+    }
+
+    void AIAgentsViewModel::_LoadAllowedHostDirectories()
+    {
+        _allowedHostDirectories.Clear();
+        const auto weakThis = get_weak();
+        for (const auto& path : _GlobalSettings.AiAllowedHostDirectories())
+        {
+            _allowedHostDirectories.Append(winrt::make<AllowedDirectoryEntry>(
+                path,
+                [weakThis, path]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        self->_RemoveAllowedHostDirectory(path);
+                    }
+                }));
+        }
+    }
+
+    void AIAgentsViewModel::_CommitAllowedHostDirectories()
+    {
+        auto paths = winrt::single_threaded_vector<winrt::hstring>();
+        for (const auto& entry : _allowedHostDirectories)
+        {
+            paths.Append(entry.Path());
+        }
+        _GlobalSettings.AiAllowedHostDirectories(paths);
+        _NotifyChanges(L"AllowedHostDirectories", L"CanAddAllowedHostDirectory");
+    }
+
+    void AIAgentsViewModel::_RemoveAllowedHostDirectory(const winrt::hstring& path)
+    {
+        for (uint32_t i = 0; i < _allowedHostDirectories.Size(); ++i)
+        {
+            if (_HostPathsEqual(_allowedHostDirectories.GetAt(i).Path(), path))
+            {
+                _allowedHostDirectories.RemoveAt(i);
+                _CommitAllowedHostDirectories();
+                return;
+            }
+        }
+    }
+
+    void AIAgentsViewModel::NewAllowedHostDirectory(const winrt::hstring& value)
+    {
+        if (_newAllowedHostDirectory != value)
+        {
+            _newAllowedHostDirectory = value;
+            _NotifyChanges(L"NewAllowedHostDirectory", L"CanAddAllowedHostDirectory");
+        }
+    }
+
+    bool AIAgentsViewModel::CanAddAllowedHostDirectory() const
+    {
+        const auto path = _TrimWhitespace(_newAllowedHostDirectory);
+        return _IsAbsoluteHostPath(path) && !_ContainsAllowedHostDirectory(path);
+    }
+
+    void AIAgentsViewModel::AddAllowedHostDirectory()
+    {
+        const auto path = _TrimWhitespace(_newAllowedHostDirectory);
+        if (!_IsAbsoluteHostPath(path) || _ContainsAllowedHostDirectory(path))
+        {
+            return;
+        }
+
+        const auto weakThis = get_weak();
+        _allowedHostDirectories.Append(winrt::make<AllowedDirectoryEntry>(
+            path,
+            [weakThis, path]() {
+                if (const auto self = weakThis.get())
+                {
+                    self->_RemoveAllowedHostDirectory(path);
+                }
+            }));
+        _newAllowedHostDirectory.clear();
+        _CommitAllowedHostDirectories();
+        _NotifyChanges(L"NewAllowedHostDirectory");
+    }
+
+    bool AIAgentsViewModel::_ContainsAllowedHostDirectory(const std::wstring_view path) const
+    {
+        for (const auto& entry : _allowedHostDirectories)
+        {
+            if (_HostPathsEqual(entry.Path(), path))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AIAgentsViewModel::_IsAbsoluteHostPath(const std::wstring_view path) noexcept
+    {
+        if (path.size() >= 3 &&
+            std::iswalpha(path[0]) &&
+            path[1] == L':' &&
+            (path[2] == L'\\' || path[2] == L'/'))
+        {
+            return true;
+        }
+        if (path.size() < 5 ||
+            (path[0] != L'\\' && path[0] != L'/') ||
+            (path[1] != L'\\' && path[1] != L'/'))
+        {
+            return false;
+        }
+        const auto separator = path.find_first_of(L"\\/", 2);
+        return separator != std::wstring_view::npos &&
+               separator > 2 &&
+               separator + 1 < path.size() &&
+               path[separator + 1] != L'\\' &&
+               path[separator + 1] != L'/';
+    }
+
+    bool AIAgentsViewModel::_HostPathsEqual(std::wstring_view left, std::wstring_view right) noexcept
+    {
+        while (left.size() > 3 && (left.back() == L'\\' || left.back() == L'/'))
+        {
+            left.remove_suffix(1);
+        }
+        while (right.size() > 3 && (right.back() == L'\\' || right.back() == L'/'))
+        {
+            right.remove_suffix(1);
+        }
+        if (left.size() != right.size())
+        {
+            return false;
+        }
+        for (size_t i = 0; i < left.size(); ++i)
+        {
+            const auto leftChar = left[i] == L'/' ? L'\\' : std::towlower(left[i]);
+            const auto rightChar = right[i] == L'/' ? L'\\' : std::towlower(right[i]);
+            if (leftChar != rightChar)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     void AIAgentsViewModel::NewCustomModelProviderBaseUrl(const winrt::hstring& value)
