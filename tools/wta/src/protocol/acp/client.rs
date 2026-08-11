@@ -2861,24 +2861,30 @@ fn dispatch_master_ext_request(
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::ShellSessionsList { tab_id, elevated } => {
-                let result = conn
-                    .ext_method(crate::session_registry::build_shell_sessions_list_request(
-                        elevated,
-                    ))
-                    .await
-                    .map_err(|error| anyhow::anyhow!("{error:?}"))
-                    .and_then(|response| {
-                        crate::session_registry::parse_shell_sessions_list_response(&response.0)
-                            .map_err(anyhow::Error::from)
-                    });
+                // Which of those durable rows still has a live detached shell,
+                // and which are already open in a tab, is only known to Windows
+                // Terminal, and asking costs a `wtcli` process spawn. Overlap
+                // it with the master's own query so the view is not gated on
+                // the sum of the two. A failure here just means no row is
+                // marked.
+                let (result, marks) = tokio::join!(
+                    async {
+                        conn.ext_method(crate::session_registry::build_shell_sessions_list_request(
+                            elevated,
+                        ))
+                        .await
+                        .map_err(|error| anyhow::anyhow!("{error:?}"))
+                        .and_then(|response| {
+                            crate::session_registry::parse_shell_sessions_list_response(&response.0)
+                                .map_err(anyhow::Error::from)
+                        })
+                    },
+                    fetch_shell_session_marks()
+                );
                 let (sessions, error) = match result {
                     Ok(response) => (response.sessions, None),
                     Err(error) => (Vec::new(), Some(error.to_string())),
                 };
-                // Which of those durable rows still has a live detached shell,
-                // and which are already open in a tab, is only known to Windows
-                // Terminal. A failure here just means no row is marked.
-                let marks = fetch_shell_session_marks().await;
                 let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
                     tab_id,
                     sessions,
@@ -3856,7 +3862,40 @@ struct ShellSessionMarks {
     open: std::collections::HashSet<String>,
 }
 
+/// Upper bound on the annotation lookup. Each `wtcli` call is a process spawn
+/// that talks COM to Windows Terminal's UI thread, so a busy or wedged window
+/// must not hold the saved-session list hostage — an unmarked list beats a
+/// spinner that never resolves.
+const SHELL_SESSION_MARKS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 async fn fetch_shell_session_marks() -> ShellSessionMarks {
+    with_marks_timeout(
+        SHELL_SESSION_MARKS_TIMEOUT,
+        fetch_shell_session_marks_inner(),
+    )
+    .await
+}
+
+/// Yields whatever the lookup produced, or an unmarked list if it overran
+/// `budget`.
+async fn with_marks_timeout<F>(budget: std::time::Duration, lookup: F) -> ShellSessionMarks
+where
+    F: std::future::Future<Output = ShellSessionMarks>,
+{
+    match tokio::time::timeout(budget, lookup).await {
+        Ok(marks) => marks,
+        Err(_) => {
+            tracing::debug!(
+                target: "shell_sessions",
+                timeout_ms = budget.as_millis() as u64,
+                "shell-session marks timed out; listing without marks"
+            );
+            ShellSessionMarks::default()
+        }
+    }
+}
+
+async fn fetch_shell_session_marks_inner() -> ShellSessionMarks {
     use crate::shell::wt_channel::WtChannel;
 
     let channel = match crate::shell::wt_channel::CliChannel::connect().await {
@@ -3867,18 +3906,23 @@ async fn fetch_shell_session_marks() -> ShellSessionMarks {
         }
     };
 
+    // Two independent `wtcli` spawns; running them back to back would double
+    // the wait, which is most visible on the first list of a session when the
+    // executable is still cold.
+    let (detached, tabs) = tokio::join!(
+        channel.request("list_detached_sessions", serde_json::Value::Null),
+        channel.request("list_tabs", serde_json::Value::Null)
+    );
+
     let mut marks = ShellSessionMarks::default();
-    match channel
-        .request("list_detached_sessions", serde_json::Value::Null)
-        .await
-    {
+    match detached {
         Ok(payload) => marks.keep_running = parse_detached_shell_session_ids(&payload),
         Err(error) => {
             tracing::debug!(target: "shell_sessions", %error, "could not list detached sessions");
         }
     }
 
-    match channel.request("list_tabs", serde_json::Value::Null).await {
+    match tabs {
         Ok(payload) => {
             marks
                 .keep_running
@@ -3896,13 +3940,15 @@ async fn fetch_shell_session_marks() -> ShellSessionMarks {
 #[cfg(test)]
 mod tests {
     use super::acp;
+    use super::with_marks_timeout;
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
         is_proposal_mcp_tool_title, is_redundant_startup_model_error,
         parse_detached_shell_session_ids, parse_keep_running_tab_shell_session_ids,
         parse_open_tab_shell_session_ids, post_login_authenticate_error,
         timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SoftStopReason, WtaClient,
+        PromptUsageIdentity, ShellSessionMarks, SoftStopReason, WtaClient,
+        SHELL_SESSION_MARKS_TIMEOUT,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3967,6 +4013,36 @@ mod tests {
         assert!(ids.contains("durable-4"));
 
         assert!(parse_open_tab_shell_session_ids(&serde_json::json!({})).is_empty());
+    }
+
+    #[tokio::test]
+    async fn marks_lookup_that_overruns_falls_back_to_an_unmarked_list() {
+        let budget = std::time::Duration::from_millis(20);
+        let slow = async {
+            tokio::time::sleep(budget * 10).await;
+            ShellSessionMarks {
+                keep_running: std::collections::HashSet::from(["durable-1".to_string()]),
+                open: std::collections::HashSet::from(["durable-1".to_string()]),
+            }
+        };
+
+        let marks = with_marks_timeout(budget, slow).await;
+        assert!(marks.keep_running.is_empty());
+        assert!(marks.open.is_empty());
+    }
+
+    #[tokio::test]
+    async fn marks_lookup_within_the_budget_is_kept() {
+        let ready = async {
+            ShellSessionMarks {
+                keep_running: std::collections::HashSet::from(["durable-1".to_string()]),
+                open: std::collections::HashSet::from(["durable-2".to_string()]),
+            }
+        };
+
+        let marks = with_marks_timeout(SHELL_SESSION_MARKS_TIMEOUT, ready).await;
+        assert!(marks.keep_running.contains("durable-1"));
+        assert!(marks.open.contains("durable-2"));
     }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
