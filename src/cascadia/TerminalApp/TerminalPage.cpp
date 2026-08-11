@@ -7419,6 +7419,7 @@ namespace winrt::TerminalApp::implementation
             if (tab)
             {
                 auto startupActions = tab->BuildStartupActions(BuildStartupKind::Content);
+                _AddTabIdentityMetadata(tab.get(), startupActions);
                 _DetachTabFromWindow(tab);
                 _MoveContent(std::move(startupActions), windowId, 0);
                 _RemoveTab(*tab, /*movingAway*/ true);
@@ -11371,6 +11372,7 @@ namespace winrt::TerminalApp::implementation
                                                std::optional<winrt::Windows::Foundation::Point> dragPoint)
     {
         auto startupActions = _stashed.draggedTab->BuildStartupActions(BuildStartupKind::Content);
+        _AddTabIdentityMetadata(_stashed.draggedTab.get(), startupActions);
         _DetachTabFromWindow(_stashed.draggedTab);
 
         _MoveContent(std::move(startupActions), windowId, tabIndex, dragPoint);

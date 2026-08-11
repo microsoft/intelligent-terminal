@@ -626,6 +626,49 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
+    // Stamps the tab-level identity onto the first pane's args.
+    //
+    // A pane's args describe a pane; the durable shell-session id and the
+    // keep-running opt-in belong to the tab, so they only survive a hop that
+    // rebuilds the tab from actions — persistence, or a move to another window
+    // — if they are written into the actions here. The durable id is what makes
+    // a saved session at most one open tab: every later activation of that
+    // database row has to find this tab and focus it, and a tab that arrived
+    // without its id cannot be found.
+    void TerminalPage::_AddTabIdentityMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    {
+        const auto& durableShellSessionId = tab->DurableShellSessionId();
+        const auto keepRunning = tab->KeepRunning();
+        if (durableShellSessionId.empty() && !keepRunning)
+        {
+            return;
+        }
+
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (!durableShellSessionId.empty())
+                {
+                    terminalArgs.DurableShellSessionId(durableShellSessionId);
+                    terminalArgs.DurableShellSessionRevision(tab->DurableShellSessionRevision());
+                }
+                terminalArgs.KeepRunning(keepRunning);
+                break;
+            }
+        }
+    }
+
     void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
     {
         const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
@@ -642,19 +685,7 @@ namespace winrt::TerminalApp::implementation
             return contentArgs.try_as<NewTerminalArgs>();
         };
 
-        if (const auto& durableShellSessionId = tab->DurableShellSessionId();
-            !durableShellSessionId.empty())
-        {
-            for (const auto& action : actions)
-            {
-                if (const auto terminalArgs = getTerminalArgs(action))
-                {
-                    terminalArgs.DurableShellSessionId(durableShellSessionId);
-                    terminalArgs.DurableShellSessionRevision(tab->DurableShellSessionRevision());
-                    break;
-                }
-            }
-        }
+        _AddTabIdentityMetadata(tab, actions);
 
         for (const auto& action : actions)
         {
