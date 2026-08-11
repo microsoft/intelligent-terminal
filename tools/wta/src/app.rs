@@ -2954,6 +2954,11 @@ impl App {
     }
 
     fn load_shell_sessions(&mut self, tab_id: String) {
+        tracing::info!(
+            target: "shell_sessions",
+            %tab_id,
+            "shell-session list requested"
+        );
         let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionsList {
             tab_id: tab_id.clone(),
             elevated: crate::shell_session_store::current_process_is_elevated(),

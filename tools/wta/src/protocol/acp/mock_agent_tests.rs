@@ -14,9 +14,9 @@
 
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session, AutofixTextKind, CancelRequest,
-    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, spawn_master_ext_pump,
+    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -1718,6 +1718,50 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
                 Ok(_) => panic!("expected AgentsSnapshotLoaded"),
                 _ => panic!("expected AgentsSnapshotLoaded, got nothing"),
             }
+        })
+        .await;
+}
+
+/// The ext-request pump must serve requests off its own task, with no ACP
+/// session bound. That is what keeps a view opened during a cold handshake off
+/// the critical path of `session/new`, which waits on the agent CLI and can run
+/// for seconds. Regression guard: if this ever moves back into the main select
+/// loop, the request would not be picked up until `session/new` returned.
+#[tokio::test]
+async fn master_ext_pump_serves_requests_before_any_session_exists() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+            let (master_tx, master_rx) = mpsc::unbounded_channel();
+
+            spawn_master_ext_pump(
+                master_rx,
+                h.conn.clone(),
+                h.event_tx.clone(),
+                std::sync::Arc::clone(&tab_to_session),
+            );
+
+            master_tx
+                .send(MasterExtRequest::SessionsList {
+                    request_id: 11,
+                    rescan: false,
+                })
+                .expect("pump must be listening");
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentsSnapshotLoaded { request_id, .. })) => {
+                    assert_eq!(request_id, 11, "request_id must round-trip");
+                }
+                Ok(_) => panic!("expected AgentsSnapshotLoaded"),
+                Err(_) => panic!("pump did not serve the request"),
+            }
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "the pump must not need a bound session to answer"
+            );
         })
         .await;
 }

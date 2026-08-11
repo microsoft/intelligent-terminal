@@ -2235,6 +2235,22 @@ pub async fn run_acp_client_over_pipe(
         init_resp
     ));
 
+    // Master answers the saved-session and agent-list lookups straight out of
+    // its own state — none of them go near the agent CLI, and the elevation
+    // scope they are checked against is taken from the pipe's client token at
+    // accept time, not from the ACP handshake. So start draining the queue
+    // here instead of from the main loop below: `session/new` waits on the
+    // agent CLI and can run for seconds on a cold start, and a view the user
+    // opened meanwhile has no reason to sit behind it.
+    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    spawn_master_ext_pump(
+        master_ext_rx,
+        conn.clone(),
+        event_tx.clone(),
+        Arc::clone(&tab_to_session),
+    );
+
     // ── Post-login authenticate ──────────────────────────────────────────
     // If this is a reconnect after LoginComplete (the user just completed
     // `copilot login` / `codex auth` / etc.), we MUST call `authenticate`
@@ -2566,8 +2582,6 @@ pub async fn run_acp_client_over_pipe(
     // and the agent CLI would reject the cancel for an unknown sid.
     // With no entry, the load arm sees `old_sid = None` and loads
     // cleanly.
-    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>> =
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     if has_bootstrap {
         let mut g = tab_to_session.lock().await;
         let initial_tab_key = owner_tab_id.clone().unwrap_or_else(|| "0".to_string());
@@ -2624,9 +2638,6 @@ pub async fn run_acp_client_over_pipe(
                         ),
                     }
                 });
-            }
-            Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 // Helper can't restart the agent CLI in-process — master owns
@@ -2718,6 +2729,26 @@ pub async fn run_acp_client_over_pipe(
 
     startup_probe.log("run_acp_client_over_pipe loop ended");
     Ok(())
+}
+
+/// Service `MasterExtRequest`s for the lifetime of the connection.
+///
+/// Deliberately not an arm of the main loop: the main loop only starts once
+/// `session/new` has come back from the agent CLI, and none of these requests
+/// need a session — master answers them from its own state. Draining them from
+/// their own task means a view opened during a cold handshake is not stuck
+/// behind agent startup.
+fn spawn_master_ext_pump(
+    mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
+    conn: conn::ClientLink,
+    event_tx: mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+) {
+    tokio::task::spawn_local(async move {
+        while let Some(req) = master_ext_rx.recv().await {
+            dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
+        }
+    });
 }
 
 /// Spawn a per-prompt task that resolves the tab's ACP session (lazily
@@ -2861,6 +2892,7 @@ fn dispatch_master_ext_request(
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
             MasterExtRequest::ShellSessionsList { tab_id, elevated } => {
+                let started = std::time::Instant::now();
                 // Which of those durable rows still has a live detached shell,
                 // and which are already open in a tab, is only known to Windows
                 // Terminal, and asking costs a `wtcli` process spawn. Overlap
@@ -2885,6 +2917,14 @@ fn dispatch_master_ext_request(
                     Ok(response) => (response.sessions, None),
                     Err(error) => (Vec::new(), Some(error.to_string())),
                 };
+                tracing::info!(
+                    target: "shell_sessions",
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    sessions = sessions.len(),
+                    marked_keep_running = marks.keep_running.len(),
+                    marked_open = marks.open.len(),
+                    "shell-session list served"
+                );
                 let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
                     tab_id,
                     sessions,
