@@ -2042,30 +2042,27 @@ try
     {
         if (_windows.empty())
         {
-            // Startup action processing suspends between actions after the
-            // first one. Create the tab with its first pane, then attach the
-            // remaining splits synchronously so every kept pane either
-            // confirms reattach before this transaction ends or is cancelled.
-            std::vector<ActionAndArgs> firstAction;
-            firstAction.emplace_back(actions.front());
-            const auto firstContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(firstAction)));
-            CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, firstContent, nullptr });
-
-            if (actions.size() > 1)
-            {
-                std::vector<ActionAndArgs> remainingActions{ actions.begin() + 1, actions.end() };
-                const auto remainingContent = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(remainingActions)));
-                _windows.back()->Logic().AttachContent(remainingContent, 0);
-            }
-        }
-        else
-        {
+            // A brand new window has not been laid out yet, so its tab content
+            // still measures 0x0 and `_SplitPane` would silently drop every
+            // split. Hand the whole restore to startup-action processing, which
+            // suspends between actions precisely so WinUI can size each new
+            // pane first. Those later panes therefore confirm their reattach
+            // after this call returns.
             const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
-            // -1 means "wherever a new tab normally goes". Passing a real index
-            // here would move the restored tab there — 0 dragged every restore
-            // to the front of the tab row.
-            _windows.front()->Logic().AttachContent(content, -1);
+            CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, content, nullptr });
+
+            // Releasing the pending claim is still right: the panes are already
+            // spoken for by ContentId, and leaving them pending would hide a
+            // group that never finished restoring.
+            manager.CancelKeptGroupReattach(groupId);
+            return true;
         }
+
+        const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+        // -1 means "wherever a new tab normally goes". Passing a real index
+        // here would move the restored tab there — 0 dragged every restore
+        // to the front of the tab row.
+        _windows.front()->Logic().AttachContent(content, -1);
     }
     catch (...)
     {
