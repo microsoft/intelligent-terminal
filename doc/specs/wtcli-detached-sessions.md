@@ -54,11 +54,27 @@ JSON output:
 ### `list-detached-sessions`
 
 - Lists only sessions currently held by `ContentManager` with no attached
-  `TermControl`.
+  `TermControl`. A tab that opted into keep-running but is still open has a
+  window, so it is not detached and does not appear here — `list-shell-sessions`
+  is where its `KEEP_RUNNING` flag shows up.
 - Does not read `shell-sessions.db`; the database can contain historical
   snapshots that are no longer running.
 - Produces an empty table/array when nothing is detached.
 - Supports the existing global `--json` option.
+
+### `list-shell-sessions`
+
+Saved rows come from the database, which knows nothing about live state, so the
+server annotates each one:
+
+- `keep_running` — the session is detached with no window, **or** its tab is
+  open and opted into keep-running. Both halves are needed: without the second,
+  the flag would blink off the moment a session is restored.
+- `opened` — some open tab is currently bound to this durable id.
+
+The agent pane's `/shell-sessions` view reaches wta-master directly instead of
+going through this server, so it computes the same two marks itself in
+`tools/wta/src/protocol/acp/client.rs`. The definitions must stay in step.
 
 ### `kill-detached-session <shell-session-guid>`
 

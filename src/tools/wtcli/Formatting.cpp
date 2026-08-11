@@ -147,6 +147,70 @@ void FormatDetachedSessionsHuman(const Json::Value& detachedSessions)
     }
 }
 
+void FormatShellSessionsHuman(const Json::Value& shellSessions)
+{
+    if (!shellSessions.isArray() || shellSessions.empty())
+    {
+        printf("No saved shell sessions.\n");
+        return;
+    }
+
+    constexpr char idHeader[] = "SHELL_SESSION_ID";
+    constexpr char nameHeader[] = "NAME";
+    constexpr char keepRunningHeader[] = "KEEP_RUNNING";
+    constexpr char openedHeader[] = "OPENED";
+
+    size_t idWidth = std::char_traits<char>::length(idHeader);
+    size_t nameWidth = std::char_traits<char>::length(nameHeader);
+
+    struct Row
+    {
+        std::string id;
+        std::string name;
+        bool keepRunning;
+        bool opened;
+    };
+
+    std::vector<Row> rows;
+    rows.reserve(shellSessions.size());
+
+    for (const auto& session : shellSessions)
+    {
+        Row row{
+            session["id"].asString(),
+            session["name"].asString(),
+            session["keep_running"].asBool(),
+            session["opened"].asBool(),
+        };
+
+        idWidth = std::max(idWidth, row.id.size());
+        nameWidth = std::max(nameWidth, row.name.size());
+
+        rows.emplace_back(std::move(row));
+    }
+
+    printf("%-*s %-*s %-*s %s\n",
+           static_cast<int>(idWidth),
+           idHeader,
+           static_cast<int>(nameWidth),
+           nameHeader,
+           static_cast<int>(std::char_traits<char>::length(keepRunningHeader)),
+           keepRunningHeader,
+           openedHeader);
+
+    for (const auto& row : rows)
+    {
+        printf("%-*s %-*s %-*s %s\n",
+               static_cast<int>(idWidth),
+               row.id.c_str(),
+               static_cast<int>(nameWidth),
+               row.name.c_str(),
+               static_cast<int>(std::char_traits<char>::length(keepRunningHeader)),
+               row.keepRunning ? "*" : "",
+               row.opened ? "*" : "");
+    }
+}
+
 void FormatActivePaneHuman(const Json::Value& info)
 {
     printf("Active pane: %s (tab: %u, window: %llu)\n",

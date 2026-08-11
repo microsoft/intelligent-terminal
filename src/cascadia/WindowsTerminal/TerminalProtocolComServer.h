@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include <json/json.h>
+
 #include <wrl/implements.h>
 #include <wrl/client.h>
 
@@ -143,6 +145,7 @@ private:
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);
+    static void _annotateShellSessions(Json::Value& sessions);
 
     static WindowEmperor* s_emperor;
 };

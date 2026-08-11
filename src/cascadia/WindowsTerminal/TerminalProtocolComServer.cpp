@@ -13,6 +13,8 @@
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 #include <algorithm>
+#include <cctype>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -264,8 +266,17 @@ static Json::Value _toJson(const Protocol::WindowInfo& w)
     return v;
 }
 
-static Json::Value _toJson(const Protocol::TabInfo& t)
+// Durable ids reach us as bare text from the database and as formatted GUIDs
+// from live state; fold case so the two always compare equal.
+static std::string _lowerAscii(std::string text)
 {
+    std::transform(text.begin(), text.end(), text.begin(), [](const unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return text;
+}
+
+static Json::Value _toJson(const Protocol::TabInfo& t){
     Json::Value v;
     v["tab_id"] = static_cast<Json::UInt>(t.TabId);
     v["window_id"] = static_cast<Json::UInt64>(t.WindowId);
@@ -651,6 +662,72 @@ try
 }
 CATCH_RETURN()
 
+// Annotates each saved shell-session row with the two things the database
+// cannot know: whether it is being kept running, and whether it is on screen
+// right now.
+//
+// The tray, the agent-pane list and the CLI all have to answer these the same
+// way, so the merge lives here rather than in each client. "Keep running"
+// covers both a session detached with no window and a tab that opted in but is
+// still open — without the latter the flag would blink off the moment a
+// session is restored.
+//
+// The agent pane's own list reaches wta-master directly rather than through
+// this server, so it repeats this merge in
+// `tools/wta/src/protocol/acp/client.rs` (`fetch_shell_session_marks`). Keep
+// the two definitions of "keep running" and "opened" in step.
+void TerminalProtocolComServer::_annotateShellSessions(Json::Value& sessions)
+{
+    if (!s_emperor || !sessions.isArray())
+    {
+        return;
+    }
+
+    std::set<std::string> keepRunning;
+    std::set<std::string> opened;
+
+    for (const auto& session : s_emperor->GetDetachedSessionsForProtocol())
+    {
+        auto id = _lowerAscii(winrt::to_string(winrt::hstring{ session.ShellSessionId }));
+        if (!id.empty())
+        {
+            keepRunning.emplace(std::move(id));
+        }
+    }
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+
+        const auto tabs = page.GetProtocolTabs().get();
+        for (uint32_t i = 0; i < tabs.Size(); ++i)
+        {
+            const auto tab = tabs.GetAt(i);
+            auto id = _lowerAscii(winrt::to_string(tab.DurableShellSessionId));
+            if (id.empty())
+            {
+                continue;
+            }
+            if (tab.KeepRunning)
+            {
+                keepRunning.emplace(id);
+            }
+            opened.emplace(std::move(id));
+        }
+    }
+
+    for (auto& session : sessions)
+    {
+        const auto id = _lowerAscii(session["id"].asString());
+        session["keep_running"] = keepRunning.contains(id);
+        session["opened"] = opened.contains(id);
+    }
+}
+
 STDMETHODIMP TerminalProtocolComServer::ListShellSessions(BSTR* json)
 try
 {
@@ -677,6 +754,8 @@ try
     std::string errors;
     std::istringstream stream{ serialized };
     RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
+
+    _annotateShellSessions(sessions);
     *json = _bstrFromJson(sessions);
     return S_OK;
 }

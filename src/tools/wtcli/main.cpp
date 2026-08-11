@@ -520,8 +520,7 @@ int main()
         }
         else
         {
-            for (const auto& session : sessions)
-                printf("%s\t%s\n", session["id"].asCString(), session["name"].asCString());
+            FormatShellSessionsHuman(sessions);
         }
     });
 
