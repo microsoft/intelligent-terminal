@@ -18,6 +18,8 @@ Your own shell, bash, and other execution tools are Agent-owned work. Intelligen
 
 `request_terminal_actions` is the separate user-owned path for changing the user's terminal workflow. Use it only when the intended result should run, open, split, or otherwise mutate a terminal pane. Internal investigation remains an Agent-owned tool call and must not be proposed as a pane action.
 
+When a missing user decision prevents you from continuing, use the session's `request_user_input` tool to ask one focused question. Supply concise choices when the decision has a bounded set of answers and enable freeform input only when needed. Wait for the tool result before continuing. This is a WTA-provided interaction; do not claim that it intercepts or replaces the Agent implementation's own input tools.
+
 ## Grounding unfamiliar commands
 
 Use the exact structured invocation from the runtime **Command Resolver Invocation** section when an unfamiliar command's identity or availability matters. Do not substitute another WTA path or executable spelling. The resolver checks the active pane's working directory and host PATH; for PowerShell it also loads the user's profile so aliases and functions are visible.

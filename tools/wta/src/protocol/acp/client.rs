@@ -1583,6 +1583,39 @@ impl WtaClient {
         Ok(acp::schema::v1::ExtResponse::new(raw.into()))
     }
 
+    async fn request_user_input(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        let helper_request: crate::agent_tools::action_proposal::mcp::HelperRequest =
+            serde_json::from_str(args.params.get()).map_err(|error| {
+                acp::Error::invalid_params()
+                    .data(format!("invalid user input request parameters: {error}"))
+            })?;
+        let request: crate::agent_tools::user_input::UserInputRequest =
+            serde_json::from_value(helper_request.arguments)
+                .map_err(|error| acp::Error::invalid_params().data(error.to_string()))?;
+        let request = request
+            .validate()
+            .map_err(|error| acp::Error::invalid_params().data(error.to_string()))?;
+        let (responder, response) = tokio::sync::oneshot::channel();
+        self.state
+            .event_tx
+            .send(AppEvent::UserInputRequest {
+                session_id: helper_request.session_id,
+                request,
+                responder,
+            })
+            .map_err(|_| acp::Error::internal_error().data("Helper UI is unavailable"))?;
+        let response = response
+            .await
+            .unwrap_or(crate::agent_tools::user_input::UserInputResponse::Cancelled);
+        let raw = serde_json::value::to_raw_value(&response).map_err(|error| {
+            acp::Error::internal_error().data(format!("encode user input response: {error}"))
+        })?;
+        Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+    }
+
     /// Receive `intellterm.wta/session_{added,removed}` notifications
     /// pushed by master so the helper's local `alive` mirror stays in
     /// sync without polling. We translate to an `AppEvent` rather than
@@ -2182,6 +2215,18 @@ pub async fn run_acp_client_over_pipe(
                                 conn::respond_enum(
                                     responder,
                                     c.request_terminal_actions(a)
+                                        .await
+                                        .map(R::ExtMethodResponse),
+                                )
+                            }
+                            Q::ExtMethodRequest(a)
+                                if crate::agent_tools::action_proposal::mcp::user_input_helper_method_matches(
+                                    &a.method,
+                                ) =>
+                            {
+                                conn::respond_enum(
+                                    responder,
+                                    c.request_user_input(a)
                                         .await
                                         .map(R::ExtMethodResponse),
                                 )

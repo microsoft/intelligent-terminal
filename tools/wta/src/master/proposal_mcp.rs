@@ -17,6 +17,7 @@ use crate::agent_tools::action_proposal::mcp::{
     HelperRequest, SERVER_ID_HEX_LEN, SERVER_NAME_PREFIX,
 };
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
+use crate::agent_tools::user_input::{UserInputRequest, UserInputResponse};
 
 const ENDPOINT_PATH: &str = "/mcp";
 const MAX_HEADER_BYTES: usize = 32 * 1024;
@@ -24,6 +25,7 @@ const MAX_BODY_BYTES: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 32;
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const HELPER_TIMEOUT: Duration = Duration::from_secs(25);
+const USER_INPUT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
 
 #[cfg(windows)]
@@ -64,7 +66,7 @@ def forward(request):
         ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
          "-EncodedCommand", POWERSHELL_ENCODED],
         input=request, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        timeout=35, check=False)
+        timeout=610, check=False)
     if process.returncode != 0:
         raise RuntimeError("Windows bridge exited with a nonzero status")
     return process.stdout
@@ -343,6 +345,7 @@ impl CapabilityRegistry {
     }
 }
 
+#[derive(Clone)]
 enum CapabilityResolution {
     Bound(acp::schema::v1::SessionId),
     Pending,
@@ -747,11 +750,13 @@ async fn serve_connection(
                     "received terminal action MCP call"
                 );
             }
-            let response =
-                crate::agent_tools::action_proposal::mcp::dispatch(message, |arguments| {
-                    submit_to_helper(&state, capability, arguments)
-                })
-                .await;
+            let action_capability = capability.clone();
+            let response = crate::agent_tools::action_proposal::mcp::dispatch(
+                message,
+                |arguments| submit_to_helper(&state, action_capability, arguments),
+                |arguments| submit_user_input_to_helper(&state, capability, arguments),
+            )
+            .await;
             if let Some(response) = response {
                 let body = serde_json::to_vec(&response)?;
                 write_response(&mut stream, 200, "OK", "application/json", &body).await?;
@@ -779,15 +784,84 @@ async fn submit_to_helper(
     arguments: Value,
 ) -> Result<ProposalValidationResponse> {
     let started = std::time::Instant::now();
+    let (session_id, response) = forward_to_helper(
+        state,
+        capability,
+        arguments,
+        "request_terminal_actions",
+        crate::agent_tools::action_proposal::mcp::HELPER_REQUEST_METHOD,
+        HELPER_TIMEOUT,
+    )
+    .await?;
+    let response: ProposalValidationResponse =
+        serde_json::from_str(&response).context("decode Helper proposal response")?;
+    tracing::info!(
+        target: "proposal_mcp",
+        step = "helper→master",
+        op = "request_terminal_actions",
+        session_id = %session_id,
+        status = ?response.status,
+        retryable = response.retryable,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "terminal action MCP call completed"
+    );
+    Ok(response)
+}
+
+async fn submit_user_input_to_helper(
+    state: &MasterStateInner,
+    capability: CapabilityResolution,
+    arguments: Value,
+) -> Result<UserInputResponse> {
+    let request: UserInputRequest =
+        serde_json::from_value(arguments).context("decode user input request")?;
+    let request = request.validate().context("validate user input request")?;
+    let arguments = serde_json::to_value(request).context("encode user input request")?;
+    let started = std::time::Instant::now();
+    let (session_id, response) = forward_to_helper(
+        state,
+        capability,
+        arguments,
+        "request_user_input",
+        crate::agent_tools::action_proposal::mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+        USER_INPUT_TIMEOUT,
+    )
+    .await?;
+    let response: UserInputResponse =
+        serde_json::from_str(&response).context("decode Helper user input response")?;
+    tracing::info!(
+        target: "proposal_mcp",
+        step = "helper→master",
+        op = "request_user_input",
+        session_id = %session_id,
+        outcome = match &response {
+            UserInputResponse::Answered { .. } => "answered",
+            UserInputResponse::Cancelled => "cancelled",
+        },
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "user input MCP call completed"
+    );
+    Ok(response)
+}
+
+async fn forward_to_helper(
+    state: &MasterStateInner,
+    capability: CapabilityResolution,
+    arguments: Value,
+    op: &'static str,
+    helper_method: &'static str,
+    timeout: Duration,
+) -> Result<(acp::schema::v1::SessionId, String)> {
+    let started = std::time::Instant::now();
     let session_id = match capability {
         CapabilityResolution::Bound(session_id) => session_id,
         CapabilityResolution::Pending => {
             tracing::warn!(
                 target: "proposal_mcp",
                 step = "master→helper",
-                op = "request_terminal_actions",
+                op,
                 stage = "resolve_capability",
-                "terminal action MCP call rejected because its ACP session is not bound"
+                "MCP call rejected because its ACP session is not bound"
             );
             anyhow::bail!("ACP session is not bound yet");
         }
@@ -795,9 +869,9 @@ async fn submit_to_helper(
             tracing::warn!(
                 target: "proposal_mcp",
                 step = "master→helper",
-                op = "request_terminal_actions",
+                op,
                 stage = "resolve_capability",
-                "terminal action MCP call rejected because its capability is unknown"
+                "MCP call rejected because its capability is unknown"
             );
             anyhow::bail!("MCP capability is unknown");
         }
@@ -810,10 +884,10 @@ async fn submit_to_helper(
         tracing::warn!(
             target: "proposal_mcp",
             step = "master→helper",
-            op = "request_terminal_actions",
+            op,
             stage = "resolve_helper",
             session_id = %session_id,
-            "terminal action MCP call rejected because its owning Helper is disconnected"
+            "MCP call rejected because its owning Helper is disconnected"
         );
         anyhow::bail!("owning Helper is disconnected");
     };
@@ -821,11 +895,11 @@ async fn submit_to_helper(
         tracing::error!(
             target: "proposal_mcp",
             step = "master→helper",
-            op = "request_terminal_actions",
+            op,
             stage = "resolve_helper",
             helper_id = ?route.helper_id,
             session_id = %session_id,
-            "terminal action MCP route has no Helper forwarder"
+            "MCP route has no Helper forwarder"
         );
         anyhow::bail!("owning Helper route has no forwarder");
     };
@@ -833,41 +907,37 @@ async fn submit_to_helper(
         session_id: session_id.to_string(),
         arguments,
     })
-    .context("encode Helper proposal request")?;
-    let request = acp::schema::v1::ExtRequest::new(
-        crate::agent_tools::action_proposal::mcp::HELPER_REQUEST_METHOD,
-        params.into(),
-    );
+    .context("encode Helper request")?;
+    let request = acp::schema::v1::ExtRequest::new(helper_method, params.into());
     tracing::info!(
         target: "proposal_mcp",
         step = "master→helper",
-        op = "request_terminal_actions",
+        op,
         helper_id = ?route.helper_id,
         session_id = %session_id,
-        "routing terminal action request to owning Helper"
+        "routing MCP request to owning Helper"
     );
-    let response = match tokio::time::timeout(HELPER_TIMEOUT, forwarder.ext_method(request)).await {
+    let response = match tokio::time::timeout(timeout, forwarder.ext_method(request)).await {
         Ok(Ok(response)) => response,
         Ok(Err(error)) => {
             tracing::warn!(
                 target: "proposal_mcp",
                 step = "helper→master",
-                op = "request_terminal_actions",
+                op,
                 stage = "helper_rpc",
                 helper_id = ?route.helper_id,
                 session_id = %session_id,
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 error_code = ?error.code,
-                "owning Helper rejected terminal action request"
+                "owning Helper rejected MCP request"
             );
-            return Err(anyhow::Error::new(error)
-                .context("owning Helper rejected terminal action request"));
+            return Err(anyhow::Error::new(error).context("owning Helper rejected MCP request"));
         }
         Err(_) => {
             tracing::warn!(
                 target: "proposal_mcp",
                 step = "helper→master",
-                op = "request_terminal_actions",
+                op,
                 stage = "helper_rpc",
                 helper_id = ?route.helper_id,
                 session_id = %session_id,
@@ -877,34 +947,7 @@ async fn submit_to_helper(
             anyhow::bail!("timed out waiting for owning Helper");
         }
     };
-    let response: ProposalValidationResponse = match serde_json::from_str(response.0.get()) {
-        Ok(response) => response,
-        Err(error) => {
-            tracing::warn!(
-                target: "proposal_mcp",
-                step = "helper→master",
-                op = "request_terminal_actions",
-                stage = "decode_response",
-                helper_id = ?route.helper_id,
-                session_id = %session_id,
-                elapsed_ms = started.elapsed().as_millis() as u64,
-                "failed to decode Helper terminal action response"
-            );
-            return Err(error).context("decode Helper proposal response");
-        }
-    };
-    tracing::info!(
-        target: "proposal_mcp",
-        step = "helper→master",
-        op = "request_terminal_actions",
-        helper_id = ?route.helper_id,
-        session_id = %session_id,
-        status = ?response.status,
-        retryable = response.retryable,
-        elapsed_ms = started.elapsed().as_millis() as u64,
-        "terminal action MCP call completed"
-    );
-    Ok(response)
+    Ok((session_id, response.0.get().to_string()))
 }
 
 struct HttpRequest {

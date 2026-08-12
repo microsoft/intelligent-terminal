@@ -187,6 +187,24 @@ pub struct PermissionState {
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
 }
 
+pub struct UserInputState {
+    pub request: crate::agent_tools::user_input::UserInputRequest,
+    pub selected: usize,
+    pub input: String,
+    pub responder:
+        Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
+}
+
+impl UserInputState {
+    pub fn selection_count(&self) -> usize {
+        self.request.choices.len() + usize::from(self.request.allow_freeform)
+    }
+
+    pub fn freeform_selected(&self) -> bool {
+        self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
+}
+
 impl PermissionState {
     /// Index of the first "allow" option, used by the `y` quick-key and the
     /// `[Y]` button label.
@@ -328,6 +346,8 @@ pub struct TabSession {
     /// entry is the one currently rendered and accepting keys; the rest
     /// queue up.
     pub permission: VecDeque<PermissionState>,
+    /// FIFO of blocking clarification requests from the session MCP tool.
+    pub user_input: VecDeque<UserInputState>,
     // Recommendation card UI focus (the set itself lives on
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
@@ -445,6 +465,7 @@ impl TabSession {
         self.messages.clear();
         self.tool_calls.clear();
         self.permission.clear();
+        self.user_input.clear();
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();

@@ -5539,6 +5539,85 @@ fn permission_request_replaces_thinking_until_dismissed() {
     assert!(!app.current_tab().should_show_thinking());
 }
 
+fn begin_user_input_test(app: &mut App) {
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Submitted(SubmittedPrompt {
+        id: 1,
+        text: "test".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    });
+}
+
+#[test]
+fn user_input_choice_returns_selected_index() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which approach?".into(),
+            choices: vec!["A".into(), "B".into()],
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "B".into(),
+            selected_index: Some(1),
+        }
+    );
+    assert!(app.current_tab().user_input.is_empty());
+}
+
+#[test]
+fn user_input_accepts_freeform_and_escape_cancels() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Name it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "x".into(),
+            selected_index: None,
+        }
+    );
+
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Continue?".into(),
+            choices: vec!["Yes".into()],
+            allow_freeform: false,
+        },
+        responder,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Cancelled
+    );
+}
+
 #[test]
 fn surfaced_recommendation_hides_thinking_before_turn_end() {
     let mut app = test_app();

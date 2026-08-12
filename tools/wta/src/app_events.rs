@@ -900,6 +900,22 @@ impl App {
                     responder: Some(responder),
                 });
             }
+            AppEvent::UserInputRequest {
+                session_id,
+                request,
+                responder,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if !tab.turn.is_in_flight() {
+                    return;
+                }
+                tab.user_input.push_back(UserInputState {
+                    request,
+                    selected: 0,
+                    input: String::new(),
+                    responder: Some(responder),
+                });
+            }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()
                     .messages

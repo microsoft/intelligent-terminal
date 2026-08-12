@@ -7,13 +7,13 @@ remains as a fallback transport.
 
 ## Summary
 
-`wta-master` owns one Windows-loopback proposal MCP endpoint. Host ACP
+`wta-master` owns one Windows-loopback session MCP endpoint. Host ACP
 sessions use it directly. Each WSL distro gets an on-demand loopback relay,
 and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intellterm_<public-id>/request_terminal_actions
+  -> HTTP MCP: intellterm_<public-id>/{request_terminal_actions,request_user_input}
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
@@ -22,9 +22,9 @@ ACP session
   -> existing wtcli/COM executor
 ```
 
-The tool can only present typed actions for review. It cannot read or mutate
-Windows Terminal. The existing card confirmation is the sole mutation
-boundary.
+The endpoint presents typed terminal actions for review and blocking
+clarification questions. It cannot read or mutate Windows Terminal. The
+existing card confirmation is the sole mutation boundary.
 
 The MCP call returns as soon as the Helper commits the card. User confirmation
 or cancellation happens independently, so an agent turn never waits on a
@@ -49,7 +49,7 @@ distro with `wsl.exe`; the relay invokes a fixed, encoded Windows PowerShell
 byte forwarder for each HTTP request, which reaches master's Windows-loopback
 endpoint. The bearer header remains in the forwarded bytes and never enters a
 process command line. If Python 3 or Windows interop is unavailable in a
-distro, master does not advertise proposal MCP to that Helper. The relay is
+distro, master does not advertise session MCP to that Helper. The relay is
 cached for that master's lifetime, but its stdin remains connected to an
 ownership pipe: normal child cleanup or unexpected master termination closes
 the pipe and makes the Python relay exit. Each distro has an independent
@@ -89,10 +89,11 @@ Server name:
 intellterm_<public-id>
 ```
 
-Tool:
+Tools:
 
 ```text
 request_terminal_actions
+request_user_input
 ```
 
 The server supports MCP `initialize`, `ping`, `tools/list`, and `tools/call`
@@ -137,6 +138,14 @@ Tool result statuses:
 
 `accepted` means the handoff completed. The agent ends its turn after
 this result.
+
+`request_user_input` accepts one question, up to eight single-line choices,
+and an optional freeform answer. Master routes the request through the same
+session capability and `session_to_helper` ownership lookup, then waits for
+the owning Helper's modal response. Enter submits the selected choice or a
+non-empty freeform answer; Esc returns `cancelled`. The request times out
+after ten minutes. It does not inspect, intercept, or translate an Agent's
+provider-specific `ask_user` implementation.
 
 ## Helper validation
 
@@ -227,6 +236,6 @@ future agents that work better through shell commands.
 
 ## Scope
 
-The MCP server is attached only for host agents that advertise ACP HTTP MCP
+The MCP server is attached only for agents that advertise ACP HTTP MCP
 support. Assistant text remains ordinary chat content and is never parsed into
 terminal actions.

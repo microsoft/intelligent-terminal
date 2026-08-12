@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup,
+    model_popup, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -260,6 +260,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // `/help` overlay sits on top of everything so the user can always
     // dismiss it with Esc.
     command_popup::render_help_overlay(frame, app, area);
+
+    if let Some(request) = app.current_tab().user_input.front() {
+        user_input::render(frame, request, chunks[7]);
+    }
 }
 
 /// Truncate `s` so its rendered (display-cell) width fits in `max` columns,

@@ -23,9 +23,9 @@ bare `wta` with neither a role flag nor a subcommand exits with an error.
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
-- **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
+- **Session MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
   listener owned by `wta-master`, plus an on-demand loopback relay per WSL
-  distro) -- exposes only `request_terminal_actions`. Each session receives an
+  distro) -- exposes `request_terminal_actions` and `request_user_input`. Each session receives an
   independent public server name plus a bearer capability, preventing
   name-keyed Agent caches from overwriting another session's header. The
   capability resolves to ACP SessionId, then `session_to_helper` routes the
@@ -213,7 +213,7 @@ subfolder keyed by the package version:
 Per-process logs in the helper+master architecture:
 
 - `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
-  per-helper routing, `session_to_helper` updates, proposal MCP call
+  per-helper routing, `session_to_helper` updates, session MCP call
   receipt/routing/validation results, agent CLI exit detection
 - `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
   connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle

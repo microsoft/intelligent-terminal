@@ -62,6 +62,7 @@ impl App {
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
+        tab.user_input.clear();
         tab.chat_scroll.reset();
         tab.selection_visible_pending = false;
         // Any leftover card from the previous turn's
