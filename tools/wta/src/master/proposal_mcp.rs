@@ -747,7 +747,7 @@ async fn serve_connection(
                     op = "tools/call",
                     session_id = session_id.as_deref(),
                     capability_bound = session_id.is_some(),
-                    "received terminal action MCP call"
+                    "received session MCP call"
                 );
             }
             let action_capability = capability.clone();
