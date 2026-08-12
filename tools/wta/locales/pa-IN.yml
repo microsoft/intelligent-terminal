@@ -59,6 +59,14 @@ input.image_attachments: "📎 ਤਸਵੀਰਾਂ: %{items}"  # {Locked="%{it
 # ── ਕਮਾਂਡ ਪੌਪਅੱਪ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ਸਲੈਸ਼-ਕਮਾਂਡ ਅਗੇਤਰ, ASCII ਹੋਣਾ ਜ਼ਰੂਰੀ
 commands.popup_title: " / ਕਮਾਂਡਾਂ "
+delegate_picker.title: " ਡੈਲੀਗੇਟ ਮੰਜ਼ਿਲ "
+delegate_picker.tab: "ਨਵੀਂ ਟੈਬ"
+delegate_picker.panel: "ਨਵਾਂ ਪੈਨਲ"
+delegate_picker.intent_required: " ਸੌਂਪਣ ਲਈ ਕੰਮ ਦਾ ਵਰਣਨ ਕਰੋ।"
+delegate_picker.pane_not_allowed: "/delegate ਹਮੇਸ਼ਾ ਇੱਕ ਨਵੀਂ ਮੰਜ਼ਿਲ ਬਣਾਉਂਦਾ ਹੈ ਅਤੇ @pane ਨੂੰ ਸਵੀਕਾਰ ਨਹੀਂ ਕਰਦਾ ਹੈ।"
+delegate_picker.not_configured: "ਕੋਈ ਡੈਲੀਗੇਟ ਏਜੰਟ ਕੌਂਫਿਗਰ ਨਹੀਂ ਕੀਤਾ ਗਿਆ ਹੈ।"
+delegate_picker.no_parent_pane: "ਵਿਭਾਜਿਤ ਕਰਨ ਲਈ ਕੋਈ ਕਾਰਜ ਪੈਨ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
+delegate_picker.launch_failed: " ਡੈਲੀਗੇਟ ਨੂੰ ਲਾਂਚ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ: %{error}"
 commands.help_title: " ਮਦਦ "
 commands.help_header: "ਸਲੈਸ਼ ਕਮਾਂਡਾਂ — ਇਨਪੁਟ ਬਾਕਸ ਵਿੱਚ / ਟਾਈਪ ਕਰੋ।"
 commands.help_escape_hint: "  //text     ਅੱਖਰੀ '/' ਭੇਜੋ (ਕਮਾਂਡ ਪਾਰਸਰ ਐਸਕੇਪ ਕਰਦਾ ਹੈ)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ਇਸ ਪੈਨ ਲਈ ਏਜੰਟ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "ਇੱਕ ਕਾਰਜ ਤਿਆਰ ਕਰੋ ਅਤੇ ਇੱਕ ਡੈਲੀਗੇਟ ਏਜੰਟ ਖੋਲ੍ਹੋ (/delegate <intent>)"
 
 # ── ਸਿਫ਼ਾਰਸ਼ ਪੈਨਲ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ਕੀ ਨਾਮ ਅਤੇ Return-ਕੀ ਗਲਿਫ਼, ਅਨੁਵਾਦ ਨਾ ਕਰੋ
 recommendations.nav_hint: "(↑ ↓ ਨੈਵੀਗੇਟ ਕਰਨ ਲਈ • ← → ਬਟਨ ਬਦਲਣ ਲਈ • Enter ਚੁਣਨ ਲਈ • Esc ਰੱਦ ਕਰਨ ਲਈ)"
 recommendations.button_run_command: "[ ਕਮਾਂਡ ਚਲਾਓ ]"
+recommendations.button_send_to_delegate: "[ ਡੈਲੀਗੇਟ ਨੂੰ ਭੇਜੋ ]"
 recommendations.button_insert_in_terminal: "ਟਰਮੀਨਲ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ"
 recommendations.button_open_in_new_tab: "ਨਵੀਂ ਟੈਬ ਵਿੱਚ ਖੋਲ੍ਹੋ ↵"
 recommendations.button_open_in_new_panel: "ਨਵੇਂ ਪੈਨਲ ਵਿੱਚ ਖੋਲ੍ਹੋ ↵"
@@ -206,6 +218,11 @@ system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "ਟਰਮੀਨਲ ਪੈਨ ਚੁਣੋ (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "ਕੋਈ ਲਿਖਣਯੋਗ ਟਰਮੀਨਲ ਪੈਨ ਉਪਲਬਧ ਨਹੀਂ ਹਨ।"
+pane_picker.target_unavailable: "ਚੁਣਿਆ ਪੈਨ ਹੁਣ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ਏਜੰਟ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ਇਸ ਮਸ਼ੀਨ ਤੇ ਕੋਈ ਉਪਲਬਧ ਏਜੰਟ CLI ਨਹੀਂ ਮਿਲਿਆ।"  # {Locked="CLI"}

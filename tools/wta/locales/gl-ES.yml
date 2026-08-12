@@ -59,6 +59,14 @@ input.image_attachments: "📎 Imaxes: %{items}"  # {Locked="📎","%{items}"}
 # ── Ventá emerxente de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefixo de comando de barra, debe permanecer ASCII
 commands.popup_title: " / comandos "
+delegate_picker.title: " Delegar destino "
+delegate_picker.tab: "Nova pestana"
+delegate_picker.panel: "Panel novo"
+delegate_picker.intent_required: "Describe o traballo a delegar."
+delegate_picker.pane_not_allowed: "/delegate sempre crea un novo destino e non acepta @pane."
+delegate_picker.not_configured: "Non hai ningún axente delegado configurado."
+delegate_picker.no_parent_pane: "Non hai ningún panel de traballo dispoñible para dividir."
+delegate_picker.launch_failed: "Non se puido iniciar o delegado: %{error}"
 commands.help_title: " Axuda "
 commands.help_header: "Comandos de barra — escriba / na caixa de entrada."
 commands.help_escape_hint: "  //text     Enviar un '/' literal (escapa o analizador de comandos)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Pechar esta axuda"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomes de teclas e glifo de tecla Intro, non traducir
 recommendations.nav_hint: "(↑ ↓ para navegar • ← → para cambiar accións • Enter para seleccionar • Esc para cancelar)"
 recommendations.button_run_command: "[ Executar comando ]"
+recommendations.button_send_to_delegate: "[ Enviar ao delegado ]"
 recommendations.button_insert_in_terminal: "Inserir no Terminal"
 recommendations.button_open_in_new_tab: "Abrir nunha pestana nova ↵"
 recommendations.button_open_in_new_panel: "Abrir nun panel novo ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Escolla o agente para esta pestana (/agent <id> para cambiar directamente)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Prepara unha tarefa e abre un axente delegado (/delegate <intent>)"
 
 # ── Execución de recomendacións (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Fallou a opción %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Seleccionar o panel de terminal (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Non hai paneis de terminais escribibles dispoñibles."
+pane_picker.target_unavailable: "O panel seleccionado xa non está dispoñible."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Seleccionar agente (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Non se atopou ningunha CLI de axente dispoñible nesta máquina."  # {Locked="CLI"}

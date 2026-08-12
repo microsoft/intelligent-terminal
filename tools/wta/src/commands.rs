@@ -54,6 +54,10 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Ask the agent to turn an intent into a terminal command card.
+    Command,
+    /// Prepare a prompt and launch the configured delegate in a new destination.
+    Delegate,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -130,7 +134,25 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
     },
+    CommandSpec {
+        name: "command",
+        summary_key: "commands.command.summary",
+        kind: CommandKind::Command,
+    },
+    CommandSpec {
+        name: "delegate",
+        summary_key: "commands.delegate.summary",
+        kind: CommandKind::Delegate,
+    },
 ];
+
+/// True while the input is asking the user to choose a pane mention.
+pub fn is_pane_picker_prefix(input: &str) -> bool {
+    let trimmed = input.trim_start();
+    trimmed == "@"
+        || trimmed.eq_ignore_ascii_case("/command @")
+        || trimmed.eq_ignore_ascii_case("/cmd @")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MovePositionSpec {
@@ -264,6 +286,11 @@ pub fn classify(input: &str) -> ParseOutcome {
 /// Return the [`CommandSpec`] for the given name (case-insensitive), or
 /// `None` if unknown.
 pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
+    let name = if name.eq_ignore_ascii_case("cmd") {
+        "command"
+    } else {
+        name
+    };
     REGISTRY
         .iter()
         .find(|spec| spec.name.eq_ignore_ascii_case(name))
@@ -274,6 +301,9 @@ pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
 /// popup.
 pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
     let needle = prefix.trim().to_ascii_lowercase();
+    if needle == "cmd" {
+        return lookup("command").into_iter().collect();
+    }
     REGISTRY
         .iter()
         .filter(|spec| spec.name.starts_with(&needle))
@@ -368,6 +398,28 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn deterministic_action_commands_parse() {
+        let command = parse("/command clean temporary files").unwrap();
+        assert_eq!(command.kind, CommandKind::Command);
+        assert_eq!(command.rest, "clean temporary files");
+        assert_eq!(parse("/cmd echo hello").unwrap().kind, CommandKind::Command);
+        assert_eq!(matches("cmd")[0].name, "command");
+
+        let delegate = parse("/delegate investigate the failure").unwrap();
+        assert_eq!(delegate.kind, CommandKind::Delegate);
+        assert_eq!(delegate.rest, "investigate the failure");
+    }
+
+    #[test]
+    fn pane_picker_prefix_is_deliberately_narrow() {
+        assert!(is_pane_picker_prefix("@"));
+        assert!(is_pane_picker_prefix("  /COMMAND @"));
+        assert!(is_pane_picker_prefix("/cmd @"));
+        assert!(!is_pane_picker_prefix("@PowerShell"));
+        assert!(!is_pane_picker_prefix("/delegate @"));
     }
 
     #[test]

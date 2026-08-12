@@ -59,6 +59,14 @@ input.image_attachments: "📎 Ngā atahanga: %{items}"  # {Locked="%{items}"} {
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / whakahau "
+delegate_picker.title: " Tukuna te haerenga "
+delegate_picker.tab: "Ripa hou"
+delegate_picker.panel: "Pawhiri hou"
+delegate_picker.intent_required: "Whakaahuahia nga mahi hei tuku."
+delegate_picker.pane_not_allowed: "Ka hanga e /delegate he waahi hou kaore e whakaae ki a @pane."
+delegate_picker.not_configured: "Karekau he kaihoko kaikawe i whirihora."
+delegate_picker.no_parent_pane: "Karekau he pihanga mahi e waatea ana hei wehe."
+delegate_picker.launch_failed: "Kaore i taea te whakarewa i te kaikawe: %{error}"
 commands.help_title: " Awhina "
 commands.help_header: "Whakahau riipene — patohia / ki te pouaka tauuru."
 commands.help_escape_hint: "  //text     Tukua he '/' tuturu (whakaorangia te kaiwetewete whakahau)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Katia tenei awhina"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti pātene • Enter ki te whiriwhiri • Esc ki te whakakore)"
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
+recommendations.button_send_to_delegate: "[ Tukuna ki te kaikawe ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
 recommendations.button_open_in_new_panel: "Whakatuwherahia i te Papa Hou ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Kōwhiria te māngai mō tēnei papa (/agent <id> ki te huri tika)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Whakaritea he mahi ka whakatuwheratia he kaihoko kaitakawaenga (/delegate <intent>)"
 
 # ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Tīpakohia te pihanga kāpeka (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Karekau he pihanga kapeka tuhi e waatea ana."
+pane_picker.target_unavailable: "Ko te pihanga kua tohua kua kore e waatea."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Kōwhiria te māngai (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Kāore i kitea he CLI māngai wātea i runga i tēnei mihini."  # {Locked="CLI"}

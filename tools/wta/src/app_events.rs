@@ -386,6 +386,44 @@ impl App {
             } => {
                 self.apply_prompt_target_resolved(tab_id, prompt_id, pane_id);
             }
+            AppEvent::DelegateDestinationReady {
+                tab_id,
+                prompt_id,
+                result,
+            } => match result {
+                Ok(pane_id) => {
+                    let tab = self.tab_mut(&tab_id);
+                    let matches = tab
+                        .pending_preparation
+                        .as_mut()
+                        .filter(|preparation| preparation.prompt_id == prompt_id);
+                    if let Some(preparation) = matches {
+                        preparation.target_session_id = pane_id.clone();
+                        if let Some(prompt) = tab.turn.prompt_mut() {
+                            if prompt.id == prompt_id {
+                                prompt.context.target_pane_id = Some(pane_id);
+                            }
+                        }
+                        self.surface_committed_delegate_proposal(prompt_id);
+                    }
+                }
+                Err(error) => {
+                    let tab = self.tab_mut(&tab_id);
+                    tab.pending_preparation = None;
+                    tab.pending_terminal_action_proposal = None;
+                    tab.messages.push(ChatMessage::error(
+                        t!("delegate_picker.launch_failed", error = error.as_str()).into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                    if tab
+                        .turn
+                        .prompt()
+                        .is_some_and(|prompt| prompt.id == prompt_id)
+                    {
+                        tab.turn = TurnState::Idle;
+                    }
+                }
+            },
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
@@ -1374,6 +1412,84 @@ impl App {
                     } else {
                         tracing::warn!(target: "tab_session", "tab_changed: missing tab_id in params");
                     }
+                    return;
+                }
+
+                if method == "pane_catalog_changed" {
+                    let target_window = params
+                        .get("window_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let our_window = self.window_id.as_deref().unwrap_or("");
+                    if !target_window.is_empty()
+                        && !our_window.is_empty()
+                        && target_window != our_window
+                    {
+                        return;
+                    }
+                    let Some(target_tab) = params.get("tab_id").and_then(|value| value.as_str())
+                    else {
+                        tracing::warn!(target: "pane_catalog", "snapshot missing tab_id");
+                        return;
+                    };
+                    if self
+                        .owner_tab_id
+                        .as_deref()
+                        .is_some_and(|owner| owner != target_tab)
+                    {
+                        return;
+                    }
+                    let generation = params
+                        .get("generation")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or_default();
+                    let panes = params
+                        .get("panes")
+                        .cloned()
+                        .and_then(|value| {
+                            serde_json::from_value::<Vec<tab_state::PaneDescriptor>>(value).ok()
+                        })
+                        .unwrap_or_default();
+                    let invalidated_session = {
+                        let tab = self.tab_mut(target_tab);
+                        let previous_agent_target =
+                            tab.pane_targets.agent_target_session_id.clone();
+                        tab.pane_targets.replace_snapshot(generation, panes);
+                        let agent_target_invalidated = previous_agent_target.is_some()
+                            && tab.pane_targets.agent_target_session_id.is_none();
+                        let mode = tab
+                            .pending_preparation
+                            .as_ref()
+                            .map(|preparation| preparation.mode)
+                            .or(tab.active_prepared_mode);
+                        let target = tab
+                            .turn
+                            .prompt()
+                            .and_then(|prompt| prompt.context.target_pane_id())
+                            .map(str::to_string);
+                        let target_missing = target.as_ref().is_some_and(|target| {
+                            !tab.pane_targets
+                                .panes
+                                .contains_key(&target.to_ascii_lowercase())
+                        });
+                        (
+                            (mode != Some(PreparedActionMode::DelegateSend) && target_missing)
+                                .then(|| tab.session_id.clone())
+                                .flatten(),
+                            agent_target_invalidated,
+                        )
+                    };
+                    if let Some(session_id) = invalidated_session.0 {
+                        self.turn_cancel(&session_id);
+                        self.tab_mut(target_tab).messages.push(ChatMessage::warning(
+                            t!("pane_picker.target_unavailable").into_owned(),
+                        ));
+                    } else if invalidated_session.1 {
+                        self.tab_mut(target_tab).messages.push(ChatMessage::warning(
+                            t!("pane_picker.target_unavailable").into_owned(),
+                        ));
+                    }
+                    self.sync_pane_picker_chip_target();
                     return;
                 }
 

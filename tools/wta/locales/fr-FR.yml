@@ -59,6 +59,14 @@ input.image_attachments: "📎 Images : %{items}"  # {Locked="📎","%{items}"}
 # ── Fenêtre contextuelle des commandes (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - préfixe de commande slash, doit rester en ASCII
 commands.popup_title: " / commandes "
+delegate_picker.title: " Destination du délégué "
+delegate_picker.tab: "Nouvel onglet"
+delegate_picker.panel: "Nouveau panneau"
+delegate_picker.intent_required: "Décrivez le travail à déléguer."
+delegate_picker.pane_not_allowed: "/delegate crée toujours une nouvelle destination et n'accepte pas @pane."
+delegate_picker.not_configured: "Aucun agent délégué n'est configuré."
+delegate_picker.no_parent_pane: "Aucun volet de travail n'est disponible pour être divisé."
+delegate_picker.launch_failed: "Impossible de lancer le délégué : %{error}"
 commands.help_title: " Aide "
 commands.help_header: "Commandes slash — tapez / dans la zone de saisie."
 commands.help_escape_hint: "  //text     Envoyer un '/' littéral (échappe l'analyseur de commandes)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Fermer cette aide"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de touches et symbole de touche Entrée, ne pas traduire
 recommendations.nav_hint: "(↑ ↓ naviguer • ← → changer d’action • Enter sélectionner • Esc annuler)"
 recommendations.button_run_command: "[ Exécuter la commande ]"
+recommendations.button_send_to_delegate: "[ Envoyer au délégué ]"
 recommendations.button_insert_in_terminal: "Insérer dans le terminal"
 recommendations.button_open_in_new_tab: "Ouvrir dans un nouvel onglet ↵"
 recommendations.button_open_in_new_panel: "Ouvrir dans un nouveau panneau ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Redémarrer l’agent"
 commands.stop.summary: "Annuler la requête en cours"
 commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"
 commands.agent.summary: "Choisir l’agent pour cet onglet (/agent <id> pour changer directement)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Préparer une tâche et ouvrir un agent délégué (/delegate <intent>)"
 
 # ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Le choix %{choice} a échoué : %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Sélectionner le volet des terminaux (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Aucun volet de terminal inscriptible n'est disponible."
+pane_picker.target_unavailable: "Le volet sélectionné n'est plus disponible."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Sélectionner l’agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Aucun CLI d'agent disponible n'a été trouvé sur cette machine."  # {Locked="CLI"}

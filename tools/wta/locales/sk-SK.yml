@@ -59,6 +59,14 @@ input.image_attachments: "📎 Obrázky: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / príkazy "
+delegate_picker.title: " Cieľ delegáta "
+delegate_picker.tab: "Nová karta"
+delegate_picker.panel: "Nový panel"
+delegate_picker.intent_required: "Popíšte prácu na delegovanie."
+delegate_picker.pane_not_allowed: "/delegate vždy vytvára nový cieľ a neprijíma @pane."
+delegate_picker.not_configured: "Nie je nakonfigurovaný žiadny agent delegáta."
+delegate_picker.no_parent_pane: "Nie je k dispozícii žiadny pracovný panel na rozdelenie."
+delegate_picker.launch_failed: "Nepodarilo sa spustiť delegáta: %{error}"
 commands.help_title: " Pomoc "
 commands.help_header: "Príkazy lomítka — zadajte / do vstupného poľa."
 commands.help_escape_hint: "  //text     Odoslanie doslovného '/' (obíde analyzátor príkazov)"  # {Locked="//text","/"}
@@ -73,10 +81,14 @@ commands.restart.summary: "Reštartovať agenta"
 commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
 commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Vyberte agent pre túto tablu (/agent <id> na priame prepnutie)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Pripravte úlohu a otvorte zástupcu delegáta (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ na navigáciu • ← → na prepínanie tlačidiel • Enter na výber • Esc na zrušenie)"
 recommendations.button_run_command: "[ Spustiť príkaz ]"
+recommendations.button_send_to_delegate: "[ Odoslať delegátovi ]"
 recommendations.button_insert_in_terminal: "Vložiť do terminálu"
 recommendations.button_open_in_new_tab: "Otvoriť v novej karte ↵"
 recommendations.button_open_in_new_panel: "Otvoriť v novom paneli ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Vyberte panel terminálu (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Nie sú k dispozícii žiadne zapisovateľné terminály."
+pane_picker.target_unavailable: "Vybratý panel už nie je dostupný."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Vybrať agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Na tomto počítači sa nenašlo žiadne dostupné rozhranie CLI agenta."  # {Locked="CLI"}

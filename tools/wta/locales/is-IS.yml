@@ -59,6 +59,14 @@ input.image_attachments: "📎 Myndir: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / skipanir "
+delegate_picker.title: " Sendi áfangastað "
+delegate_picker.tab: "Nýr flipi"
+delegate_picker.panel: "Nýtt spjaldið"
+delegate_picker.intent_required: "Lýstu vinnunni sem á að úthluta."
+delegate_picker.pane_not_allowed: "/delegate býr alltaf til nýjan áfangastað og samþykkir ekki @pane."
+delegate_picker.not_configured: "Enginn umboðsmaður er stilltur."
+delegate_picker.no_parent_pane: "Enginn vinnugluggi er tiltækur til að skipta."
+delegate_picker.launch_failed: "Gat ekki ræst fulltrúann: %{error}"
 commands.help_title: " Hjálp "
 commands.help_header: "Skástriksskipanir — sláðu / í inntaksreitinn."
 commands.help_escape_hint: "  //text     Sendu bókstaflegan '/' (sleppir skipanaþáttara)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Loka þessari hjálp"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ til að fletta • ← → til að skipta um hnappa • Enter til að velja • Esc til að hætta við)"
 recommendations.button_run_command: "[ Keyra skipun ]"
+recommendations.button_send_to_delegate: "[ Senda til fulltrúa ]"
 recommendations.button_insert_in_terminal: "Setja inn í Terminal"
 recommendations.button_open_in_new_tab: "Opna í nýjum flipa ↵"
 recommendations.button_open_in_new_panel: "Opna í nýju spjaldi ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Veldu fulltrúaið fyrir þetta spjald (/agent <id> til að skipta beint)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Undirbúa verkefni og opna umboðsmann (/delegate <intent>)"
 
 # ── Framkvæmd ráðleggingar (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Val %{choice} mistókst: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Veldu flugstöðvarrúðuna (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Engin skrifanleg flugstöð er tiltæk."
+pane_picker.target_unavailable: "Valið svæði er ekki lengur tiltækt."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Veldu fulltrúa (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Enginn tiltækur CLI-fulltrúi fannst á þessari vél."  # {Locked="CLI"}

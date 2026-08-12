@@ -59,6 +59,14 @@ input.image_attachments: "📎 Gambar: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / perintah "
+delegate_picker.title: " Delegasikan tujuan "
+delegate_picker.tab: "Tab baru"
+delegate_picker.panel: "Panel baru"
+delegate_picker.intent_required: "Jelaskan pekerjaan yang akan didelegasikan."
+delegate_picker.pane_not_allowed: "/delegate selalu membuat tujuan baru dan tidak menerima @pane."
+delegate_picker.not_configured: "Tidak ada agen delegasi yang dikonfigurasi."
+delegate_picker.no_parent_pane: "Tidak ada panel kerja yang tersedia untuk dipisahkan."
+delegate_picker.launch_failed: "Tidak dapat meluncurkan delegasi: %{error}"
 commands.help_title: " Bantuan "
 commands.help_header: "Perintah garis miring — ketik / di kotak input."
 commands.help_escape_hint: "  //text     Kirim '/' literal (melewati parser perintah)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Tutup bantuan ini"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk mengganti tindakan • Enter untuk memilih • Esc untuk membatalkan)"
 recommendations.button_run_command: "[ Jalankan perintah ]"
+recommendations.button_send_to_delegate: " [Kirim ke delegasi ]"
 recommendations.button_insert_in_terminal: "Sisipkan di Terminal"
 recommendations.button_open_in_new_tab: "Buka di Tab Baru ↵"
 recommendations.button_open_in_new_panel: "Buka di Panel Baru ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Mulai ulang agen"
 commands.stop.summary: "Batalkan prompt yang sedang berjalan"
 commands.sessions.summary: "Buka pemilih sesi historis (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Pilih agent untuk tab ini (/agent <id> untuk beralih langsung)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Siapkan tugas dan buka agen delegasi (/delegate <intent>)"
 
 # ── Eksekusi rekomendasi (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Pilih panel terminal (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Tidak ada panel terminal yang dapat ditulisi yang tersedia."
+pane_picker.target_unavailable: "Panel yang dipilih tidak lagi tersedia."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Pilih agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Tidak ada CLI agen yang tersedia ditemukan di mesin ini."  # {Locked="CLI"}

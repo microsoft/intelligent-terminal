@@ -60,7 +60,8 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, NoticeKind, PermissionState, RecommendationFocus, TabSession, View,
+    ChatMessage, CompletedTurn, NoticeKind, PendingPreparation, PermissionState,
+    PreparedActionMode, RecommendationFocus, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -3801,6 +3802,7 @@ impl App {
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
+            AppEvent::DelegateDestinationReady { .. } => "delegate_destination_ready",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
@@ -4448,6 +4450,7 @@ impl App {
         if !tab.agent_picker_open || self.available_agents.is_empty() {
             return None;
         }
+
         Some(crate::ui::AgentPopupState {
             agents: &self.available_agents,
             selected: tab.agent_picker_selected,
@@ -4455,6 +4458,74 @@ impl App {
             current_id: &self.current_agent_id,
             current_source: &self.current_agent_source,
         })
+    }
+
+    pub fn pane_popup_state(&self) -> Option<crate::ui::PanePopupState> {
+        let tab = self.current_tab();
+        if !tab.pane_targets.picker_open {
+            return None;
+        }
+        let candidates = tab
+            .pane_targets
+            .candidates()
+            .into_iter()
+            .map(|pane| crate::ui::PanePopupCandidate {
+                label: format!("@{}", pane.mention_label()),
+                detail: pane.picker_detail(),
+            })
+            .collect::<Vec<_>>();
+        Some(crate::ui::PanePopupState {
+            candidates,
+            selected: tab.pane_targets.picker_selected,
+            pane_focused: self.pane_focused,
+        })
+    }
+
+    pub fn delegate_popup_state(&self) -> Option<crate::ui::DelegatePopupState> {
+        self.current_tab()
+            .delegate_picker_open
+            .then_some(crate::ui::DelegatePopupState {
+                selected: self.current_tab().delegate_picker_selected,
+                pane_focused: self.pane_focused,
+            })
+    }
+
+    fn sync_pane_picker_chip_target(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        self.recompute_chip_override(&tab_id);
+    }
+
+    fn cancel_pane_picker(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.pane_targets.picker_open = false;
+        tab.clear_input();
+        self.sync_pane_picker_chip_target();
+    }
+
+    fn commit_pane_picker(&mut self) {
+        let candidate = {
+            let tab = self.current_tab();
+            tab.pane_targets
+                .candidates()
+                .get(tab.pane_targets.picker_selected)
+                .map(|pane| (pane.session_id.clone(), pane.mention_label()))
+        };
+        let Some((session_id, _display_label)) = candidate else {
+            self.current_tab_mut().pane_targets.picker_open = false;
+            self.sync_pane_picker_chip_target();
+            return;
+        };
+        let tab = self.current_tab_mut();
+        if tab.input.trim_start().eq_ignore_ascii_case("/command @") {
+            tab.replace_input("/command ".to_string());
+        } else if tab.input.trim_start().eq_ignore_ascii_case("/cmd @") {
+            tab.replace_input("/cmd ".to_string());
+        } else {
+            tab.clear_input();
+        }
+        tab.pane_targets.agent_target_session_id = Some(session_id);
+        tab.pane_targets.picker_open = false;
+        self.sync_pane_picker_chip_target();
     }
 
     /// Handle Enter for the slash-command system. Centralizes all three
@@ -4560,6 +4631,67 @@ impl App {
         }
     }
 
+    fn try_execute_direct_pane_command(&mut self) -> bool {
+        let input = self.current_tab().input.clone();
+        let Some(command) = input.trim_start().strip_prefix('$') else {
+            return false;
+        };
+        let command = command.trim();
+        if command.is_empty() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("direct_command.command_required").into_owned(),
+            ));
+            return true;
+        }
+
+        let target_pane_id = self
+            .current_tab()
+            .pane_targets
+            .agent_target()
+            .map(|pane| pane.session_id.clone())
+            .or_else(|| self.source_session_id.clone())
+            .or_else(|| {
+                self.current_tab()
+                    .pane_targets
+                    .candidates()
+                    .into_iter()
+                    .find(|pane| pane.is_active)
+                    .map(|pane| pane.session_id.clone())
+            });
+        let Some(target_pane_id) = target_pane_id else {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("pane_picker.target_unavailable").into_owned(),
+            ));
+            return true;
+        };
+
+        self.current_tab_mut().record_input_history(&input);
+        self.current_tab_mut().clear_input();
+        let choice = crate::coordinator::RecommendationChoice {
+            choice: 0,
+            title: command.to_string(),
+            rationale: String::new(),
+            actions: vec![crate::coordinator::RecommendedAction::Send {
+                parent: target_pane_id.clone(),
+                input: command.to_string(),
+            }],
+        };
+        if self
+            .recommendation_tx
+            .send(crate::coordinator::ChoiceExecution {
+                choice,
+                insert_only: false,
+                context: TurnContext::with_target_pane(target_pane_id),
+            })
+            .is_err()
+        {
+            self.current_tab_mut().messages.push(ChatMessage::error(
+                t!("direct_command.execution_unavailable").into_owned(),
+            ));
+        }
+        true
+    }
+
     /// Append the localized "connection to the agent was lost — /restart to
     /// reconnect" line to the active tab. Shown when the user invokes any
     /// slash command other than /restart while the transport to master is
@@ -4606,7 +4738,275 @@ impl App {
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
             CommandKind::Move => self.cmd_move(cmd.rest),
+            CommandKind::Command => self.cmd_command(cmd.rest),
+            CommandKind::Delegate => self.cmd_delegate(cmd.rest),
         }
+    }
+
+    fn cmd_command(&mut self, rest: String) {
+        self.submit_command_preparation(rest);
+    }
+
+    fn cmd_delegate(&mut self, rest: String) {
+        let intent = rest.trim();
+        if intent.is_empty() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("delegate_picker.intent_required").into_owned(),
+            ));
+            return;
+        }
+        if intent
+            .split_whitespace()
+            .any(|token| token.starts_with('@'))
+        {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("delegate_picker.pane_not_allowed").into_owned(),
+            ));
+            return;
+        }
+        if !self.current_tab().turn.accepts_new_prompt() {
+            self.current_tab_mut()
+                .messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            return;
+        }
+        let tab = self.current_tab_mut();
+        tab.delegate_picker_selected = match tab.last_delegate_target {
+            Some(crate::coordinator::OpenTarget::Panel) => 1,
+            _ => 0,
+        };
+        tab.pending_delegate = Some(tab_state::PendingDelegate {
+            intent: intent.to_string(),
+        });
+        tab.delegate_picker_open = true;
+        }
+
+    fn commit_delegate_picker(&mut self) {
+        let target = if self.current_tab().delegate_picker_selected == 0 {
+            crate::coordinator::OpenTarget::Tab
+        } else {
+            crate::coordinator::OpenTarget::Panel
+        };
+        let pending = {
+            let tab = self.current_tab_mut();
+            tab.delegate_picker_open = false;
+            tab.last_delegate_target = Some(target);
+            tab.pending_delegate.take()
+        };
+        let Some(pending) = pending else {
+            return;
+        };
+        let runtime = self
+            .delegate_agents
+            .as_ref()
+            .and_then(|agents| agents.lock().ok())
+            .and_then(|agents| agents.first().cloned());
+        let Some(runtime) = runtime else {
+            self.current_tab_mut().messages.push(ChatMessage::error(
+                t!("delegate_picker.not_configured").into_owned(),
+            ));
+            return;
+        };
+        let parent_pane = self
+            .current_tab()
+            .pane_targets
+            .candidates()
+            .into_iter()
+            .find(|pane| pane.is_active)
+            .or_else(|| {
+                self.current_tab()
+                    .pane_targets
+                    .candidates()
+                    .into_iter()
+                    .next()
+            })
+            .map(|pane| pane.session_id.clone());
+        if target == crate::coordinator::OpenTarget::Panel && parent_pane.is_none() {
+            self.current_tab_mut().messages.push(ChatMessage::error(
+                t!("delegate_picker.no_parent_pane").into_owned(),
+            ));
+            return;
+        }
+
+        let tab_id = self.active_tab_key().to_string();
+        let prompt_id = self.submit_delegate_preparation(&pending.intent);
+        let Some(prompt_id) = prompt_id else {
+            return;
+        };
+        let Some(event_tx) = self.event_tx.clone() else {
+            self.current_tab_mut().messages.push(ChatMessage::error(
+                t!(
+                    "delegate_picker.launch_failed",
+                    error = "event loop unavailable"
+                )
+                .into_owned(),
+            ));
+            return;
+        };
+        let shell_mgr = Arc::clone(&self.shell_mgr);
+        tokio::task::spawn_local(async move {
+            let result = async {
+                let commandline =
+                    crate::coordinator::build_delegate_launch_commandline_with_session(
+                        &runtime, None, None,
+                    )?;
+                let response = match target {
+                    crate::coordinator::OpenTarget::Tab => {
+                        shell_mgr
+                            .wt_create_tab(Some(&commandline), None, None, None)
+                            .await?
+                    }
+                    crate::coordinator::OpenTarget::Panel => {
+                        shell_mgr
+                            .wt_split_pane(
+                                parent_pane.as_deref().unwrap_or_default(),
+                                Some(&commandline),
+                                None,
+                                None,
+                                None,
+                                None,
+                            )
+                            .await?
+                    }
+                };
+                response
+                    .get("session_id")
+                    .and_then(|value| match value {
+                        serde_json::Value::String(value) => Some(value.clone()),
+                        serde_json::Value::Number(value) => Some(value.to_string()),
+                        _ => None,
+                    })
+                    .filter(|pane_id| !pane_id.trim().is_empty())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("destination response did not include a pane id")
+                    })
+            }
+            .await
+            .map_err(|error| format!("{error:#}"));
+            let _ = event_tx.send(AppEvent::DelegateDestinationReady {
+                tab_id,
+                prompt_id,
+                result,
+            });
+        });
+    }
+
+    fn submit_delegate_preparation(&mut self, intent: &str) -> Option<u64> {
+        let model_text = crate::protocol::acp::prompt::delegate_preparation_request(intent);
+        let tab_id = self.active_tab_key().to_string();
+        let prompt = PromptSubmission::new(
+            model_text,
+            Some(PaneContext {
+                pane_id: self.pane_id.clone(),
+                tab_id: Some(tab_id.clone()),
+                window_id: self.window_id.clone(),
+                cwd: None,
+                source_pane_id: self
+                    .current_tab()
+                    .pane_targets
+                    .candidates()
+                    .into_iter()
+                    .find(|pane| pane.is_active)
+                    .map(|pane| pane.session_id.clone()),
+                cached_source: None,
+            }),
+        );
+        let prompt_id = prompt.id;
+        let submitted = SubmittedPrompt {
+            id: prompt_id,
+            text: intent.to_string(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        };
+        let session_key = self
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        self.current_tab_mut().pending_preparation = Some(PendingPreparation {
+            prompt_id,
+            target_session_id: String::new(),
+            mode: PreparedActionMode::DelegateSend,
+        });
+        self.current_tab_mut().clear_input();
+        self.turn_submit_prompt(&session_key, submitted);
+        if self.prompt_tx.send(prompt).is_err() {
+            self.current_tab_mut().pending_preparation = None;
+            self.current_tab_mut().turn = TurnState::Idle;
+            self.current_tab_mut().messages.push(ChatMessage::error(
+                t!(
+                    "delegate_picker.launch_failed",
+                    error = "model channel unavailable"
+                )
+                .into_owned(),
+            ));
+            return None;
+        }
+        Some(prompt_id)
+    }
+
+    fn submit_command_preparation(&mut self, raw_intent: String) {
+        if !self.current_tab().turn.accepts_new_prompt() {
+            self.current_tab_mut()
+                .messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            return;
+        }
+        let intent = raw_intent.trim();
+        if intent.is_empty() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("command_card.intent_required").into_owned(),
+            ));
+            return;
+        }
+        let model_text = crate::protocol::acp::prompt::terminal_command_request(intent);
+        let tab_id = self.active_tab_key().to_string();
+        let descriptor = self.current_tab().pane_targets.agent_target().cloned();
+        let target_session_id = descriptor
+            .as_ref()
+            .map(|pane| pane.session_id.clone())
+            .or_else(|| self.source_session_id.clone())
+            .unwrap_or_default();
+        let pane_context = PaneContext {
+            pane_id: self.pane_id.clone(),
+            tab_id: Some(tab_id.clone()),
+            window_id: self.window_id.clone(),
+            cwd: descriptor
+                .as_ref()
+                .map(|pane| pane.cwd.clone())
+                .filter(|cwd| !cwd.is_empty()),
+            source_pane_id: (!target_session_id.is_empty()).then(|| target_session_id.clone()),
+            cached_source: descriptor.map(|pane| crate::pane_context::CachedPaneMetadata {
+                title: pane.title,
+                profile: pane.profile,
+                cwd: pane.cwd,
+                shell: pane.shell,
+            }),
+        };
+        let prompt = PromptSubmission::new(model_text, Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: intent.to_string(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext {
+                target_pane_id: (!target_session_id.is_empty()).then(|| target_session_id.clone()),
+            },
+            autofix: None,
+        };
+        let session_key = self
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        self.current_tab_mut().pending_preparation = Some(PendingPreparation {
+            prompt_id: prompt.id,
+            target_session_id,
+            mode: PreparedActionMode::Command,
+        });
+        self.current_tab_mut().clear_input();
+        self.turn_submit_prompt(&session_key, submitted);
+        let _ = self.prompt_tx.send(prompt);
     }
 
     /// `/help` — toggle the help overlay.
@@ -4653,8 +5053,9 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4679,28 +5080,28 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// `/fix [hint]` — run the auto-fix prompt on demand against the active
-    /// terminal pane. Reuses the error-triggered autofix pipeline
+    /// `/fix [hint]` — run the auto-fix prompt on demand against the current
+    /// persistent Agent target, or the default source pane in Auto mode.
+    /// Reuses the error-triggered autofix pipeline
     /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
     /// template plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
     /// there is no failing-pane notification, so (1) the helper's captured
-    /// source pane is resolved in the ACP client task; and
-    /// (2) the turn context starts without a target and is late-bound once
-    /// the client task resolves that working pane (`AppEvent::PromptTargetResolved` →
-    /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
-    /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
-    /// armed — that UI is tied to a specific failing pane, and a command typed
-    /// into the agent pane surfaces its result there directly.
+    /// source pane is resolved in the ACP client task when no persistent target
+    /// exists; and (2) the turn context is late-bound in that Auto-mode case.
+    /// The bottom-bar Pending pill is *not* armed — that UI is tied to a
+    /// specific failing pane, and a command typed into the agent pane surfaces
+    /// its result there directly.
     ///
     /// Refuses while a turn is in flight; the user should `/stop` first.
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4719,13 +5120,30 @@ impl App {
             tab.autofix.generation
         };
 
-        let source_pane_id = self.source_session_id.clone();
+        let agent_target = self
+            .tab_mut(&target_tab_id)
+            .pane_targets
+            .agent_target()
+            .cloned();
+        let source_pane_id = agent_target
+            .as_ref()
+            .map(|pane| pane.session_id.clone())
+            .or_else(|| self.source_session_id.clone());
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
-            cwd: None,
+            cwd: agent_target
+                .as_ref()
+                .map(|pane| pane.cwd.clone())
+                .filter(|cwd| !cwd.is_empty()),
             source_pane_id: source_pane_id.clone(),
+            cached_source: agent_target.map(|pane| crate::pane_context::CachedPaneMetadata {
+                title: pane.title,
+                profile: pane.profile,
+                cwd: pane.cwd,
+                shell: pane.shell,
+            }),
         };
 
         let hint = hint.trim().to_string();
@@ -4796,6 +5214,12 @@ impl App {
             .tab_sessions
             .get_mut(&key)
             .expect("resolved tab exists");
+        if tab.pending_preparation.as_ref().is_some_and(|preparation| {
+            preparation.prompt_id == prompt_id
+                && preparation.mode == PreparedActionMode::DelegateSend
+        }) {
+            return;
+        }
         let Some(prompt) = tab.turn.prompt_mut() else {
             return;
         };
@@ -4928,8 +5352,7 @@ impl App {
                 let offset = self.current_tab().rec_scroll.offset;
                 // `card_h` includes the inter-card gap, so subtracting it
                 // yields the rendered card's exclusive bottom row.
-                let rendered_bottom_exclusive =
-                    line_top.saturating_add(card_h.saturating_sub(1));
+                let rendered_bottom_exclusive = line_top.saturating_add(card_h.saturating_sub(1));
                 let viewport_bottom = offset.saturating_add(viewport_height);
                 if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
                     self.current_tab_mut().rec_scroll.set(line_top);
@@ -5345,7 +5768,7 @@ impl App {
     /// recommendation, navigating between cards, executing/cancelling a
     /// card, switching the active tab.
     fn recompute_chip_override(&mut self, tab_id: &str) {
-        let new_target = self.tab_mut(tab_id).compute_chip_card_target();
+        let new_target = self.tab_mut(tab_id).compute_chip_target();
         let tab = self.tab_mut(tab_id);
         if tab.last_emitted_chip_override == new_target {
             return;
@@ -5362,7 +5785,7 @@ impl App {
     /// chip-visibility hook runs *before* `IsSourceOfAgentPane` is set
     /// leaves the chip hidden until the user induces another transition.
     pub fn recompute_chip_override_initial(&mut self, tab_id: &str) {
-        let new_target = self.tab_mut(tab_id).compute_chip_card_target();
+        let new_target = self.tab_mut(tab_id).compute_chip_target();
         self.tab_mut(tab_id).last_emitted_chip_override = new_target.clone();
         emit_agent_chip_target(tab_id, new_target.as_deref());
     }
@@ -5379,6 +5802,9 @@ impl App {
     /// Returns the number of buttons for the currently selected choice card.
     /// Send actions have 2 buttons (Run, Insert); OpenAndSend has 1 button.
     fn button_count_for_selected(&self) -> usize {
+        if self.current_tab().active_prepared_mode.is_some() {
+            return 1;
+        }
         self.selected_recommendation_choice()
             .map(|c| if self.is_send_choice(c) { 2 } else { 1 })
             .unwrap_or(1)

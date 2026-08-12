@@ -59,6 +59,14 @@ input.image_attachments: "📎 תמונות: %{items}"  # {Locked="📎","%{item
 # ── חלון פקודות מוקפץ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - קידומת פקודת לוכסן, חייב להישאר ASCII
 commands.popup_title: " / פקודות "
+delegate_picker.title: " יעד נציג "
+delegate_picker.tab: "כרטיסייה חדשה"
+delegate_picker.panel: "פאנל חדש"
+delegate_picker.intent_required: "תאר את העבודה שיש להאצל."
+delegate_picker.pane_not_allowed: "/delegate תמיד יוצר יעד חדש ואינו מקבל @pane."
+delegate_picker.not_configured: "אין סוכן נציג מוגדר."
+delegate_picker.no_parent_pane: "אין חלונית עבודה זמינה לפיצול."
+delegate_picker.launch_failed: "לא ניתן להפעיל את הנציג: %{error}"
 commands.help_title: " עזרה "
 commands.help_header: "פקודות לוכסן — הקלד / בתיבת הקלט."
 commands.help_escape_hint: "  //text     שלח '/' מילולי (בורח ממנתח הפקודות)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "הפעל מחדש את הסוכן"
 commands.stop.summary: "בטל את הבקשה שמתבצעת"
 commands.sessions.summary: "פתח את בורר ההפעלות ההיסטוריות (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "בחר את הסוכן עבור כרטיסייה זו (/agent <id> למעבר ישיר)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "הכן משימה ופתח נציג נציג (/delegate <intent>)"
 
 # ── לוח המלצות (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - שמות מקשים וסמל מקש Enter, אין לתרגם
 recommendations.nav_hint: "(↑ ↓ לניווט • ← → למעבר בין לחצנים • Enter לבחירה • Esc לביטול)"
 recommendations.button_run_command: "[ הפעל פקודה ]"
+recommendations.button_send_to_delegate: "[ שלח לנציג ]"
 recommendations.button_insert_in_terminal: "הכנס למסוף"
 recommendations.button_open_in_new_tab: "פתח בכרטיסייה חדשה ↵"
 recommendations.button_open_in_new_panel: "פתח בחלונית חדשה ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "בחר חלונית מסוף (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "אין חלוניות מסוף הניתנות לכתיבה זמינות."
+pane_picker.target_unavailable: "החלונית שנבחרה אינה זמינה יותר."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "בחר סוכן (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "לא נמצא ממשק CLI זמין של סוכן במחשב זה."  # {Locked="CLI"}

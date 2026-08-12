@@ -59,6 +59,14 @@ input.image_attachments: "📎 Dealbhan: %{items}"  # {Locked="📎","%{items}"}
 # ── Priob-uinneag òrdughan (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ro-leasachan àithne sgian-dubh, feumaidh e fuireach ASCII
 commands.popup_title: " / òrdughan "
+delegate_picker.title: " Ceann-uidhe riochdaire "
+delegate_picker.tab: "Tab ùr"
+delegate_picker.panel: "Pannal ùr"
+delegate_picker.intent_required: "Thoir cunntas air an obair a tha thu airson a thiomnadh."
+delegate_picker.pane_not_allowed: " Bidh /delegate an-còmhnaidh a’ cruthachadh ceann-uidhe ùr agus cha ghabh e ri @pane."
+delegate_picker.not_configured: "Chan eil àidseant riochdachaidh sam bith air a rèiteachadh."
+delegate_picker.no_parent_pane: "Chan eil pana obrach ri fhaighinn airson sgoltadh."
+delegate_picker.launch_failed: "Cha b’ urrainn dhuinn an riochdaire a chuir air bhog: %{error}"
 commands.help_title: " Cuideachadh "
 commands.help_header: "Òrdughan sgian-dubh — clò-sgrìobh / anns a' bhogsa ion-chuir."
 commands.help_escape_hint: "  //text     Cuir '/' litireil (teich bhon pharsair òrdughan)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Dùin an cuideachadh seo"  # {Locked="Es
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmean iuchraichean agus samhla iuchair Tilleadh, na eadar-theangaich
 recommendations.nav_hint: "(↑ ↓ gus seòladh • ← → gus putanan atharrachadh • Enter gus taghadh • Esc gus sgur dheth)"
 recommendations.button_run_command: "[ Ruith òrdugh ]"
+recommendations.button_send_to_delegate: "[Cuir gu riochdaire ]"
 recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
 recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
 recommendations.button_open_in_new_panel: "Fosgail ann am Panail Ùr ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Tagh am àidhent airson a' phana seo (/agent <id> gus atharrachadh gu dìreach)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: " Ullaich gnìomh agus fosgail riochdaire riochdaire (/delegate <intent>)"
 
 # ── Cur an gnìomh molaidh (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Tagh pana crìche (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Chan eil lòsan crìochnachaidh a ghabhas sgrìobhadh rim faighinn."
+pane_picker.target_unavailable: "Chan eil am pana taghte ri fhaighinn tuilleadh."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Tagh àidhent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Cha deach CLI àidhent sam bith a lorg air a' mhadhinn seo."  # {Locked="CLI"}

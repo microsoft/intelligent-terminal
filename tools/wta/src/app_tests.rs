@@ -49,7 +49,14 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    test_app_with_prompt_rx().0
+}
+
+fn test_app_with_prompt_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
+) {
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
     let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -60,6 +67,7 @@ pub(super) fn test_app() -> App {
     let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
     App::new(
         prompt_tx,
         recommendation_tx,
@@ -75,6 +83,8 @@ pub(super) fn test_app() -> App {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        ),
+        prompt_rx,
     )
 }
 
@@ -2222,10 +2232,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(
-        app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4")
-    );
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Notice {
@@ -2234,10 +2241,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         })
     ));
     match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-            session_id,
-            model,
-        } => {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
         }
@@ -7200,10 +7204,7 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    install_recs(
-        &mut app,
-        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
-    );
+    install_recs(&mut app, vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")]);
 
     let text = render_to_text(&mut app, 80, 7);
     assert!(
@@ -7312,6 +7313,48 @@ fn manual_fix_uses_the_helpers_captured_source_target() {
     assert_eq!(
         prompt.context.target_pane_id.as_deref(),
         Some("captured-source-pane")
+    );
+}
+
+#[test]
+fn manual_fix_prefers_the_persistent_agent_target() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.source_session_id = Some("captured-source-pane".into());
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "selected-pane".to_string(),
+            ordinal: 1,
+            title: "Selected".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\selected".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: false,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut().pane_targets.agent_target_session_id = Some("selected-pane".to_string());
+
+    app.cmd_fix(false, String::new());
+
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .and_then(|prompt| prompt.context.target_pane_id()),
+        Some("selected-pane")
+    );
+    let context = prompt_rx
+        .try_recv()
+        .expect("manual fix submission")
+        .pane_context
+        .expect("manual fix pane context");
+    assert_eq!(context.source_pane_id.as_deref(), Some("selected-pane"));
+    assert_eq!(
+        context.cached_source.expect("cached metadata").cwd,
+        "C:\\selected"
     );
 }
 
@@ -7711,8 +7754,7 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        source:
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -8772,6 +8814,260 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Idle;
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override, None,);
+}
+
+#[test]
+fn backspace_and_delete_cancel_open_pane_picker_like_escape() {
+    for key in [KeyCode::Backspace, KeyCode::Delete] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("@".to_string());
+        assert!(app.current_tab().pane_targets.picker_open);
+
+        app.handle_key(KeyEvent::new(key, KeyModifiers::NONE));
+
+        assert!(!app.current_tab().pane_targets.picker_open);
+        assert!(app.current_tab().input.is_empty());
+        assert!(app.current_tab().last_emitted_chip_override.is_none());
+    }
+}
+
+#[test]
+fn committed_pane_target_survives_escape() {
+    let mut app = test_app();
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![
+            tab_state::PaneDescriptor {
+                session_id: "pane-one".to_string(),
+                ordinal: 1,
+                title: "PowerShell".to_string(),
+                profile: "PowerShell".to_string(),
+                cwd: "C:\\one".to_string(),
+                shell: "pwsh.exe".to_string(),
+                is_active: true,
+                is_agent_pane: false,
+                visible: true,
+                read_only: false,
+            },
+            tab_state::PaneDescriptor {
+                session_id: "pane-two".to_string(),
+                ordinal: 2,
+                title: "PowerShell".to_string(),
+                profile: "PowerShell".to_string(),
+                cwd: "C:\\two".to_string(),
+                shell: "pwsh.exe".to_string(),
+                is_active: false,
+                is_agent_pane: false,
+                visible: true,
+                read_only: false,
+            },
+        ],
+    );
+    app.current_tab_mut().pane_targets.picker_open = true;
+    app.current_tab_mut().pane_targets.picker_selected = 1;
+
+    app.commit_pane_picker();
+
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(
+        app.current_tab()
+            .pane_targets
+            .agent_target_session_id
+            .as_deref(),
+        Some("pane-two")
+    );
+    assert_eq!(
+        app.current_tab().compute_chip_target().as_deref(),
+        Some("pane-two")
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.current_tab()
+            .pane_targets
+            .agent_target_session_id
+            .as_deref(),
+        Some("pane-two")
+    );
+    assert_eq!(
+        app.current_tab().compute_chip_target().as_deref(),
+        Some("pane-two")
+    );
+}
+
+#[test]
+fn command_picker_sets_target_and_preserves_only_the_command_prefix() {
+    let mut app = test_app();
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut()
+        .replace_input("/command @".to_string());
+
+    app.commit_pane_picker();
+
+    assert_eq!(app.current_tab().input, "/command ");
+    assert_eq!(
+        app.current_tab()
+            .pane_targets
+            .agent_target_session_id
+            .as_deref(),
+        Some("pane-one")
+    );
+}
+
+#[test]
+fn command_request_uses_persistent_target_and_standard_prepared_mode() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut().pane_targets.agent_target_session_id = Some("pane-one".to_string());
+
+    app.cmd_command("list files recursively".to_string());
+
+    let prompt = prompt_rx.try_recv().expect("command prompt");
+    assert!(prompt.text.contains("list files recursively"));
+    assert_eq!(
+        prompt
+            .pane_context
+            .as_ref()
+            .and_then(|context| context.source_pane_id.as_deref()),
+        Some("pane-one")
+    );
+    let pending = app
+        .current_tab()
+        .pending_preparation
+        .as_ref()
+        .expect("pending command proposal");
+    assert_eq!(pending.mode, PreparedActionMode::Command);
+    assert_eq!(pending.target_session_id, "pane-one");
+}
+
+#[test]
+fn dollar_command_bypasses_model_and_runs_against_persistent_target() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut().pane_targets.agent_target_session_id = Some("pane-one".to_string());
+    app.current_tab_mut()
+        .replace_input("$ git status".to_string());
+
+    assert!(app.try_execute_direct_pane_command());
+
+    let execution = recommendation_rx.try_recv().expect("direct execution");
+    assert!(!execution.insert_only);
+    assert_eq!(execution.context.target_pane_id(), Some("pane-one"));
+    assert_eq!(
+        execution.choice.actions,
+        vec![RecommendedAction::Send {
+            parent: "pane-one".to_string(),
+            input: "git status".to_string(),
+        }]
+    );
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
+fn dollar_command_without_at_uses_default_source_pane() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    app.source_session_id = Some("source-pane".to_string());
+    app.current_tab_mut()
+        .replace_input("$ echo ready".to_string());
+
+    assert!(app.try_execute_direct_pane_command());
+
+    let execution = recommendation_rx.try_recv().expect("direct execution");
+    assert_eq!(execution.context.target_pane_id(), Some("source-pane"));
+    assert_eq!(
+        execution.choice.actions,
+        vec![RecommendedAction::Send {
+            parent: "source-pane".to_string(),
+            input: "echo ready".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn ordinary_prompt_snapshots_persistent_pane_target_and_cached_metadata() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().pane_targets.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-two".to_string(),
+            ordinal: 2,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\two".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: false,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut().pane_targets.agent_target_session_id = Some("pane-two".to_string());
+    app.current_tab_mut()
+        .replace_input("explain the current output".to_string());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let prompt = prompt_rx.try_recv().expect("ordinary prompt submission");
+    let context = prompt.pane_context.expect("pane context");
+    assert_eq!(context.source_pane_id.as_deref(), Some("pane-two"));
+    let cached = context.cached_source.expect("cached target metadata");
+    assert_eq!(cached.cwd, "C:\\two");
+    assert_eq!(cached.shell, "pwsh.exe");
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .and_then(|prompt| prompt.context.target_pane_id()),
+        Some("pane-two")
+    );
 }
 
 #[test]

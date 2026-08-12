@@ -59,6 +59,14 @@ input.image_attachments: "📎 Imagenkuna: %{items}"  # {Locked="📎","%{items}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kamachiykuna "
+delegate_picker.title: " Delegado destino nisqaman "
+delegate_picker.tab: "Musuq tabla"
+delegate_picker.panel: "Musuq panel"
+delegate_picker.intent_required: "Deleganapaq llamkaymanta willakuy."
+delegate_picker.pane_not_allowed: "/delegate sapa kuti musuq chayanata ruwan chaymanta mana @pane chaskinchu."
+delegate_picker.not_configured: "Manan ima delegado agentepas ruwasqachu."
+delegate_picker.no_parent_pane: "Mana llamk'ana p'anqa rakinapaq kanchu."
+delegate_picker.launch_failed: "Manam atirqanichu kachasqata qallariyta: %{error} ."
 commands.help_title: " Yanapay "
 commands.help_header: "Kamachiy riipekuna — / qillqay yaykuchina qutuman."
 commands.help_escape_hint: "  //text     Kikin '/' kachay (kamachiy t'aqwiqmanta ayqiy)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Kay yanapata wichq'ay"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
 recommendations.button_run_command: "[ Kamachiyta purichiy ]"
+recommendations.button_send_to_delegate: "[ Kachayman kachay ]"
 recommendations.button_insert_in_terminal: "Terminal nisqaman churay"
 recommendations.button_open_in_new_tab: "Musuq Ripa nisqapi kichay ↵"
 recommendations.button_open_in_new_panel: "Musuq K'iti nisqapi kichay ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Kay k'itipaq agente akllay (/agent <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Huk ruwayta wakichiy hinaspa huk delegado agente kichay (/delegate <intent>) ."
 
 # ── Recomendación ruwariy (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Terminalpa panelninta akllay (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Mana qillqanapaq terminal paneles nisqakuna kanchu."
+pane_picker.target_unavailable: "Akllasqa p'anqaqa manañam kanñachu."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agente akllay (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Manam ima agente CLI kaqpas tarikunchu kay computadorapi."  # {Locked="CLI"}

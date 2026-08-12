@@ -64,6 +64,14 @@ input.image_attachments: "📎 រូបភាព: %{items}"  # {Locked="📎","
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / ពាក្យបញ្ជា "
+delegate_picker.title: " ទិសដៅតំណាង "
+delegate_picker.tab: "ផ្ទាំងថ្មី។"
+delegate_picker.panel: "បន្ទះថ្មី។"
+delegate_picker.intent_required: "ពណ៌នាអំពីការងារដែលត្រូវផ្ទេរសិទ្ធិ។"
+delegate_picker.pane_not_allowed: "/delegate តែងតែបង្កើតទិសដៅថ្មី ហើយមិនទទួលយក @pane ទេ។"
+delegate_picker.not_configured: "គ្មានភ្នាក់ងារតំណាងណាមួយត្រូវបានកំណត់រចនាសម្ព័ន្ធទេ។"
+delegate_picker.no_parent_pane: "មិនមានផ្ទាំងការងារដែលអាចបំបែកបានទេ។"
+delegate_picker.launch_failed: "មិនអាចបើកដំណើរការប្រតិភូ៖ %{error}"
 # Title bar of the slash-commands help popup
 commands.help_title: " ជំនួយ "
 commands.help_header: "ពាក្យបញ្ជាស្លាស — វាយ / នៅក្នុងប្រអប់បញ្ចូល។"
@@ -74,6 +82,7 @@ commands.help_close_hint: "  Esc        បិទជំនួយនេះ"  # {L
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← → ដើម្បីប្ដូរសកម្មភាព • Enter ដើម្បីជ្រើសរើស • Esc ដើម្បីបោះបង់)"
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
+recommendations.button_send_to_delegate: "[ ផ្ញើទៅកាន់ប្រតិភូ ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
 recommendations.button_open_in_new_panel: "បើកក្នុងផ្តាំងថ្មី ↵"
@@ -215,12 +224,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ជ្រើសរើសភ្នាក់ងារសម្រាប់ផ្តាំងនេះ (/agent <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "រៀបចំកិច្ចការមួយ ហើយបើកភ្នាក់ងារតំណាង (/delegate <intent>)"
 
 # ── ការអនុវត្តអនុសាសន៍ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ជម្រើស %{choice} បានបរាជ័យ: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "ជ្រើសរើសផ្ទាំងស្ថានីយ (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "មិនមានផ្ទាំងស្ថានីយដែលអាចសរសេរបានទេ។"
+pane_picker.target_unavailable: "ផ្ទាំងដែលបានជ្រើសរើសលែងមានទៀតហើយ។"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ជ្រើសរើសភ្នាក់ងារ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "រកមិនឃើញ CLI ភ្នាក់ងារដែលមាននៅលើម៉ាស៊ីននេះទេ។"  # {Locked="CLI"}

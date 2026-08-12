@@ -59,6 +59,14 @@ input.image_attachments: "📎 Hình ảnh: %{items}"  # {Locked="📎","%{items
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / lệnh "
+delegate_picker.title: " Điểm đến của đại biểu "
+delegate_picker.tab: "Tab mới"
+delegate_picker.panel: "Bảng điều khiển mới"
+delegate_picker.intent_required: "Mô tả công việc để ủy quyền."
+delegate_picker.pane_not_allowed: "/delegate luôn tạo đích mới và không chấp nhận @pane."
+delegate_picker.not_configured: "Không có tác nhân đại diện nào được định cấu hình."
+delegate_picker.no_parent_pane: "Không có ngăn làm việc nào để phân chia."
+delegate_picker.launch_failed: "Không thể khởi chạy đại biểu: %{error}"
 commands.help_title: " Trợ giúp "
 commands.help_header: "Lệnh dấu gạch chéo — nhập / trong ô nhập liệu."
 commands.help_escape_hint: "  //text     Gửi ký tự '/' theo nghĩa đen (bỏ qua trình phân tích lệnh)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Đóng trợ giúp này"  # {Locked="Esc
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ để di chuyển • ← → để chuyển hành động • Enter để chọn • Esc để hủy)"
 recommendations.button_run_command: "[ Chạy lệnh ]"
+recommendations.button_send_to_delegate: "[ Gửi cho đại biểu ]"
 recommendations.button_insert_in_terminal: "Chèn vào Terminal"
 recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
 recommendations.button_open_in_new_panel: "Mở trong Bảng mới ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Khởi động lại tác nhân"
 commands.stop.summary: "Hủy prompt đang chạy"
 commands.sessions.summary: "Mở bộ chọn phiên lịch sử (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Chọn agent cho bảng này (/agent <id> để chuyển trực tiếp)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Chuẩn bị nhiệm vụ và mở tác nhân đại diện (/delegate <intent>)"
 
 # ── Thực thi đề xuất (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Lựa chọn %{choice} không thành công: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Chọn ngăn thiết bị đầu cuối (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Không có bảng thiết bị đầu cuối có thể ghi nào."
+pane_picker.target_unavailable: "Khung đã chọn không còn khả dụng nữa."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Chọn agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Không tìm thấy CLI agent khả dụng nào trên máy này."  # {Locked="CLI"}

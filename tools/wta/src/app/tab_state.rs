@@ -4,9 +4,143 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
+use crate::coordinator::OpenTarget;
 
 use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct PaneDescriptor {
+    pub session_id: String,
+    #[serde(default)]
+    pub ordinal: u32,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default)]
+    pub shell: String,
+    #[serde(default)]
+    pub is_active: bool,
+    #[serde(default)]
+    pub is_agent_pane: bool,
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl PaneDescriptor {
+    pub fn display_label(&self) -> &str {
+        [&self.title, &self.shell, &self.profile]
+            .into_iter()
+            .find(|value| !value.trim().is_empty())
+            .map(String::as_str)
+            .unwrap_or("Terminal")
+    }
+
+    pub fn is_picker_candidate(&self) -> bool {
+        self.visible && !self.read_only && !self.is_agent_pane && !self.session_id.is_empty()
+    }
+
+    pub fn mention_label(&self) -> String {
+        if self.ordinal == 0 {
+            self.display_label().to_string()
+        } else {
+            format!("{}-{}", self.ordinal, self.display_label())
+        }
+    }
+
+    pub fn picker_detail(&self) -> String {
+        let shell = if self.shell.trim().is_empty() {
+            self.profile.trim()
+        } else {
+            self.shell.trim()
+        };
+        let cwd = self.cwd.trim();
+        match (shell.is_empty(), cwd.is_empty()) {
+            (false, false) => format!("{shell}  ·  {cwd}"),
+            (false, true) => shell.to_string(),
+            (true, false) => format!("cwd: {cwd}"),
+            (true, true) => String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparedActionMode {
+    Command,
+    DelegateSend,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingPreparation {
+    pub prompt_id: u64,
+    pub target_session_id: String,
+    pub mode: PreparedActionMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingDelegate {
+    pub intent: String,
+}
+
+#[derive(Debug, Default)]
+pub struct PaneTargetState {
+    pub generation: u64,
+    pub panes: HashMap<String, PaneDescriptor>,
+    pub picker_open: bool,
+    pub picker_selected: usize,
+    pub agent_target_session_id: Option<String>,
+}
+
+impl PaneTargetState {
+    pub fn candidates(&self) -> Vec<&PaneDescriptor> {
+        let mut panes: Vec<_> = self
+            .panes
+            .values()
+            .filter(|pane| pane.is_picker_candidate())
+            .collect();
+        panes.sort_by(|left, right| {
+            left.ordinal
+                .cmp(&right.ordinal)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+        panes
+    }
+
+    pub fn replace_snapshot(&mut self, generation: u64, panes: Vec<PaneDescriptor>) {
+        if generation < self.generation {
+            return;
+        }
+        self.generation = generation;
+        self.panes = panes
+            .into_iter()
+            .map(|pane| (pane.session_id.to_ascii_lowercase(), pane))
+            .collect();
+        if self
+            .agent_target_session_id
+            .as_ref()
+            .is_some_and(|target| !self.panes.contains_key(&target.to_ascii_lowercase()))
+        {
+            self.agent_target_session_id = None;
+        }
+        let count = self.candidates().len();
+        self.picker_selected = self.picker_selected.min(count.saturating_sub(1));
+    }
+
+    pub fn agent_target(&self) -> Option<&PaneDescriptor> {
+        self.agent_target_session_id
+            .as_ref()
+            .and_then(|target| self.panes.get(&target.to_ascii_lowercase()))
+    }
+}
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
@@ -222,6 +356,8 @@ pub(crate) struct PendingTerminalActionProposal {
     pub prompt_id: u64,
     pub is_autofix: bool,
     pub recommendations: super::RecommendationSet,
+    pub prepared_mode: Option<PreparedActionMode>,
+    pub committed: bool,
 }
 
 /// Everything that conceptually belongs to one tab's conversation: the
@@ -234,10 +370,14 @@ pub(crate) struct PendingTerminalActionProposal {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub pane_targets: PaneTargetState,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
     pub(crate) active_direct_proposal_id: Option<String>,
+    pub(crate) pending_preparation: Option<PendingPreparation>,
+    pub(crate) active_prepared_mode: Option<PreparedActionMode>,
+    pub(crate) pending_delegate: Option<PendingDelegate>,
     pub usage: Option<crate::usage::UsageSnapshot>,
     pub usage_staleness: crate::usage::UsageStaleness,
 
@@ -340,6 +480,9 @@ pub struct TabSession {
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
     pub agent_picker_selected: usize,
+    pub delegate_picker_open: bool,
+    pub delegate_picker_selected: usize,
+    pub last_delegate_target: Option<OpenTarget>,
 
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
@@ -377,6 +520,8 @@ impl TabSession {
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
+            && !self.pane_targets.picker_open
+            && !self.delegate_picker_open
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -406,6 +551,20 @@ impl TabSession {
                 .and_then(|prompt| prompt.context.target_pane_id().map(str::to_string));
         }
         None
+    }
+
+    pub fn compute_chip_target(&self) -> Option<String> {
+        if self.pane_targets.picker_open {
+            return self
+                .pane_targets
+                .candidates()
+                .get(self.pane_targets.picker_selected)
+                .map(|pane| pane.session_id.clone());
+        }
+        if let Some(target) = self.pane_targets.agent_target() {
+            return Some(target.session_id.clone());
+        }
+        self.compute_chip_card_target()
     }
 
     pub fn clear_chat_history(&mut self) {
@@ -549,4 +708,122 @@ pub struct AgentsViewState {
     pub latest_request_id: Option<u64>,
     pub pending_rescan: bool,
     pub rescan_in_flight: bool,
+}
+
+#[cfg(test)]
+mod pane_target_tests {
+    use super::*;
+
+    fn pane(id: &str, title: &str, active: bool) -> PaneDescriptor {
+        PaneDescriptor {
+            session_id: id.to_string(),
+            ordinal: 0,
+            title: title.to_string(),
+            profile: String::new(),
+            cwd: String::new(),
+            shell: String::new(),
+            is_active: active,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }
+    }
+
+    #[test]
+    fn snapshot_replaces_catalog_and_ignores_older_generations() {
+        let mut state = PaneTargetState::default();
+        state.replace_snapshot(2, vec![pane("new", "New", false)]);
+        state.replace_snapshot(1, vec![pane("old", "Old", false)]);
+
+        assert_eq!(state.generation, 2);
+        assert!(state.panes.contains_key("new"));
+        assert!(!state.panes.contains_key("old"));
+    }
+
+    #[test]
+    fn snapshot_removal_invalidates_persistent_target() {
+        let mut state = PaneTargetState::default();
+        state.agent_target_session_id = Some("gone".to_string());
+
+        state.replace_snapshot(1, vec![pane("kept", "Kept", false)]);
+
+        assert!(state.agent_target_session_id.is_none());
+    }
+
+    #[test]
+    fn candidates_exclude_agent_hidden_and_read_only_panes() {
+        let mut eligible = pane("eligible", "Eligible", true);
+        let mut agent = pane("agent", "Agent", false);
+        agent.is_agent_pane = true;
+        let mut hidden = pane("hidden", "Hidden", false);
+        hidden.visible = false;
+        let mut read_only = pane("readonly", "Read only", false);
+        read_only.read_only = true;
+        eligible.shell = "pwsh".to_string();
+
+        let mut state = PaneTargetState::default();
+        state.replace_snapshot(1, vec![read_only, hidden, agent, eligible]);
+
+        let ids = state
+            .candidates()
+            .into_iter()
+            .map(|pane| pane.session_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["eligible"]);
+    }
+
+    #[test]
+    fn chip_target_tracks_picker_selection_and_persistent_target() {
+        let mut tab = TabSession::default();
+        tab.pane_targets.replace_snapshot(
+            1,
+            vec![
+                pane("first", "First", true),
+                pane("second", "Second", false),
+            ],
+        );
+        tab.pane_targets.picker_open = true;
+        tab.pane_targets.picker_selected = 1;
+
+        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
+
+        tab.pane_targets.picker_open = false;
+        tab.pane_targets.agent_target_session_id = Some("second".to_string());
+        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
+
+        tab.input.clear();
+        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn candidates_follow_snapshot_ordinals_and_labels_include_them() {
+        let mut first = pane("first", "PowerShell", false);
+        first.ordinal = 1;
+        let mut second = pane("second", "PowerShell", true);
+        second.ordinal = 2;
+        let mut state = PaneTargetState::default();
+        state.replace_snapshot(1, vec![second, first]);
+
+        let labels = state
+            .candidates()
+            .into_iter()
+            .map(PaneDescriptor::mention_label)
+            .collect::<Vec<_>>();
+        assert_eq!(labels, vec!["1-PowerShell", "2-PowerShell"]);
+    }
+
+    #[test]
+    fn picker_detail_does_not_substitute_cwd_for_shell() {
+        let mut descriptor = pane("pane", "PowerShell", false);
+        descriptor.profile = "PowerShell".to_string();
+        descriptor.cwd = "C:\\Users\\example".to_string();
+
+        assert_eq!(
+            descriptor.picker_detail(),
+            "PowerShell  ·  C:\\Users\\example"
+        );
+
+        descriptor.profile.clear();
+        assert_eq!(descriptor.picker_detail(), "cwd: C:\\Users\\example");
+    }
 }

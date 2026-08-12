@@ -265,14 +265,14 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().agents_view.search_query.push(*character);
+                        self.current_tab_mut()
+                            .agents_view
+                            .search_query
+                            .push(*character);
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::F(5) => {}
+                    KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -432,6 +432,46 @@ impl App {
             return;
         }
 
+        if self.current_tab().pane_targets.picker_open {
+            match key.code {
+                KeyCode::Up => {
+                    let tab = self.current_tab_mut();
+                    tab.pane_targets.picker_selected =
+                        tab.pane_targets.picker_selected.saturating_sub(1);
+                    self.sync_pane_picker_chip_target();
+                }
+                KeyCode::Down => {
+                    let count = self.current_tab().pane_targets.candidates().len();
+                    let tab = self.current_tab_mut();
+                    if tab.pane_targets.picker_selected + 1 < count {
+                        tab.pane_targets.picker_selected += 1;
+                    }
+                    self.sync_pane_picker_chip_target();
+                }
+                KeyCode::Enter => self.commit_pane_picker(),
+                KeyCode::Esc | KeyCode::Backspace | KeyCode::Delete => self.cancel_pane_picker(),
+                _ => {}
+            }
+            return;
+        }
+
+        if self.current_tab().delegate_picker_open {
+            match key.code {
+                KeyCode::Up | KeyCode::Down => {
+                    let tab = self.current_tab_mut();
+                    tab.delegate_picker_selected = 1 - tab.delegate_picker_selected.min(1);
+                }
+                KeyCode::Enter => self.commit_delegate_picker(),
+                KeyCode::Esc => {
+                    let tab = self.current_tab_mut();
+                    tab.delegate_picker_open = false;
+                    tab.pending_delegate = None;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // Model picker modal (`/model`): while it's up, arrows move the
         // highlight, Enter commits the pick, Esc dismisses. Swallow every
         // other key so nothing leaks into the input box behind the modal.
@@ -452,8 +492,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
                         .current_tab()
@@ -482,8 +521,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() => {
                 let choices_len = self
                     .current_tab()
                     .turn
@@ -513,8 +551,7 @@ impl App {
             }
             KeyCode::Right
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_next_recommendation_action();
             }
@@ -545,8 +582,7 @@ impl App {
             }
             KeyCode::Left
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_previous_recommendation_action();
             }
@@ -683,6 +719,7 @@ impl App {
             }
             KeyCode::Esc => {
                 self.current_tab_mut().clear_input();
+                self.sync_pane_picker_chip_target();
             }
             KeyCode::Up if self.command_popup_visible() => {
                 self.command_popup_up();
@@ -762,6 +799,10 @@ impl App {
                     return;
                 }
 
+                if self.try_execute_direct_pane_command() {
+                    return;
+                }
+
                 // Slash-command intercept (popup selection, known command, or
                 // unknown-command warning). Runs before the prompt path so
                 // commands like /stop work even mid-flight, and /help / /clear
@@ -805,12 +846,28 @@ impl App {
                         .session_id
                         .clone()
                         .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    let agent_target = tab.pane_targets.agent_target().cloned();
+                    let target_pane_id = agent_target.as_ref().map(|pane| pane.session_id.clone());
                     let pane_context = PaneContext {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
-                        cwd: self.source_cwd.clone(),
-                        source_pane_id: self.source_session_id.clone(),
+                        cwd: agent_target
+                            .as_ref()
+                            .map(|pane| pane.cwd.clone())
+                            .filter(|cwd| !cwd.is_empty())
+                            .or_else(|| self.source_cwd.clone()),
+                        source_pane_id: target_pane_id
+                            .clone()
+                            .or_else(|| self.source_session_id.clone()),
+                        cached_source: agent_target.map(|pane| {
+                            crate::pane_context::CachedPaneMetadata {
+                                title: pane.title,
+                                profile: pane.profile,
+                                cwd: pane.cwd,
+                                shell: pane.shell,
+                            }
+                        }),
                     };
                     let prompt =
                         PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
@@ -828,7 +885,7 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
-                        context: TurnContext::default(),
+                        context: TurnContext { target_pane_id },
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
@@ -838,16 +895,19 @@ impl App {
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_word_before_cursor();
+                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Backspace => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_before_cursor();
+                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Delete => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_at_cursor();
+                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -886,6 +946,9 @@ impl App {
                 // invisibly without a caret.
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().insert_input_char(c);
+                    if self.current_tab().pane_targets.picker_open {
+                        self.sync_pane_picker_chip_target();
+                    }
                 }
             }
             _ => {}

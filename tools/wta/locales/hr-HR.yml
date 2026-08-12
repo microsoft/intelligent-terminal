@@ -59,6 +59,14 @@ input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / naredbe "
+delegate_picker.title: " Delegiraj odredište "
+delegate_picker.tab: "Nova kartica"
+delegate_picker.panel: "Nova ploča"
+delegate_picker.intent_required: "Opišite posao koji delegirate."
+delegate_picker.pane_not_allowed: "/delegate uvijek stvara novo odredište i ne prihvaća @pane."
+delegate_picker.not_configured: "Nije konfiguriran nijedan delegirani agent."
+delegate_picker.no_parent_pane: "Nije dostupno radno okno za dijeljenje."
+delegate_picker.launch_failed: "Nije moguće pokrenuti delegata: %{error}"
 commands.help_title: " Pomoć "
 commands.help_header: "Naredbe s kosom crtom — upišite / u polje za unos."
 commands.help_escape_hint: "  //text     Pošalji doslovni '/' (zaobilazi raščlanjivač naredbi)"  # {Locked="//text","/"}
@@ -73,10 +81,14 @@ commands.restart.summary: "Ponovno pokreni agenta"
 commands.stop.summary: "Otkaži upit u tijeku"
 commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Odaberite agent za ovu karticu (/agent <id> za izravno prebacivanje)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Pripremite zadatak i otvorite delegiranog agenta (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje gumba • Enter za odabir • Esc za odustajanje)"
 recommendations.button_run_command: "[ Pokreni naredbu ]"
+recommendations.button_send_to_delegate: "[ Pošalji delegatu ]"
 recommendations.button_insert_in_terminal: "Umetni u terminal"
 recommendations.button_open_in_new_tab: "Otvori u novoj kartici ↵"
 recommendations.button_open_in_new_panel: "Otvori u novom oknu ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "Odabir %{choice} nije uspio: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Odaberi terminalsko okno (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Nema dostupnih terminalnih okna za pisanje."
+pane_picker.target_unavailable: "Odabrano okno više nije dostupno."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Odaberite agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Na ovom računalu nije pronađen nijedan dostupan CLI agenta."  # {Locked="CLI"}

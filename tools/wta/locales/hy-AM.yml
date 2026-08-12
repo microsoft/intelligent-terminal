@@ -64,6 +64,14 @@ input.image_attachments: "📎 Պատկերներ: %{items}"  # {Locked="📎","
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / հրամաններ "
+delegate_picker.title: "Պատվիրակել նպատակակետը"
+delegate_picker.tab: "Նոր ներդիր"
+delegate_picker.panel: "Նոր վահանակ"
+delegate_picker.intent_required: "Նկարագրեք հանձնարարված աշխատանքը:"
+delegate_picker.pane_not_allowed: "/delegate-ը միշտ նոր նպատակակետ է ստեղծում և չի ընդունում @pane-ը:"
+delegate_picker.not_configured: "Պատվիրակային գործակալ կազմաձևված չէ:"
+delegate_picker.no_parent_pane: "Պառակտման համար աշխատանքային վահանակ չկա:"
+delegate_picker.launch_failed: "Չհաջողվեց գործարկել պատվիրակին՝ %{error}"
 # Title bar of the slash-commands help popup
 commands.help_title: " Օգնություն "
 commands.help_header: "Slash հրամաններ — մուտքագրեք / մուտքի դաշտում։"
@@ -82,11 +90,15 @@ commands.restart.summary: "Վերագործարկել ագենտը"
 commands.stop.summary: "Չեղարկել ընթացիկ հարցումը"
 commands.sessions.summary: "Բացել պատմական նիստերի ընտրիչը (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Ընտրեք գործակալն այս ներդիրի համար (/agent <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Պատրաստեք առաջադրանք և բացեք պատվիրակային գործակալ (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ նավարկելու համար • ← → կոճակների միջև անցնելու համար • Enter ընտրելու համար • Esc չեղարկելու համար)"
 recommendations.button_run_command: "[ Գործարկել հրամանը ]"
+recommendations.button_send_to_delegate: "[Ուղարկել պատվիրակին]"
 recommendations.button_insert_in_terminal: "Տեղադրել տերմինալում"
 recommendations.button_open_in_new_tab: "Բացել նոր ներդիրում ↵"
 recommendations.button_open_in_new_panel: "Բացել նոր վահանակում ↵"
@@ -221,6 +233,11 @@ system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվ
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Ընտրեք տերմինալի վահանակ (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Գրավոր տերմինալային վահանակներ չկան:"
+pane_picker.target_unavailable: "Ընտրված վահանակն այլևս հասանելի չէ:"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Ընտրեք գործակալը (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Այս սարքում հասանելի գործակալի CLI չի գտնվել:"  # {Locked="CLI"}

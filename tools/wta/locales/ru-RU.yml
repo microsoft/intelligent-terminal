@@ -59,6 +59,14 @@ input.image_attachments: "📎 Изображения: %{items}"  # {Locked="�
 # ── Всплывающее окно команд (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - префикс слеш-команды, должен оставаться ASCII
 commands.popup_title: " / команды "
+delegate_picker.title: " Назначение делегата "
+delegate_picker.tab: "Новая вкладка"
+delegate_picker.panel: "Новая панель"
+delegate_picker.intent_required: "Опишите работу, которую нужно делегировать."
+delegate_picker.pane_not_allowed: "/delegate всегда создает новый пункт назначения и не принимает @pane."
+delegate_picker.not_configured: "Агент делегата не настроен."
+delegate_picker.no_parent_pane: "Нет рабочей панели, которую можно было бы разделить."
+delegate_picker.launch_failed: "Не удалось запустить делегат: %{error}"
 commands.help_title: " Справка "
 commands.help_header: "Слеш-команды — введите / в поле ввода."
 commands.help_escape_hint: "  //text     Отправить буквальный '/' (экранирует синтаксический анализатор команд)"  # {Locked="//text","/"}
@@ -73,10 +81,14 @@ commands.restart.summary: "Перезапустить агент"
 commands.stop.summary: "Отменить выполняющийся запрос"
 commands.sessions.summary: "Открыть выбор прошлых сеансов (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Выберите агент для этой вкладки (/agent <id> для прямого переключения)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Подготовьте задачу и откройте агент делегата (/delegate <intent>)"
 # ── Панель рекомендаций (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - названия клавиш и символ клавиши Enter, не переводить
 recommendations.nav_hint: "(↑ ↓ навигация • ← → переключение кнопок • Enter выбрать • Esc отменить)"
 recommendations.button_run_command: "[ Выполнить команду ]"
+recommendations.button_send_to_delegate: "[ Отправить делегату ]"
 recommendations.button_insert_in_terminal: "Вставить в терминал"
 recommendations.button_open_in_new_tab: "Открыть в новой вкладке ↵"
 recommendations.button_open_in_new_panel: "Открыть в новой панели ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "Не удалось выполнить выбо
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Выберите панель терминала (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Нет доступных для записи панелей терминала."
+pane_picker.target_unavailable: "Выбранная панель больше не доступна."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Выбор агента (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "На этом компьютере не найден доступный CLI агента."  # {Locked="CLI"}

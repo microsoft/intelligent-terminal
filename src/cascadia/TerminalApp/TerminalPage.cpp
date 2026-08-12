@@ -1777,6 +1777,76 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, evt)));
     }
 
+    void TerminalPage::_PublishPaneCatalog(const winrt::com_ptr<Tab>& tab)
+    {
+        if (!tab)
+        {
+            return;
+        }
+
+        if (!tab->FindAgentPane())
+        {
+            return;
+        }
+
+        const auto tabId = tab->StableId();
+        Json::Value params{ Json::objectValue };
+        params["window_id"] = std::to_string(_WindowProperties.WindowId());
+        params["tab_id"] = winrt::to_string(tabId);
+        params["generation"] = Json::UInt64{ ++_paneCatalogGenerations[tabId] };
+
+        Json::Value panes{ Json::arrayValue };
+        const auto root = tab->GetRootPane();
+        const auto activePane = tab->GetActivePane();
+        const bool activeIsAgent = activePane && activePane->IsAgentPane();
+        uint32_t ordinal = 0;
+        if (root)
+        {
+            root->WalkTree([&](const std::shared_ptr<Pane>& pane) {
+                if (!pane || !pane->GetContent())
+                {
+                    return;
+                }
+                const auto sessionId = pane->GetSessionId();
+                if (sessionId == winrt::guid{})
+                {
+                    return;
+                }
+
+                Json::Value descriptor{ Json::objectValue };
+                descriptor["session_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                descriptor["ordinal"] = ++ordinal;
+                descriptor["title"] = winrt::to_string(pane->GetContent().Title());
+                descriptor["is_active"] = activeIsAgent ? pane->IsSourceOfAgentPane() : pane == activePane;
+                descriptor["is_agent_pane"] = pane->IsAgentPane();
+                descriptor["visible"] = !pane->IsHidden();
+                descriptor["read_only"] = pane->GetContent().ReadOnly();
+
+                if (const auto profile = pane->GetProfile())
+                {
+                    descriptor["profile"] = winrt::to_string(profile.Name());
+                }
+                else
+                {
+                    descriptor["profile"] = "";
+                }
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    descriptor["cwd"] = winrt::to_string(control.WorkingDirectory());
+                    descriptor["shell"] = winrt::to_string(control.ShellName());
+                }
+                else
+                {
+                    descriptor["cwd"] = "";
+                    descriptor["shell"] = "";
+                }
+                panes.append(std::move(descriptor));
+            });
+        }
+        params["panes"] = std::move(panes);
+        _RaiseProtocolEvent("pane_catalog_changed", params);
+    }
+
     // Close the agent pane in a specific tab, if it has one.
     //
     // Under the helper+master architecture, wta-helper processes are
@@ -1917,6 +1987,7 @@ namespace winrt::TerminalApp::implementation
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
         _RaiseProtocolEvent("tab_closed", tabParams);
+        _paneCatalogGenerations.erase(tabId);
     }
 
     // Explicitly emit `connection_state:closed` for every terminal leaf
@@ -5495,6 +5566,7 @@ namespace winrt::TerminalApp::implementation
                 _UpdateBottomBarState();
             }
         }
+        _PublishPaneCatalog(targetTab);
     }
 
     // Inbound event from WTA: {method:"close_agent_pane", params:{tab_id}}.
@@ -6728,6 +6800,16 @@ namespace winrt::TerminalApp::implementation
         hostingTab.TaskbarProgressChanged({ get_weak(), &TerminalPage::_SetTaskbarProgressHandler });
 
         hostingTab.RestartTerminalRequested({ get_weak(), &TerminalPage::_restartPaneConnection });
+
+        hostingTab.PaneCatalogChanged([weakTab, weakThis](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = weakTab.get())
+                {
+                    page->_PublishPaneCatalog(tab);
+                }
+            }
+        });
     }
 
     // Method Description:

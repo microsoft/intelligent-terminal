@@ -1,5 +1,5 @@
-mod agent_popup;
 pub(crate) mod action_panel;
+mod agent_popup;
 pub mod agents_view;
 mod auth;
 pub(crate) mod card;
@@ -7,9 +7,11 @@ pub(crate) mod chat;
 pub(crate) mod command_format;
 mod command_popup;
 mod debug_panel;
+mod delegate_popup;
 mod input;
 mod layout;
 mod model_popup;
+mod pane_popup;
 mod permission;
 mod popup;
 mod recommendations;
@@ -18,8 +20,10 @@ pub mod shimmer;
 
 pub use agent_popup::AgentPopupState;
 pub use command_popup::{PopupCandidates, PopupState};
+pub use delegate_popup::DelegatePopupState;
 #[cfg(test)]
 pub(crate) use input::input_height;
 pub use layout::render;
 pub use model_popup::ModelPopupState;
+pub use pane_popup::{PanePopupCandidate, PanePopupState};
 pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;

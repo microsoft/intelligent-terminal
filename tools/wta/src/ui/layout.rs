@@ -2,8 +2,8 @@ use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
 use ratatui::prelude::*;
 
 use super::{
-    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup,
+    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, delegate_popup,
+    input, model_popup, pane_popup, permission, recommendations, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -123,20 +123,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width);
-    let recommendation_natural_height = app
-        .current_tab()
+    let recommendation_natural_height =
+        app.current_tab()
         .turn
         .recommendations()
         .map(|recommendations| {
             action_panel::recommendation_panel_height(recommendations, main_area.width)
         });
-    let permission_natural_height = app
-        .current_tab()
-        .permission
-        .front()
-        .map(|permission| {
-            action_panel::permission_card_height(permission, main_area.width)
-                .min(u16::MAX as usize) as u16
+    let permission_natural_height = app.current_tab().permission.front().map(|permission| {
+        action_panel::permission_card_height(permission, main_area.width).min(u16::MAX as usize)
+            as u16
         });
     let panel_layout = action_panel::plan(action_panel::LayoutRequest {
         available_rows: main_area.height,
@@ -197,12 +193,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     chat::render(frame, app, h_chat[1]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
-    recommendations::render(
-        frame,
-        app,
-        h_rec[1],
-        panel_layout.recommendation_mode,
-    );
+    recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -255,6 +246,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     if let Some(agent_state) = app.agent_popup_state() {
         agent_popup::render_popup(frame, agent_state, chunks[7]);
+    }
+    if let Some(pane_state) = app.pane_popup_state() {
+        pane_popup::render_popup(frame, pane_state, chunks[7]);
+    }
+    if let Some(delegate_state) = app.delegate_popup_state() {
+        delegate_popup::render_popup(frame, delegate_state, chunks[7]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

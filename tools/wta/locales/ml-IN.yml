@@ -59,6 +59,14 @@ input.image_attachments: "📎 ചിത്രങ്ങൾ: %{items}"  # {Locked
 # ── കമാന്‍ഡ് പോപ്പ്അപ്പ് (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - സ്ലാഷ്-കമാന്‍ഡ് പ്രിഫിക്സ്, ASCII ആയിരിക്കണം
 commands.popup_title: " / കമാന്‍ഡുകള്‍ "
+delegate_picker.title: " ഡെലിഗേറ്റ് ഡെസ്റ്റിനേഷൻ "
+delegate_picker.tab: "പുതിയ ടാബ്"
+delegate_picker.panel: "പുതിയ പാനൽ"
+delegate_picker.intent_required: "നിയോഗിക്കേണ്ട ജോലി വിവരിക്കുക."
+delegate_picker.pane_not_allowed: "/delegate എല്ലായ്‌പ്പോഴും ഒരു പുതിയ ലക്ഷ്യസ്ഥാനം സൃഷ്‌ടിക്കുന്നു, @pane അംഗീകരിക്കുന്നില്ല."
+delegate_picker.not_configured: "പ്രതിനിധി ഏജൻ്റൊന്നും കോൺഫിഗർ ചെയ്തിട്ടില്ല."
+delegate_picker.no_parent_pane: "വിഭജിക്കാൻ പ്രവർത്തിക്കുന്ന പാളികളൊന്നും ലഭ്യമല്ല."
+delegate_picker.launch_failed: "പ്രതിനിധിയെ സമാരംഭിക്കാനായില്ല: %{error}"
 commands.help_title: " സഹായം "
 commands.help_header: "സ്ലാഷ് കമാന്‍ഡുകള്‍ — ഇന്‍പുട്ട് ബോക്സില്‍ / ടൈപ്പ് ചെയ്യുക."
 commands.help_escape_hint: "  //text     അക്ഷരാര്‍ഥ '/' അയയ്ക്കുക (കമാന്‍ഡ് പാര്‍സര്‍ എസ്കേപ്പ് ചെയ്യുന്നു)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "ഏജന്റ് റീസ്റ്റാർട്�
 commands.stop.summary: "നടന്നുകൊണ്ടിരിക്കുന്ന പ്രോംപ്റ്റ് റദ്ദാക്കുക"
 commands.sessions.summary: "ചരിത്ര സെഷനുകളുടെ പിക്കർ തുറക്കുക (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ഈ ടാബിനായി ഏജന്റ് തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "ഒരു ടാസ്‌ക് തയ്യാറാക്കി ഒരു ഡെലിഗേറ്റ് ഏജൻ്റ് തുറക്കുക (/delegate <intent>)"
 
 # ── ശുപാര്‍ശ പാനല്‍ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - കീ പേരുകളും Return-കീ ഗ്ലിഫും, വിവര്‍ത്തനം ചെയ്യരുത്
 recommendations.nav_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യാൻ • ← → ബട്ടണുകൾ മാറ്റാൻ • Enter തിരഞ്ഞെടുക്കാൻ • Esc റദ്ദാക്കാൻ)"
 recommendations.button_run_command: "[ കമാന്‍ഡ് പ്രവര്‍ത്തിപ്പിക്കുക ]"
+recommendations.button_send_to_delegate: "[ പ്രതിനിധിക്ക് അയയ്‌ക്കുക ]"
 recommendations.button_insert_in_terminal: "ടെര്‍മിനലില്‍ ചേര്‍ക്കുക"
 recommendations.button_open_in_new_tab: "പുതിയ ടാബില്‍ തുറക്കുക ↵"
 recommendations.button_open_in_new_panel: "പുതിയ പാനലില്‍ തുറക്കുക ↵"
@@ -206,6 +218,11 @@ system.choice_execution_failed: "തിരഞ്ഞെടുപ്പ് %{choic
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "ടെർമിനൽ പാളി തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "എഴുതാവുന്ന ടെർമിനൽ പാളികളൊന്നും ലഭ്യമല്ല."
+pane_picker.target_unavailable: "തിരഞ്ഞെടുത്ത പാളി ഇനി ലഭ്യമല്ല."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ഏജന്റ് തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ഈ മെഷീനിൽ ലഭ്യമായ ഏജന്റ് CLI ഒന്നും കണ്ടെത്തിയില്ല."  # {Locked="CLI"}

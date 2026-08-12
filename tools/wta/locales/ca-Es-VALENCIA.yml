@@ -60,6 +60,14 @@ input.image_attachments: "📎 Imatges: %{items}"  # {Locked="📎","%{items}"}
 # ── Finestra emergent d'ordes (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefix d'orde de barra, ha de romandre ASCII
 commands.popup_title: " / ordes "
+delegate_picker.title: " Delegació de destinació "
+delegate_picker.tab: "Pestanya nova"
+delegate_picker.panel: "Tauler nou"
+delegate_picker.intent_required: "Descriu el treball a delegar."
+delegate_picker.pane_not_allowed: "/delegate sempre crea una destinació nova i no accepta @pane."
+delegate_picker.not_configured: "No hi ha cap agent delegat configurat."
+delegate_picker.no_parent_pane: "No hi ha cap panell de treball disponible per dividir-lo."
+delegate_picker.launch_failed: "No s'ha pogut llançar el delegat: %{error}"
 commands.help_title: " Ajuda "
 commands.help_header: "Ordes de barra — escriviu / en el quadre d'entrada."
 commands.help_escape_hint: "  //text     Envia un '/' literal (escapa l'analitzador d'ordes)"  # {Locked="//text","/"}
@@ -69,6 +77,7 @@ commands.help_close_hint: "  Esc        Tanca esta ajuda"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - noms de tecles i glif de tecla Retorn, no traduïu
 recommendations.nav_hint: "(↑ ↓ per a navegar • ← → per a canviar accions • Enter per a seleccionar • Esc per a cancel·lar)"
 recommendations.button_run_command: "[ Executa l'orde ]"
+recommendations.button_send_to_delegate: "[ Envia al delegat ]"
 recommendations.button_insert_in_terminal: "Inserix al Terminal"
 recommendations.button_open_in_new_tab: "Obri en una pestanya nova ↵"
 recommendations.button_open_in_new_panel: "Obri en un panell nou ↵"
@@ -201,12 +210,20 @@ commands.restart.summary: "Reinicia l'agent"
 commands.stop.summary: "Cancel·la la sol·licitud en curs"
 commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Trieu l'agent per a esta pestanya (/agent <id> per a canviar directament)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Prepara una tasca i obre un agent delegat (/delegate <intent>)"
 
 # ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Selecciona el panell del terminal (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "No hi ha cap panell de terminal que es pugui escriure."
+pane_picker.target_unavailable: "El panell seleccionat ja no està disponible."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Seleccioneu l'agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "No s'ha trobat cap CLI d'agent disponible en esta màquina."  # {Locked="CLI"}

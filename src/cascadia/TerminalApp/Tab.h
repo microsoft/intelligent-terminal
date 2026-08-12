@@ -205,6 +205,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TerminalPaneContent> RestartTerminalRequested;
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
+        til::typed_event<TerminalApp::Tab, IInspectable> PaneCatalogChanged;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
@@ -329,6 +330,7 @@ namespace winrt::TerminalApp::implementation
         void _AttachEventHandlersToPane(std::shared_ptr<Pane> pane);
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
+        void _RaisePaneCatalogChanged();
         void _UpdateMenuItemStates();
         void _UpdateAgentChipVisibility();
 

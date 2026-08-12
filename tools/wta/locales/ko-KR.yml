@@ -55,6 +55,14 @@ input.image_attachments: "📎 이미지: %{items}"  # {Locked="📎","%{items}"
 # ── 명령어 팝업 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 슬래시 명령 접두사, ASCII로 유지
 commands.popup_title: " / 명령어 "
+delegate_picker.title: " 위임 대상 "
+delegate_picker.tab: "새 탭"
+delegate_picker.panel: "새 패널"
+delegate_picker.intent_required: "위임할 업무를 설명합니다."
+delegate_picker.pane_not_allowed: "/delegate은 항상 새 대상을 생성하고 @pane을 허용하지 않습니다."
+delegate_picker.not_configured: "위임 에이전트가 구성되지 않았습니다."
+delegate_picker.no_parent_pane: "분할할 수 있는 작업 창이 없습니다."
+delegate_picker.launch_failed: "대리자를 시작할 수 없습니다: %{error}"
 commands.help_title: " 도움말 "
 commands.help_header: "슬래시 명령어 — 입력 상자에 /를 입력하세요."
 commands.help_escape_hint: "  //text     리터럴 '/' 전송(명령 파서 이스케이프)"  # {Locked="//text","/"}
@@ -64,6 +72,7 @@ commands.help_close_hint: "  Esc        이 도움말 닫기"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - 키 이름과 Return 키 문자, 번역하지 마세요
 recommendations.nav_hint: "(↑ ↓ 탐색 • ← → 버튼 전환 • Enter 선택 • Esc 취소)"
 recommendations.button_run_command: "[ 명령 실행 ]"
+recommendations.button_send_to_delegate: "[ 대리인에게 보내기 ]"
 recommendations.button_insert_in_terminal: "터미널에 삽입"
 recommendations.button_open_in_new_tab: "새 탭에서 열기 ↵"
 recommendations.button_open_in_new_panel: "새 패널에서 열기 ↵"
@@ -194,12 +203,20 @@ commands.restart.summary: "에이전트 다시 시작"
 commands.stop.summary: "진행 중인 프롬프트 취소"
 commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
 commands.agent.summary: "이 탭의 에이전트 선택 (/agent <id>로 바로 전환)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "작업 준비 및 위임 에이전트 열기(/delegate <intent>)"
 
 # ── 추천 실행 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "터미널 창 선택(↑ ↓ • Enter • Esc)"
+pane_picker.empty: "쓰기 가능한 터미널 창을 사용할 수 없습니다."
+pane_picker.target_unavailable: "선택한 창은 더 이상 사용할 수 없습니다."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "에이전트 선택 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "이 컴퓨터에서 사용할 수 있는 에이전트 CLI를 찾을 수 없습니다."  # {Locked="CLI"}

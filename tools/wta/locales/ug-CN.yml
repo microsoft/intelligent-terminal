@@ -61,6 +61,14 @@ input.image_attachments: "📎 رەسىملەر: %{items}"  # {Locked="📎","%{
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / بۇيرۇقلار "
+delegate_picker.title: " ۋەكىللەر مەنزىلى "
+delegate_picker.tab: " يېڭى بەتكۈچ"
+delegate_picker.panel: " يېڭى گۇرۇپپا"
+delegate_picker.intent_required: " ۋەكىللىك قىلىدىغان ئەسەرنى تەسۋىرلەڭ."
+delegate_picker.pane_not_allowed: " __ PH0__ ھەمىشە يېڭى مەنزىل ھاسىل قىلىدۇ ۋە @pane نى قوبۇل قىلمايدۇ."
+delegate_picker.not_configured: " ھېچقانداق ۋەكىل ۋاكالەتچىسى سەپلەنمىدى."
+delegate_picker.no_parent_pane: " بۆلۈنۈشكە ھېچقانداق خىزمەت تاختىسى يوق."
+delegate_picker.launch_failed: " ۋەكىلنى قوزغىتالمىدى: %{error}"
 # Title bar of the slash-commands help popup
 commands.help_title: " ياردەم "
 commands.help_header: "ئىسلەش بۇيرۇقلىرى — كىرگۈزۈش رامكىسىغا / كىرگۈزۈڭ."
@@ -79,11 +87,15 @@ commands.restart.summary: "AI ئاگېنتىنى قايتا قوزغات"
 commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
 commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "بۇ بەت ئۈچۈن ۋاكالەتچى تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: " بىر ۋەزىپە تەييارلاپ ، ۋەكىل ۋاكالەتچىسى ئېچىڭ (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇنۇپكىلارنى ئالماشتۇرۇش ئۈچۈن • Enter تاللاش ئۈچۈن • Esc بىكار قىلىش ئۈچۈن)"
 recommendations.button_run_command: "[ بۇيرۇقنى ئىجرا قىلىش ]"
+recommendations.button_send_to_delegate: " [ۋەكىل ئەۋەتىش]"
 recommendations.button_insert_in_terminal: "تېرمىنالغا قىستۇرۇش"
 recommendations.button_open_in_new_tab: "يېڭى بەتكۈچتە ئېچىش ↵"
 recommendations.button_open_in_new_panel: "يېڭى تاختىدا ئېچىش ↵"
@@ -214,6 +226,11 @@ system.choice_execution_failed: "تاللاش %{choice} مەغلۇپ بولدى:
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: " تېرمىنال تاختىسىنى تاللاڭ (↑ ↓ • Enter • Esc)"
+pane_picker.empty: " يازغىلى بولىدىغان تېرمىنال تاختىسى يوق."
+pane_picker.target_unavailable: " تاللانغان تاختىنى ئەمدى ئىشلەتكىلى بولمايدۇ."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ۋاكالەتچى تاللاڭ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "بۇ ماشىنىدىن ھېچقانداق ۋاكالەتچى CLI تېپىلمىدى."  # {Locked="CLI"}

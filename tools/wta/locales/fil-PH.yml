@@ -59,6 +59,14 @@ input.image_attachments: "📎 Mga larawan: %{items}"  # {Locked="📎","%{items
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / mga command "
+delegate_picker.title: " Italaga ang destinasyon "
+delegate_picker.tab: "Bagong tab"
+delegate_picker.panel: "Bagong panel"
+delegate_picker.intent_required: "Ilarawan ang gawaing italaga."
+delegate_picker.pane_not_allowed: "/delegate ay palaging gumagawa ng bagong destinasyon at hindi tumatanggap ng @pane."
+delegate_picker.not_configured: "Walang delegadong ahente ang naka-configure."
+delegate_picker.no_parent_pane: "Walang working pane na magagamit upang hatiin."
+delegate_picker.launch_failed: "Hindi mailunsad ang delegado: %{error}"
 commands.help_title: " Tulong "
 commands.help_header: "Mga slash command — i-type ang / sa input box."
 commands.help_escape_hint: "  //text     Magpadala ng literal na '/' (iniiwasan ang command parser)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Isara ang tulong na ito"  # {Locked="Esc
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit ng aksyon • Enter para pumili • Esc para mag-cancel)"
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
+recommendations.button_send_to_delegate: "[ Ipadala sa delegado ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
 recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Piliin ang agent para sa tab na ito (/agent <id> para magpalit nang diretso)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Maghanda ng gawain at magbukas ng delegadong ahente (/delegate <intent>)"
 
 # ── Pagpapatupad ng rekomendasyon (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Nabigo ang pagpipiliang %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Piliin ang terminal pane (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Walang available na mga nakasulat na terminal pane."
+pane_picker.target_unavailable: "Hindi na available ang napiling pane."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Pumili ng agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Walang nahanap na available na CLI ng agent sa machine na ito."  # {Locked="CLI"}

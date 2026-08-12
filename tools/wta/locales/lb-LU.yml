@@ -59,6 +59,14 @@ input.image_attachments: "📎 Biller: %{items}"  # {Locked="📎","%{items}"}
 # ── Kommando-Popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstréch-Kommando-Prefix, muss ASCII bleiwen
 commands.popup_title: " / Kommandoen "
+delegate_picker.title: " Delegéiert Destinatioun "
+delegate_picker.tab: "Neien Tab"
+delegate_picker.panel: "Nei Panel"
+delegate_picker.intent_required: "Beschreift d'Aarbecht fir ze delegéieren."
+delegate_picker.pane_not_allowed: "/delegate erstellt ëmmer eng nei Destinatioun an akzeptéiert net @pane."
+delegate_picker.not_configured: "Keen Delegéierten Agent ass konfiguréiert."
+delegate_picker.no_parent_pane: "Keng Aarbechtsfenster ass verfügbar fir ze splécken."
+delegate_picker.launch_failed: "Konnt den Delegéierten net starten: %{error}"
 commands.help_title: " Hëllef "
 commands.help_header: "Schrägstréch-Kommandoen — tippt / an d'Inputfeld."
 commands.help_escape_hint: "  //text     Schéckt e literale '/' (escapéiert de Kommando-Parser)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Dës Hëllef zoumaachen"  # {Locked="Esc
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - Schlësselnimm an Enter-Tast-Glyph, net iwwersetzen
 recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • ← → fir Knäppercher ze wiesselen • Enter fir auszewielen • Esc fir ofzebriechen)"
 recommendations.button_run_command: "[ Kommando ausféieren ]"
+recommendations.button_send_to_delegate: "[ Schéckt un den Delegéierten ]"
 recommendations.button_insert_in_terminal: "An den Terminal asetzen"
 recommendations.button_open_in_new_tab: "An engem neien Tab opmaachen ↵"
 recommendations.button_open_in_new_panel: "An engem neie Panell opmaachen ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Wielt de Agent fir dës Panell (/agent <id> fir direkt ze wiesselen)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Bereet eng Aufgab vir an oppen en Delegéierten Agent (/delegate <intent>)"
 
 # ── Ausféierung vun der Recommandatioun (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Terminal Panel auswielen (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Keng schreiwenbare Terminalpanele si verfügbar."
+pane_picker.target_unavailable: "Déi gewielte Fënster ass net méi verfügbar."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agent auswielen (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Et gouf kee verfügbaren Agent-CLI op dësem Computer fonnt."  # {Locked="CLI"}

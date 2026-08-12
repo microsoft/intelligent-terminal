@@ -55,6 +55,14 @@ input.image_attachments: "📎 圖片: %{items}"  # {Locked="📎","%{items}"}
 # ── 命令快顯視窗 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 斜線命令前綴，必須保持 ASCII
 commands.popup_title: " / 命令 "
+delegate_picker.title: "代表目的地"
+delegate_picker.tab: "新標籤頁"
+delegate_picker.panel: "新面板"
+delegate_picker.intent_required: "描述要委派的工作。"
+delegate_picker.pane_not_allowed: "/delegate 總是建立新目的地且不接受 @pane。"
+delegate_picker.not_configured: "未配置委派代理。"
+delegate_picker.no_parent_pane: "沒有可分割的工作窗格。"
+delegate_picker.launch_failed: "無法啟動委託：%{error}"
 commands.help_title: " 說明 "
 commands.help_header: "斜線命令 — 在輸入方塊中鍵入 /。"
 commands.help_escape_hint: "  //text     傳送字面 '/'（跳脫命令剖析器）"  # {Locked="//text","/"}
@@ -64,6 +72,7 @@ commands.help_close_hint: "  Esc        關閉此說明"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - 按鍵名稱和 Return 鍵符號，請勿翻譯
 recommendations.nav_hint: "(↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter 選取 • Esc 取消)"
 recommendations.button_run_command: "[ 執行命令 ]"
+recommendations.button_send_to_delegate: "[發送給代表]"
 recommendations.button_insert_in_terminal: "插入終端機"
 recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"
 recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
@@ -194,12 +203,20 @@ commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
 commands.agent.summary: "為此分頁選擇智能體（使用 /agent <id> 可直接切換）"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "準備任務並開啟委派代理程式 (/delegate <intent>)"
 
 # ── 建議執行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "選擇終端窗格 (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "沒有可寫入的終端窗格可用。"
+pane_picker.target_unavailable: "所選窗格不再可用。"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "選擇智能體（↑ ↓ • Enter • Esc）"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "在此電腦上找不到可用的智能體 CLI。"  # {Locked="CLI"}

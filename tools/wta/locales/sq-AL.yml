@@ -59,6 +59,14 @@ input.image_attachments: "📎 Imazhet: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komandat "
+delegate_picker.title: "Delegoni destinacionin"
+delegate_picker.tab: "Skeda e re"
+delegate_picker.panel: "Paneli i ri"
+delegate_picker.intent_required: "Përshkruani punën që duhet deleguar."
+delegate_picker.pane_not_allowed: "/delegate krijon gjithmonë një destinacion të ri dhe nuk pranon @pane."
+delegate_picker.not_configured: "Asnjë agjent i deleguar nuk është konfiguruar."
+delegate_picker.no_parent_pane: "Asnjë panel pune nuk është i disponueshëm për t'u ndarë."
+delegate_picker.launch_failed: "Delegati nuk mund të hapej: %{error}"
 commands.help_title: " Ndihmë "
 commands.help_header: "Komandat me vizë — shkruani / në fushën e hyrjes."
 commands.help_escape_hint: "  //text     Dërgo një '/' fjalëpërfjalshëm (anashkalon analizuesin e komandave)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Mbyll këtë ndihmë"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndërruar butonat • Enter për të zgjedhur • Esc për të anuluar)"
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
+recommendations.button_send_to_delegate: "[Dërgo delegatit]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
 recommendations.button_open_in_new_panel: "Hap në panelin e ri ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Zgjidhni agjentin për këtë skedë (/agent <id> për të kaluar drejtpërdrejt)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Përgatitni një detyrë dhe hapni një agjent delegatësh (/delegate <intent>)"
 
 # ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
 system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Zgjidh panelin e terminalit (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Nuk disponohen panele terminale të shkrueshme."
+pane_picker.target_unavailable: "Paneli i zgjedhur nuk është më i disponueshëm."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Zgjidhni agjentin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Nuk u gjet asnjë CLI agjenti i disponueshëm në këtë makinë."  # {Locked="CLI"}

@@ -3426,22 +3426,15 @@ void Pane::SetAgentChipVisible(bool value)
 }
 
 // The connection's session GUID for terminal panes. Returns the empty
-// guid for non-terminal panes (e.g. branch nodes, agent panes, snippets).
+// guid for non-terminal panes (e.g. branch nodes and snippets).
 // Used by Tab to match a protocol-supplied pane id to a Pane.
 winrt::guid Pane::GetSessionId() const
 {
-    // Mirror `_getSessionIdFromPane` in TerminalPage.Protocol.cpp:
-    // walk content → control → connection and read the SessionId. Using
-    // GetContent() (instead of `_content` directly) keeps the non-leaf
-    // case to a clean nullptr without needing an explicit leaf check.
-    if (const auto termContent = GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+    if (const auto control = GetTerminalControl())
     {
-        if (const auto control = termContent.GetTermControl())
+        if (const auto conn = control.Connection())
         {
-            if (const auto conn = control.Connection())
-            {
-                return conn.SessionId();
-            }
+            return conn.SessionId();
         }
     }
     return {};

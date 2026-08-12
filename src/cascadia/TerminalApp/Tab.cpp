@@ -761,6 +761,7 @@ namespace winrt::TerminalApp::implementation
         // possible that the focus events won't propagate immediately. Updating
         // the focus here will give the same effect though.
         _UpdateActivePane(newPane);
+        _RaisePaneCatalogChanged();
 
         return { original, newPane };
     }
@@ -835,6 +836,7 @@ namespace winrt::TerminalApp::implementation
 
         // After split, Close Pane Menu Item should be visible
         _closePaneMenuItem.Visibility(WUX::Visibility::Visible);
+        _RaisePaneCatalogChanged();
 
         return { originalTree, pane };
     }
@@ -862,6 +864,7 @@ namespace winrt::TerminalApp::implementation
         {
             // Just make sure that the remaining pane is marked active
             _UpdateActivePane(_rootPane->GetActivePane());
+            _RaisePaneCatalogChanged();
 
             return pane;
         }
@@ -945,6 +948,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(focus);
         }
+        _RaisePaneCatalogChanged();
     }
 
     // Method Description:
@@ -1085,6 +1089,10 @@ namespace winrt::TerminalApp::implementation
             _changingActivePane = true;
             const auto res = _rootPane->SwapPanes(_activePane, neighbor);
             _changingActivePane = false;
+            if (res)
+            {
+                _RaisePaneCatalogChanged();
+            }
             return res;
         }
 
@@ -1227,6 +1235,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto tab = weakThis.get())
                 {
                     tab->UpdateTitle();
+                    tab->_RaisePaneCatalogChanged();
                 }
             });
 
@@ -1278,6 +1287,7 @@ namespace winrt::TerminalApp::implementation
                 if (auto tab{ weakThisCopy.get() })
                 {
                     tab->_UpdateConnectionClosedState();
+                    tab->_RaisePaneCatalogChanged();
                 }
             });
 
@@ -1289,6 +1299,7 @@ namespace winrt::TerminalApp::implementation
                 if (auto tab{ weakThisCopy.get() })
                 {
                     tab->_RecalculateAndApplyReadOnly();
+                    tab->_RaisePaneCatalogChanged();
                 }
             });
 
@@ -1534,6 +1545,7 @@ namespace winrt::TerminalApp::implementation
 
         // Raise our own ActivePaneChanged event.
         ActivePaneChanged.raise(*this, nullptr);
+        _RaisePaneCatalogChanged();
 
         // If the new active pane is a terminal, tell other interested panes
         // what the new active pane is.
@@ -1607,6 +1619,11 @@ namespace winrt::TerminalApp::implementation
         // chip-visibility hook in `_UpdateActivePane` missed (legacy
         // call sites that mutate the flag without going through it).
         _UpdateAgentChipVisibility();
+    }
+
+    void Tab::_RaisePaneCatalogChanged()
+    {
+        PaneCatalogChanged.raise(*this, nullptr);
     }
 
     void Tab::_UpdateMenuItemStates()
@@ -1712,6 +1729,7 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+                tab->_RaisePaneCatalogChanged();
             }
         });
 
@@ -1741,6 +1759,7 @@ namespace winrt::TerminalApp::implementation
                             break;
                         }
                     }
+                    tab->_RaisePaneCatalogChanged();
                 }
             }
         });
@@ -2346,6 +2365,7 @@ namespace winrt::TerminalApp::implementation
             _UpdateActivePane(focusTarget);
             focusTarget->SetActive();
         }
+        _RaisePaneCatalogChanged();
     }
 
     // Method Description:
@@ -2371,6 +2391,7 @@ namespace winrt::TerminalApp::implementation
         // Restore the pane in the XAML tree.
         parent->RestorePane(_hiddenPane);
         _hiddenPane = nullptr;
+        _RaisePaneCatalogChanged();
     }
 
     bool Tab::HasHiddenPane()
@@ -2589,6 +2610,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
+        _RaisePaneCatalogChanged();
     }
 
     // Re-attach a previously-stashed agent pane. `direction` is accepted
@@ -2633,6 +2655,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(agentPane);
         }
+        _RaisePaneCatalogChanged();
 
         // CRITICAL: synchronous Focus(Programmatic) is unreliable on
         // freshly-re-parented or freshly-spawned TermControls. The element

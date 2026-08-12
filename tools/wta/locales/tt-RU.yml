@@ -59,6 +59,14 @@ input.image_attachments: "📎 Рәсемнәр: %{items}"  # {Locked="📎","%{
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / боерыклар "
+delegate_picker.title: " Делегат "
+delegate_picker.tab: " Яңа кыстыргыч"
+delegate_picker.panel: " Яңа панель"
+delegate_picker.intent_required: " Тапшыру өчен эшне сурәтләгез."
+delegate_picker.pane_not_allowed: " __ PH0__ һәрвакыт яңа юнәлеш тудыра һәм @pane кабул итми."
+delegate_picker.not_configured: " Бер делегат агент конфигурацияләнмәгән."
+delegate_picker.no_parent_pane: " Бөлү өчен эш тактасы юк."
+delegate_picker.launch_failed: " Делегатны җибәрә алмадым: %{error}"
 commands.help_title: " Ярдәм "
 commands.help_header: "Слэш боерыклары — кертү кырына / языгыз."
 commands.help_escape_hint: "  //text     Туры мәгънәдәге '/' җибәрү (боерык анализаторын читләп үтү)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "Агентны яңадан старт"
 commands.stop.summary: "Башкарылучы сорауны кире кагу"
 commands.sessions.summary: "Тарихи сеанслар сайлагычын ачу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Бу панель өчен агент сайлагыз (туры алыштыру өчен /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: " Бирем әзерләгез һәм делегат агентын ачыгыз (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ навигация өчен • ← → төймәләр арасында күчү өчен • Enter сайлау өчен • Esc баш тарту өчен)"
 recommendations.button_run_command: "[ Боерыкны башкару ]"
+recommendations.button_send_to_delegate: " [Делегатка җибәр]"
 recommendations.button_insert_in_terminal: "Terminal-га кертү"
 recommendations.button_open_in_new_tab: "Яңа табда ачу ↵"
 recommendations.button_open_in_new_panel: "Яңа панельдә ачу ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "%{choice} сайлавы уңышсыз бул�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: " Терминал тактасын сайлагыз (↑ ↓ • Enter • Esc)"
+pane_picker.empty: " Терминал такталары юк."
+pane_picker.target_unavailable: " Сайланган такта инде мөмкин түгел."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Агент сайлагыз (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Бу компьютерда агентның бердә бер мөмкин булган CLI табылмады."  # {Locked="CLI"}

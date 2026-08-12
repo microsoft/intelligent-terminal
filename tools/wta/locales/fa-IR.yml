@@ -59,6 +59,14 @@ input.image_attachments: "📎 تصاویر: %{items}"  # {Locked="📎","%{item
 # ── پنجره بازشو دستورات (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - پیشوند دستور اسلش، باید ASCII بماند
 commands.popup_title: " / دستورات "
+delegate_picker.title: "مقصد را تفویض کنید"
+delegate_picker.tab: "برگه جدید"
+delegate_picker.panel: "پنل جدید"
+delegate_picker.intent_required: "کاری را که باید واگذار کنید را شرح دهید."
+delegate_picker.pane_not_allowed: "/delegate همیشه یک مقصد جدید ایجاد می کند و @pane را نمی پذیرد."
+delegate_picker.not_configured: "هیچ نماینده نمایندگی پیکربندی نشده است."
+delegate_picker.no_parent_pane: "هیچ صفحه کاری برای تقسیم در دسترس نیست."
+delegate_picker.launch_failed: "نماینده راه اندازی نشد: %{error}"
 commands.help_title: " راهنما "
 commands.help_header: "دستورات اسلش — / را در کادر ورودی تایپ کنید."
 commands.help_escape_hint: "  //text     ارسال '/' تحت‌اللفظی (تجزیه‌کننده دستور را رد می‌کند)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "راه‌اندازی مجدد عامل هوش مصن
 commands.stop.summary: "لغو درخواست در حال اجرا"
 commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "عامل این پنل را انتخاب کنید (/agent <id> برای تغییر مستقیم)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "یک کار آماده کنید و یک نماینده نماینده باز کنید (/delegate <intent>)"
 
 # ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
 recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای جابه‌جایی بین دکمه‌ها • Enter برای انتخاب • Esc برای لغو)"
 recommendations.button_run_command: "[ اجرای دستور ]"
+recommendations.button_send_to_delegate: "[ارسال به نماینده]"
 recommendations.button_insert_in_terminal: "درج در ترمینال"
 recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
 recommendations.button_open_in_new_panel: "باز کردن در پنل جدید ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "صفحه پایانه را انتخاب کنید (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "هیچ صفحه پایانه قابل نوشتن در دسترس نیست."
+pane_picker.target_unavailable: "صفحه انتخاب شده دیگر در دسترس نیست."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "انتخاب عامل (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "هیچ CLI عاملی در این رایانه یافت نشد."  # {Locked="CLI"}

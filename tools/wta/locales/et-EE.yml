@@ -59,6 +59,14 @@ input.image_attachments: "📎 Pildid: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / käsud "
+delegate_picker.title: " Delegeeri sihtkoht "
+delegate_picker.tab: "Uus vaheleht"
+delegate_picker.panel: "Uus paneel"
+delegate_picker.intent_required: "Kirjeldage delegeeritavat tööd."
+delegate_picker.pane_not_allowed: "/delegate loob alati uue sihtkoha ega aktsepteeri @pane."
+delegate_picker.not_configured: "Ühtegi delegeeritud agenti pole seadistatud."
+delegate_picker.no_parent_pane: "Jagamiseks pole saadaval ühtegi tööpaani."
+delegate_picker.launch_failed: "Delegaadi käivitamine ebaõnnestus: %{error}"
 commands.help_title: " Abi "
 commands.help_header: "Kaldkriipsukäsud — sisestage / sisestusväljale."
 commands.help_escape_hint: "  //text     Saada sõnasõnaline '/' (väldib käsuanalüsaatorit)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Sulge see abi"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetamiseks • Enter valimiseks • Esc tühistamiseks)"
 recommendations.button_run_command: "[ Käivita käsk ]"
+recommendations.button_send_to_delegate: "[ Saada delegaadile ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
 recommendations.button_open_in_new_panel: "Ava uuel paneelil ↵"
@@ -199,12 +208,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Valige selle vahekaardi agent (/agent <id> otse vahetamiseks)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Valmistage ette ülesanne ja avage volitatud agent (/delegate <intent>)"
 
 # ── Soovituse täitmine (src/coordinator.rs) ─────────────────────────────────
 system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Valige terminali paneel (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Kirjutatavad terminalipaneelid pole saadaval."
+pane_picker.target_unavailable: "Valitud paan pole enam saadaval."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Valige agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Selles seadmes ei leitud ühtegi saadavalolevat agendi CLI-d."  # {Locked="CLI"}

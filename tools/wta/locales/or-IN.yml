@@ -59,6 +59,14 @@ input.image_attachments: "📎 ଛବିଗୁଡ଼ିକ: %{items}"  # {Locked
 # ── କମାଣ୍ଡ ପପଅପ୍ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ସ୍ଲାଶ୍-କମାଣ୍ଡ ଉପସର୍ଗ, ASCII ହେବା ଆବଶ୍ୟକ
 commands.popup_title: " / କମାଣ୍ଡ "
+delegate_picker.title: " ପ୍ରତିନିଧୀ ଗନ୍ତବ୍ୟସ୍ଥଳ | "
+delegate_picker.tab: " ନୂତନ ଟ୍ୟାବ୍ |"
+delegate_picker.panel: " ନୂତନ ପ୍ୟାନେଲ୍ |"
+delegate_picker.intent_required: " ପ୍ରତିନିଧିତ୍ୱ କରିବାକୁ କାର୍ଯ୍ୟ ବର୍ଣ୍ଣନା କର |"
+delegate_picker.pane_not_allowed: " __ PH0__ ସର୍ବଦା ଏକ ନୂତନ ଗନ୍ତବ୍ୟସ୍ଥଳ ସୃଷ୍ଟି କରେ ଏବଂ @pane ଗ୍ରହଣ କରେ ନାହିଁ |"
+delegate_picker.not_configured: " କ deleg ଣସି ପ୍ରତିନିଧୀ ଏଜେଣ୍ଟ ବିନ୍ୟାସିତ ନୁହଁନ୍ତି |"
+delegate_picker.no_parent_pane: " ବିଭାଜନ ପାଇଁ କ working ଣସି କାର୍ଯ୍ୟ ଫଳକ ଉପଲବ୍ଧ ନାହିଁ |"
+delegate_picker.launch_failed: " ପ୍ରତିନିଧୀଙ୍କୁ ଲଞ୍ଚ କରିପାରିଲା ନାହିଁ: %{error}"
 commands.help_title: " ସାହାଯ୍ୟ "
 commands.help_header: "ସ୍ଲାଶ୍ କମାଣ୍ଡ — ଇନ୍‌ପୁଟ୍ ବକ୍ସରେ / ଟାଇପ୍ କରନ୍ତୁ।"
 commands.help_escape_hint: "  //text     ଅକ୍ଷରିକ '/' ପଠାନ୍ତୁ (କମାଣ୍ଡ ପାର୍ସର୍ ଏସ୍କେପ୍ କରେ)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "ଏଜେଣ୍ଟ ପୁନଃ ଆରମ୍ଭ କ�
 commands.stop.summary: "ଚାଲୁଥିବା ପ୍ରମ୍ପ୍ଟକୁ ବାତିଲ କରନ୍ତୁ"
 commands.sessions.summary: "ଇତିହାସିକ ସେସନ୍ ପିକର୍ ଖୋଲନ୍ତୁ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ଏହି ଟ୍ୟାବ୍ ପାଇଁ ଏଜେଣ୍ଟ୍ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: " ଏକ କାର୍ଯ୍ୟ ପ୍ରସ୍ତୁତ କରନ୍ତୁ ଏବଂ ଏକ ପ୍ରତିନିଧୀ ଏଜେଣ୍ଟ ଖୋଲନ୍ତୁ (/delegate <intent>)"
 
 # ── ସୁପାରିଶ ପ୍ୟାନେଲ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - କୀ ନାମ ଏବଂ Return-କୀ ଗ୍ଲିଫ୍, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
 recommendations.nav_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରିବାକୁ • ← → ବଟନ୍ ବଦଳାଇବାକୁ • Enter ବାଛିବାକୁ • Esc ବାତିଲ୍ କରିବାକୁ)"
 recommendations.button_run_command: "[ କମାଣ୍ଡ ଚଳାନ୍ତୁ ]"
+recommendations.button_send_to_delegate: " [ପ୍ରତିନିଧୀଙ୍କୁ ପଠାନ୍ତୁ]"
 recommendations.button_insert_in_terminal: "ଟର୍ମିନାଲରେ ସନ୍ନିବେଶ କରନ୍ତୁ"
 recommendations.button_open_in_new_tab: "ନୂଆ ଟ୍ୟାବରେ ଖୋଲନ୍ତୁ ↵"
 recommendations.button_open_in_new_panel: "ନୂଆ ପ୍ୟାନେଲରେ ଖୋଲନ୍ତୁ ↵"
@@ -206,6 +218,11 @@ system.choice_execution_failed: "ପସନ୍ଦ %{choice} ବିଫଳ ହେ�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: " ଟର୍ମିନାଲ୍ ପେନ୍ ଚୟନ କରନ୍ତୁ (↑ ↓ • Enter • Esc)"
+pane_picker.empty: " କ writ ଣସି ଲିଖନ ଯୋଗ୍ୟ ଟର୍ମିନାଲ ପ୍ୟାନ ଉପଲବ୍ଧ ନାହିଁ |"
+pane_picker.target_unavailable: " ମନୋନୀତ ପେନ୍ ଆଉ ଉପଲବ୍ଧ ନାହିଁ |"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ଏଜେଣ୍ଟ୍ ବାଛନ୍ତୁ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ଏହି ମେସିନ୍‌ରେ କୌଣସି ଉପଲବ୍ଧ ଏଜେଣ୍ଟ୍ CLI ମିଳିଲା ନାହିଁ।"  # {Locked="CLI"}

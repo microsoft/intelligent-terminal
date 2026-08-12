@@ -235,6 +235,26 @@ impl App {
             Ok(wire) => wire,
             Err(error) => return DirectProposalEvaluation::Rejected(error),
         };
+        let prepared_mode = self
+            .session_tab(session_id)
+            .pending_preparation
+            .as_ref()
+            .filter(|preparation| preparation.prompt_id == prompt_id)
+            .map(|preparation| preparation.mode);
+        if prepared_mode.is_some()
+            && (wire.choices.len() != 1
+                || wire.choices[0].actions.len() != 1
+                || !matches!(
+                    wire.choices[0].actions[0],
+                    crate::agent_tools::action_proposal::schema::ProposalActionWire::Send { .. }
+                ))
+        {
+            return DirectProposalEvaluation::Rejected(
+                crate::agent_tools::action_proposal::schema::ProposalError::PolicyViolation(
+                    "a preparation turn must propose exactly one send action".to_string(),
+                ),
+            );
+        }
         let configured_delegate_id = self
             .delegate_agents
             .as_ref()
@@ -258,6 +278,8 @@ impl App {
             prompt_id,
             is_autofix,
             recommendations,
+            prepared_mode,
+            committed: false,
         });
         DirectProposalEvaluation::Presented
     }
@@ -325,6 +347,25 @@ impl App {
     }
 
     pub(super) fn commit_terminal_action_proposal(&mut self, proposal_id: &str) -> bool {
+        let awaiting_delegate = self.tab_sessions.values().any(|tab| {
+            tab.pending_terminal_action_proposal
+                .as_ref()
+                .is_some_and(|pending| pending.proposal_id == proposal_id)
+                && tab.pending_preparation.as_ref().is_some_and(|preparation| {
+                    preparation.mode == PreparedActionMode::DelegateSend
+                        && preparation.target_session_id.is_empty()
+                })
+        });
+        if awaiting_delegate {
+            if let Some(pending) = self.tab_sessions.values_mut().find_map(|tab| {
+                tab.pending_terminal_action_proposal
+                    .as_mut()
+                    .filter(|pending| pending.proposal_id == proposal_id)
+            }) {
+                pending.committed = true;
+                return true;
+            }
+        }
         let pending = self.tab_sessions.values_mut().find_map(|tab| {
             let matches = tab
                 .pending_terminal_action_proposal
@@ -356,8 +397,38 @@ impl App {
                 );
             }
         self.session_tab_mut(&pending.session_id)
+            .active_prepared_mode = pending.prepared_mode;
+        self.session_tab_mut(&pending.session_id)
+            .pending_preparation = None;
+        self.session_tab_mut(&pending.session_id)
             .active_direct_proposal_id = Some(proposal_id.to_string());
         true
+    }
+
+    pub(super) fn surface_committed_delegate_proposal(&mut self, prompt_id: u64) {
+        let pending = self.tab_sessions.values_mut().find_map(|tab| {
+            let ready = tab
+                .pending_terminal_action_proposal
+                .as_ref()
+                .is_some_and(|pending| pending.prompt_id == prompt_id && pending.committed);
+            ready
+                .then(|| tab.pending_terminal_action_proposal.take())
+                .flatten()
+        });
+        let Some(pending) = pending else {
+            return;
+        };
+        self.turn_surface_recommendation(
+            &pending.session_id,
+            pending.recommendations,
+            "direct_proposal",
+        );
+        self.session_tab_mut(&pending.session_id)
+            .active_prepared_mode = pending.prepared_mode;
+        self.session_tab_mut(&pending.session_id)
+            .pending_preparation = None;
+        self.session_tab_mut(&pending.session_id)
+            .active_direct_proposal_id = Some(pending.proposal_id);
     }
 
     pub(super) fn invalidate_terminal_action_proposal(
@@ -588,8 +659,10 @@ impl App {
             .session_tab(session_id)
             .active_direct_proposal_id
             .clone();
-        let insert_only =
-            self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
+        let prepared_mode = self.session_tab(session_id).active_prepared_mode;
+        let insert_only = prepared_mode != Some(PreparedActionMode::DelegateSend)
+            && self.session_tab(session_id).selected_button == 1
+            && self.is_send_choice(&choice);
         let target_tab = self.tab_for_session(session_id);
         let context = self
             .session_tab(session_id)
@@ -614,6 +687,7 @@ impl App {
                 context,
             })
             .is_ok();
+        self.session_tab_mut(session_id).active_prepared_mode = None;
         if let Some(claim) = confirmation_claim {
             let status = if dispatched {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -758,6 +832,8 @@ impl App {
         tab.activity_frame = 0;
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
+        tab.pending_preparation = None;
+        tab.active_prepared_mode = None;
         tab.active_direct_proposal_id = None;
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
             self.proposal_channels.resolve_final(

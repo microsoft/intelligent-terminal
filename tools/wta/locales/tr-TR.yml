@@ -59,6 +59,14 @@ input.image_attachments: "📎 Görseller: %{items}"  # {Locked="📎","%{items}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komutlar "
+delegate_picker.title: " Hedefi delege et "
+delegate_picker.tab: "Yeni sekme"
+delegate_picker.panel: "Yeni panel"
+delegate_picker.intent_required: "Delege edilecek işi açıklayın."
+delegate_picker.pane_not_allowed: "/delegate her zaman yeni bir hedef oluşturur ve @pane'yi kabul etmez."
+delegate_picker.not_configured: "Hiçbir temsilci temsilcisi yapılandırılmadı."
+delegate_picker.no_parent_pane: "Bölünecek çalışma bölmesi yok."
+delegate_picker.launch_failed: "Yetkili başlatılamadı: %{error}"
 commands.help_title: " Yardım "
 commands.help_header: "Eğik çizgi komutları — giriş kutusuna / yazın."
 commands.help_escape_hint: "  //text     Düz '/' gönder (komut ayrıştırıcısını atla)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "Aracıyı yeniden başlat"
 commands.stop.summary: "Devam eden istemi iptal et"
 commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Bu sekme için aracıyı seçin (doğrudan geçmek için /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Bir görev hazırlayın ve bir temsilci temsilci açın (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arasında geçiş yapmak için • Enter seçmek için • Esc iptal etmek için)"
 recommendations.button_run_command: "[ Komutu çalıştır ]"
+recommendations.button_send_to_delegate: "[ Yetkiye gönder ]"
 recommendations.button_insert_in_terminal: "Terminal'e ekle"
 recommendations.button_open_in_new_tab: "Yeni Sekmede Aç ↵"
 recommendations.button_open_in_new_panel: "Yeni Panelde Aç ↵"
@@ -205,6 +217,11 @@ system.choice_execution_failed: "%{choice} seçimi başarısız oldu: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Terminal bölmesini seçin (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Yazılabilir terminal bölmesi yok."
+pane_picker.target_unavailable: "Seçili bölme artık mevcut değil."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Aracı seçin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Bu makinede kullanılabilir bir aracı CLI'sı bulunamadı."  # {Locked="CLI"}

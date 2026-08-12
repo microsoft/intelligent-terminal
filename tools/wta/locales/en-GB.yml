@@ -59,16 +59,33 @@ input.image_attachments: "📎 Images: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / commands "
+delegate_picker.title: " Delegate destination "
+delegate_picker.tab: "New tab"
+delegate_picker.panel: "New panel"
+delegate_picker.intent_required: "Describe the work to delegate."
+delegate_picker.pane_not_allowed: "/delegate always creates a new destination and does not accept @pane."
+delegate_picker.not_configured: "No delegate agent is configured."
+delegate_picker.no_parent_pane: "No working pane is available to split."
+delegate_picker.launch_failed: "Could not launch the delegate: %{error}"
 commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Prepare a task and open a delegate agent (/delegate <intent>)"  # {Locked="/delegate","<intent>"}
+pane_picker.title: "Select terminal pane (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+pane_picker.empty: "No writable terminal panes are available."
+pane_picker.target_unavailable: "The selected pane is no longer available."  # {Locked="↑","↓","Enter","Esc"}
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ to navigate • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_send_to_delegate: "[ Send to delegate ]"  # Button sends the prepared task prompt to the newly opened AI agent pane
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"

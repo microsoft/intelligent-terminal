@@ -60,6 +60,14 @@ input.image_attachments: "📎 ছবিগুলি: %{items}"  # {Locked="📎
 # ── কমান্ড পপআপ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - স্ল্যাশ-কমান্ড উপসর্গ, ASCII থাকতে হবে
 commands.popup_title: " / কমান্ড "
+delegate_picker.title: " ডেলিগেট গন্তব্য "
+delegate_picker.tab: "নতুন ট্যাব৷"
+delegate_picker.panel: "নতুন প্যানেল৷"
+delegate_picker.intent_required: "অর্পণ করার জন্য কাজের বর্ণনা করুন৷"
+delegate_picker.pane_not_allowed: "/delegate সর্বদা একটি নতুন গন্তব্য তৈরি করে এবং @pane গ্রহণ করে না।"
+delegate_picker.not_configured: "কোন প্রতিনিধি এজেন্ট কনফিগার করা নেই৷"
+delegate_picker.no_parent_pane: "বিভক্ত করার জন্য কোনো কার্যকারী ফলক উপলব্ধ নেই৷"
+delegate_picker.launch_failed: "প্রতিনিধি লঞ্চ করা যায়নি: %{error}"
 commands.help_title: " সাহায্য "
 commands.help_header: "স্ল্যাশ কমান্ড — ইনপুট বক্সে / টাইপ করুন।"
 commands.help_escape_hint: "  //text     আক্ষরিক '/' পাঠান (কমান্ড পার্সার এড়ায়)"  # {Locked="//text","/"}
@@ -77,11 +85,15 @@ commands.restart.summary: "এজেন্ট পুনরায় চালু
 commands.stop.summary: "চলমান প্রম্পট বাতিল করুন"
 commands.sessions.summary: "ঐতিহাসিক সেশন পিকার খুলুন (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "এই ট্যাবের জন্য এজেন্ট নির্বাচন করুন (সরাসরি পরিবর্তন করতে /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "একটি কাজ প্রস্তুত করুন এবং একটি প্রতিনিধি এজেন্ট খুলুন (/delegate <intent>)"
 
 # ── সুপারিশ প্যানেল (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - কী নাম ও Return-কী গ্লিফ, অনুবাদ করবেন না
 recommendations.nav_hint: "(↑ ↓ নেভিগেট করুন • ← → বোতাম পরিবর্তন করুন • Enter নির্বাচন করুন • Esc বাতিল করুন)"
 recommendations.button_run_command: "[ কমান্ড চালান ]"
+recommendations.button_send_to_delegate: "[ প্রতিনিধিকে পাঠান ]"
 recommendations.button_insert_in_terminal: "টার্মিনালে সন্নিবেশ করুন"
 recommendations.button_open_in_new_tab: "নতুন ট্যাবে খুলুন ↵"
 recommendations.button_open_in_new_panel: "নতুন প্যানেলে খুলুন ↵"
@@ -208,6 +220,11 @@ system.choice_execution_failed: "পছন্দ %{choice} ব্যর্থ �
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "টার্মিনাল ফলক নির্বাচন করুন (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "কোন লিখনযোগ্য টার্মিনাল প্যান উপলব্ধ নেই৷"
+pane_picker.target_unavailable: "নির্বাচিত ফলকটি আর উপলব্ধ নেই৷"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "এজেন্ট নির্বাচন করুন (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "এই মেশিনে কোনো উপলব্ধ এজেন্ট CLI পাওয়া যায়নি।"  # {Locked="CLI"}

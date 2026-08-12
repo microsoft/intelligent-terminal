@@ -59,6 +59,14 @@ input.image_attachments: "📎 प्रतिमा: %{items}"  # {Locked="📎
 # ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - स्लॅश-कमांड उपसर्ग, ASCII आसचें आवश्यक
 commands.popup_title: " / कमांड "
+delegate_picker.title: " प्रतिनिधी गंतव्य "
+delegate_picker.tab: "नवो टॅब"
+delegate_picker.panel: "नवें पॅनल"
+delegate_picker.intent_required: "प्रत्यायित करपाच्या कामाचे वर्णन करात."
+delegate_picker.pane_not_allowed: "/delegate सदांच नवे गंतव्य तयार करता आनी @pane स्वीकारना."
+delegate_picker.not_configured: "खंयचोच प्रतिनिधी एजंट संरचीत केल्लो ना."
+delegate_picker.no_parent_pane: "विभाजन करपाक खंयचोच काम करपी फलक उपलब्ध ना."
+delegate_picker.launch_failed: "प्रतिनिधी सुरू करूंक शकलो ना: %{error}"
 commands.help_title: " मजत "
 commands.help_header: "स्लॅश कमांड — इनपुट बॉक्सांत / टायप करात."
 commands.help_escape_hint: "  //text     शाब्दिक '/' धाडात (कमांड पार्सर एस्केप करता)"  # {Locked="//text","/"}
@@ -76,11 +84,15 @@ commands.restart.summary: "एजंट परत सुरू करात"
 commands.stop.summary: "चालू आशिल्लो प्रॉम्प्ट रद्द करात"
 commands.sessions.summary: "इतिहासीक सत्र पिकर उगडात (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ह्या पेना खातीर एजंट निवडात (थेट बदलपाक /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "एक कार्य तयार करात आनी एक प्रतिनिधी एजंट उगडात (/delegate <intent>)"
 
 # ── शिफारस पॅनेल (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - की नांवां आनी Return-की ग्लिफ, अणकार करूं नाका
 recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करपाक • ← → बटणां बदलपाक • Enter निवडपाक • Esc रद्द करपाक)"
 recommendations.button_run_command: "[ कमांड चलयात ]"
+recommendations.button_send_to_delegate: "[ प्रतिनिधीक धाडचें ]"
 recommendations.button_insert_in_terminal: "टर्मिनलांत घालात"
 recommendations.button_open_in_new_tab: "नव्या टॅबांत उगडात ↵"
 recommendations.button_open_in_new_panel: "नव्या पॅनेलांत उगडात ↵"
@@ -206,6 +218,11 @@ system.choice_execution_failed: "निवड %{choice} अपेसली: %{er
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "टर्मिनल फलक निवडात (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "बरोवपाक येवपी टर्मिनल फलक उपलब्ध नात."
+pane_picker.target_unavailable: "निवडिल्लें फलक आतां उपलब्ध ना."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "एजंट निवडात (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ह्या मशीनार खंयचोच उपलब्ध एजंट CLI मेळूंक ना."  # {Locked="CLI"}

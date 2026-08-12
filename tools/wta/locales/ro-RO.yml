@@ -59,6 +59,14 @@ input.image_attachments: "📎 Imagini: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / comenzi "
+delegate_picker.title: " Delegați destinația "
+delegate_picker.tab: "Filă nouă"
+delegate_picker.panel: "Panou nou"
+delegate_picker.intent_required: "Descrieți munca de delegat."
+delegate_picker.pane_not_allowed: "/delegate creează întotdeauna o nouă destinație și nu acceptă @pane."
+delegate_picker.not_configured: "Nu este configurat niciun agent delegat."
+delegate_picker.no_parent_pane: "Niciun panou de lucru nu este disponibil pentru a fi împărțit."
+delegate_picker.launch_failed: "Nu s-a putut lansa delegatul: %{error}"
 commands.help_title: " Ajutor "
 commands.help_header: "Comenzi slash — tastați / în câmpul de introducere."
 commands.help_escape_hint: "  //text     Trimite un '/' literal (evită analizorul de comenzi)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Închide acest ajutor"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ pentru navigare • ← → pentru comutarea butoanelor • Enter pentru selectare • Esc pentru anulare)"
 recommendations.button_run_command: "[ Rulează comanda ]"
+recommendations.button_send_to_delegate: "[ Trimite către delegat ]"
 recommendations.button_insert_in_terminal: "Inserare în Terminal"
 recommendations.button_open_in_new_tab: "Deschide în filă nouă ↵"
 recommendations.button_open_in_new_panel: "Deschide în panou nou ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Reporniți agentul"
 commands.stop.summary: "Anulați promptul în curs"
 commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Alegeți agentul pentru această filă (/agent <id> pentru a comuta direct)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Pregătește o sarcină și deschide un agent delegat (/delegate <intent>)"
 
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Selectați panoul terminal (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Nu sunt disponibile panouri terminale inscriptibile."
+pane_picker.target_unavailable: "Paneul selectat nu mai este disponibil."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Selectați agentul (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Nu s-a găsit niciun CLI de agent disponibil pe acest computer."  # {Locked="CLI"}

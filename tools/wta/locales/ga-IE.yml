@@ -59,6 +59,14 @@ input.image_attachments: "📎 Íomhánna: %{items}"  # {Locked="📎","%{items}
 # ── Aníos orduithe (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - réimír ordú scáth, caithfidh sé fanacht ASCII
 commands.popup_title: " / orduithe "
+delegate_picker.title: " Ceann scríbe toscaire "
+delegate_picker.tab: "Cluaisín nua"
+delegate_picker.panel: "Painéal nua"
+delegate_picker.intent_required: "Déan cur síos ar an obair atá le tarmligean."
+delegate_picker.pane_not_allowed: "Cruthaíonn /delegate ceann scríbe nua i gcónaí agus ní ghlacann sé le @pane."
+delegate_picker.not_configured: "Níl aon ghníomhaire toscaire cumraithe."
+delegate_picker.no_parent_pane: "Níl aon phána oibre ar fáil le scoilt."
+delegate_picker.launch_failed: "Níorbh fhéidir an toscaire a sheoladh: %{error}"
 commands.help_title: " Cabhair "
 commands.help_header: "Orduithe scáth — clóscríobh / sa bhosca ionchuir."
 commands.help_escape_hint: "  //text     Seol '/' litriúil (éalú ón bparsálaí orduithe)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Dún an chabhair seo"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
 recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → chun cnaipí a athrú • Enter chun roghnú • Esc chun cealú)"
 recommendations.button_run_command: "[ Rith ordú ]"
+recommendations.button_send_to_delegate: "[Seol chuig an toscaire ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
 recommendations.button_open_in_new_panel: "Oscail i bPainéal Nua ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Roghnaigh an gníomhaire don chluaisín seo (/agent <id> chun athrú go díreach)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Ulltaigh tasc agus oscail gníomhaire toscairí (/delegate <intent>)"
 
 # ── Rith moltaí (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Roghnaigh pana teirminéil (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "Níl aon phána teirminéil inscríofa ar fáil."
+pane_picker.target_unavailable: "Níl an pána roghnaithe ar fáil a thuilleadh."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Roghnaigh gníomhaire (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Níor aimsíodh aon CLI gníomhaire ar fáil ar an meaisín seo."  # {Locked="CLI"}

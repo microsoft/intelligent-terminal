@@ -518,6 +518,7 @@ namespace winrt::TerminalApp::implementation
         // distinguishes them. Entries are consumed on read and otherwise
         // expire after a few seconds.
         std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
+        std::unordered_map<winrt::hstring, uint64_t> _paneCatalogGenerations;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         // Compares only agent-CLI *identity* fields — the change that forces
         // a master respawn. Model/delegate changes are handled by
@@ -532,6 +533,7 @@ namespace winrt::TerminalApp::implementation
         // ProtocolVtSequenceReceived. Single source of the wta protocol-event
         // wire shape — callers just supply the method name and a params object.
         void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
+        void _PublishPaneCatalog(const winrt::com_ptr<Tab>& tab);
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         // Scoped per-tab rebuild after a tab's agent override changes

@@ -12,9 +12,15 @@ const EMBEDDED_DEFAULT_PROMPT: &str = include_str!(concat!(
 
 const AUTOFIX_USER_PROMPT_FILE_NAME: &str = "auto-fix.md";
 const AUTOFIX_DEFAULT_PROMPT_FILE_NAME: &str = "auto-fix.default.md";
-const EMBEDDED_AUTOFIX_PROMPT: &str = include_str!(concat!(
+const EMBEDDED_AUTOFIX_PROMPT: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/prompts/auto-fix.md"));
+const EMBEDDED_PANE_INPUT_PREPARATION_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/prompts/auto-fix.md"
+    "/prompts/prepare-pane-input.md"
+));
+const EMBEDDED_DELEGATE_PREPARATION_PROMPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/prompts/prepare-delegate-prompt.md"
 ));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +41,22 @@ pub(crate) fn load_planner_prompt_template() -> PlannerPromptTemplate {
     load_planner_prompt_template_from_root(
         runtime_prompt_root().as_deref(),
         EMBEDDED_DEFAULT_PROMPT,
+    )
+}
+
+pub(crate) fn terminal_command_request(intent: &str) -> String {
+    format!(
+        "{}\n\n## User Intent\n{}",
+        EMBEDDED_PANE_INPUT_PREPARATION_PROMPT.trim(),
+        intent.trim()
+    )
+}
+
+pub(crate) fn delegate_preparation_request(intent: &str) -> String {
+    format!(
+        "{}\n\n## User Intent\n{}",
+        EMBEDDED_DELEGATE_PREPARATION_PROMPT.trim(),
+        intent.trim()
     )
 }
 
@@ -214,7 +236,10 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 /// `fs::write` truncates first and races readers down to an empty string.
 fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("prompt");
+    let stem = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("prompt");
     let unique = NEXT_TMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = dir.join(format!(".{}.{}.{}.tmp", stem, std::process::id(), unique));
     fs::write(&tmp, content)?;
@@ -230,9 +255,10 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_planner_prompt_template_from_root, merge_runtime_sections,
-        DEFAULT_PROMPT_FILE_NAME, EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT,
-        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
+        delegate_preparation_request, load_planner_prompt_template_from_root,
+        merge_runtime_sections, terminal_command_request, DEFAULT_PROMPT_FILE_NAME,
+        EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT, RUNTIME_CONTEXT_MARKER,
+        USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -275,8 +301,22 @@ mod tests {
             assert!(!prompt.contains("recommended_choice"));
             assert!(!prompt.contains("```json"));
         }
+
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
         assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Submit exactly one `send` action"));
+    }
+
+    #[test]
+    fn preparation_requests_embed_intent_and_restrict_model_authority() {
+        let pane = terminal_command_request("run parser tests");
+        assert!(pane.contains("run parser tests"));
+        assert!(pane.contains("exactly one `send` action"));
+        assert!(pane.contains("host owns the target pane"));
+
+        let delegate = delegate_preparation_request("investigate flaky tests");
+        assert!(delegate.contains("investigate flaky tests"));
+        assert!(delegate.contains("exactly one `send` action"));
+        assert!(delegate.contains("host creates and launches"));
     }
 
     #[test]

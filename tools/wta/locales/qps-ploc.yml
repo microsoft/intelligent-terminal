@@ -61,6 +61,14 @@ input.image_attachments: "[📎 Îḿåğéś: %{items}!!!!]"  # {Locked="📎",
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: "[ / çöḿḿåñďś !!]"
+delegate_picker.title: "[!!_ Ďéĺéğåţé ďéśţïñåţïöñ _!!]"
+delegate_picker.tab: "[!!_Ñéŵ ţåƀ_!!]"
+delegate_picker.panel: "[!!_Ñéŵ ṗåñéĺ_!!]"
+delegate_picker.intent_required: "[!!_Ďéśçŕïƀé ţĥé ŵöŕķ ţö ďéĺéğåţé._!!]"
+delegate_picker.pane_not_allowed: "[!!_/delegate åĺŵåÿś çŕéåţéś å ñéŵ ďéśţïñåţïöñ åñď ďöéś ñöţ åççéṗţ @pane._!!]"
+delegate_picker.not_configured: "[!!_Ñö ďéĺéğåţé åğéñţ ïś çöñƒïğûŕéď._!!]"
+delegate_picker.no_parent_pane: "[!!_Ñö ŵöŕķïñğ ṗåñé ïś åṽåïĺåƀĺé ţö śṗĺïţ._!!]"
+delegate_picker.launch_failed: "[!!_Çöûĺď ñöţ ĺåûñçĥ ţĥé ďéĺéğåţé: %{error}_!!]"
 commands.help_title: "[ Ĥéĺṗ !!]"
 commands.help_header: "[Ŝĺåśĥ çöḿḿåñďś — ţÿṗé / ïñ ţĥé ïñṗûţ ƀöx.!!!! !!!! !!!!]"
 commands.help_escape_hint: "[  //text     Ŝéñď å ĺïţéŕåĺ '/' (éśçåṗéś ţĥé çöḿḿåñď ṗåŕśéŕ)!!!! !!!! !!!!]"  # {Locked="//text","/"}
@@ -70,6 +78,7 @@ commands.help_close_hint: "[  Esc        Çĺöśé ţĥïś ĥéĺṗ!!!! !!!!]
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "[(↑ ↓ ţö ñåṽïğåţé • ← → ţö śŵïţçĥ ɓûţţöñś • Enter ţö śéĺéçţ • Esc ţö çåñçéĺ)!!!! !!!! !!!! !!!!]"
 recommendations.button_run_command: "[[ Ŕûñ çöḿḿåñď ]!!]"
+recommendations.button_send_to_delegate: "[!!_[ Śéñď ţö ďéĺéğåţé ]_!!]"
 recommendations.button_insert_in_terminal: "[Îñśéŕţ ïñ Ţéŕḿïñåĺ!!!! !!!!]"
 recommendations.button_open_in_new_tab: "[Öṗéñ ïñ Ñéŵ Ţåƀ ↵!!!! !!!!]"
 recommendations.button_open_in_new_panel: "[Öṗéñ ïñ Ñéŵ Ṗåñéĺ ↵!!!! !!!!]"
@@ -200,12 +209,20 @@ commands.restart.summary: "[Ŕéśţåŕţ åğéñţ]"
 commands.stop.summary: "[Çåñçéĺ ţĥé ïñ-ƒĺïğĥţ pŕöɱpţ]"
 commands.sessions.summary: "[Öpéñ ţĥé ĥïśţöŕïçåĺ śéśśïöñś pïçķéŕ (Ctrl+Shift+/)]"
 commands.agent.summary: "[Ṗïçķ ţĥé åğéñţ ƒöŕ ţĥïś ţåƀ (/agent <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "[!!_Ṗŕéṗåŕé å ţåśķ åñď öṗéñ å ďéĺéğåţé åğéñţ (/delegate <intent>)_!!]"
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "[Çĥöïçé %{choice} ƒåïĺéď: %{error}!!!! !!!!]"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "[!!_Śéĺéçţ ţéŕɱïñåĺ ṗåñé (↑ ↓ • Enter • Esc)_!!]"
+pane_picker.empty: "[!!_Ñö ŵŕïţåƀĺé ţéŕɱïñåĺ ṗåñéś åŕé åṽåïĺåƀĺé._!!]"
+pane_picker.target_unavailable: "[!!_Ţĥé śéĺéçţéď ṗåñé ïś ñö ĺöñğéŕ åṽåïĺåƀĺé._!!]"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "[Ŝéĺéçţ åğéñţ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "[Ñö åṽåïĺåƀĺé åğéñţ CLI ŵåś ƒöûñď öñ ţĥïś ḿåçĥïñé.!!!! !!!! !!!! !!!!]"  # {Locked="CLI"}

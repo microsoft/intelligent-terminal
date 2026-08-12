@@ -59,6 +59,14 @@ input.image_attachments: "📎 Stampi: %{items}"  # {Locked="%{items}"} {Locked=
 # ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefiss tal-kmand slash, irid jibqa' ASCII
 commands.popup_title: " / kmandati "
+delegate_picker.title: " Id-destinazzjoni tad-delegat "
+delegate_picker.tab: "Tab ġdida"
+delegate_picker.panel: "Panew ġdid"
+delegate_picker.intent_required: "Iddeskrivi x-xogħol li tiddelega."
+delegate_picker.pane_not_allowed: "/delegate dejjem toħloq destinazzjoni ġdida u ma taċċettax @pane."
+delegate_picker.not_configured: "L-ebda aġent delegat mhu kkonfigurat."
+delegate_picker.no_parent_pane: "L-ebda pannell tax-xogħol mhu disponibbli biex jinqasam."
+delegate_picker.launch_failed: "Ma setgħetx tniedi d-delegat: %{error}"
 commands.help_title: " Għajnuna "
 commands.help_header: "Kmandati slash — ittajpja / fil-kaxxa tal-input."
 commands.help_escape_hint: "  //text     Ibgħat '/' litterali (eskejpja l-parser tal-kmandati)"  # {Locked="//text","/"}
@@ -68,6 +76,7 @@ commands.help_close_hint: "  Esc        Agħlaq din l-għajnuna"  # {Locked="Esc
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
 recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-buttuni • Enter biex tagħżel • Esc biex tikkanċella)"
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
+recommendations.button_send_to_delegate: "[ Ibgħat lid-delegat ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
 recommendations.button_open_in_new_panel: "Iftaħ f'Pannell Ġdid ↵"
@@ -198,12 +207,20 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Agħżel il-aġent għal dan il-pannell (/agent <id> biex tibdel direttament)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+commands.delegate.summary: "Ipprepara kompitu u tiftaħ aġent delegat (/delegate <intent>)"
 
 # ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+pane_picker.title: "Agħżel il-ħġieġa tat-terminal (↑ ↓ • Enter • Esc)"
+pane_picker.empty: "M'hemm l-ebda panew tat-terminal li jista' jinkiteb disponibbli."
+pane_picker.target_unavailable: "Il-panew magħżul m'għadux disponibbli."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agħżel aġent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Ma nstab l-ebda CLI tal-aġent disponibbli fuq din il-magna."  # {Locked="CLI"}

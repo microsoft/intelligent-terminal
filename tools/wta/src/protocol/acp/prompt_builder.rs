@@ -305,6 +305,7 @@ mod tests {
             window_id: Some("win-1".to_string()),
             cwd: Some("C:\\work".to_string()),
             source_pane_id: Some("src-pane".to_string()),
+            cached_source: None,
         };
         let s = format_pane_context_summary(Some(&ctx));
         assert!(s.contains("pane_id=Some(\"agent-pane\")"), "got: {s}");
