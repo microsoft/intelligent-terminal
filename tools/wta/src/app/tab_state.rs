@@ -18,6 +18,28 @@ pub enum NoticeKind {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallKind {
+    Read,
+    Edit,
+    Delete,
+    Move,
+    Search,
+    Execute,
+    Think,
+    Fetch,
+    SwitchMode,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallOutput {
+    pub text: String,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
@@ -32,6 +54,8 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        #[serde(default)]
+        kind: ToolCallKind,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -40,6 +64,15 @@ pub enum ChatMessage {
         /// Commands render on their own indented line below the title.
         #[serde(default)]
         location_is_command: bool,
+        /// Working directory reported by the Agent for an execute tool.
+        #[serde(default)]
+        cwd: Option<String>,
+        /// Bounded text reported through ACP tool-call content/raw output.
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        /// Process exit code, only when explicitly reported by the Agent.
+        #[serde(default)]
+        exit_code: Option<i64>,
     },
     Plan(Vec<PlanEntry>),
     Error(String),

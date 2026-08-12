@@ -1534,8 +1534,12 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
             id: "t1".to_string(),
             title: "ls".to_string(),
             status: "done".to_string(),
+            kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
         },
         ChatMessage::Agent("Here are the files...".to_string()),
     ];
@@ -6010,8 +6014,12 @@ fn render_tool_call_card_in_chat() {
         id: "mock-tool-1".into(),
         title: "Run: echo TOOL_XYZ".into(),
         status: "Pending".into(),
+        kind: ToolCallKind::Execute,
         location: None,
         location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
     });
 
     let text = render_to_text(&mut app, 80, 24);
@@ -7417,21 +7425,86 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
         id: "tool".into(),
         title: "Find files".into(),
         status: "InProgress".into(),
+        kind: ToolCallKind::Search,
         location: None,
         location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
     });
     assert!(app.current_tab().should_show_thinking());
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool".into(),
-        status: "Completed".into(),
+        title: None,
+        status: Some("Completed".into()),
+        kind: None,
         location: None,
         location_is_command: false,
+        output: None,
+        cwd: None,
+        exit_code: None,
     });
     assert!(
         app.current_tab().should_show_thinking(),
         "tool completion does not end the agent turn"
+    );
+}
+
+#[test]
+fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
+    let mut app = test_app();
+    let expected_cwd = concat!("C:", "\\", "repo");
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Preparing command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Other,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+    });
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: Some("bash".into()),
+        status: None,
+        kind: Some(ToolCallKind::Execute),
+        location: Some("cargo test".into()),
+        location_is_command: true,
+        output: Some(ToolCallOutput {
+            text: "running tests".into(),
+            truncated: false,
+        }),
+        cwd: Some(expected_cwd.into()),
+        exit_code: None,
+    });
+
+    let Some(ChatMessage::ToolCall {
+        title,
+        status,
+        kind,
+        location,
+        cwd,
+        output,
+        ..
+    }) = app.current_tab().messages.last()
+    else {
+        panic!("expected tool-call card");
+    };
+    assert_eq!(title, "bash");
+    assert_eq!(status, "InProgress");
+    assert_eq!(*kind, ToolCallKind::Execute);
+    assert_eq!(location.as_deref(), Some("cargo test"));
+    assert_eq!(cwd.as_deref(), Some(expected_cwd));
+    assert_eq!(
+        output.as_ref().map(|output| output.text.as_str()),
+        Some("running tests")
     );
 }
 
