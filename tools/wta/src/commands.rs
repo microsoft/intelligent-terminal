@@ -116,8 +116,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         kind: CommandKind::Sessions,
     },
     CommandSpec {
-        name: "shell-sessions",
-        summary_key: "commands.shell_sessions.summary",
+        name: "tab-history",
+        summary_key: "commands.tab_history.summary",
         kind: CommandKind::ShellSessions,
     },
     CommandSpec {
@@ -377,9 +377,9 @@ mod tests {
     }
 
     #[test]
-    fn shell_sessions_parses() {
+    fn tab_history_parses() {
         assert_eq!(
-            parse("/shell-sessions").unwrap().kind,
+            parse("/tab-history").unwrap().kind,
             CommandKind::ShellSessions
         );
     }

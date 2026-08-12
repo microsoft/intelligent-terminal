@@ -200,7 +200,7 @@ commands.fix.summary: "Diagnosticér den aktive terminal, og foreslå en rettels
 commands.restart.summary: "Genstart agent"
 commands.stop.summary: "Annuller den igangværende prompt"
 commands.sessions.summary: "Åbn vælgeren for historiske sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Gennemse og gendan gemte kommandolinjesessioner"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Gennemse og gendan gemte faneblade"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Vælg agentlen til denne panel (/agent <id> for at skifte direkte)"  # {Locked="/agent","<id>"}
 
 # ── Udførelse af anbefaling (src/coordinator.rs) ───────────────────────────

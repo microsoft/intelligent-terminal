@@ -193,7 +193,7 @@ commands.fix.summary: "활성 터미널을 진단하고 수정 방법 제안 (/f
 commands.restart.summary: "에이전트 다시 시작"
 commands.stop.summary: "진행 중인 프롬프트 취소"
 commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
-commands.shell_sessions.summary: "저장된 명령줄 세션 찾아보기 및 복원"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "저장된 탭 찾아보기 및 복원"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "이 탭의 에이전트 선택 (/agent <id>로 바로 전환)"  # {Locked="/agent","<id>"}
 
 # ── 추천 실행 (src/coordinator.rs) ───────────────────────────

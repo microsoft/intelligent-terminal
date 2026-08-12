@@ -198,7 +198,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Mag-browse at mag-restore ng mga naka-save na command-line session"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Mag-browse at mag-restore ng mga naka-save na tab"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Piliin ang agent para sa tab na ito (/agent <id> para magpalit nang diretso)"  # {Locked="/agent","<id>"}
 
 # ── Pagpapatupad ng rekomendasyon (src/coordinator.rs) ───────────────────────────

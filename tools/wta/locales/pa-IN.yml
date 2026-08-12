@@ -75,7 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "ਸੁਰੱਖਿਅਤ ਕੀਤੇ ਕਮਾਂਡ-ਲਾਈਨ ਸੈਸ਼ਨਾਂ ਨੂੰ ਬ੍ਰਾਊਜ਼ ਕਰੋ ਅਤੇ ਰੀਸਟੋਰ ਕਰੋ"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "ਸੁਰੱਖਿਅਤ ਕੀਤੇ ਟੈਬਾਂ ਨੂੰ ਬ੍ਰਾਊਜ਼ ਕਰੋ ਅਤੇ ਰੀਸਟੋਰ ਕਰੋ"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ਇਸ ਪੈਨ ਲਈ ਏਜੰਟ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ਸਿਫ਼ਾਰਸ਼ ਪੈਨਲ (src/ui/recommendations.rs) ───────────────────────────────

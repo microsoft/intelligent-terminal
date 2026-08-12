@@ -164,15 +164,15 @@ fn slash_sessions_opens_agents_view() {
 }
 
 #[test]
-fn slash_shell_sessions_opens_shell_sessions_view() {
+fn slash_tab_history_opens_shell_sessions_view() {
     let mut app = test_app();
 
-    run_slash(&mut app, "shell-sessions");
+    run_slash(&mut app, "tab-history");
 
     assert_eq!(
         app.current_tab().current_view,
         View::ShellSessions,
-        "/shell-sessions must switch to the saved shell-session view"
+        "/tab-history must switch to the saved tab view"
     );
 }
 

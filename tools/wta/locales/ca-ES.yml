@@ -200,7 +200,7 @@ commands.fix.summary: "Diagnostica el terminal actiu i suggereix una correcció 
 commands.restart.summary: "Reinicia l'agent"
 commands.stop.summary: "Cancel·la la sol·licitud en curs"
 commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Navega i restaura les sessions de línia d'ordres desades"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Navega i restaura les pestanyes desades"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Trieu l'agent per a aquest tauler (/agent <id> per canviar directament)"  # {Locked="/agent","<id>"}
 
 # ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────

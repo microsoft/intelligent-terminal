@@ -198,7 +198,7 @@ commands.fix.summary: "Diagnosticar o terminal ativo e sugerir uma correção (/
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar o prompt em andamento"
 commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"
-commands.shell_sessions.summary: "Navegue e restaure sessões salvas da linha de comando"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Navegue e restaure guias salvas"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Escolha o agente para esta guia (/agent <id> para trocar diretamente)"  # {Locked="/agent","<id>"}
 
 # ── Execução de recomendação (src/coordinator.rs) ───────────────────────────

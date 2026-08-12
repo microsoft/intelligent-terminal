@@ -196,7 +196,7 @@ commands.fix.summary: "[!! Dia_gnose the active terminal and suggest a fix (/fix
 commands.restart.summary: "[!! Restart agent !!]"
 commands.stop.summary: "[!! Cancel the in-flight prompt !!]"
 commands.sessions.summary: "[!! Open the historical sessions picker (Ctrl+Shift+/) !!]"
-commands.shell_sessions.summary: "[!! Browse and restore saved shell sessions !!]"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "[!! Browse and restore saved tabs !!]"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "[!! Pic_k the agent for this tab (/agent <id> to switch directly) !!]"  # {Locked="/agent","<id>"}
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────

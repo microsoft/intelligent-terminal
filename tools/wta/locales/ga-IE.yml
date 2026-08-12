@@ -197,7 +197,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Brabhsáil agus cuir ar ais seisiúin ordú-líne atá sábháilte"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Brabhsáil agus cuir ar ais cluaisíní atá sábháilte"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Roghnaigh an gníomhaire don chluaisín seo (/agent <id> chun athrú go díreach)"  # {Locked="/agent","<id>"}
 
 # ── Rith moltaí (src/coordinator.rs) ───────────────────────────

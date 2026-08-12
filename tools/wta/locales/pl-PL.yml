@@ -72,7 +72,7 @@ commands.fix.summary: "Zdiagnozuj aktywny terminal i zasugeruj poprawkę (/fix <
 commands.restart.summary: "Uruchom ponownie agenta"
 commands.stop.summary: "Anuluj trwający monit"
 commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Przeglądaj i przywracaj zapisane sesje wiersza poleceń"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Przeglądaj i przywracaj zapisane karty"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Wybierz agent dla tej karty (/agent <id>, aby przełączyć bezpośrednio)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate

@@ -72,7 +72,7 @@ commands.fix.summary: "Diagnosticiraj aktivni terminal in predlagaj popravek (/f
 commands.restart.summary: "Ponovno zaženi agenta"
 commands.stop.summary: "Prekliči poziv v teku"
 commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Prebrskajte in obnovite shranjene seje ukazne vrstice"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Prebrskajte in obnovite shranjene zavihke"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Izberite agent za ta zavihek (/agent <id> za neposreden preklop)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate

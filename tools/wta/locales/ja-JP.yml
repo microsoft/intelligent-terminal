@@ -193,7 +193,7 @@ commands.fix.summary: "アクティブなターミナルを診断して修正案
 commands.restart.summary: "エージェントを再起動"
 commands.stop.summary: "実行中のプロンプトをキャンセル"
 commands.sessions.summary: "過去のセッション ピッカーを開く（Ctrl+Shift+/）"
-commands.shell_sessions.summary: "保存済みのコマンド ライン セッションを参照して復元する"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "保存済みのタブを参照して復元する"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "このタブのエージェントを選択（直接切り替えるには /agent <id>）"  # {Locked="/agent","<id>"}
 
 # ── 推奨事項の実行 (src/coordinator.rs) ───────────────────────────

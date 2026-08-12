@@ -75,7 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "გადატვირთეთ აგენტი"
 commands.stop.summary: "მიმდინარე მოთხოვნის გაუქმება"
 commands.sessions.summary: "ისტორიული სესიების ამრჩევის გახსნა (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "დაათვალიერეთ და აღადგინეთ შენახული ბრძანების ხაზის სესიები"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "დაათვალიერეთ და აღადგინეთ შენახული ჩანართები"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "აირჩიეთ აგენტი ამ ჩანართისთვის (/agent <id> პირდაპირ გადასართავად)"  # {Locked="/agent","<id>"}
 
 # ── რეკომენდაციების პანელი (src/ui/recommendations.rs) ───────────────────────────────

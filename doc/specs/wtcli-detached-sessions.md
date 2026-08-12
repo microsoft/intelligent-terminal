@@ -72,7 +72,7 @@ server annotates each one:
   the flag would blink off the moment a session is restored.
 - `opened` — some open tab is currently bound to this durable id.
 
-The agent pane's `/shell-sessions` view reaches wta-master directly instead of
+The agent pane's `/tab-history` view reaches wta-master directly instead of
 going through this server, so it computes the same two marks itself in
 `tools/wta/src/protocol/acp/client.rs`. The definitions must stay in step.
 

@@ -199,7 +199,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Pori ac adfer sesiynau gorchymyn-lein sydd wedi'u cadw"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Pori ac adfer tabiau sydd wedi'u cadw"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Dewiswch y asiant ar gyfer y paen hwn (/agent <id> i newid yn uniongyrchol)"  # {Locked="/agent","<id>"}
 
 # ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────

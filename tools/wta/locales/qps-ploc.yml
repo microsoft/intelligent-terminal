@@ -199,7 +199,7 @@ commands.fix.summary: "[Ďïåğñöśé ţĥé åçţïṽé ţéŕɱïñåĺ �
 commands.restart.summary: "[Ŕéśţåŕţ åğéñţ]"
 commands.stop.summary: "[Çåñçéĺ ţĥé ïñ-ƒĺïğĥţ pŕöɱpţ]"
 commands.sessions.summary: "[Öpéñ ţĥé ĥïśţöŕïçåĺ śéśśïöñś pïçķéŕ (Ctrl+Shift+/)]"
-commands.shell_sessions.summary: "[Ɓŕöŵśé åñď ŕéśţöŕé śåṽéď śĥéĺĺ śéśśïöñś!!!! !!!!]"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "[Ɓŕöŵśé åñď ŕéśţöŕé śåṽéď ţåƀś!!!! !!!!]"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "[Ṗïçķ ţĥé åğéñţ ƒöŕ ţĥïś ţåƀ (/agent <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/agent","<id>"}
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────

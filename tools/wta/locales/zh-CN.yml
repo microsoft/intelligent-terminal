@@ -193,7 +193,7 @@ commands.fix.summary: "诊断活动终端并建议修复方法（/fix <hint>）"
 commands.restart.summary: "重启智能体"
 commands.stop.summary: "取消进行中的提示"
 commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"
-commands.shell_sessions.summary: "浏览并还原已保存的命令行会话"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "浏览并还原已保存的标签页"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "为此标签页选择智能体（使用 /agent <id> 可直接切换）"  # {Locked="/agent","<id>"}
 
 # ── 建议执行 (src/coordinator.rs) ───────────────────────────

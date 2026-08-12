@@ -75,7 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "முகவரை மறுதொடக்கம் செய்"
 commands.stop.summary: "செயலில் உள்ள prompt-ஐ ரத்துசெய்"
 commands.sessions.summary: "வரலாற்று அமர்வுகள் தேர்வியைத் திற (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "சேமித்த கட்டளை வரி அமர்வுகளை உலாவவும் மீட்டெடுக்கவும்"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "சேமித்த தாவல்களை உலாவவும் மீட்டெடுக்கவும்"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "இந்தப் பலகத்திற்கான ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────

@@ -73,7 +73,7 @@ commands.fix.summary: "Diagnostikovat aktivní terminál a navrhnout opravu (/fi
 commands.restart.summary: "Restartovat agenta"
 commands.stop.summary: "Zrušit probíhající výzvu"
 commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Procházet a obnovit uložené relace příkazového řádku"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Procházet a obnovit uložené karty"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Vyberte agent pro tuto kartu (/agent <id> pro přímé přepnutí)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate

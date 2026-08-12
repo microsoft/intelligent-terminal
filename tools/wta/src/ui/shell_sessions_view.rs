@@ -84,7 +84,7 @@ pub fn render(
         .filter(|session| matches_query(session, query))
         .collect::<Vec<_>>();
     if loading {
-        frame.render_widget(Paragraph::new("Loading shell sessions..."), list_area);
+        frame.render_widget(Paragraph::new("Loading saved tabs..."), list_area);
     } else if let Some(error) = error {
         frame.render_widget(
             Paragraph::new(error.to_string()).style(Style::default().fg(Color::Red)),
@@ -92,12 +92,12 @@ pub fn render(
         );
     } else if sessions.is_empty() {
         frame.render_widget(
-            Paragraph::new("No saved shell sessions").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("No saved tabs").style(Style::default().fg(Color::DarkGray)),
             list_area,
         );
     } else if visible_sessions.is_empty() {
         frame.render_widget(
-            Paragraph::new("No matching shell sessions")
+            Paragraph::new("No matching tabs")
                 .style(Style::default().fg(Color::DarkGray)),
             list_area,
         );
@@ -155,12 +155,12 @@ pub fn render(
         };
         let (hint, style) = if restore_in_flight {
             (
-                "Opening or focusing shell session...".to_string(),
+                "Opening or focusing tab...".to_string(),
                 Style::default().fg(Color::Yellow),
             )
         } else if delete_in_flight {
             (
-                "Deleting shell session...".to_string(),
+                "Deleting saved tab...".to_string(),
                 Style::default().fg(Color::Yellow),
             )
         } else if let Some(id) = delete_confirmation {

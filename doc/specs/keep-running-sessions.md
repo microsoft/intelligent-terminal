@@ -156,7 +156,7 @@ the original id regardless. Things that read the *args* instead — the
 restored pane carried a different id.
 
 Restoring from a snapshot still mints a fresh id unconditionally, exactly as
-before, because that really is a brand new shell. The `/shell-sessions` handler
+before, because that really is a brand new shell. The `/tab-history` handler
 additionally passes the original id along in `KeptSessionId`, and
 `_MakeTerminalPane` calls `TryReattachKeptSession` on it. That call is the single
 arbiter: it atomically marks the session pending, so two restores cannot both

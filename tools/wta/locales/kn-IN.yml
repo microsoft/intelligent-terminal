@@ -75,7 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ಏಜೆಂಟ್ ಮರುಪ್ರಾರಂಭಿಸಿ"
 commands.stop.summary: "ಚಾಲನೆಯಲ್ಲಿರುವ ಪ್ರಾಂಪ್ಟ್ ಅನ್ನು ರದ್ದುಮಾಡಿ"
 commands.sessions.summary: "ಹಿಂದಿನ ಸೆಷನ್‌ಗಳ ಪಿಕರ್ ತೆರೆಯಿರಿ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "ಉಳಿಸಿದ ಕಮಾಂಡ್-ಲೈನ್ ಸೆಷನ್‌ಗಳನ್ನು ಬ್ರೌಸ್ ಮಾಡಿ ಮತ್ತು ಮರುಸ್ಥಾಪಿಸಿ"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "ಉಳಿಸಿದ ಟ್ಯಾಬ್ ಗಳನ್ನು ಬ್ರೌಸ್ ಮಾಡಿ ಮತ್ತು ಮರುಸ್ಥಾಪಿಸಿ"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ಈ ಟ್ಯಾಬ್‌ಗಾಗಿ ಏಜೆಂಟ್ಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ಶಿಫಾರಸುಗಳ ಪ್ಯಾನೆಲ್ (src/ui/recommendations.rs) ───────────────────────────────

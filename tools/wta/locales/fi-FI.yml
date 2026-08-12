@@ -198,7 +198,7 @@ commands.fix.summary: "Diagnosoi aktiivinen pääte ja ehdota korjausta (/fix <h
 commands.restart.summary: "Käynnistä agentti uudelleen"
 commands.stop.summary: "Peruuta käynnissä oleva kehote"
 commands.sessions.summary: "Avaa aiempien istuntojen valitsin (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Selaa ja palauta tallennettuja komentorivi-istuntoja"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Selaa ja palauta tallennettuja välilehtiä"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Valitse tämän paneelin agentti (/agent <id> vaihtaaksesi suoraan)"  # {Locked="/agent","<id>"}
 
 # ── Suosituksen suorittaminen (src/coordinator.rs) ───────────────────────────

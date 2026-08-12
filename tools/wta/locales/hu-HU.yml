@@ -197,7 +197,7 @@ commands.fix.summary: "Az aktív terminál diagnosztizálása és javítás java
 commands.restart.summary: "Ügynök újraindítása"
 commands.stop.summary: "Folyamatban lévő prompt megszakítása"
 commands.sessions.summary: "Előzménybeli munkamenetek választójának megnyitása (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Mentett parancssori munkamenetek böngészése és visszaállítása"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Mentett lapok böngészése és visszaállítása"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Válassza ki a ügynökt ehhez a laphoz (/agent <id> a közvetlen váltáshoz)"  # {Locked="/agent","<id>"}
 
 # ── Javaslat végrehajtása (src/coordinator.rs) ──────────────────────────────

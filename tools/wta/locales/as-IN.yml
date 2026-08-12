@@ -76,7 +76,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "এজেণ্ট পুনৰাৰম্ভ কৰক"
 commands.stop.summary: "চলি থকা প্ৰম্প্ট বাতিল কৰক"
 commands.sessions.summary: "ঐতিহাসিক ছেশ্যন পিকাৰ খোলক (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "সংৰক্ষিত আদেশ-শাৰী অধিবেশনসমূহ ব্ৰাউজ আৰু পুনৰুদ্ধাৰ কৰক"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "সংৰক্ষিত টেবসমূহ ব্ৰাউজ আৰু পুনৰুদ্ধাৰ কৰক"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "এই পেনৰ বাবে এজেণ্ট বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── পৰামৰ্শ পেনেল (src/ui/recommendations.rs) ───────────────────────────────

@@ -198,7 +198,7 @@ commands.fix.summary: "Diagnose uitvoeren op de actieve terminal en een oplossin
 commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
-commands.shell_sessions.summary: "Opgeslagen opdrachtregelsessies bekijken en herstellen"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Opgeslagen tabbladen bekijken en herstellen"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Het agent voor dit tabblad kiezen (/agent <id> om direct te wisselen)"  # {Locked="/agent","<id>"}
 
 # ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────

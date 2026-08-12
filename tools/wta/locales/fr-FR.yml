@@ -198,7 +198,7 @@ commands.fix.summary: "Diagnostiquer le terminal actif et suggérer un correctif
 commands.restart.summary: "Redémarrer l’agent"
 commands.stop.summary: "Annuler la requête en cours"
 commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl+Shift+/)"
-commands.shell_sessions.summary: "Parcourir et restaurer les sessions de ligne de commande enregistrées"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Parcourir et restaurer les onglets enregistrés"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Choisir l’agent pour cet onglet (/agent <id> pour changer directement)"  # {Locked="/agent","<id>"}
 
 # ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────

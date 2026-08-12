@@ -198,7 +198,7 @@ commands.fix.summary: "Chẩn đoán terminal đang hoạt động và đề xu�
 commands.restart.summary: "Khởi động lại tác nhân"
 commands.stop.summary: "Hủy prompt đang chạy"
 commands.sessions.summary: "Mở bộ chọn phiên lịch sử (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.shell_sessions.summary: "Duyệt và khôi phục các phiên dòng lệnh đã lưu"  # Opens saved command-line shell sessions; selecting one restores it
+commands.tab_history.summary: "Duyệt và khôi phục các tab đã lưu"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Chọn agent cho bảng này (/agent <id> để chuyển trực tiếp)"  # {Locked="/agent","<id>"}
 
 # ── Thực thi đề xuất (src/coordinator.rs) ───────────────────────────
