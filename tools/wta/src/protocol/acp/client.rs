@@ -374,7 +374,7 @@ struct ClientState {
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
-    hidden_tool_calls: std::sync::Mutex<HashSet<(String, String)>>,
+    hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), SessionMcpTool>>,
 }
 
 #[derive(Default)]
@@ -414,6 +414,43 @@ impl ProviderProbeCapture {
 #[derive(Clone)]
 struct WtaClient {
     state: Arc<ClientState>,
+}
+
+struct UserInputUiGuard {
+    event_tx: mpsc::UnboundedSender<AppEvent>,
+    request_id: String,
+    session_id: String,
+    armed: bool,
+}
+
+impl UserInputUiGuard {
+    fn new(
+        event_tx: mpsc::UnboundedSender<AppEvent>,
+        request_id: String,
+        session_id: String,
+    ) -> Self {
+        Self {
+            event_tx,
+            request_id,
+            session_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for UserInputUiGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = self.event_tx.send(AppEvent::CancelUserInputRequest {
+                request_id: self.request_id.clone(),
+                session_id: self.session_id.clone(),
+            });
+        }
+    }
 }
 
 /// Maximum characters kept in a tool-call `location` hint before truncation.
@@ -705,41 +742,79 @@ fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&
     raw_input?.as_object()?.get("command")?.as_str()
 }
 
-fn is_proposal_mcp_server_name(name: &str) -> bool {
-    crate::agent_tools::action_proposal::mcp::server_name_matches(name)
+fn is_session_mcp_server_name(name: &str) -> bool {
+    crate::agent_tools::session_mcp::server_name_matches(name)
 }
 
-fn is_proposal_mcp_tool_title(title: Option<&str>) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionMcpTool {
+    TerminalActions,
+    UserInput,
+}
+
+impl SessionMcpTool {
+    fn name(self) -> &'static str {
+        match self {
+            Self::TerminalActions => "request_terminal_actions",
+            Self::UserInput => "request_user_input",
+        }
+    }
+}
+
+fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     let Some(title) = title.map(str::trim) else {
-        return false;
+        return None;
     };
     let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
-    if let Some(server_name) = title.strip_suffix("/request_terminal_actions") {
-        return is_proposal_mcp_server_name(server_name);
+    for tool in [SessionMcpTool::TerminalActions, SessionMcpTool::UserInput] {
+        for separator in ["/", "-"] {
+            if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
+                if is_session_mcp_server_name(server_name) {
+                    return Some(tool);
+                }
+            }
+        }
+        if title
+            .strip_prefix("mcp__")
+            .and_then(|title| title.strip_suffix(&format!("__{}", tool.name())))
+            .is_some_and(is_session_mcp_server_name)
+        {
+            return Some(tool);
+        }
     }
-    if let Some(server_name) = title.strip_suffix("-request_terminal_actions") {
-        return is_proposal_mcp_server_name(server_name);
-    }
-    title
-        .strip_prefix("mcp__")
-        .and_then(|title| title.strip_suffix("__request_terminal_actions"))
-        .is_some_and(is_proposal_mcp_server_name)
+    None
 }
 
-fn is_proposal_mcp_tool_call(title: Option<&str>, raw_input: Option<&serde_json::Value>) -> bool {
-    if is_proposal_mcp_tool_title(title) {
-        return true;
+fn session_mcp_tool_call(
+    title: Option<&str>,
+    raw_input: Option<&serde_json::Value>,
+) -> Option<SessionMcpTool> {
+    if let Some(tool) = session_mcp_tool_from_title(title) {
+        return Some(tool);
     }
-    if title.map(str::trim) != Some("request_terminal_actions") {
-        return false;
-    }
-    let Some(raw_input) = raw_input else {
-        return false;
+    let tool = match title.map(str::trim) {
+        Some("request_terminal_actions") => SessionMcpTool::TerminalActions,
+        Some("request_user_input") => SessionMcpTool::UserInput,
+        _ => return None,
     };
-    serde_json::to_vec(raw_input).is_ok_and(|payload| {
-        crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
-            .is_ok()
-    })
+    let Some(raw_input) = raw_input else {
+        return None;
+    };
+    let valid = match tool {
+        SessionMcpTool::TerminalActions => serde_json::to_vec(raw_input).is_ok_and(|payload| {
+            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
+                .is_ok()
+        }),
+        SessionMcpTool::UserInput => serde_json::from_value::<
+            crate::agent_tools::user_input::UserInputRequest,
+        >(raw_input.clone())
+        .is_ok_and(|request| request.validate().is_ok()),
+    };
+    if valid {
+        Some(tool)
+    } else {
+        None
+    }
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -823,24 +898,34 @@ impl WtaClient {
         }
     }
 
-    fn hide_proposal_tool_call(&self, session_id: &str, tool_call_id: &str) {
+    fn hide_session_mcp_tool_call(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool: SessionMcpTool,
+    ) {
         self.state
             .hidden_tool_calls
             .lock()
             .unwrap()
-            .insert((session_id.to_string(), tool_call_id.to_string()));
+            .insert((session_id.to_string(), tool_call_id.to_string()), tool);
         let _ = self.state.event_tx.send(AppEvent::HideToolCall {
             session_id: session_id.to_string(),
             id: tool_call_id.to_string(),
         });
     }
 
-    fn tool_call_is_hidden(&self, session_id: &str, tool_call_id: &str) -> bool {
+    fn hidden_session_mcp_tool(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+    ) -> Option<SessionMcpTool> {
         self.state
             .hidden_tool_calls
             .lock()
             .unwrap()
-            .contains(&(session_id.to_string(), tool_call_id.to_string()))
+            .get(&(session_id.to_string(), tool_call_id.to_string()))
+            .copied()
     }
 
     async fn request_permission(
@@ -856,12 +941,19 @@ impl WtaClient {
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let proposal_candidate = proposal_permission_command_candidate(&args);
-        let proposal_mcp_tool = is_proposal_mcp_tool_call(
+        let session_mcp_tool = session_mcp_tool_call(
             args.tool_call.fields.title.as_deref(),
             args.tool_call.fields.raw_input.as_ref(),
-        ) || self.tool_call_is_hidden(&session_id, &tool_call_id);
-        if proposal_mcp_tool || proposal_candidate.is_some_and(looks_like_proposal_command) {
-            self.hide_proposal_tool_call(&session_id, &tool_call_id);
+        )
+        .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
+        if let Some(tool) = session_mcp_tool {
+            self.hide_session_mcp_tool_call(&session_id, &tool_call_id, tool);
+        } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
+            self.hide_session_mcp_tool_call(
+                &session_id,
+                &tool_call_id,
+                SessionMcpTool::TerminalActions,
+            );
         }
         let title = args
             .tool_call
@@ -889,7 +981,7 @@ impl WtaClient {
             .prompt_timing
             .permission_requested(&session_id, &description);
 
-        if proposal_mcp_tool {
+        if let Some(tool) = session_mcp_tool {
             let Some(option) = args
                 .options
                 .iter()
@@ -902,28 +994,32 @@ impl WtaClient {
                     acp::schema::v1::RequestPermissionOutcome::Cancelled,
                 ));
             };
-            let permission_result = self
-                .state
-                .proposal_channels
-                .validate_mcp_permission(&session_id);
+            let permission_result = match tool {
+                SessionMcpTool::TerminalActions => self
+                    .state
+                    .proposal_channels
+                    .validate_mcp_permission(&session_id),
+                SessionMcpTool::UserInput => Ok(()),
+            };
             tracing::info!(
-                target: "proposal_permission",
+                target: "session_mcp_permission",
                 session_id = %session_id,
+                tool = tool.name(),
                 approved = permission_result.is_ok(),
                 status = ?permission_result.as_ref().err().map(|failure| failure.status),
-                "silently resolving proposal MCP permission"
+                "silently resolving session MCP permission"
             );
             if permission_result.is_err() {
                 self.state
                     .prompt_timing
-                    .permission_resolved(&session_id, "proposal_permission_rejected");
+                    .permission_resolved(&session_id, "session_mcp_permission_rejected");
                 return Ok(acp::schema::v1::RequestPermissionResponse::new(
                     acp::schema::v1::RequestPermissionOutcome::Cancelled,
                 ));
             }
             self.state
                 .prompt_timing
-                .permission_resolved(&session_id, "proposal_allow_once");
+                .permission_resolved(&session_id, "session_mcp_allow_once");
             return Ok(acp::schema::v1::RequestPermissionResponse::new(
                 acp::schema::v1::RequestPermissionOutcome::Selected(
                     acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
@@ -1115,14 +1211,23 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if is_proposal_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
-                    || proposal_command_candidate(tool_call.raw_input.as_ref())
-                        .is_some_and(looks_like_proposal_command)
+                if let Some(tool) =
+                    session_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
                 {
-                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
-                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                if proposal_command_candidate(tool_call.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
+                {
+                    self.hide_session_mcp_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        SessionMcpTool::TerminalActions,
+                    );
+                    return Ok(());
+                }
+                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
                     return Ok(());
                 }
                 self.state
@@ -1151,17 +1256,24 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if is_proposal_mcp_tool_call(
+                if let Some(tool) = session_mcp_tool_call(
                     update.fields.title.as_deref(),
                     update.fields.raw_input.as_ref(),
-                )
-                    || proposal_command_candidate(update.fields.raw_input.as_ref())
-                        .is_some_and(looks_like_proposal_command)
-                {
-                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                ) {
+                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
-                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                if proposal_command_candidate(update.fields.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
+                {
+                    self.hide_session_mcp_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        SessionMcpTool::TerminalActions,
+                    );
+                    return Ok(());
+                }
+                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
                     return Ok(());
                 }
                 // Failed updates frequently carry a `raw_output.message`
@@ -1437,7 +1549,7 @@ impl WtaClient {
             ValidationPhase,
         };
 
-        let request: crate::agent_tools::action_proposal::mcp::HelperRequest =
+        let request: crate::agent_tools::session_mcp::HelperRequest =
             serde_json::from_str(args.params.get()).map_err(|error| {
                 acp::Error::invalid_params().data(format!(
                     "invalid terminal action request parameters: {error}"
@@ -1581,6 +1693,68 @@ impl WtaClient {
             acp::Error::internal_error().data(format!("encode proposal response: {error}"))
         })?;
         Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+    }
+
+    async fn request_user_input(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        let helper_request: crate::agent_tools::session_mcp::UserInputHelperRequest =
+            serde_json::from_str(args.params.get()).map_err(|error| {
+                acp::Error::invalid_params()
+                    .data(format!("invalid user input request parameters: {error}"))
+            })?;
+        let request = helper_request
+            .request
+            .validate()
+            .map_err(|error| acp::Error::invalid_params().data(error.to_string()))?;
+        let (responder, response) = tokio::sync::oneshot::channel();
+        let mut guard = UserInputUiGuard::new(
+            self.state.event_tx.clone(),
+            helper_request.request_id.clone(),
+            helper_request.session_id.clone(),
+        );
+        self.state
+            .event_tx
+            .send(AppEvent::UserInputRequest {
+                request_id: helper_request.request_id,
+                session_id: helper_request.session_id,
+                request,
+                responder,
+            })
+            .map_err(|_| acp::Error::internal_error().data("Helper UI is unavailable"))?;
+        let response = response
+            .await
+            .unwrap_or(crate::agent_tools::user_input::UserInputResponse::Cancelled);
+        guard.disarm();
+        let raw = serde_json::value::to_raw_value(&response).map_err(|error| {
+            acp::Error::internal_error().data(format!("encode user input response: {error}"))
+        })?;
+        Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+    }
+
+    async fn cancel_user_input(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        let request: crate::agent_tools::session_mcp::CancelUserInputHelperRequest =
+            serde_json::from_str(args.params.get()).map_err(|error| {
+                acp::Error::invalid_params().data(format!(
+                    "invalid user input cancellation parameters: {error}"
+                ))
+            })?;
+        self.state
+            .event_tx
+            .send(AppEvent::CancelUserInputRequest {
+                request_id: request.request_id,
+                session_id: request.session_id,
+            })
+            .map_err(|_| acp::Error::internal_error().data("Helper UI is unavailable"))?;
+        Ok(acp::schema::v1::ExtResponse::new(
+            serde_json::value::RawValue::from_string("{}".to_string())
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
+                .into(),
+        ))
     }
 
     /// Receive `intellterm.wta/session_{added,removed}` notifications
@@ -2128,7 +2302,7 @@ pub async fn run_acp_client_over_pipe(
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
-        hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+        hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
     let client = WtaClient {
@@ -2175,13 +2349,37 @@ pub async fn run_acp_client_over_pipe(
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
                             Q::ExtMethodRequest(a)
-                                if crate::agent_tools::action_proposal::mcp::helper_method_matches(
+                                if crate::agent_tools::session_mcp::helper_method_matches(
                                     &a.method,
                                 ) =>
                             {
                                 conn::respond_enum(
                                     responder,
                                     c.request_terminal_actions(a)
+                                        .await
+                                        .map(R::ExtMethodResponse),
+                                )
+                            }
+                            Q::ExtMethodRequest(a)
+                                if crate::agent_tools::session_mcp::user_input_helper_method_matches(
+                                    &a.method,
+                                ) =>
+                            {
+                                conn::respond_enum(
+                                    responder,
+                                    c.request_user_input(a)
+                                        .await
+                                        .map(R::ExtMethodResponse),
+                                )
+                            }
+                            Q::ExtMethodRequest(a)
+                                if crate::agent_tools::session_mcp::cancel_user_input_helper_method_matches(
+                                    &a.method,
+                                ) =>
+                            {
+                                conn::respond_enum(
+                                    responder,
+                                    c.cancel_user_input(a)
                                         .await
                                         .map(R::ExtMethodResponse),
                                 )
@@ -3864,15 +4062,15 @@ mod tests {
     use super::acp;
     use super::{
         acp_result_failure_fields, bounded_tool_output_parts, complete_prompt_request,
-        inject_wta_pane_meta, is_proposal_mcp_tool_title, is_redundant_startup_model_error,
-        post_login_authenticate_error,
+        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
+        session_mcp_tool_from_title, SessionMcpTool,
         timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
         PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
 
@@ -3965,7 +4163,7 @@ mod tests {
             provider_probe_capture: super::ProviderProbeCapture::default(),
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
-            hidden_tool_calls: Mutex::new(HashSet::new()),
+            hidden_tool_calls: Mutex::new(HashMap::new()),
         });
         (WtaClient { state }, event_rx)
     }
@@ -4054,6 +4252,155 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn user_input_mcp_permission_is_silent() {
+        use acp::schema::v1::{
+            PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
+            ToolCallUpdate, ToolCallUpdateFields,
+        };
+
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+        let response = client
+            .request_permission(RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("input-session"),
+                ToolCallUpdate::new(
+                    ToolCallId::new("input-tool"),
+                    ToolCallUpdateFields::new()
+                        .title("request_user_input")
+                        .raw_input(serde_json::json!({
+                            "question": "Choose",
+                            "choices": ["A", "B"]
+                        })),
+                ),
+                vec![PermissionOption::new(
+                    "allow-once",
+                    "Allow once",
+                    PermissionOptionKind::AllowOnce,
+                )],
+            ))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            response.outcome,
+            acp::schema::v1::RequestPermissionOutcome::Selected(_)
+        ));
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "input-session" && id == "input-tool"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_user_input_extension_cancels_its_modal() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let params = serde_json::value::to_raw_value(
+                    &crate::agent_tools::session_mcp::UserInputHelperRequest {
+                        request_id: "request-1".into(),
+                        session_id: "input-session".into(),
+                        request: crate::agent_tools::user_input::UserInputRequest {
+                            question: "Choose".into(),
+                            choices: vec!["A".into()],
+                            allow_freeform: false,
+                        },
+                    },
+                )
+                .unwrap();
+                let task = tokio::task::spawn_local(async move {
+                    client
+                        .request_user_input(acp::schema::v1::ExtRequest::new(
+                            crate::agent_tools::session_mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+                            params.into(),
+                        ))
+                        .await
+                });
+
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::UserInputRequest {
+                        request_id,
+                        session_id,
+                        ..
+                    }) if request_id == "request-1" && session_id == "input-session"
+                ));
+                task.abort();
+                let _ = task.await;
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::CancelUserInputRequest {
+                        request_id,
+                        session_id,
+                    }) if request_id == "request-1" && session_id == "input-session"
+                ));
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn user_input_extension_returns_the_modal_answer() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let params = serde_json::value::to_raw_value(
+                    &crate::agent_tools::session_mcp::UserInputHelperRequest {
+                        request_id: "request-2".into(),
+                        session_id: "input-session".into(),
+                        request: crate::agent_tools::user_input::UserInputRequest {
+                            question: "Choose".into(),
+                            choices: vec!["A".into(), "B".into()],
+                            allow_freeform: false,
+                        },
+                    },
+                )
+                .unwrap();
+                let task = tokio::task::spawn_local(async move {
+                    client
+                        .request_user_input(acp::schema::v1::ExtRequest::new(
+                            crate::agent_tools::session_mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+                            params.into(),
+                        ))
+                        .await
+                });
+
+                let responder = match event_rx.recv().await {
+                    Some(AppEvent::UserInputRequest { responder, .. }) => responder,
+                    _ => panic!("expected user input request"),
+                };
+                responder
+                    .send(
+                        crate::agent_tools::user_input::UserInputResponse::Answered {
+                            answer: "B".into(),
+                            selected_index: Some(1),
+                        },
+                    )
+                    .unwrap();
+                let response = task.await.unwrap().unwrap();
+                let decoded: crate::agent_tools::user_input::UserInputResponse =
+                    serde_json::from_str(response.0.get()).unwrap();
+                assert_eq!(
+                    decoded,
+                    crate::agent_tools::user_input::UserInputResponse::Answered {
+                        answer: "B".into(),
+                        selected_index: Some(1),
+                    }
+                );
+                assert!(event_rx.try_recv().is_err());
+            })
+            .await;
+    }
+
+    #[tokio::test]
     async fn proposal_mcp_extension_validates_and_commits_on_the_owning_helper() {
         let manager =
             Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
@@ -4061,19 +4408,18 @@ mod tests {
             .issue("proposal-session".into(), 1, None, false)
             .unwrap();
         let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
-        let params = serde_json::value::to_raw_value(
-            &crate::agent_tools::action_proposal::mcp::HelperRequest {
+        let params =
+            serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
                 arguments: serde_json::json!({
                     "type": "send",
                     "title": "Run test",
                     "input": "cargo test"
                 }),
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         let request = acp::schema::v1::ExtRequest::new(
-            crate::agent_tools::action_proposal::mcp::HELPER_REQUEST_METHOD,
+            crate::agent_tools::session_mcp::HELPER_REQUEST_METHOD,
             params.into(),
         );
 
@@ -4266,29 +4612,32 @@ mod tests {
     }
 
     #[test]
-    fn proposal_mcp_tool_title_accepts_copilot_http_permission_shape() {
+    fn session_mcp_tool_title_accepts_supported_permission_shapes() {
         let dynamic = "intellterm_01234567890123456789";
-        assert!(is_proposal_mcp_tool_title(Some(
-            "Use MCP tool: intelligent_terminal/request_terminal_actions"
-        )));
-        assert!(is_proposal_mcp_tool_title(Some(
-            "intelligent_terminal-request_terminal_actions"
-        )));
-        assert!(is_proposal_mcp_tool_title(Some(&format!(
-            "Use MCP tool: {dynamic}/request_terminal_actions"
-        ))));
-        assert!(is_proposal_mcp_tool_title(Some(&format!(
-            "mcp__{dynamic}__request_terminal_actions"
-        ))));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "intellterm_0123456789abcdef/request_terminal_actions"
-        )));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "intellterm_0123456789012345678A/request_terminal_actions"
-        )));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "Use MCP tool: other/request_terminal_actions"
-        )));
+        for title in [
+            "Use MCP tool: intelligent_terminal/request_terminal_actions".to_string(),
+            "intelligent_terminal-request_terminal_actions".to_string(),
+            format!("Use MCP tool: {dynamic}/request_terminal_actions"),
+            format!("mcp__{dynamic}__request_terminal_actions"),
+        ] {
+            assert_eq!(
+                session_mcp_tool_from_title(Some(&title)),
+                Some(SessionMcpTool::TerminalActions)
+            );
+        }
+        assert_eq!(
+            session_mcp_tool_from_title(Some(&format!(
+                "Use MCP tool: {dynamic}/request_user_input"
+            ))),
+            Some(SessionMcpTool::UserInput)
+        );
+        for title in [
+            "intellterm_0123456789abcdef/request_terminal_actions",
+            "intellterm_0123456789012345678A/request_terminal_actions",
+            "Use MCP tool: other/request_terminal_actions",
+        ] {
+            assert_eq!(session_mcp_tool_from_title(Some(title)), None);
+        }
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe
@@ -4594,7 +4943,7 @@ mod tests {
                 proposal_channels: Arc::new(
                     crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
                 ),
-                hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+                hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
             });
             (WtaClient { state }, rx)
         }

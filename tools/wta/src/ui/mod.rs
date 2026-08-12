@@ -15,6 +15,7 @@ mod popup;
 mod recommendations;
 pub mod setup;
 pub mod shimmer;
+mod user_input;
 
 pub use agent_popup::AgentPopupState;
 pub use command_popup::{PopupCandidates, PopupState};

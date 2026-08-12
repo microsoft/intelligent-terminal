@@ -900,6 +900,37 @@ impl App {
                     responder: Some(responder),
                 });
             }
+            AppEvent::UserInputRequest {
+                request_id,
+                session_id,
+                request,
+                responder,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if !tab.turn.is_in_flight() {
+                    return;
+                }
+                tab.user_input.push_back(UserInputState {
+                    request_id,
+                    request,
+                    selected: 0,
+                    input: String::new(),
+                    responder: Some(responder),
+                });
+            }
+            AppEvent::CancelUserInputRequest {
+                request_id,
+                session_id,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if let Some(index) = tab
+                    .user_input
+                    .iter()
+                    .position(|pending| pending.request_id == request_id)
+                {
+                    tab.user_input.remove(index);
+                }
+            }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()
                     .messages
