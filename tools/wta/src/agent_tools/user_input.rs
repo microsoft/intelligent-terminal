@@ -99,7 +99,7 @@ mod tests {
         .is_err());
         assert!(UserInputRequest {
             question: "Choose".into(),
-            choices: vec!["bad\nchoice".into()],
+            choices: vec![format!("bad{}choice", '\n')],
             allow_freeform: false,
         }
         .validate()
