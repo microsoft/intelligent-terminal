@@ -160,6 +160,8 @@ system.image_pasted: "Պատկերը կցվեց (%{label})։ Ուղարկելո�
 system.resuming_session: "Վերսկսվում է աշխատաշրջանը %{session_id}..."
 system.unknown_command: "Անհայտ հրաման \"%{command}\" — ուղարկվել է որպես հուշում։ Ցանկի համար մուտքագրեք /help։"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Սպասեք, մինչև ընթացիկ հուշումն ավարտվի, կամ նախ օգտագործեք /stop։"  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Ընթացիկ աշխատանքային պանակում նախադիտման ենթակա ֆայլ չի գտնվել։"
 system.cannot_focus_session: "Չհաջողվեց կենտրոնանալ աշխատաշրջանի %{session_id} վրա. այն կարծես live է, բայց դեռ որևէ pane GUID կապված չէ։ Փորձեք մի փոքր հետո։"
 system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։ Փոխարենը նոր terminal pane-ում վերսկսելու համար սեղմեք Enter (առանց Shift)։"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։ Փոխարենը ACP-ի միջոցով agent pane-ի ներսում վերսկսելու համար սեղմեք Shift+Enter։"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -232,6 +234,7 @@ system.agent_switch_unavailable: "Գործակալի փոխարկումը հաս
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
 commands.move.summary: "Տեղափոխել այս ներդիրի ագենտի վահանակը (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Նախադիտել ֆայլը Edit-ի միջոցով (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}

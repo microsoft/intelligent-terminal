@@ -1,6 +1,8 @@
 mod cli_channel;
 
 pub(crate) use cli_channel::resolve_wtcli_path;
+#[cfg(not(test))]
+pub(crate) use cli_channel::active_pane_working_directory;
 pub use cli_channel::spawn_wtcli_split_then_focus_with_callback;
 pub use cli_channel::CliChannel;
 

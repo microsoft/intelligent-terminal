@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "../TerminalControl/EventArgs.h"
 #include "../TerminalControl/ControlInteractivity.h"
+#include "../TerminalControl/FileHyperlink.h"
 
 #include "../../inc/TestUtils.h"
 #include "MockControlSettings.h"
@@ -42,6 +43,7 @@ namespace ControlUnitTests
 
         TEST_METHOD(GetMouseEventsInTest);
         TEST_METHOD(AltBufferClampMouse);
+        TEST_METHOD(ResolveFileHyperlink);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -953,6 +955,37 @@ namespace ControlUnitTests
                                       0, // timestamp
                                       modifiers,
                                       cursorPosition0.to_core_point());
+    }
+
+    void ControlInteractivityTests::ResolveFileHyperlink()
+    {
+        const auto source = std::filesystem::weakly_canonical(std::filesystem::absolute(__FILE__));
+        const auto workingDirectory = source.parent_path();
+
+        const auto absolute = ::Microsoft::Terminal::Control::ResolveFileHyperlink(
+            source.wstring() + L":42:7",
+            workingDirectory.wstring());
+        VERIFY_IS_TRUE(absolute.has_value());
+        VERIFY_ARE_EQUAL(source.native(), absolute->Path.native());
+        VERIFY_ARE_EQUAL(42u, absolute->Line.value());
+        VERIFY_ARE_EQUAL(7u, absolute->Column.value());
+
+        const auto relative = ::Microsoft::Terminal::Control::ResolveFileHyperlink(
+            source.filename().wstring() + L":9",
+            workingDirectory.wstring());
+        VERIFY_IS_TRUE(relative.has_value());
+        VERIFY_ARE_EQUAL(source.native(), relative->Path.native());
+        VERIFY_ARE_EQUAL(9u, relative->Line.value());
+        VERIFY_IS_FALSE(relative->Column.has_value());
+
+        VERIFY_IS_FALSE(::Microsoft::Terminal::Control::ResolveFileHyperlink(
+                            L"missing-file.cpp:1",
+                            workingDirectory.wstring())
+                            .has_value());
+        VERIFY_IS_FALSE(::Microsoft::Terminal::Control::ResolveFileHyperlink(
+                            L"https://example.com/file.cpp",
+                            workingDirectory.wstring())
+                            .has_value());
     }
 
     void ControlInteractivityTests::AltBufferClampMouse()

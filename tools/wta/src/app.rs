@@ -845,6 +845,8 @@ pub enum DispatchedCommandKind {
     /// triggered. The argv carries the [`NotResumableReason`] for
     /// observability.
     NotResumable,
+    /// `/preview` opened Microsoft Edit in a split pane.
+    Preview,
 }
 
 #[cfg(test)]
@@ -4298,6 +4300,8 @@ impl App {
             crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
         } else if !agent_candidates.is_empty() {
             crate::ui::PopupCandidates::Agents(agent_candidates)
+        } else if !tab.preview_file_candidates.is_empty() {
+            crate::ui::PopupCandidates::PreviewFiles(tab.preview_file_candidates.as_slice())
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
         } else {
@@ -4394,7 +4398,9 @@ impl App {
             agent_count
         } else {
             let tab = self.current_tab();
-            tab.command_popup_candidates.len() + tab.move_position_candidates.len()
+            tab.command_popup_candidates.len()
+                + tab.move_position_candidates.len()
+                + tab.preview_file_candidates.len()
         }
     }
 
@@ -4494,6 +4500,17 @@ impl App {
                         kind: CommandKind::Move,
                         spec,
                         rest: position.name.to_string(),
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
+                if let Some(path) = self.current_tab().selected_preview_file().map(str::to_string) {
+                    let spec = commands::lookup("preview").expect("/preview is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::Preview,
+                        spec,
+                        rest: path,
                     };
                     self.current_tab_mut().clear_input();
                     self.handle_slash_command(parsed);
@@ -4606,6 +4623,7 @@ impl App {
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
             CommandKind::Move => self.cmd_move(cmd.rest),
+            CommandKind::Preview => self.cmd_preview(cmd.rest),
         }
     }
 
@@ -4834,6 +4852,138 @@ impl App {
 
         self.current_tab_mut().agent_pane_position = Some(position.pane_position);
         self.project_active_tab_state();
+    }
+
+    /// `/preview [relative-path]` — snapshot the source working directory and
+    /// launch the selected file in Microsoft Edit using WT's default split.
+    fn cmd_preview(&mut self, relative_path: String) {
+        if relative_path.trim().is_empty() {
+            self.current_tab_mut().replace_input("/preview ".to_string());
+            self.load_preview_candidates();
+            return;
+        }
+
+        let Some(root) = self.preview_working_directory() else {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("system.preview_unavailable").into_owned(),
+            ));
+            return;
+        };
+
+        let selected = std::path::Path::new(relative_path.trim());
+        let Ok(root) = root.canonicalize() else {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("system.preview_unavailable").into_owned(),
+            ));
+            return;
+        };
+        let Ok(file) = root.join(selected).canonicalize() else {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("system.preview_unavailable").into_owned(),
+            ));
+            return;
+        };
+        if !file.starts_with(&root) || !file.is_file() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("system.preview_unavailable").into_owned(),
+            ));
+            return;
+        }
+
+        let commandline = format!(
+            "edit {}",
+            crate::coordinator::quote_windows_commandline_arg(&file.to_string_lossy())
+        );
+        let mut argv = vec!["split-pane".to_string()];
+        if let Some(target) = self.source_session_id.as_deref().filter(|id| !id.is_empty()) {
+            argv.push("-t".to_string());
+            argv.push(target.to_string());
+        }
+        argv.push("-c".to_string());
+        argv.push(commandline);
+
+        tracing::info!(
+            target: "slash_cmd",
+            file = %file.display(),
+            "launching /preview",
+        );
+
+        #[cfg(not(test))]
+        crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, None);
+
+        #[cfg(test)]
+        {
+            self.last_dispatched_command = Some(DispatchedCommand {
+                kind: DispatchedCommandKind::Preview,
+                session_id: None,
+                argv,
+            });
+        }
+    }
+
+    /// Load `/preview` candidates as soon as the user types the command's
+    /// trailing space. Enter-dispatch calls the same path.
+    pub(super) fn maybe_load_preview_candidates(&mut self) {
+        let should_load = self.current_tab().preview_files.is_empty()
+            && commands::preview_file_prefix(&self.current_tab().input)
+                .is_some_and(str::is_empty);
+        if should_load {
+            self.load_preview_candidates();
+        }
+    }
+
+    fn preview_working_directory(&self) -> Option<std::path::PathBuf> {
+        #[cfg(not(test))]
+        let live_cwd = crate::shell::wt_channel::active_pane_working_directory();
+        #[cfg(test)]
+        let live_cwd: Option<std::path::PathBuf> = None;
+
+        live_cwd.or_else(|| self.source_cwd.as_deref().map(Into::into))
+    }
+
+    fn load_preview_candidates(&mut self) {
+        let Some(root) = self.preview_working_directory() else {
+            tracing::warn!(target: "slash_cmd", "no cwd available for /preview");
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("system.preview_unavailable").into_owned(),
+            ));
+            return;
+        };
+
+        match collect_preview_files(&root) {
+            Ok(files) if !files.is_empty() => {
+                tracing::info!(
+                    target: "slash_cmd",
+                    cwd = %root.display(),
+                    file_count = files.len(),
+                    "loaded /preview candidates",
+                );
+                let tab = self.current_tab_mut();
+                tab.preview_files = files;
+                tab.refresh_command_popup();
+            }
+            Ok(_) => {
+                tracing::info!(
+                    target: "slash_cmd",
+                    cwd = %root.display(),
+                    "no files found for /preview",
+                );
+                self.current_tab_mut().messages.push(ChatMessage::info(
+                    t!("system.preview_unavailable").into_owned(),
+                ));
+            }
+            Err(err) => {
+                tracing::warn!(
+                    target: "slash_cmd",
+                    cwd = %root.display(),
+                    %err,
+                    "failed to enumerate files for /preview",
+                );
+                self.current_tab_mut().messages.push(ChatMessage::warning(
+                    t!("system.preview_unavailable").into_owned(),
+                ));
+            }
+        }
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -5627,6 +5777,50 @@ fn welcome_shown_in_state() -> bool {
                 || content.contains("\"agentWelcomeShown\":true")
         })
         .unwrap_or(false)
+}
+
+const PREVIEW_FILE_LIMIT: usize = 20_000;
+
+fn collect_preview_files(root: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let root = root.canonicalize()?;
+    let mut pending = vec![root.clone()];
+    let mut files = Vec::new();
+
+    while let Some(directory) = pending.pop() {
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(err) if directory == root => return Err(err),
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                if !matches!(
+                    name.to_str(),
+                    Some(".git" | "node_modules" | "target" | "bin" | "obj")
+                ) {
+                    pending.push(path);
+                }
+            } else if file_type.is_file() {
+                if let Ok(relative) = path.strip_prefix(&root) {
+                    files.push(relative.to_string_lossy().to_string());
+                    if files.len() >= PREVIEW_FILE_LIMIT {
+                        break;
+                    }
+                }
+            }
+        }
+        if files.len() >= PREVIEW_FILE_LIMIT {
+            break;
+        }
+    }
+
+    files.sort_by_key(|path| path.to_lowercase());
+    Ok(files)
 }
 
 /// Set `agentWelcomeShown` to true in state.json using string replacement

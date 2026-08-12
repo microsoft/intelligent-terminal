@@ -133,6 +133,8 @@ system.image_pasted: "Imazhi u bashkëngjit (%{label}). Shtypni Enter për ta d�
 system.resuming_session: "Po rifillon sesioni %{session_id}..."
 system.unknown_command: "Komandë e panjohur \"%{command}\" — u dërgua si kërkesë. Shkruani /help për listën."  # {Locked="/help"}
 system.busy_use_stop: "Prisni që kërkesa aktuale të përfundojë, ose përdorni më parë /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Nuk u gjet asnjë skedar që mund të shikohet paraprakisht në direktorinë aktuale të punës."
 system.cannot_focus_session: "Nuk mund të fokusohet sesioni %{session_id}: duket aktiv, por ende nuk është lidhur asnjë GUID paneli. Provojeni përsëri pas pak."
 system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`. Shtypni Enter (pa Shift) për ta rifilluar në një panel të ri terminali në vend të kësaj."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`. Shtypni Shift+Enter për të provuar rifillimin brenda panelit të agjentit përmes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
 commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Shikoni paraprakisht një skedar me Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}

@@ -185,6 +185,39 @@ pub fn spawn_wtcli_async(args: &[String]) {
     }
 }
 
+/// Resolve the latest shell-reported working directory for the active pane.
+///
+/// This comes from Terminal's OSC 7-backed pane metadata, so it follows `cd`.
+#[cfg(not(test))]
+pub fn active_pane_working_directory() -> Option<std::path::PathBuf> {
+    let path = resolve_wtcli_path();
+    let args = ["--json", "active-pane"];
+    let output = std::process::Command::new(&path)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        tracing::warn!(
+            target: "wtcli",
+            path = %path,
+            code = output.status.code(),
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "active-pane failed while resolving preview cwd",
+        );
+        return None;
+    }
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .filter(|cwd| !cwd.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 /// Run `wtcli --json <args>`, parse the resulting `sessionId` (or `SessionId`)
 /// from stdout, then run `wtcli focus-pane -t <id>`. All performed on a
 /// background thread so the UI stays responsive.

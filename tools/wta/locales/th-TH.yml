@@ -133,6 +133,8 @@ system.image_pasted: "แนบรูปภาพแล้ว (%{label}) กด 
 system.resuming_session: "กำลังดำเนินเซสชัน %{session_id} ต่อ..."
 system.unknown_command: "ไม่รู้จักคำสั่ง \"%{command}\" — ส่งเป็นพรอมต์แล้ว พิมพ์ /help เพื่อดูรายการ"  # {Locked="/help"}
 system.busy_use_stop: "รอให้พรอมต์ปัจจุบันเสร็จ หรือใช้ /stop ก่อน"  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "ไม่พบไฟล์ที่สามารถแสดงตัวอย่างได้ในไดเรกทอรีการทำงานปัจจุบัน"
 system.cannot_focus_session: "ไม่สามารถโฟกัสเซสชัน %{session_id}: ดูเหมือนว่ายังทำงานอยู่ แต่ยังไม่ได้ผูก GUID ของแผง ลองอีกครั้งในอีกสักครู่"
 system.cannot_resume_no_load_session: "ไม่สามารถดำเนินการต่อในแผงเอเจนต์: %{agent} ไม่ได้ประกาศความสามารถ ACP `loadSession` กด Enter (โดยไม่กด Shift) เพื่อดำเนินการต่อในแผงเทอร์มินัลใหม่แทน"  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "ไม่สามารถดำเนินเซสชัน %{agent} ต่อ: เอเจนต์นี้ไม่มีแฟล็กแบบ `--resume` กด Shift+Enter เพื่อลองดำเนินการต่อภายในแผงเอเจนต์ผ่าน ACP แทน"  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "การสลับตัวแทนจะ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
 commands.move.summary: "ย้ายแผงเอเจนต์ของแท็บนี้ (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "แสดงตัวอย่างไฟล์ด้วย Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}

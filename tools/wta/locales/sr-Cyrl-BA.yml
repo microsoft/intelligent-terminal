@@ -142,6 +142,8 @@ system.image_pasted: "Слика је приложена (%{label}). Прити�
 system.resuming_session: "Наставља се сесија %{session_id}..."
 system.unknown_command: "Непозната команда \"%{command}\" — послата као упит. Унесите /help за списак."  # {Locked="/help"}
 system.busy_use_stop: "Сачекајте да се тренутни упит заврши или прво употребите /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "У тренутном радном директоријуму није пронађена датотека која се може прегледати."
 system.cannot_focus_session: "Није могуће фокусирати сесију %{session_id}: изгледа активна, али још није повезан GUID окна. Покушајте поново за тренутак."
 system.cannot_resume_no_load_session: "Није могуће наставити у окну агента: %{agent} није огласио могућност ACP `loadSession`. Притисните Enter (без Shift) да умјесто тога наставите у новом терминалском окну."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Није могуће наставити сесију агента %{agent}: овај агент нема заставицу у стилу `--resume`. Притисните Shift+Enter да покушате наставити унутар окна агента путем ACP-а."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Промена агента није дост�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Изаберите модел за ово окно (/model <id> за директно пребацивање)"  # {Locked="/model","<id>"}
 commands.move.summary: "Преместите панел агента за ову картицу (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Прегледајте датотеку помоћу Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Изаберите модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Повезани агент није огласио ниједан модел који се може изабрати."
 system.model_set: "Модел за ово окно је подешен на %{model}."  # {Locked="%{model}"}

@@ -54,6 +54,8 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Preview a file from the source working directory in Microsoft Edit.
+    Preview,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -129,6 +131,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
+    },
+    CommandSpec {
+        name: "preview",
+        summary_key: "commands.preview.summary",
+        kind: CommandKind::Preview,
     },
 ];
 
@@ -315,6 +322,19 @@ pub fn move_position_prefix(input: &str) -> Option<&str> {
     single_argument_prefix(input, "move")
 }
 
+/// Return the filter text while completing `/preview <relative-path>`.
+///
+/// Paths may contain whitespace, so the entire remainder is the filter.
+pub fn preview_file_prefix(input: &str) -> Option<&str> {
+    let trimmed = input.trim_start();
+    let rest = trimmed.strip_prefix('/')?;
+    let command_end = rest.find(char::is_whitespace)?;
+    if !rest[..command_end].eq_ignore_ascii_case("preview") {
+        return None;
+    }
+    Some(rest[command_end..].trim_start())
+}
+
 fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {
     let trimmed = input.trim_start();
     let rest = trimmed.strip_prefix('/')?;
@@ -412,6 +432,20 @@ mod tests {
         let hinted = parse("/fix the path looks wrong").unwrap();
         assert_eq!(hinted.kind, CommandKind::Fix);
         assert_eq!(hinted.rest, "the path looks wrong");
+    }
+
+    #[test]
+    fn preview_parses_and_accepts_path_filter() {
+        let bare = parse("/preview").unwrap();
+        assert_eq!(bare.kind, CommandKind::Preview);
+        assert_eq!(bare.rest, "");
+
+        let selected = parse("/preview src/main file.rs").unwrap();
+        assert_eq!(selected.rest, "src/main file.rs");
+        assert_eq!(preview_file_prefix("/preview "), Some(""));
+        assert_eq!(preview_file_prefix("  /PREVIEW src/main"), Some("src/main"));
+        assert_eq!(preview_file_prefix("/preview"), None);
+        assert_eq!(preview_file_prefix("/move src"), None);
     }
 
     #[test]

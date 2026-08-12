@@ -133,6 +133,8 @@ system.image_pasted: "[!! Ima_ge attached (%{label}). Press Enter to send. !!]" 
 system.resuming_session: "[!! Res_uming session %{session_id}... !!]"
 system.unknown_command: "[!! Unk_nown command \"%{command}\" — sent as prompt. Type /help for the list. !!]"  # {Locked="/help"}
 system.busy_use_stop: "[!! Wai_t for the current prompt to finish, or /stop first. !!]"  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "[!!_No previewable file was found in the current working directory._!!]"
 system.cannot_focus_session: "[!! Can_not focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment. !!]"
 system.cannot_resume_no_load_session: "[!! Can_not resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead. !!]"  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "[!! Can_not resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead. !!]"  # {Locked="--resume","Shift","Enter","ACP"}
@@ -214,6 +216,7 @@ system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
 commands.move.summary: "[!! Mo_ve this tab's agent pane (/move <position>) !!]"  # {Locked="/move","<position>"}
+commands.preview.summary: "[!!_Preview a file with Edit (/preview <path>)_!!]"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"
 system.model_set: "[!! Mod_el for this pane set to %{model}. !!]"  # {Locked="%{model}"}

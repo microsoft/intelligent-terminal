@@ -146,6 +146,8 @@ system.image_pasted: "ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಲಾ
 system.resuming_session: "ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ..."
 system.unknown_command: "ಅಪರಿಚಿತ ಆದೇಶ \"%{command}\" — ಪ್ರಾಂಪ್ಟ್ ಆಗಿ ಕಳುಹಿಸಲಾಗಿದೆ. ಪಟ್ಟಿಗಾಗಿ /help ಟೈಪ್ ಮಾಡಿ."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ಪ್ರಸ್ತುತ ಪ್ರಾಂಪ್ಟ್ ಮುಗಿಯುವವರೆಗೆ ಕಾಯಿರಿ, ಅಥವಾ ಮೊದಲು /stop ಮಾಡಿ."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "ಪ್ರಸ್ತುತ ಕಾರ್ಯ ಡೈರೆಕ್ಟರಿಯಲ್ಲಿ ಮುನ್ನೋಟ ನೋಡಬಹುದಾದ ಯಾವುದೇ ಫೈಲ್ ಕಂಡುಬಂದಿಲ್ಲ."
 system.cannot_focus_session: "ಸೆಷನ್ %{session_id} ಮೇಲೆ ಫೋಕಸ್ ಮಾಡಲಾಗುವುದಿಲ್ಲ: ಅದು live ಆಗಿರುವಂತೆ ಕಾಣುತ್ತದೆ ಆದರೆ ಇನ್ನೂ ಯಾವುದೇ pane GUID ಬದ್ಧವಾಗಿಲ್ಲ. ಸ್ವಲ್ಪ ಹೊತ್ತಿನಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
 system.cannot_resume_no_load_session: "agent pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: %{agent} ACP `loadSession` ಸಾಮರ್ಥ್ಯವನ್ನು ಪ್ರಕಟಿಸಿಲ್ಲ. ಬದಲಾಗಿ ಹೊಸ terminal pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲು Enter (Shift ಇಲ್ಲದೆ) ಒತ್ತಿರಿ."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} ಸೆಷನ್ ಅನ್ನು ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಈ agent ಗೆ `--resume` ಶೈಲಿಯ flag ಇಲ್ಲ. ಬದಲಾಗಿ ACP ಮೂಲಕ agent pane ಒಳಗೆ ಪುನರಾರಂಭಿಸಲು Shift+Enter ಒತ್ತಿ ಪ್ರಯತ್ನಿಸಿ."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ಈ ಟ್ಯಾಬ್‌ನ ಏಜೆಂ트 ಪೇನ್ ಅನ್ನು ಸರಿಸಿ (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit ಬಳಸಿ ಫೈಲ್‌ನ ಮುನ್ನೋಟ ನೋಡಿ (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}

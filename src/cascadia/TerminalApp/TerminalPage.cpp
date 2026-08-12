@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "../TerminalControl/FileHyperlink.h"
 
 #include <iomanip>
 
@@ -7916,11 +7917,38 @@ namespace winrt::TerminalApp::implementation
     }
     CATCH_LOG();
 
-    safe_void_coroutine TerminalPage::_OpenHyperlinkHandler(const IInspectable /*sender*/, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs)
+    safe_void_coroutine TerminalPage::_OpenHyperlinkHandler(const IInspectable sender, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs)
     {
         try
         {
             auto uriString{ eventArgs.Uri() };
+            if (const auto control = sender.try_as<TermControl>())
+            {
+                if (const auto target = ::Microsoft::Terminal::Control::ResolveFileHyperlink(uriString, control.WorkingDirectory()))
+                {
+                    auto location = target->Path.wstring();
+                    if (target->Line)
+                    {
+                        location += fmt::format(FMT_COMPILE(L":{}"), *target->Line);
+                        if (target->Column)
+                        {
+                            location += fmt::format(FMT_COMPILE(L":{}"), *target->Column);
+                        }
+                    }
+
+                    NewTerminalArgs args;
+                    args.Commandline(fmt::format(FMT_COMPILE(L"edit {}{}"),
+                                                 target->Line ? L"-g " : L"",
+                                                 QuoteAndEscapeCommandlineArg(location)));
+                    args.StartingDirectory(control.WorkingDirectory());
+                    _SplitPane(_GetFocusedTabImpl(),
+                               SplitDirection::Automatic,
+                               0.5f,
+                               _MakePane(args, nullptr));
+                    co_return;
+                }
+            }
+
             auto parsed = winrt::Windows::Foundation::Uri(uriString);
             if (_IsUriSupported(parsed))
             {

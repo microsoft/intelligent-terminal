@@ -34,6 +34,7 @@ pub enum PopupCandidates<'a> {
     Commands(Cow<'a, [&'static CommandSpec]>),
     MovePositions(&'a [&'static MovePositionSpec]),
     Agents(Vec<&'a AvailableAgent>),
+    PreviewFiles(&'a [String]),
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -45,6 +46,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
         PopupCandidates::Agents(candidates) => candidates.len(),
+        PopupCandidates::PreviewFiles(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
         return;
@@ -93,6 +95,15 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                     Span::styled(format!(" /agent {:<8} ", agent.id), theme::INPUT_TEXT),
                     Span::styled(agent.display_name.as_str(), theme::DIM),
                 ]))
+            })
+            .collect(),
+        PopupCandidates::PreviewFiles(candidates) => candidates
+            .iter()
+            .map(|path| {
+                ListItem::new(Line::from(Span::styled(
+                    format!(" {path} "),
+                    theme::INPUT_TEXT,
+                )))
             })
             .collect(),
     };

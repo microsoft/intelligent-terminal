@@ -146,6 +146,8 @@ system.image_pasted: "სურათი მიმაგრებულია (%
 system.resuming_session: "სესიის %{session_id} გაგრძელება..."
 system.unknown_command: "უცნობი ბრძანება \"%{command}\" — გაიგზავნა მოთხოვნად. სიისთვის აკრიფეთ /help."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "დაელოდეთ მიმდინარე მოთხოვნის დასრულებას, ან ჯერ გამოიყენეთ /stop."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "მიმდინარე სამუშაო დირექტორიაში წინასწარი ნახვისთვის ხელმისაწვდომი ფაილი ვერ მოიძებნა."
 system.cannot_focus_session: "სესიაზე %{session_id} ფოკუსირება შეუძლებელია: ჩანს, რომ live არის, მაგრამ pane GUID ჯერ მიბმული არ არის. სცადეთ ცოტა ხანში."
 system.cannot_resume_no_load_session: "agent pane-ში გაგრძელება შეუძლებელია: %{agent}-მა ACP `loadSession` შესაძლებლობა არ გამოაცხადა. ამის ნაცვლად ახალ terminal pane-ში გასაგრძელებლად დააჭირეთ Enter-ს (Shift-ის გარეშე)."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} სესიის გაგრძელება შეუძლებელია: ამ agent-ს `--resume` სტილის flag არ აქვს. ამის ნაცვლად ACP-ის საშუალებით agent pane-ში გაგრძელების საცდელად დააჭირეთ Shift+Enter-ს."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "აგენტის გადართვა
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
 commands.move.summary: "ამ ჩანართის აგენტის პანელის გადატანა (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "ფაილის წინასწარი ნახვა Edit-ის საშუალებით (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}

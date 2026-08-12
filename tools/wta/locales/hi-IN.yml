@@ -146,6 +146,8 @@ system.image_pasted: "छवि संलग्न की गई (%{label}). भ
 system.resuming_session: "सत्र %{session_id} फिर से शुरू किया जा रहा है..."
 system.unknown_command: "अज्ञात कमांड \"%{command}\" — प्रॉम्प्ट के रूप में भेजा गया। सूची के लिए /help लिखें।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "वर्तमान प्रॉम्प्ट समाप्त होने तक प्रतीक्षा करें, या पहले /stop करें।"  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "वर्तमान कार्यशील निर्देशिका में पूर्वावलोकन योग्य कोई फ़ाइल नहीं मिली।"
 system.cannot_focus_session: "सत्र %{session_id} पर फ़ोकस नहीं किया जा सकता: यह live दिखता है लेकिन अभी तक कोई pane GUID बाउंड नहीं है। थोड़ी देर में फिर से कोशिश करें।"
 system.cannot_resume_no_load_session: "agent pane में फिर से शुरू नहीं किया जा सकता: %{agent} ने ACP `loadSession` क्षमता घोषित नहीं की। इसके बजाय नए terminal pane में फिर से शुरू करने के लिए Enter (Shift के बिना) दबाएँ।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} सत्र फिर से शुरू नहीं किया जा सकता: इस agent में `--resume`-शैली का flag नहीं है। इसके बजाय ACP के माध्यम से agent pane के अंदर फिर से शुरू करने के लिए Shift+Enter दबाएँ।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "इस पेन के लिए मॉडल चुनें (सीधे बदलने के लिए /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "इस टैब के एजेंट पेन को स्थानांतरित करें (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit के साथ किसी फ़ाइल का पूर्वावलोकन करें (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "मॉडल चुनें (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "कनेक्टेड एजेंट ने कोई चयन योग्य मॉडल घोषित नहीं किया।"
 system.model_set: "इस पेन के लिए मॉडल %{model} पर सेट किया गया।"  # {Locked="%{model}"}

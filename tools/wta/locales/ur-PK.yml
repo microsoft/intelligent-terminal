@@ -146,6 +146,8 @@ system.image_pasted: "تصویر منسلک ہو گئی (%{label})۔ بھیجن�
 system.resuming_session: "سیشن %{session_id} دوبارہ شروع کیا جا رہا ہے..."
 system.unknown_command: "نامعلوم کمانڈ \"%{command}\" — پرامپٹ کے طور پر بھیجی گئی۔ فہرست کے لیے /help ٹائپ کریں۔"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "موجودہ پرامپٹ ختم ہونے تک انتظار کریں، یا پہلے /stop کریں۔"  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "موجودہ ورکنگ ڈائریکٹری میں پیش منظر کے قابل کوئی فائل نہیں ملی۔"
 system.cannot_focus_session: "سیشن %{session_id} پر فوکس نہیں کیا جا سکتا: یہ live لگتا ہے مگر ابھی کوئی pane GUID باؤنڈ نہیں ہے۔ کچھ دیر بعد دوبارہ کوشش کریں۔"
 system.cannot_resume_no_load_session: "agent pane میں دوبارہ شروع نہیں کیا جا سکتا: %{agent} نے ACP `loadSession` صلاحیت کا اعلان نہیں کیا۔ اس کے بجائے نئے terminal pane میں دوبارہ شروع کرنے کے لیے Enter (Shift کے بغیر) دبائیں۔"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} سیشن دوبارہ شروع نہیں کیا جا سکتا: اس agent کے پاس `--resume` طرز کا flag نہیں ہے۔ اس کے بجائے ACP کے ذریعے agent pane کے اندر دوبارہ شروع کرنے کی کوشش کے لیے Shift+Enter دبائیں۔"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "ونڈوز ٹرمینل ٹیب سے باہر �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "اس ٹیب کے ایجنٹ پین کو منتقل کریں (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit کے ساتھ فائل کا پیش منظر دیکھیں (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "ماڈل منتخب کریں (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "منسلک ایجنٹ نے کوئی قابلِ انتخاب ماڈل ظاہر نہیں کیا۔"
 system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر دیا گیا۔"  # {Locked="%{model}"}

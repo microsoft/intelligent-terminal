@@ -142,6 +142,8 @@ system.image_pasted: "Slika je priložena (%{label}). Pritisnite Enter za slanje
 system.resuming_session: "Nastavlja se sesija %{session_id}..."
 system.unknown_command: "Nepoznata komanda \"%{command}\" — poslata kao upit. Unesite /help za spisak."  # {Locked="/help"}
 system.busy_use_stop: "Sačekajte da se trenutni upit završi ili prvo upotrebite /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "U trenutnom radnom direktorijumu nije pronađena datoteka koja se može pregledati."
 system.cannot_focus_session: "Nije moguće fokusirati sesiju %{session_id}: izgleda aktivna, ali još nije povezan GUID okna. Pokušajte ponovo za trenutak."
 system.cannot_resume_no_load_session: "Nije moguće nastaviti u oknu agenta: %{agent} nije oglasio mogućnost ACP `loadSession`. Pritisnite Enter (bez Shift) da umesto toga nastavite u novom terminalskom oknu."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nije moguće nastaviti sesiju agenta %{agent}: ovaj agent nema zastavicu u stilu `--resume`. Pritisnite Shift+Enter da pokušate nastaviti unutar okna agenta putem ACP-a."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Promena agenta nije dostupna van kartice u apl
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izaberite model za ovo okno (/model <id> za direktno prebacivanje)"  # {Locked="/model","<id>"}
 commands.move.summary: "Premestite panel agenta za ovu karticu (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Pregledajte datoteku pomoću Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
 system.model_set: "Model za ovo okno je podešen na %{model}."  # {Locked="%{model}"}

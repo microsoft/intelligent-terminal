@@ -133,6 +133,8 @@ system.image_pasted: "Imagen adjunta (%{label}). Pulse Enter para enviar."  # {L
 system.resuming_session: "Reanudando la sesión %{session_id}..."
 system.unknown_command: "Comando desconocido \"%{command}\" — enviado como indicación. Escriba /help para ver la lista."
 system.busy_use_stop: "Espere a que termine la indicación actual, o use /stop primero."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "No se encontró ningún archivo que se pueda previsualizar en el directorio de trabajo actual."
 system.cannot_focus_session: "No se puede enfocar la sesión %{session_id}: parece activa, pero aún no hay ningún GUID de panel enlazado. Vuelva a intentarlo dentro de un momento."
 system.cannot_resume_no_load_session: "No se puede reanudar en el panel de agente: %{agent} no anunció la funcionalidad ACP `loadSession`. Presione Enter (sin Shift) para reanudar en un nuevo panel de terminal."
 system.cannot_resume_no_resume_flag: "No se puede reanudar la sesión de %{agent}: este agente no tiene una marca de estilo `--resume`. Presione Shift+Enter para intentar reanudar dentro del panel de agente mediante ACP."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "El cambio de agente no está disponible fuera 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Elija el modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mover el panel del agente de esta pestaña (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Obtener una vista previa de un archivo con Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "El agente conectado no anunció ningún modelo seleccionable."
 system.model_set: "El modelo para este panel se ha establecido en %{model}."  # {Locked="%{model}"}

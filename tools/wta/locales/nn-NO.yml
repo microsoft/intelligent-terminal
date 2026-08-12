@@ -133,6 +133,8 @@ system.image_pasted: "Bilete lagt ved (%{label}). Trykk Enter for å sende."  # 
 system.resuming_session: "Held fram med økta %{session_id}..."
 system.unknown_command: "Ukjend kommando \"%{command}\" — send som ledetekst. Skriv /help for lista."
 system.busy_use_stop: "Vent til gjeldande ledetekst er ferdig, eller bruk /stop først."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Fann inga fil som kan førehandsvisast, i gjeldande arbeidsmappe."
 system.cannot_focus_session: "Kan ikkje fokusera økta %{session_id}: ho ser ut til å vera aktiv, men ingen rute-GUID er bunden enno. Prøv igjen om ein augneblink."
 system.cannot_resume_no_load_session: "Kan ikkje halda fram i agentruta: %{agent} annonserte ikkje ACP `loadSession`-funksjonen. Trykk Enter (utan Shift) for å halda fram i ei ny terminalrute i staden."
 system.cannot_resume_no_resume_flag: "Kan ikkje halda fram %{agent}-økta: denne agenten har ikkje noko `--resume`-liknande flagg. Trykk Shift+Enter for å prøva å halda fram inne i agentruta via ACP i staden."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Agentskifting er ikkje tilgjengeleg utanfor ei
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vel modellen for dette panelet (/model <id> for å byte direkte)"  # {Locked="/model","<id>"}
 commands.move.summary: "Flytt agentpanelet for denne fana (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Førehandsvis ei fil med Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Vel modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilkopla agenten annonserte ingen modellar som kan veljast."
 system.model_set: "Modell for dette panelet sett til %{model}."  # {Locked="%{model}"}

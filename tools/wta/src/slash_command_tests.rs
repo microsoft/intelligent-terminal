@@ -581,6 +581,102 @@ fn slash_move_invalid_argument_reopens_position_completion() {
     assert!(app.command_popup_state().is_some());
 }
 
+struct PreviewTestDir(std::path::PathBuf);
+
+impl PreviewTestDir {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("wta-preview-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(path.join("src")).expect("create preview test directory");
+        std::fs::write(path.join("README.md"), "readme").expect("write preview file");
+        std::fs::write(path.join("src").join("main file.rs"), "fn main() {}")
+            .expect("write nested preview file");
+        Self(path)
+    }
+}
+
+impl Drop for PreviewTestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn slash_preview_snapshots_recursive_files_and_filters_as_user_types() {
+    let directory = PreviewTestDir::new();
+    let mut app = test_app();
+    app.source_cwd = Some(directory.0.to_string_lossy().to_string());
+
+    run_slash(&mut app, "preview");
+
+    assert_eq!(app.current_tab().input, "/preview ");
+    assert_eq!(
+        app.current_tab().preview_file_candidates,
+        vec!["README.md", "src\\main file.rs"]
+    );
+
+    app.current_tab_mut().insert_input_str("main");
+    assert_eq!(
+        app.current_tab().preview_file_candidates,
+        vec!["src\\main file.rs"]
+    );
+    let state = app.command_popup_state().expect("preview candidates");
+    let crate::ui::PopupCandidates::PreviewFiles(candidates) = state.candidates else {
+        panic!("expected preview file candidates");
+    };
+    assert_eq!(candidates, &["src\\main file.rs"]);
+}
+
+#[test]
+fn typing_preview_space_loads_candidates_without_enter() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let directory = PreviewTestDir::new();
+    let mut app = test_app();
+    app.source_cwd = Some(directory.0.to_string_lossy().to_string());
+
+    for ch in "/preview ".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+    }
+
+    assert_eq!(
+        app.current_tab().preview_file_candidates,
+        vec!["README.md", "src\\main file.rs"]
+    );
+}
+
+#[test]
+fn preview_file_enter_splits_source_pane_and_launches_edit() {
+    let directory = PreviewTestDir::new();
+    let mut app = test_app();
+    app.source_cwd = Some(directory.0.to_string_lossy().to_string());
+    app.source_session_id = Some("source-pane".to_string());
+    run_slash(&mut app, "preview");
+    app.current_tab_mut().insert_input_str("main");
+
+    assert!(app.try_handle_slash_on_enter());
+
+    let dispatched = app
+        .last_dispatched_command_for_test()
+        .expect("preview split command");
+    assert_eq!(dispatched.kind, DispatchedCommandKind::Preview);
+    assert_eq!(&dispatched.argv[..3], &["split-pane", "-t", "source-pane"]);
+    assert_eq!(dispatched.argv[3], "-c");
+    assert!(dispatched.argv[4].starts_with("edit \""));
+    assert!(dispatched.argv[4].ends_with("src\\main file.rs\""));
+}
+
+#[test]
+fn slash_preview_rejects_paths_outside_source_directory() {
+    let directory = PreviewTestDir::new();
+    let mut app = test_app();
+    app.source_cwd = Some(directory.0.to_string_lossy().to_string());
+
+    run_slash_args(&mut app, "preview", "..\\outside.txt");
+
+    assert!(app.last_dispatched_command_for_test().is_none());
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
+}
+
 #[test]
 fn move_position_popup_completes_alias_and_dispatches() {
     let mut app = test_app();

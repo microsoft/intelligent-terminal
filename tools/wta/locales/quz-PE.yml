@@ -133,6 +133,8 @@ system.image_pasted: "Imagen k'askachasqa (%{label}). Enter nit'iy apachinapaq."
 system.resuming_session: "Sesión %{session_id} kutichispa..."
 system.unknown_command: "Mana riqsisqa kamachiy \"%{command}\" — prompt hina apachisqa. Lista rikunaykipaq /help qillqay."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Kunan prompt tukukunankama suyay, utaq ñawpaqta /stop ruway."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Kunan llamk'ana wayaqapi manam ñawpaqta qawanapaq khipu tarikunchu."
 system.cannot_focus_session: "Sesión %{session_id} nisqaman mana enfoque ruwayta atikunchu: live hina rikukun, ichaqa manaraq pane GUID watasqachu. Huk ratumanta wakmanta kallpachakuy."
 system.cannot_resume_no_load_session: "agent pane ukupi mana kutichiyta atikunchu: %{agent} mana ACP `loadSession` atiyninta willarqachu. Chaypa rantinpi musuq terminal pane ukupi kutichinapaq Enter (Shift mana) ñit'iy."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} sesión mana kutichiyta atikunchu: kay agent mana `--resume` hina flag nisqayuqchu. Chaypa rantinpi ACP nisqawan agent pane ukupi kutichiyta yachanapaq Shift+Enter ñit'iy."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
 commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit nisqawan huk khiputa ñawpaqta qaway (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}

@@ -133,6 +133,8 @@ system.image_pasted: "Imej dilampirkan (%{label}). Tekan Enter untuk menghantar.
 system.resuming_session: "Menyambung semula sesi %{session_id}..."
 system.unknown_command: "Arahan tidak diketahui \"%{command}\" — dihantar sebagai prompt. Taip /help untuk senarai."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu prompt semasa selesai, atau jalankan /stop dahulu."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Tiada fail yang boleh dipratonton ditemui dalam direktori kerja semasa."
 system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi kelihatan aktif tetapi GUID anak tetingkap belum diikat lagi. Cuba lagi sebentar lagi."
 system.cannot_resume_no_load_session: "Tidak dapat menyambung semula dalam anak tetingkap ejen: %{agent} tidak mengiklankan keupayaan ACP `loadSession`. Tekan Enter (tanpa Shift) untuk menyambung semula dalam anak tetingkap terminal baharu sebaliknya."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Tidak dapat menyambung semula sesi %{agent}: ejen ini tiada bendera gaya `--resume`. Tekan Shift+Enter untuk cuba menyambung semula dalam anak tetingkap ejen melalui ACP sebaliknya."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Wind
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
 commands.move.summary: "Alihkan anak tetingkap ejen tab ini (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Pratonton fail dengan Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}

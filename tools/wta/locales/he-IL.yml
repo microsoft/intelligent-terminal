@@ -146,6 +146,8 @@ system.image_pasted: "התמונה צורפה (%{label}). לחץ Enter כדי ל
 system.resuming_session: "מחדש את ההפעלה %{session_id}..."
 system.unknown_command: "פקודה לא ידועה \"%{command}\" — נשלחה כהנחיה. הקלד /help לקבלת הרשימה."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "המתן עד שההנחיה הנוכחית תסתיים, או הפעל תחילה /stop."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "לא נמצא קובץ שניתן להציג בתצוגה מקדימה בספריית העבודה הנוכחית."
 system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_id}: היא נראית פעילה, אך עדיין לא משויך GUID של חלונית. נסה שוב בעוד רגע."
 system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`. הקש Enter (ללא Shift) כדי לחדש בחלונית מסוף חדשה במקום זאת."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`. הקש Shift+Enter כדי לנסות לחדש בתוך חלונית הסוכן דרך ACP במקום זאת."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "הצגת תצוגה מקדימה של קובץ באמצעות Edit ‏(/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}

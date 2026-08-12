@@ -148,6 +148,8 @@ system.image_pasted: "ছবি সংযুক্ত কৰা হৈছে (%{
 system.resuming_session: "সত্ৰ %{session_id} পুনৰাৰম্ভ কৰা হৈছে..."
 system.unknown_command: "অজানা কমাণ্ড \"%{command}\" — প্ৰম্প্ট হিচাপে পঠিওৱা হ'ল। তালিকাৰ বাবে /help টাইপ কৰক।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "বৰ্তমানৰ প্ৰম্প্ট শেষ হোৱালৈ অপেক্ষা কৰক, অথবা আগতে /stop কৰক।"  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "বৰ্তমান কাৰ্য্য ডাইৰেক্টৰীত পূৰ্বদৰ্শন কৰিব পৰা কোনো ফাইল পোৱা নগ'ল।"
 system.cannot_focus_session: "সত্ৰ %{session_id} ফোকাচ কৰিব নোৱাৰি: ই live যেন লাগে কিন্তু এতিয়াও কোনো pane GUID বান্ধা হোৱা নাই। অলপ পাছত পুনৰ চেষ্টা কৰক।"
 system.cannot_resume_no_load_session: "agent pane-ত পুনৰাৰম্ভ কৰিব নোৱাৰি: %{agent}-এ ACP `loadSession` ক্ষমতা ঘোষণা কৰা নাই। তাৰ সলনি নতুন terminal pane-ত পুনৰাৰম্ভ কৰিবলৈ Enter (Shift নোহোৱাকৈ) টিপক।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} সত্ৰ পুনৰাৰম্ভ কৰিব নোৱাৰি: এই agent-ৰ `--resume`-ধৰণৰ flag নাই। তাৰ সলনি ACP-ৰ জৰিয়তে agent pane-ৰ ভিতৰত পুনৰাৰম্ভ কৰিবলৈ Shift+Enter টিপি চেষ্টা কৰক।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -219,6 +221,7 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit-ৰ সৈতে এটা ফাইলৰ পূৰ্বদৰ্শন কৰক (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}

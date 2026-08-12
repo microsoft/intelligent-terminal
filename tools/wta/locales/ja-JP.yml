@@ -129,6 +129,8 @@ system.image_pasted: "画像を添付しました (%{label})。Enter を押し�
 system.resuming_session: "セッション %{session_id} を再開しています..."
 system.unknown_command: "不明なコマンド \"%{command}\" — プロンプトとして送信しました。一覧を表示するには /help と入力してください。"  # {Locked="/help"}
 system.busy_use_stop: "現在のプロンプトが完了するまで待つか、先に /stop を実行してください。"  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "現在の作業ディレクトリにプレビュー可能なファイルが見つかりませんでした。"
 system.cannot_focus_session: "セッション %{session_id} にフォーカスできません: ライブ状態のようですが、ペイン GUID がまだバインドされていません。しばらくしてからもう一度お試しください。"
 system.cannot_resume_no_load_session: "エージェント ペインで再開できません: %{agent} が ACP `loadSession` 機能を通知していません。代わりに Enter（Shift なし）を押して新しいターミナル ペインで再開してください。"  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "%{agent} セッションを再開できません: このエージェントには `--resume` 形式のフラグがありません。代わりに Shift+Enter を押して ACP 経由でエージェント ペイン内での再開を試してください。"  # {Locked="--resume","Shift","Enter","ACP"}
@@ -211,6 +213,7 @@ system.agent_switch_unavailable: "Windows Terminal タブの外ではエージ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
 commands.move.summary: "このタブのエージェント ペインを移動 (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit でファイルをプレビューする (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}

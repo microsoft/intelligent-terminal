@@ -555,7 +555,7 @@ std::wstring Terminal::GetHyperlinkAtBufferPosition(const til::point bufferPos)
     {
         for (const auto& result : results)
         {
-            if (result.value == _hyperlinkPatternId)
+            if (result.value == _hyperlinkPatternId || result.value == _filePathPatternId)
             {
                 return buffer.GetPlainText(result.start, result.stop);
             }
@@ -592,7 +592,7 @@ std::optional<PointTree::interval> Terminal::GetHyperlinkIntervalFromViewportPos
     {
         for (const auto& result : results)
         {
-            if (result.value == _hyperlinkPatternId)
+            if (result.value == _hyperlinkPatternId || result.value == _filePathPatternId)
             {
                 // Convert back to viewport-relative coordinates
                 auto interval = result;
@@ -1428,8 +1428,9 @@ static URegularExpressionInterner uregexInterner;
 
 PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
 {
-    static constexpr std::array<std::wstring_view, 1> patterns{
+    static constexpr std::array<std::wstring_view, 2> patterns{
         LR"(\b(?:https?|ftp|file)://[-A-Za-z0-9+&@#/%?=~_|$!:,.;]*[A-Za-z0-9+&@#/%=~_|$])",
+        LR"((?<![\p{L}\p{N}_])(?:(?:[A-Za-z]:|\.{1,2})?[\\/])?(?:[\p{L}\p{N}_@()+,.-]+[\\/])*[\p{L}\p{N}_@()+,.-]+\.[A-Za-z0-9]{1,16}(?::[0-9]+(?::[0-9]+)?)?)",
     };
 
     if (!_detectURLs)

@@ -92,6 +92,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Preview a file with Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
@@ -210,6 +211,7 @@ system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locke
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.
+system.preview_unavailable: "No previewable file was found in the current working directory."  # Shown when /preview cannot enumerate or open a selected file.
 system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."  # Shown when Enter on a Session-management row says Live but no terminal pane is bound yet (cold-startup race). %{session_id} is an opaque id.
 system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."  # Shown when Shift+Enter tries to resume a session in a new agent pane but the connected agent did not advertise the ACP `loadSession` capability. %{agent} is the agent display name (e.g. "Copilot"). {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."  # Shown when Enter tries to resume a session via the agent's own --resume flag, but that agent's CLI has no resume flag (e.g. Codex). %{agent} is the agent display name. {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.

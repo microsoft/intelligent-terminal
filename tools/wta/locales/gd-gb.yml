@@ -133,6 +133,8 @@ system.image_pasted: "Dealbh ceangailte (%{label}). Brùth Enter gus a chur."  #
 system.resuming_session: "Ag ath-thòiseachadh seisean %{session_id}..."
 system.unknown_command: "Àithne neo-aithnichte \"%{command}\" — air a cur mar bhrosnachadh. Taidhp /help airson an liosta."
 system.busy_use_stop: "Fuirich gus an crìochnaich am brosnachadh làithreach, no cleachd /stop an toiseach."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Cha deach faidhle a ghabhas ro-shealladh a lorg san eòlaire-obrach làithreach."
 system.cannot_focus_session: "Cha ghabh fòcas a chur air seisean %{session_id}: tha e a’ coimhead beò ach chan eil GUID pana ceangailte fhathast. Feuch ris a-rithist an ceann tiota."
 system.cannot_resume_no_load_session: "Cha ghabh ath-thòiseachadh ann am pana àidseint: cha do dh’ainmich %{agent} comas ACP `loadSession`. Brùth Enter (gun Shift) gus ath-thòiseachadh ann am pana teirmineil ùr na àite."
 system.cannot_resume_no_resume_flag: "Cha ghabh seisean %{agent} ath-thòiseachadh: chan eil bratach stoidhle `--resume` aig an àidseant seo. Brùth Shift+Enter gus feuchainn ri ath-thòiseachadh taobh a-staigh pana an àidseint tro ACP na àite."
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Chan eil atharrachadh àidhent ri fhaighinn b�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
 commands.move.summary: "Gluais panail àidseant an taba seo (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Ro-sheall faidhle le Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
 system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}

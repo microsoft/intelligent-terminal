@@ -133,6 +133,8 @@ system.image_pasted: "Imagem anexada (%{label}). Pressione Enter para enviar."  
 system.resuming_session: "Retomando a sessão %{session_id}..."
 system.unknown_command: "Comando desconhecido \"%{command}\" — enviado como prompt. Digite /help para ver a lista."
 system.busy_use_stop: "Aguarde o término do prompt atual ou use /stop primeiro."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Nenhum arquivo que possa ser visualizado foi encontrado no diretório de trabalho atual."
 system.cannot_focus_session: "Não é possível focar a sessão %{session_id}: ela parece ativa, mas nenhum GUID de painel foi associado ainda. Tente novamente em instantes."
 system.cannot_resume_no_load_session: "Não é possível retomar no painel do agente: %{agent} não anunciou a funcionalidade ACP `loadSession`. Pressione Enter (sem Shift) para retomar em um novo painel do terminal."
 system.cannot_resume_no_resume_flag: "Não é possível retomar a sessão de %{agent}: este agente não tem um sinalizador do tipo `--resume`. Pressione Shift+Enter para tentar retomar dentro do painel do agente via ACP."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "A alternância de agente não está disponíve
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Escolha o modelo para este painel (/model <id> para trocar diretamente)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mover o painel do agente desta guia (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Visualizar um arquivo com Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Selecionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O agente conectado não anunciou nenhum modelo selecionável."
 system.model_set: "Modelo para este painel definido como %{model}."  # {Locked="%{model}"}

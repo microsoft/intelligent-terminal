@@ -133,6 +133,8 @@ system.image_pasted: "Kua āpitihia te atahanga (%{label}). Pēhia Enter ki te t
 system.resuming_session: "Kei te tīmata anō te wāhanga %{session_id}..."
 system.unknown_command: "He command kāore e mōhiotia \"%{command}\" — kua tukuna hei prompt. Patohia /help mō te rārangi."  # {Locked="/help"}
 system.busy_use_stop: "Tatari kia mutu te prompt onāianei, me whakamahi rānei i te /stop i te tuatahi."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Kāore i kitea he kōnae ka taea te arokite i te whaiaronga mahi o nāianei."
 system.cannot_focus_session: "Kāore e taea te arotahi ki te wāhanga %{session_id}: te āhua nei e ora ana, engari kāore anō kia herea he GUID papa. Ngana anō ākuanei."
 system.cannot_resume_no_load_session: "Kāore e taea te tīmata anō i te papa agent: kāore a %{agent} i pānui i te āheinga ACP `loadSession`. Pēhia Enter (kaua ko Shift) kia tīmata anō ki tētahi papa terminal hōu kē."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Kāore e taea te tīmata anō i te wāhanga %{agent}: kāore he haki ā-`--resume` tō tēnei agent. Pēhia Shift+Enter kia whakamātau ki te tīmata anō i roto i te papa agent mā ACP kē."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Kāore i te wātea te whakawhiti māngai i wah
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
 commands.move.summary: "Neke i te papa agent o tēnei ripa (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Arokite tētahi kōnae mā Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}

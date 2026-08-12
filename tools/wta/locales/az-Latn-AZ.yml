@@ -148,6 +148,8 @@ system.image_pasted: "Şəkil əlavə edildi (%{label}). Göndərmək üçün En
 system.resuming_session: "Sessiya %{session_id} bərpa olunur..."
 system.unknown_command: "Naməlum əmr \"%{command}\" — sorğu kimi göndərildi. Siyahı üçün /help yazın."  # {Locked="/help"}
 system.busy_use_stop: "Cari sorğunun tamamlanmasını gözləyin və ya əvvəlcə /stop istifadə edin."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Cari iş qovluğunda önbaxış edilə bilən fayl tapılmadı."
 system.cannot_focus_session: "Sessiya %{session_id} fokuslana bilmir: canlı görünür, amma hələ heç bir panel GUID-i bağlanmayıb. Bir az sonra yenidən cəhd edin."
 system.cannot_resume_no_load_session: "Agent panelində bərpa etmək mümkün deyil: %{agent} ACP `loadSession` imkanını elan etməyib. Bunun əvəzinə yeni terminal panelində bərpa etmək üçün Enter (Shift olmadan) basın."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "%{agent} sessiyasını bərpa etmək mümkün deyil: bu agentdə `--resume` üslublu bayraq yoxdur. Əvəzində ACP vasitəsilə agent panelində bərpa etməyi sınamaq üçün Shift+Enter basın."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -218,6 +220,7 @@ system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kəna
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bu tabın agent panelini köçür (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit ilə fayla önbaxış keçirin (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}

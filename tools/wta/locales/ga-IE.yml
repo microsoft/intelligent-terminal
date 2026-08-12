@@ -133,6 +133,8 @@ system.image_pasted: "Íomhá ceangailte (%{label}). Brúigh Enter chun í a she
 system.resuming_session: "Seisiún %{session_id} á atosú..."
 system.unknown_command: "Ordú anaithnid \"%{command}\" — seolta mar leid. Clóscríobh /help don liosta."
 system.busy_use_stop: "Fan go gcríochnóidh an leid reatha, nó úsáid /stop ar dtús."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Níor aimsíodh aon chomhad is féidir a réamhamharc san eolaire oibre reatha."
 system.cannot_focus_session: "Ní féidir díriú ar sheisiún %{session_id}: is cosúil go bhfuil sé beo ach níl GUID pána ceangailte fós. Bain triail eile as i gceann nóiméid."
 system.cannot_resume_no_load_session: "Ní féidir atosú i bpána gníomhaire: níor fhógair %{agent} cumas ACP `loadSession`. Brúigh Enter (gan Shift) chun atosú i bpána teirminéil nua ina ionad sin."
 system.cannot_resume_no_resume_flag: "Ní féidir seisiún %{agent} a atosú: níl bratach de stíl `--resume` ag an ngníomhaire seo. Brúigh Shift+Enter chun iarracht a dhéanamh atosú laistigh den phána gníomhaire trí ACP ina ionad sin."
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Níl athrú gníomhaire ar fáil lasmuigh de c
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bog pána gníomhaire an chluaisín seo (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Réamhamharc ar chomhad le Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}

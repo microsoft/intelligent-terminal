@@ -133,6 +133,8 @@ system.image_pasted: "Mynd viðhengd (%{label}). Ýttu á Enter til að senda." 
 system.resuming_session: "Held áfram með setu %{session_id}..."
 system.unknown_command: "Óþekkt skipun \"%{command}\" — send sem kvaðning. Sláðu inn /help til að sjá listann."
 system.busy_use_stop: "Bíddu þar til núverandi kvaðning lýkur, eða notaðu /stop fyrst."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Engin skrá sem hægt er að forskoða fannst í núverandi vinnumöppu."
 system.cannot_focus_session: "Ekki er hægt að færa fókus á setu %{session_id}: hún virðist virk en ekkert GUID rúðu er enn bundið. Reyndu aftur eftir augnablik."
 system.cannot_resume_no_load_session: "Ekki er hægt að halda áfram í agent-rúðu: %{agent} auglýsti ekki ACP `loadSession`-getuna. Ýttu á Enter (án Shift) til að halda áfram í nýrri terminal-rúðu í staðinn."
 system.cannot_resume_no_resume_flag: "Ekki er hægt að halda áfram með %{agent}-setu: þessi agent er ekki með `--resume`-líkt flagg. Ýttu á Shift+Enter til að reyna að halda áfram inni í agent-rúðunni í gegnum ACP í staðinn."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Ekki er hægt að skipta um fulltrúa utan Win
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
 commands.move.summary: "Færa agentspjald þessa flipa (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Forskoða skrá með Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}

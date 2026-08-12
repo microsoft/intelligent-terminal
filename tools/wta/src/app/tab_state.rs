@@ -323,6 +323,10 @@ pub struct TabSession {
     pub command_popup_candidates: Vec<&'static CommandSpec>,
     /// Position candidates shown after `/move `.
     pub move_position_candidates: Vec<&'static MovePositionSpec>,
+    /// Recursive file snapshot captured when `/preview` is opened.
+    pub preview_files: Vec<String>,
+    /// Filtered subset shown while typing after `/preview `.
+    pub preview_file_candidates: Vec<String>,
     /// Index into whichever popup candidate list is active.
     pub command_popup_selected: usize,
 

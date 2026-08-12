@@ -129,6 +129,8 @@ system.image_pasted: "이미지가 첨부되었습니다(%{label}). 보내려면
 system.resuming_session: "세션 %{session_id} 재개 중..."
 system.unknown_command: "알 수 없는 명령 \"%{command}\" — 프롬프트로 보냈습니다. 목록을 보려면 /help를 입력하세요."  # {Locked="/help"}
 system.busy_use_stop: "현재 프롬프트가 완료될 때까지 기다리거나 먼저 /stop을 실행하세요."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "현재 작업 디렉터리에서 미리 볼 수 있는 파일을 찾지 못했습니다."
 system.cannot_focus_session: "세션 %{session_id}에 포커스할 수 없습니다. 라이브 상태로 보이지만 아직 창 GUID가 바인딩되지 않았습니다. 잠시 후 다시 시도하세요."
 system.cannot_resume_no_load_session: "에이전트 창에서 재개할 수 없습니다. %{agent}이(가) ACP `loadSession` 기능을 알리지 않았습니다. 대신 Enter(Shift 제외)를 눌러 새 터미널 창에서 재개하세요."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "%{agent} 세션을 재개할 수 없습니다. 이 에이전트에는 `--resume` 스타일 플래그가 없습니다. 대신 Shift+Enter를 눌러 ACP를 통해 에이전트 창 안에서 재개를 시도하세요."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -211,6 +213,7 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
 commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit로 파일 미리 보기 (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}

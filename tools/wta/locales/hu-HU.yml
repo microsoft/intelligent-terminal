@@ -133,6 +133,8 @@ system.image_pasted: "Kép csatolva (%{label}). A küldéshez nyomja meg az Ente
 system.resuming_session: "A(z) %{session_id} munkamenet folytatása..."
 system.unknown_command: "Ismeretlen parancs: \"%{command}\" — kérésként elküldve. A listához írja be: /help."  # {Locked="/help"}
 system.busy_use_stop: "Várja meg, amíg az aktuális kérés befejeződik, vagy előbb használja a /stop parancsot."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Nem található előnézetre alkalmas fájl az aktuális munkakönyvtárban."
 system.cannot_focus_session: "Nem lehet fókuszba helyezni a(z) %{session_id} munkamenetet: élőnek tűnik, de még nincs hozzárendelve panel-GUID. Próbálja újra egy pillanat múlva."
 system.cannot_resume_no_load_session: "Nem lehet folytatni az ügynökpanelben: %{agent} nem hirdette meg az ACP `loadSession` képességet. Nyomja meg az Enter billentyűt (Shift nélkül), ha inkább új terminálpanelben szeretné folytatni."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nem lehet folytatni a(z) %{agent} munkamenetet: ennek az ügynöknek nincs `--resume` stílusú jelzője. Nyomja meg a Shift+Enter billentyűt, hogy ACP-n keresztül próbálja folytatni az ügynökpanelen belül."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -215,6 +217,7 @@ system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
 commands.move.summary: "A lap ügynökpanelének áthelyezése (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Fájl előnézetének megtekintése az Edit használatával (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}

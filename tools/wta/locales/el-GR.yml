@@ -135,6 +135,8 @@ system.image_pasted: "Η εικόνα επισυνάφθηκε (%{label}). Πα�
 system.resuming_session: "Συνέχιση της περιόδου λειτουργίας %{session_id}..."
 system.unknown_command: "Άγνωστη εντολή \"%{command}\" — στάλθηκε ως προτροπή. Πληκτρολογήστε /help για τη λίστα."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Περιμένετε να ολοκληρωθεί η τρέχουσα προτροπή ή χρησιμοποιήστε πρώτα /stop."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Δεν βρέθηκε αρχείο με δυνατότητα προεπισκόπησης στον τρέχοντα κατάλογο εργασίας."
 system.cannot_focus_session: "Δεν είναι δυνατή η εστίαση στην περίοδο λειτουργίας %{session_id}: φαίνεται ενεργή, αλλά δεν έχει συνδεθεί ακόμα GUID τμήματος παραθύρου. Δοκιμάστε ξανά σε λίγο."
 system.cannot_resume_no_load_session: "Δεν είναι δυνατή η συνέχιση στο τμήμα παραθύρου agent: ο %{agent} δεν δήλωσε τη δυνατότητα ACP `loadSession`. Πατήστε Enter (χωρίς Shift) για συνέχιση σε νέο τμήμα παραθύρου τερματικού αντ' αυτού."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent}: αυτός ο agent δεν έχει σημαία τύπου `--resume`. Πατήστε Shift+Enter για να δοκιμάσετε συνέχιση μέσα στο τμήμα παραθύρου agent μέσω ACP αντ' αυτού."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
 commands.move.summary: "Μετακίνηση του πλαισίου παράγοντα αυτής της καρτέλας (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Προεπισκόπηση αρχείου με το Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}

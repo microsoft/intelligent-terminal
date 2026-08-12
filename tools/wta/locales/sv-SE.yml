@@ -133,6 +133,8 @@ system.image_pasted: "Bild bifogad (%{label}). Tryck på Enter för att skicka."
 system.resuming_session: "Återupptar session %{session_id}..."
 system.unknown_command: "Okänt kommando \"%{command}\" — skickades som prompt. Skriv /help för listan."
 system.busy_use_stop: "Vänta tills den aktuella prompten är klar, eller använd /stop först."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Ingen fil som kan förhandsgranskas hittades i den aktuella arbetskatalogen."
 system.cannot_focus_session: "Det går inte att fokusera på session %{session_id}: den verkar vara aktiv men inget fönster-GUID är bundet ännu. Försök igen om en stund."
 system.cannot_resume_no_load_session: "Det går inte att återuppta i agentfönstret: %{agent} annonserade inte ACP `loadSession`-funktionen. Tryck på Enter (utan Shift) för att i stället återuppta i ett nytt terminalfönster."
 system.cannot_resume_no_resume_flag: "Det går inte att återuppta %{agent}-sessionen: den här agenten har ingen `--resume`-liknande flagga. Tryck på Shift+Enter för att i stället försöka återuppta inne i agentfönstret via ACP."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
 commands.move.summary: "Flytta agentpanelen för den här fliken (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Förhandsgranska en fil med Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}

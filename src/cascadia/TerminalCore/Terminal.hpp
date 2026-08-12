@@ -385,6 +385,7 @@ private:
     size_t _taskbarProgress = 0;
 
     size_t _hyperlinkPatternId = 0;
+    size_t _filePathPatternId = 1;
 
     std::wstring _answerbackMessage;
     std::wstring _workingDirectory;

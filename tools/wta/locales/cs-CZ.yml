@@ -144,6 +144,8 @@ system.image_pasted: "Obrázek připojen (%{label}). Stiskněte Enter pro odesl�
 system.resuming_session: "Obnovuje se relace %{session_id}..."
 system.unknown_command: "Neznámý příkaz \"%{command}\" — odeslán jako výzva. Seznam zobrazíte zadáním /help."  # {Locked="/help"}
 system.busy_use_stop: "Počkejte, až aktuální výzva skončí, nebo nejdřív použijte /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "V aktuálním pracovním adresáři nebyl nalezen žádný soubor, jehož náhled lze zobrazit."
 system.cannot_focus_session: "Nelze zaměřit relaci %{session_id}: vypadá jako živá, ale zatím není navázán žádný GUID podokna. Zkuste to znovu za chvíli."
 system.cannot_resume_no_load_session: "Nelze obnovit v podokně agenta: %{agent} neohlásil schopnost ACP `loadSession`. Stisknutím Enter (bez Shift) místo toho obnovíte relaci v novém terminálovém podokně."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nelze obnovit relaci %{agent}: tento agent nemá příznak ve stylu `--resume`. Stiskněte Shift+Enter a zkuste obnovit uvnitř podokna agenta přes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -218,6 +220,7 @@ system.agent_switch_unavailable: "Přepínání agentů není mimo kartu Windows
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
 commands.move.summary: "Přesunout panel agenta pro tuto kartu (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Zobrazit náhled souboru pomocí Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Připojený agent neohlásil žádné dostupné modely."
 system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}

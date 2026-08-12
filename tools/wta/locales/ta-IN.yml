@@ -146,6 +146,8 @@ system.image_pasted: "படம் இணைக்கப்பட்டது (%
 system.resuming_session: "அமர்வு %{session_id} மீண்டும் தொடங்கப்படுகிறது..."
 system.unknown_command: "அறியப்படாத கட்டளை \"%{command}\" — prompt ஆக அனுப்பப்பட்டது. பட்டியலுக்கு /help எனத் தட்டச்சு செய்யவும்."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "தற்போதைய prompt முடியும் வரை காத்திருக்கவும், அல்லது முதலில் /stop செய்யவும்."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "தற்போதைய பணிக் கோப்பகத்தில் முன்னோட்டமிடக்கூடிய கோப்பு எதுவும் கிடைக்கவில்லை."
 system.cannot_focus_session: "அமர்வு %{session_id} மீது கவனம் செலுத்த முடியவில்லை: அது live போலத் தெரிகிறது ஆனால் இன்னும் pane GUID எதுவும் பிணைக்கப்படவில்லை. சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்."
 system.cannot_resume_no_load_session: "agent pane-இல் மீண்டும் தொடங்க முடியவில்லை: %{agent} ACP `loadSession` திறனை அறிவிக்கவில்லை. அதற்கு பதிலாக புதிய terminal pane-இல் மீண்டும் தொடங்க Enter (Shift இல்லாமல்) அழுத்தவும்."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} அமர்வை மீண்டும் தொடங்க முடியவில்லை: இந்த agent-க்கு `--resume` பாணி flag இல்லை. அதற்கு பதிலாக ACP மூலம் agent pane-க்குள் மீண்டும் தொடங்க முயற்சிக்க Shift+Enter அழுத்தவும்."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit மூலம் ஒரு கோப்பை முன்னோட்டமிடுங்கள் (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}

@@ -133,6 +133,8 @@ system.image_pasted: "ແນບຮູບພາບແລ້ວ (%{label}). ກົ
 system.resuming_session: "ກຳລັງສືບຕໍ່ session %{session_id}..."
 system.unknown_command: "ບໍ່ຮູ້ຈັກຄຳສັ່ງ \"%{command}\" — ສົ່ງເປັນ prompt ແລ້ວ. ພິມ /help ເພື່ອເບິ່ງລາຍການ."  # {Locked="/help"}
 system.busy_use_stop: "ລໍຖ້າໃຫ້ prompt ປັດຈຸບັນສຳເລັດ ຫຼືໃຊ້ /stop ກ່ອນ."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "ບໍ່ພົບໄຟລ໌ທີ່ສາມາດເບິ່ງຕົວຢ່າງໄດ້ໃນໄດເຣັກທໍຣີເຮັດວຽກປັດຈຸບັນ."
 system.cannot_focus_session: "ບໍ່ສາມາດໂຟກັສ session %{session_id}: ມັນເບິ່ງຄືວ່າ live ແຕ່ຍັງບໍ່ມີ GUID ຂອງ pane ຖືກຜູກໄວ້. ລອງອີກຄັ້ງອີກສັກຄູ່."
 system.cannot_resume_no_load_session: "ບໍ່ສາມາດສືບຕໍ່ໃນ agent pane: %{agent} ບໍ່ໄດ້ແຈ້ງຄວາມສາມາດ ACP `loadSession`. ກົດ Enter (ໂດຍບໍ່ກົດ Shift) ເພື່ອສືບຕໍ່ໃນ terminal pane ໃໝ່ແທນ."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "ບໍ່ສາມາດສືບຕໍ່ session %{agent}: agent ນີ້ບໍ່ມີ flag ແບບ `--resume`. ກົດ Shift+Enter ເພື່ອລອງສືບຕໍ່ພາຍໃນ agent pane ຜ່ານ ACP ແທນ."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "ການສະຫຼັບຕົວແທນ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
 commands.move.summary: "ຍ້າຍແຜງຕົວແທນຂອງແທັບນີ້ (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "ເບິ່ງຕົວຢ່າງໄຟລ໌ດ້ວຍ Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}

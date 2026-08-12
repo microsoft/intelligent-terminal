@@ -148,6 +148,8 @@ system.image_pasted: "تم إرفاق الصورة (%{label}). اضغط Enter ل
 system.resuming_session: "جارٍ استئناف الجلسة %{session_id}..."
 system.unknown_command: "أمر غير معروف \"%{command}\" — تم إرساله كطلب. اكتب /help لعرض القائمة."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "انتظر حتى ينتهي الطلب الحالي، أو استخدم /stop أولًا."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "لم يتم العثور على ملف قابل للمعاينة في دليل العمل الحالي."
 system.cannot_focus_session: "يتعذر التركيز على الجلسة %{session_id}: تبدو نشطة، لكن لم يتم ربط GUID للوحة بعد. حاول مرة أخرى بعد قليل."
 system.cannot_resume_no_load_session: "يتعذر الاستئناف في لوحة العامل: لم يعلن %{agent} عن إمكانية ACP `loadSession`. اضغط Enter (من دون Shift) للاستئناف في لوحة طرفية جديدة بدلًا من ذلك."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "يتعذر استئناف جلسة %{agent}: لا يحتوي هذا العامل على علامة بنمط `--resume`. اضغط Shift+Enter لمحاولة الاستئناف داخل لوحة العامل عبر ACP بدلًا من ذلك."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -218,6 +220,7 @@ system.agent_switch_unavailable: "تبديل عامل الذكاء الاصطن�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
 commands.move.summary: "نقل لوحة عامل الذكاء الاصطناعي لعلامة التبويب هذه (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "معاينة ملف باستخدام Edit ‏(/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}

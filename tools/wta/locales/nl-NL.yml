@@ -133,6 +133,8 @@ system.image_pasted: "Afbeelding bijgevoegd (%{label}). Druk op Enter om te verz
 system.resuming_session: "Sessie %{session_id} wordt hervat..."
 system.unknown_command: "Onbekende opdracht \"%{command}\" — verzonden als prompt. Typ /help voor de lijst."
 system.busy_use_stop: "Wacht tot de huidige prompt is voltooid, of gebruik eerst /stop."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Er is geen bestand gevonden waarvan een voorbeeld kan worden weergegeven in de huidige werkmap."
 system.cannot_focus_session: "Kan sessie %{session_id} niet focussen: deze lijkt live, maar er is nog geen deelvenster-GUID gekoppeld. Probeer het zo opnieuw."
 system.cannot_resume_no_load_session: "Kan niet hervatten in agentdeelvenster: %{agent} heeft de ACP `loadSession`-mogelijkheid niet aangekondigd. Druk op Enter (zonder Shift) om in plaats daarvan te hervatten in een nieuw terminaldeelvenster."
 system.cannot_resume_no_resume_flag: "Kan %{agent}-sessie niet hervatten: deze agent heeft geen vlag in de stijl `--resume`. Druk op Shift+Enter om in plaats daarvan via ACP te proberen te hervatten binnen het agentdeelvenster."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Schakelen tussen agents is niet beschikbaar bu
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
 commands.move.summary: "Het agentdeelvenster van dit tabblad verplaatsen (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Een bestand bekijken met Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}

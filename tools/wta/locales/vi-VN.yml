@@ -133,6 +133,8 @@ system.image_pasted: "Đã đính kèm hình ảnh (%{label}). Nhấn Enter đ�
 system.resuming_session: "Đang tiếp tục phiên %{session_id}..."
 system.unknown_command: "Lệnh không xác định \"%{command}\" — đã gửi dưới dạng lời nhắc. Nhập /help để xem danh sách."  # {Locked="/help"}
 system.busy_use_stop: "Hãy đợi lời nhắc hiện tại hoàn tất, hoặc chạy /stop trước."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Không tìm thấy tệp nào có thể xem trước trong thư mục làm việc hiện tại."
 system.cannot_focus_session: "Không thể tập trung vào phiên %{session_id}: phiên có vẻ đang hoạt động nhưng chưa có GUID bảng nào được liên kết. Hãy thử lại sau giây lát."
 system.cannot_resume_no_load_session: "Không thể tiếp tục trong bảng tác nhân: %{agent} không quảng bá khả năng ACP `loadSession`. Thay vào đó, nhấn Enter (không nhấn Shift) để tiếp tục trong bảng terminal mới."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Không thể tiếp tục phiên %{agent}: tác nhân này không có cờ kiểu `--resume`. Nhấn Shift+Enter để thử tiếp tục bên trong bảng tác nhân thông qua ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Tính năng chuyển đổi agent không khả
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
 commands.move.summary: "Di chuyển bảng tác nhân AI của tab này (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Xem trước tệp bằng Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}

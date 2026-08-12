@@ -129,6 +129,7 @@ system.image_pasted: "已附加图片（%{label}）。按 Enter 发送。"  # {L
 system.resuming_session: "正在恢复会话 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}
 system.busy_use_stop: "请等待当前提示完成，或先执行 /stop。"  # {Locked="/stop"}
+system.preview_unavailable: "当前工作目录中没有可预览的文件。"  # /preview 无法枚举或打开所选文件时显示。{Locked="/preview"}
 system.cannot_focus_session: "无法聚焦会话 %{session_id}：它看起来处于活动状态，但尚未绑定窗格 GUID。请稍后重试。"
 system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。请改按 Enter（不按 Shift）以在新的终端窗格中恢复。"  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。请按 Shift+Enter，改为尝试通过 ACP 在智能体窗格内恢复。"  # {Locked="--resume","Shift","Enter","ACP"}
@@ -211,6 +212,7 @@ system.agent_switch_unavailable: "在 Windows Terminal 标签页之外，智能�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
 commands.move.summary: "移动此标签页的智能体窗格 (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "使用 Edit 预览文件 (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}

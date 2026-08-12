@@ -30,6 +30,7 @@
   <!-- ========================= Headers ======================== -->
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="FileHyperlink.h" />
     <ClInclude Include="ControlCore.h">
       <DependentUpon>ControlCore.idl</DependentUpon>
     </ClInclude>

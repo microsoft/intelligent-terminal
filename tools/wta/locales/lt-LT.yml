@@ -133,6 +133,8 @@ system.image_pasted: "Vaizdas pridėtas (%{label}). Paspauskite Enter, kad išsi
 system.resuming_session: "Tęsiamas seansas %{session_id}..."
 system.unknown_command: "Nežinoma komanda \"%{command}\" — išsiųsta kaip užklausa. Sąrašui įveskite /help."  # {Locked="/help"}
 system.busy_use_stop: "Palaukite, kol dabartinė užklausa bus baigta, arba pirmiausia naudokite /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Dabartiniame darbiniame kataloge nerasta failo, kurį būtų galima peržiūrėti."
 system.cannot_focus_session: "Nepavyksta sufokusuoti seanso %{session_id}: jis atrodo aktyvus, bet dar nėra susietas joks srities GUID. Bandykite dar kartą po akimirkos."
 system.cannot_resume_no_load_session: "Nepavyksta tęsti agento srityje: %{agent} nepaskelbė ACP `loadSession` galimybės. Paspauskite Enter (be Shift), kad vietoj to tęstumėte naujoje terminalo srityje."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nepavyksta tęsti %{agent} seanso: šis agentas neturi `--resume` tipo vėliavėlės. Paspauskite Shift+Enter, kad pabandytumėte tęsti agento srityje per ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Window
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
 commands.move.summary: "Perkelti šios kortelės agento skydelį (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Peržiūrėti failą naudojant Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
 system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}

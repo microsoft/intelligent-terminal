@@ -146,6 +146,8 @@ system.image_pasted: "ചിത്രം അറ്റാച്ച് ചെയ�
 system.resuming_session: "സെഷൻ %{session_id} പുനരാരംഭിക്കുന്നു..."
 system.unknown_command: "അറിയാത്ത കമാൻഡ് \"%{command}\" — പ്രോംപ്റ്റായി അയച്ചു. പട്ടികയ്ക്കായി /help ടൈപ്പ് ചെയ്യുക."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "നിലവിലെ പ്രോംപ്റ്റ് പൂർത്തിയാകുന്നത് വരെ കാത്തിരിക്കുക, അല്ലെങ്കിൽ ആദ്യം /stop ചെയ്യുക."  # {Locked="/stop"} — slash-command name.
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "നിലവിലെ വർക്കിങ് ഡയറക്ടറിയിൽ പ്രിവ്യൂ ചെയ്യാവുന്ന ഫയലൊന്നും കണ്ടെത്തിയില്ല."
 system.cannot_focus_session: "സെഷൻ %{session_id} ഫോക്കസ് ചെയ്യാനാകില്ല: അത് live ആയി തോന്നുന്നു, പക്ഷേ pane GUID ഇനിയും ബൗണ്ട് ചെയ്തിട്ടില്ല. കുറച്ച് കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കുക."
 system.cannot_resume_no_load_session: "agent pane-ൽ പുനരാരംഭിക്കാൻ കഴിയില്ല: %{agent} ACP `loadSession` കഴിവ് പ്രഖ്യാപിച്ചിട്ടില്ല. പകരം പുതിയ terminal pane-ൽ പുനരാരംഭിക്കാൻ Enter (Shift ഇല്ലാതെ) അമർത്തുക."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "%{agent} സെഷൻ പുനരാരംഭിക്കാൻ കഴിയില്ല: ഈ agent-ന് `--resume` ശൈലിയിലുള്ള flag ഇല്ല. പകരം ACP വഴി agent pane-നുള്ളിൽ പുനരാരംഭിക്കാൻ Shift+Enter അമർത്തി ശ്രമിക്കുക."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "വിൻഡോസ് ടെർമിനൽ �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ഈ ടാബിന്റെ ഏജന്റ് പേൻ നീക്കുക (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit ഉപയോഗിച്ച് ഒരു ഫയൽ പ്രിവ്യൂ ചെയ്യുക (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}

@@ -133,6 +133,8 @@ system.image_pasted: "Attēls pievienots (%{label}). Nospiediet Enter, lai nosū
 system.resuming_session: "Tiek atsākta sesija %{session_id}..."
 system.unknown_command: "Nezināma komanda \"%{command}\" — nosūtīta kā uzvedne. Sarakstam ierakstiet /help."  # {Locked="/help"}
 system.busy_use_stop: "Uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta, vai vispirms izmantojiet /stop."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Pašreizējā darba direktorijā netika atrasts neviens priekšskatāms fails."
 system.cannot_focus_session: "Nevar fokusēt sesiju %{session_id}: tā šķiet aktīva, bet vēl nav piesaistīts neviens rūts GUID. Pēc brīža mēģiniet vēlreiz."
 system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju. Nospiediet Enter (bez Shift), lai tā vietā atsāktu jaunā termināļa rūtī."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga. Nospiediet Shift+Enter, lai mēģinātu atsākt aģenta rūtī, izmantojot ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Aģenta pārslēgšana nav pieejama ārpus Win
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}
 commands.move.summary: "Pārvietot šīs cilnes aģenta paneli (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Priekšskatīt failu, izmantojot Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}

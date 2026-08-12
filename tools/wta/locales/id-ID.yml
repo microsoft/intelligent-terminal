@@ -133,6 +133,8 @@ system.image_pasted: "Gambar dilampirkan (%{label}). Tekan Enter untuk mengirim.
 system.resuming_session: "Melanjutkan sesi %{session_id}..."
 system.unknown_command: "Perintah tidak dikenal \"%{command}\" — dikirim sebagai prompt. Ketik /help untuk daftar."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu hingga prompt saat ini selesai, atau jalankan /stop terlebih dahulu."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Tidak ada file yang dapat dipratinjau di direktori kerja saat ini."
 system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi tampak aktif, tetapi GUID panel belum terikat. Coba lagi sebentar lagi."
 system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`. Tekan Enter (tanpa Shift) untuk melanjutkan di panel terminal baru sebagai gantinya."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`. Tekan Shift+Enter untuk mencoba melanjutkan di dalam panel agen melalui ACP sebagai gantinya."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Wind
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
 commands.move.summary: "Pindahkan panel agen tab ini (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Pratinjau file dengan Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}

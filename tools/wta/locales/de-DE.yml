@@ -135,6 +135,8 @@ system.image_pasted: "Bild angehängt (%{label}). Drücken Sie Enter zum Senden.
 system.resuming_session: "Sitzung %{session_id} wird fortgesetzt..."
 system.unknown_command: "Unbekannter Befehl \"%{command}\" — als Prompt gesendet. Geben Sie /help ein, um die Liste anzuzeigen."
 system.busy_use_stop: "Warten Sie, bis der aktuelle Prompt abgeschlossen ist, oder verwenden Sie zuerst /stop."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Im aktuellen Arbeitsverzeichnis wurde keine Datei gefunden, für die eine Vorschau verfügbar ist."
 system.cannot_focus_session: "Sitzung %{session_id} kann nicht fokussiert werden: Sie scheint aktiv zu sein, aber es ist noch keine Bereichs-GUID gebunden. Versuchen Sie es gleich erneut."
 system.cannot_resume_no_load_session: "Fortsetzen im Agentbereich nicht möglich: %{agent} hat die ACP-`loadSession`-Funktion nicht angekündigt. Drücken Sie Enter (ohne Shift), um stattdessen in einem neuen Terminalbereich fortzusetzen."
 system.cannot_resume_no_resume_flag: "%{agent}-Sitzung kann nicht fortgesetzt werden: Dieser Agent verfügt über kein `--resume`-ähnliches Flag. Drücken Sie Shift+Enter, um stattdessen das Fortsetzen im Agentbereich über ACP zu versuchen."
@@ -218,6 +220,7 @@ system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb eine
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
 commands.move.summary: "Agentenbereich dieser Registerkarte verschieben (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Datei mit Edit in der Vorschau anzeigen (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}

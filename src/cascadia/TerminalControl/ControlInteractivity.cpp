@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "ControlInteractivity.h"
+#include "FileHyperlink.h"
 #include <DefaultSettings.h>
 #include <unicode.hpp>
 #include <Utils.h>
@@ -272,8 +273,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         // GH#9396: we prioritize hyper-link over VT mouse events
         auto hyperlink = _core->GetHyperlink(terminalPosition.to_core_point());
+        const auto fileHyperlink = ::Microsoft::Terminal::Control::ResolveFileHyperlink(hyperlink, _core->WorkingDirectory());
         if (WI_IsFlagSet(buttonState, MouseButtonState::IsLeftButtonDown) &&
-            ctrlEnabled &&
+            (ctrlEnabled || fileHyperlink.has_value()) &&
             !hyperlink.empty())
         {
             const auto clickCount = _numberOfClicks(pixelPosition, timestamp);

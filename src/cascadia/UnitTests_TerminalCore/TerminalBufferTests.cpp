@@ -634,6 +634,18 @@ void TerminalBufferTests::TestURLPatternDetection()
     result = term->GetHyperlinkAtBufferPosition(til::point{ urlEndX + 1, 0 });
     VERIFY_IS_TRUE(result.empty(), L"URL is not detected after the actual URL.");
 
+    Log::Comment(L"Test file location detection");
+    {
+        constexpr auto FileLocation = L"src\\cascadia\\TerminalApp\\TerminalPage.cpp:7919:5"sv;
+        termSm.ProcessString(L"\r\n");
+        termSm.ProcessString(FileLocation);
+        term->UpdatePatternsUnderLock();
+
+        const auto row = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 0, row });
+        VERIFY_ARE_EQUAL(result, FileLocation, L"Detected file location includes line and column.");
+    }
+
     Log::Comment(L"Test wrapped URL detection");
     {
         // Build a URL longer than the terminal width so it wraps

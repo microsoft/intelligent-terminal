@@ -133,6 +133,8 @@ system.image_pasted: "Naka-attach ang larawan (%{label}). Pindutin ang Enter par
 system.resuming_session: "Ipinagpapatuloy ang session %{session_id}..."
 system.unknown_command: "Hindi kilalang command \"%{command}\" — ipinadala bilang prompt. I-type ang /help para sa listahan."  # {Locked="/help"}
 system.busy_use_stop: "Hintaying matapos ang kasalukuyang prompt, o mag-/stop muna."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Walang nakitang file na maaaring i-preview sa kasalukuyang working directory."
 system.cannot_focus_session: "Hindi ma-focus ang session %{session_id}: mukhang live ito pero wala pang naka-bind na pane GUID. Subukan muli pagkalipas ng ilang sandali."
 system.cannot_resume_no_load_session: "Hindi maipagpatuloy sa agent pane: hindi in-advertise ng %{agent} ang ACP `loadSession` capability. Pindutin ang Enter (nang walang Shift) para ipagpatuloy na lang sa bagong terminal pane."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "Hindi maipagpatuloy ang %{agent} session: walang `--resume`-style flag ang agent na ito. Pindutin ang Shift+Enter para subukang ipagpatuloy sa loob ng agent pane sa pamamagitan ng ACP."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
 commands.move.summary: "Ilipat ang agent pane ng tab na ito (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "I-preview ang isang file gamit ang Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}

@@ -133,6 +133,8 @@ system.image_pasted: "Bild ugehängt (%{label}). Dréckt Enter fir ze schécken.
 system.resuming_session: "Sessioun %{session_id} gëtt weidergefouert..."
 system.unknown_command: "Onbekannte Commande \"%{command}\" — als Prompt geschéckt. Tippt /help fir d’Lëscht."
 system.busy_use_stop: "Waart bis den aktuelle Prompt fäerdeg ass, oder benotzt fir d’éischt /stop."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Am aktuelle Schaffverzeechnes gouf kee Fichier fonnt, dee kann ugewise ginn."
 system.cannot_focus_session: "Sessioun %{session_id} kann net fokusséiert ginn: si schéngt aktiv ze sinn, mee et ass nach kee Fënster-GUID gebonnen. Probéiert et gläich nach eng Kéier."
 system.cannot_resume_no_load_session: "Kann net am Agent-Fënster weiderfueren: %{agent} huet d’ACP `loadSession`-Fäegkeet net ugekënnegt. Dréckt Enter (ouni Shift) fir amplaz an engem neien Terminal-Fënster weiderzefueren."
 system.cannot_resume_no_resume_flag: "Kann %{agent}-Sessioun net weiderfueren: dësen Agent huet kee `--resume`-ähnleche Fändel. Dréckt Shift+Enter fir amplaz am Agent-Fënster iwwer ACP weiderzefueren."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "D'Agenten-Umschalten ass ausserhalb vun engem 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
 commands.move.summary: "Deen Agent-Panell vun dësem Tab réckelen (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Virschau vun engem Fichier mat Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}

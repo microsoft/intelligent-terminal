@@ -146,6 +146,8 @@ system.image_pasted: "प्रतिमा जोडल्या (%{label}). �
 system.resuming_session: "सत्र %{session_id} परत सुरू जाता..."
 system.unknown_command: "अज्ञात कमांड \"%{command}\" — प्रॉम्प्ट म्हूण धाडली. वळेरी खातीर /help टायप करात."  # {Locked="/help"}
 system.busy_use_stop: "सद्याचो प्रॉम्प्ट सोंप मेरेन रावात, वा पयलीं /stop वापरात."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "सद्याच्या कार्य निर्देशिकेंत पूर्वावलोकन करपाक योग्य फायल मेळूंक ना."
 system.cannot_focus_session: "सत्र %{session_id} चेर फोकस करूंक शकना: तें live दिसता पूण अजून कसलेच पेन GUID बांदिलें ना. थोड्या वेळान परत प्रयत्न करात."
 system.cannot_resume_no_load_session: "एजंट पेनांत परत सुरू करूंक शकना: %{agent} नें ACP `loadSession` क्षमता जाहीर करूंक ना. त्याऐवजी नव्या टर्मिनल पेनांत परत सुरू करपाक Enter (Shift शिवाय) दामात."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "%{agent} सत्र परत सुरू करूंक शकना: ह्या एजंटाक `--resume` सारको फ्लॅग ना. त्याऐवजी ACP वरवीं एजंट पेनांत परत सुरू करपाचो प्रयत्न करपाक Shift+Enter दामात."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -217,6 +219,7 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ह्या पेना खातीर मॉडेल निवडात (थेट बदलपाक /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ह्या टॅबाचें एजंट पेन हलायात (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit वापरून फायलीचें पूर्वावलोकन करात (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "मॉडेल निवडात (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिल्ल्या एजंटान कसलेच निवडपायोग्य मॉडेल जाहीर केलें ना."
 system.model_set: "ह्या पेना खातीर मॉडेल %{model} चेर सेट केलें."  # {Locked="%{model}"}

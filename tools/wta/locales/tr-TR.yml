@@ -146,6 +146,8 @@ system.image_pasted: "Görsel eklendi (%{label}). Göndermek için Enter tuşuna
 system.resuming_session: "%{session_id} oturumu sürdürülüyor..."
 system.unknown_command: "Bilinmeyen komut \"%{command}\" — istem olarak gönderildi. Liste için /help yazın."  # {Locked="/help"}
 system.busy_use_stop: "Geçerli istemin bitmesini bekleyin veya önce /stop kullanın."  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Geçerli çalışma dizininde önizlenebilir bir dosya bulunamadı."
 system.cannot_focus_session: "%{session_id} oturumuna odaklanılamıyor: canlı görünüyor ancak henüz hiçbir bölme GUID’i bağlanmamış. Birazdan tekrar deneyin."
 system.cannot_resume_no_load_session: "Aracı bölmesinde sürdürülemiyor: %{agent} ACP `loadSession` özelliğini duyurmadı. Bunun yerine yeni bir terminal bölmesinde sürdürmek için Enter (Shift olmadan) tuşuna basın."  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "%{agent} oturumu sürdürülemiyor: bu aracının `--resume` tarzı bayrağı yok. Bunun yerine ACP üzerinden aracı bölmesinde sürdürmeyi denemek için Shift+Enter tuşlarına basın."  # {Locked="--resume","Shift","Enter","ACP"}
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "Aracı geçişi, bir Windows Terminal sekmesin
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bu sekmenin aracı panelini taşı (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Edit ile bir dosyayı önizleyin (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}

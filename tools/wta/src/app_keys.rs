@@ -886,6 +886,7 @@ impl App {
                 // invisibly without a caret.
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().insert_input_char(c);
+                    self.maybe_load_preview_candidates();
                 }
             }
             _ => {}

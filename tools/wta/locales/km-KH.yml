@@ -147,6 +147,8 @@ system.image_pasted: "បានភ្ជាប់រូបភាព (%{label})�
 system.resuming_session: "កំពុងបន្តវគ្គ %{session_id}..."
 system.unknown_command: "មិនស្គាល់ពាក្យបញ្ជា \"%{command}\" — បានផ្ញើជាសំណើ។ វាយ /help ដើម្បីមើលបញ្ជី។"  # {Locked="/help"}
 system.busy_use_stop: "រង់ចាំឱ្យសំណើបច្ចុប្បន្នបញ្ចប់ ឬប្រើ /stop ជាមុន។"  # {Locked="/stop"}
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "រកមិនឃើញឯកសារដែលអាចមើលជាមុនបាននៅក្នុងថតការងារបច្ចុប្បន្នទេ។"
 system.cannot_focus_session: "មិនអាចផ្តោតទៅលើវគ្គ %{session_id}: វាហាក់ដូចជាកំពុងដំណើរការ ប៉ុន្តែមិនទាន់បានភ្ជាប់ GUID របស់ផ្តាំងនៅឡើយទេ។ សូមសាកល្បងម្ដងទៀតបន្តិចទៀត។"
 system.cannot_resume_no_load_session: "មិនអាចបន្តនៅក្នុងផ្តាំងអេជេន្ត់បានទេ: %{agent} មិនបានប្រកាសសមត្ថភាព ACP `loadSession` ទេ។ ចុច Enter (ដោយមិនចុច Shift) ដើម្បីបន្តនៅក្នុងផ្តាំង terminal ថ្មីជំនួសវិញ។"  # {Locked="ACP","loadSession","Enter","Shift"}
 system.cannot_resume_no_resume_flag: "មិនអាចបន្តវគ្គ %{agent} បានទេ: អេជេន្ត់នេះមិនមាន flag រចនាប័ទ្ម `--resume` ទេ។ ចុច Shift+Enter ដើម្បីសាកល្បងបន្តនៅក្នុងផ្តាំងអេជេន្ត់តាម ACP ជំនួសវិញ។"  # {Locked="--resume","Shift","Enter","ACP"}
@@ -232,6 +234,7 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "មើលឯកសារជាមុនដោយប្រើ Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}

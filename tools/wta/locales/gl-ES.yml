@@ -133,6 +133,8 @@ system.image_pasted: "Imaxe anexada (%{label}). Prema Enter para enviar."  # {Lo
 system.resuming_session: "Retomando a sesión %{session_id}..."
 system.unknown_command: "Comando descoñecido \"%{command}\" — enviado como solicitude. Escriba /help para ver a lista."
 system.busy_use_stop: "Agarde a que remate a solicitude actual, ou use /stop primeiro."
+# Shown when /preview cannot enumerate or open a selected file.
+system.preview_unavailable: "Non se atopou ningún ficheiro que se poida previsualizar no directorio de traballo actual."
 system.cannot_focus_session: "Non se pode enfocar a sesión %{session_id}: semella activa, pero aínda non hai ningún GUID de panel vinculado. Ténteo de novo nun momento."
 system.cannot_resume_no_load_session: "Non se pode retomar no panel de axente: %{agent} non anunciou a capacidade ACP `loadSession`. Prema Enter (sen Shift) para retomala nun novo panel de terminal."
 system.cannot_resume_no_resume_flag: "Non se pode retomar a sesión de %{agent}: este axente non ten unha marca de estilo `--resume`. Prema Shift+Enter para tentar retomala dentro do panel de axente mediante ACP."
@@ -216,6 +218,7 @@ system.agent_switch_unavailable: "O cambio de axente non está dispoñible fóra
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Escolla o modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mover o panel de axente desta pestana (/move <position>)"  # {Locked="/move","<position>"}
+commands.preview.summary: "Previsualizar un ficheiro con Edit (/preview <path>)"  # {Locked="Edit","/preview","<path>"}
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O axente conectado non anunciou ningún modelo seleccionable."
 system.model_set: "O modelo deste panel estableceuse en %{model}."  # {Locked="%{model}"}
