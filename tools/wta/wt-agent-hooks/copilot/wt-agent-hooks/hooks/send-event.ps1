@@ -251,7 +251,6 @@ try {
     $wrapper = @{
         cli_source       = $cliSource
         agent_session_id = $agentSessionId
-        pane_bound       = [bool]$env:WT_SESSION
         payload          = $parsed
     }
 
@@ -286,7 +285,6 @@ try {
         $wrapper = @{
             cli_source       = $cliSource
             agent_session_id = $agentSessionId
-            pane_bound       = [bool]$env:WT_SESSION
             payload          = @{
                 _truncated     = $true
                 _original_size = $originalSize

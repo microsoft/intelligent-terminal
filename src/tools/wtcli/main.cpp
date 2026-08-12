@@ -992,15 +992,30 @@ int main()
         auto server = connectIfRunning();
         if (!server) return;
         std::string resolvedSessionId;
-        if (!sendEventPaneTarget.empty())
+        const auto paneIdIsExplicit = !sendEventPaneTarget.empty();
+        if (paneIdIsExplicit)
         {
             resolvedSessionId = sendEventPaneTarget;
         }
         else
         {
-            // Fall back to the active pane as the event source. If there is no
-            // active pane, bail rather than sending with an all-zero GUID,
-            // which would silently misroute the event.
+            // No --pane given: fall back to the focused pane so the event
+            // still carries a concrete pane id, and bail if there isn't one
+            // rather than emitting an all-zero GUID.
+            //
+            // Delivery does not depend on this: SendEvent broadcasts to every
+            // subscriber and only filters by pane when a listener passes
+            // --target. The fallback exists because a *blank* pane id is
+            // actively harmful downstream — wta's session registry keys
+            // `active_by_pane` by pane id, so sessions arriving with an empty
+            // id all collide on one key and demote each other (see the
+            // post-mortem in tools/wta/src/helper/runtime.rs).
+            //
+            // The id is therefore a placeholder, not a claim about origin. An
+            // agent CLI spawned by wta-master has no WT_SESSION, so its hooks
+            // pass no --pane and would otherwise be attributed to whichever
+            // pane happens to be focused. `pane_bound` below records that
+            // distinction for consumers that bind per-pane state.
             const auto activeSid = ResolveSessionId(server.get(), "");
             if (IsEqualGUID(activeSid, GUID{}))
             {
@@ -1011,7 +1026,7 @@ int main()
             resolvedSessionId = GuidToString(activeSid);
         }
         Json::Value evt;
-        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
+        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, paneIdIsExplicit, evt))
         {
             fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
             exitCode = 1;

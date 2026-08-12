@@ -529,6 +529,8 @@ namespace TerminalAppLocalTests
     {
         using winrt::TerminalApp::implementation::ShouldBindPaneAgentSession;
 
+        // wtcli stamps `pane_bound` from whether the event carried an explicit
+        // `--pane`, so an inferred (focused-pane) origin never binds.
         VERIFY_IS_FALSE(ShouldBindPaneAgentSession(true, false));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(true, true));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(false, false));

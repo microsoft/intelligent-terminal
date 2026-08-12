@@ -91,6 +91,15 @@ namespace winrt::TerminalApp::implementation
                (hasKeptSessionId || hasShellSessionRestorePath);
     }
 
+    // `paneBound` mirrors `params["pane_bound"]`, which wtcli stamps from
+    // whether the event carried an explicit `--pane`. False means the pane id
+    // was inferred from the focused pane purely so the event could be
+    // delivered — an agent-pane CLI has no WT_SESSION and would otherwise have
+    // its ACP session attributed to whatever shell pane happens to be focused.
+    //
+    // wtcli ships in the same package as this code, so the flag is always
+    // present for events that came through it; anything else is not
+    // authoritative about its origin and must not create a binding either.
     inline constexpr bool ShouldBindPaneAgentSession(
         const bool sessionStarted,
         const bool paneBound) noexcept

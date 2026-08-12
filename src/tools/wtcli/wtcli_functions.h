@@ -113,10 +113,22 @@ namespace wtcli
     //                the WT pane GUID, which goes into `params["pane_id"]`
     //                — matching the rename in TerminalPage.cpp for
     //                connection_state / vt_sequence events.
+    // |paneIdIsExplicit| — true when the caller passed `--pane`, i.e. the
+    //                event source really is that pane. False when the pane was
+    //                inferred from the currently focused pane, which is only a
+    //                placeholder — it does NOT identify the origin.
+    //                Stamped as `params["pane_bound"]`, overriding whatever the
+    //                caller put in `paramsJson`: only wtcli knows whether the
+    //                id was supplied or guessed, and consumers such as
+    //                TerminalPage's agent-session binding must never attribute
+    //                an inferred pane. wtcli ships in the same package as the
+    //                consumer, so this flag is always in lockstep with it —
+    //                unlike the agent hook scripts, which upgrade separately.
     inline bool BuildSendEventJson(
         const std::string& eventType,
         const std::string& paramsJson,
         const std::string& sessionId,
+        const bool paneIdIsExplicit,
         Json::Value& outEvt)
     {
         Json::Value params;
@@ -133,6 +145,7 @@ namespace wtcli
 
         params["event"] = eventType;
         params["pane_id"] = sessionId;
+        params["pane_bound"] = paneIdIsExplicit;
 
         outEvt["type"] = "event";
         outEvt["method"] = "agent_event";
