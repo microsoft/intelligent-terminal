@@ -71,7 +71,10 @@ public:
     void NotifyBufferRotation(const int delta) override;
     void NotifyShellIntegrationMark() override;
 
-    void InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength) override;
+    void InvokeCompletions(std::wstring_view menuJson,
+                           unsigned int replacementIndex,
+                           unsigned int replacementLength,
+                           unsigned int cursorIndex) override;
 
     void SearchMissingCommand(std::wstring_view missingCommand) override;
     void NotifyVtSequence(std::wstring_view sequence) override;

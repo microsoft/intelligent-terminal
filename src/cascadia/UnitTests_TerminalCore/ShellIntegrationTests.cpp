@@ -52,6 +52,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
+    TEST_METHOD(PowerShell_ScriptContent_RegistersCompletionHandler);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -487,6 +488,45 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeat
                        referenceCheck < lazyParseGuard &&
                        lazyParseGuard < parseInput,
                    L"Constrained Language Mode must bypass static parser and reference-identity method calls");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_RegistersCompletionHandler()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto functionStart = script.find("function Global:__ShellInteg_SendCompletions");
+    const auto emptyItems = script.find("$items = @()", functionStart);
+    const auto bufferState = script.find("PSConsoleReadLine]::GetBufferState", functionStart);
+    const auto expansion = script.find("TabExpansion2 -inputScript $line -cursorColumn $cursorIndex", bufferState);
+    const auto errorHandler = script.find("catch {", expansion);
+    const auto serialization = script.find("ConvertTo-Json -InputObject $items -Compress", expansion);
+    const auto osc = script.find("]633;Completions;", serialization);
+    const auto write = script.find("[Console]::Write($sequence)", osc);
+    const auto surfacedError = script.find("Write-Error -ErrorRecord $completionError", write);
+    const auto requestBinding = script.find("Set-PSReadLineKeyHandler -Chord 'F12,b'", write);
+    const auto applyMode = script.find("ApplyMode = 'psreadline-v1'", expansion);
+    const auto applyFunction = script.find("function Global:__ShellInteg_ApplyCompletion", write);
+    const auto replace = script.find("PSConsoleReadLine]::Replace(", applyFunction);
+    const auto cursor = script.find("PSConsoleReadLine]::SetCursorPosition(", replace);
+    const auto applyBinding = script.find("Set-PSReadLineKeyHandler -Chord 'F12,c'", cursor);
+
+    VERIFY_IS_TRUE(functionStart != std::string::npos &&
+                       functionStart < emptyItems &&
+                       emptyItems < bufferState &&
+                       functionStart < bufferState &&
+                       bufferState < expansion &&
+                       serialization < errorHandler &&
+                       errorHandler < osc &&
+                       expansion < applyMode &&
+                       expansion < serialization &&
+                       serialization < osc &&
+                       osc < write &&
+                       write < surfacedError &&
+                       write < applyFunction &&
+                       applyFunction < replace &&
+                       replace < cursor &&
+                       cursor < requestBinding &&
+                       requestBinding < applyBinding,
+                   L"The PowerShell integration must request native completions and apply accepted replacements through PSReadLine");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────

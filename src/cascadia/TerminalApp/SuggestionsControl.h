@@ -45,7 +45,6 @@ namespace winrt::TerminalApp::implementation
                   Windows::Foundation::Point anchor,
                   Windows::Foundation::Size space,
                   float characterHeight);
-
         til::typed_event<winrt::TerminalApp::SuggestionsControl, Microsoft::Terminal::Settings::Model::Command> DispatchCommandRequested;
         til::typed_event<Windows::Foundation::IInspectable, Microsoft::Terminal::Settings::Model::Command> PreviewAction;
 
@@ -88,6 +87,11 @@ namespace winrt::TerminalApp::implementation
 
         void _switchToMode();
         void _setDirection(TerminalApp::SuggestionsDirection direction);
+        void _open(uint32_t itemCount,
+                   winrt::hstring filterText,
+                   Windows::Foundation::Point anchor,
+                   Windows::Foundation::Size space,
+                   float characterHeight);
 
         void _scrollToIndex(uint32_t index);
 

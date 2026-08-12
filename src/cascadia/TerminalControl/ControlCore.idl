@@ -172,6 +172,8 @@ namespace Microsoft.Terminal.Control
 
         String ReadEntireBuffer();
         String ReadLastPrompt();
+        Boolean IsAtShellPrompt { get; };
+        Boolean IsInAlternateBuffer { get; };
         CommandHistoryContext CommandHistory();
         Boolean QuickFixesAvailable { get; };
 

@@ -301,6 +301,7 @@ public:
     std::vector<MarkExtents> GetMarkExtents(size_t limit = SIZE_T_MAX) const;
     void ClearMarksInRange(const til::point start, const til::point end);
     void ClearAllMarks();
+    bool IsAtShellPrompt() const noexcept;
     std::wstring CurrentCommand() const;
     std::vector<std::wstring> Commands() const;
     void StartPrompt();

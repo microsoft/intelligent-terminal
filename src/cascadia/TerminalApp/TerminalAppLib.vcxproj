@@ -74,6 +74,9 @@
     <Page Include="SuggestionsControl.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="IntelliSenseControl.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="SnippetsPaneContent.xaml">
       <SubType>Designer</SubType>
     </Page>
@@ -185,8 +188,16 @@
     <ClInclude Include="Toast.h" />
     <ClInclude Include="DesktopNotification.h" />
     <ClInclude Include="TerminalSettingsCache.h" />
+    <ClInclude Include="CompletionCoordinator.h" />
+    <ClInclude Include="CompletionProvider.h" />
+    <ClInclude Include="HistoryCompletionProvider.h" />
+    <ClInclude Include="PromptInputModel.h" />
+    <ClInclude Include="PathCompletionProvider.h" />
     <ClInclude Include="SuggestionsControl.h">
       <DependentUpon>SuggestionsControl.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="IntelliSenseControl.h">
+      <DependentUpon>IntelliSenseControl.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="MarkdownPaneContent.h">
       <DependentUpon>MarkdownPaneContent.xaml</DependentUpon>
@@ -206,6 +217,10 @@
     <ClCompile Include="AppCommandlineArgs.cpp" />
     <ClCompile Include="Commandline.cpp" />
     <ClCompile Include="CommandPaletteItems.cpp" />
+    <ClCompile Include="CompletionCoordinator.cpp" />
+    <ClCompile Include="HistoryCompletionProvider.cpp" />
+    <ClCompile Include="PromptInputModel.cpp" />
+    <ClCompile Include="PathCompletionProvider.cpp" />
     <ClCompile Include="Jumplist.cpp" />
     <ClCompile Include="LanguageProfileNotifier.cpp" />
     <ClCompile Include="MinMaxCloseControl.cpp">
@@ -314,6 +329,9 @@
     <ClCompile Include="SuggestionsControl.cpp">
       <DependentUpon>SuggestionsControl.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="IntelliSenseControl.cpp">
+      <DependentUpon>IntelliSenseControl.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="MarkdownPaneContent.cpp">
       <DependentUpon>MarkdownPaneContent.xaml</DependentUpon>
       <SubType>Code</SubType>
@@ -386,6 +404,10 @@
     </Midl>
     <Midl Include="SuggestionsControl.idl">
       <DependentUpon>SuggestionsControl.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="IntelliSenseControl.idl">
+      <DependentUpon>IntelliSenseControl.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="FilteredCommand.idl" />

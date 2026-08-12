@@ -26,6 +26,7 @@
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <system_error>
 
 #include "../inc/IntelligentTerminalPaths.h"
@@ -42,7 +43,8 @@ namespace winrt::TerminalApp::implementation
         return ::IntelligentTerminal::LogDirVersioned();
     }
 
-    inline void _agentPaneLog(const std::string& msg)
+    inline void _intelligentTerminalFileLog(const std::wstring_view fileName, const std::string& msg) noexcept
+    try
     {
         std::filesystem::path logDir = _intelligentTerminalLogDir();
         if (logDir.empty())
@@ -85,7 +87,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto logPath = (logDir / L"terminal-agent-pane.log").wstring();
+        const auto logPath = (logDir / fileName).wstring();
         const HANDLE h = CreateFileW(logPath.c_str(),
                                      FILE_APPEND_DATA,
                                      FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -100,5 +102,18 @@ namespace winrt::TerminalApp::implementation
         DWORD written = 0;
         WriteFile(h, line.data(), static_cast<DWORD>(n), &written, nullptr);
         CloseHandle(h);
+    }
+    catch (...)
+    {
+    }
+
+    inline void _agentPaneLog(const std::string& msg) noexcept
+    {
+        _intelligentTerminalFileLog(L"terminal-agent-pane.log", msg);
+    }
+
+    inline void _intelliSenseLog(const std::string& msg) noexcept
+    {
+        _intelligentTerminalFileLog(L"terminal-intellisense.log", msg);
     }
 }

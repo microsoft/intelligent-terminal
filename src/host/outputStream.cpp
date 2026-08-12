@@ -463,7 +463,10 @@ void ConhostInternalGetSet::NotifyShellIntegrationMark()
     // Not implemented for conhost - shell integration marks are a Terminal app feature.
 }
 
-void ConhostInternalGetSet::InvokeCompletions(std::wstring_view /*menuJson*/, unsigned int /*replaceLength*/)
+void ConhostInternalGetSet::InvokeCompletions(std::wstring_view /*menuJson*/,
+                                              unsigned int /*replacementIndex*/,
+                                              unsigned int /*replacementLength*/,
+                                              unsigned int /*cursorIndex*/)
 {
     // Not implemented for conhost.
 }

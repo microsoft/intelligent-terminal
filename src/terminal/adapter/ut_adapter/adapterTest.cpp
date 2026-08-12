@@ -226,11 +226,16 @@ public:
         Log::Comment(L"NotifyShellIntegrationMark MOCK called...");
     }
 
-    void InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength) override
+    void InvokeCompletions(std::wstring_view menuJson,
+                           unsigned int replacementIndex,
+                           unsigned int replacementLength,
+                           unsigned int cursorIndex) override
     {
         Log::Comment(L"InvokeCompletions MOCK called...");
         VERIFY_ARE_EQUAL(_expectedMenuJson, menuJson);
-        VERIFY_ARE_EQUAL(_expectedReplaceLength, replaceLength);
+        VERIFY_ARE_EQUAL(_expectedReplacementIndex, replacementIndex);
+        VERIFY_ARE_EQUAL(_expectedReplacementLength, replacementLength);
+        VERIFY_ARE_EQUAL(_expectedCursorIndex, cursorIndex);
     }
 
     void SearchMissingCommand(const std::wstring_view /*command*/) override
@@ -414,7 +419,9 @@ public:
     bool _expectedShowWindow = false;
 
     std::wstring _expectedMenuJson{};
-    unsigned int _expectedReplaceLength = 0;
+    unsigned int _expectedReplacementIndex = 0;
+    unsigned int _expectedReplacementLength = 0;
+    unsigned int _expectedCursorIndex = 0;
 
 private:
     HANDLE _hCon;
@@ -4016,12 +4023,16 @@ public:
 
         Log::Comment(L"Normal, good case");
         _testGetSet->_expectedMenuJson = LR"({ "foo": 1, "bar": 2 })";
-        _testGetSet->_expectedReplaceLength = 2;
+        _testGetSet->_expectedReplacementIndex = 1;
+        _testGetSet->_expectedReplacementLength = 2;
+        _testGetSet->_expectedCursorIndex = 3;
         _pDispatch->DoVsCodeAction(LR"(Completions;1;2;3;{ "foo": 1, "bar": 2 })");
 
         Log::Comment(L"JSON has a semicolon in it");
         _testGetSet->_expectedMenuJson = LR"({ "foo": "what;ever", "bar": 2 })";
-        _testGetSet->_expectedReplaceLength = 20;
+        _testGetSet->_expectedReplacementIndex = 10;
+        _testGetSet->_expectedReplacementLength = 20;
+        _testGetSet->_expectedCursorIndex = 30;
         _pDispatch->DoVsCodeAction(LR"(Completions;10;20;30;{ "foo": "what;ever", "bar": 2 })");
     }
 

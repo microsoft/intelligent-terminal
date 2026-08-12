@@ -54,6 +54,7 @@ static constexpr std::string_view TabSearchKey{ "tabSearch" };
 static constexpr std::string_view ToggleAlwaysOnTopKey{ "toggleAlwaysOnTop" };
 static constexpr std::string_view ToggleCommandPaletteKey{ "commandPalette" };
 static constexpr std::string_view SuggestionsKey{ "showSuggestions" };
+static constexpr std::string_view TriggerCompletionKey{ "triggerCompletion" };
 static constexpr std::string_view ToggleFocusModeKey{ "toggleFocusMode" };
 static constexpr std::string_view SetFocusModeKey{ "setFocusMode" };
 static constexpr std::string_view ToggleFullscreenKey{ "toggleFullscreen" };
@@ -137,6 +138,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     static constexpr til::static_map ActionKeyNamesMap{
 #define ON_ALL_ACTIONS(action) KEY_TO_ACTION_PAIR(action)
         ALL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
     // Don't include the INTERNAL_SHORTCUT_ACTIONS here
 #undef ON_ALL_ACTIONS
     };
@@ -144,6 +146,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     static constexpr til::static_map ActionToStringMap{
 #define ON_ALL_ACTIONS(action) ACTION_TO_KEY_PAIR(action)
         ALL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
     // Don't include the INTERNAL_SHORTCUT_ACTIONS here
 #undef ON_ALL_ACTIONS
     };

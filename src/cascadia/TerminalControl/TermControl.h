@@ -175,6 +175,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         hstring ReadEntireBuffer() const;
         hstring ReadLastPrompt() const;
+        bool IsAtShellPrompt() const noexcept;
+        bool IsInAlternateBuffer() const noexcept;
         Control::CommandHistoryContext CommandHistory() const;
         void UpdateWinGetSuggestions(Windows::Foundation::Collections::IVector<hstring> suggestions);
 

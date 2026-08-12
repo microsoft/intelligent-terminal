@@ -1908,6 +1908,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             auto keySentArgs = winrt::make<KeySentEventArgs>(vkey, scanCode, modifiers, keyDown);
             KeySent.raise(*this, keySentArgs);
+            if (keySentArgs.Handled())
+            {
+                return true;
+            }
         }
 
         return RawWriteKeyEvent(vkey, scanCode, modifiers, keyDown);
@@ -3757,6 +3761,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     Control::CommandHistoryContext TermControl::CommandHistory() const
     {
         return _core.CommandHistory();
+    }
+
+    bool TermControl::IsAtShellPrompt() const noexcept
+    {
+        return _core.IsAtShellPrompt();
+    }
+
+    bool TermControl::IsInAlternateBuffer() const noexcept
+    {
+        return _core.IsInAlternateBuffer();
     }
 
     void TermControl::UpdateWinGetSuggestions(Windows::Foundation::Collections::IVector<hstring> suggestions)

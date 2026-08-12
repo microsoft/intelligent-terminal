@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "Command.h"
+#include "CompletionItem.g.cpp"
 #include "Command.g.cpp"
 
 #include <til/replace.h>
@@ -81,6 +82,34 @@ struct Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<winrt::M
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    winrt::hstring CompletionItem::IconGlyph() const noexcept
+    {
+        switch (_ResultType)
+        {
+        case 1:
+            return L"\ue81c";
+        case 2:
+            return L"\ue756";
+        case 3:
+            return L"\ue8a5";
+        case 4:
+            return L"\ue8b7";
+        case 6:
+            return L"\uecaa";
+        case 5:
+        case 7:
+            return L"\ue7c1";
+        case 8:
+            return L"\uf000";
+        case 10:
+            return L"\ue943";
+        case 13:
+            return L"\ue945";
+        default:
+            return {};
+        }
+    }
+
     Command::Command() = default;
 
     Model::Command Command::NewUserCommand()
@@ -666,7 +695,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
     }
 
-    winrt::Windows::Foundation::Collections::IVector<Model::Command> Command::ParsePowerShellMenuComplete(winrt::hstring json, int32_t replaceLength)
+    winrt::Windows::Foundation::Collections::IVector<Model::CompletionItem> CompletionItem::ParsePowerShell(winrt::hstring json,
+                                                                                                             uint32_t replacementIndex,
+                                                                                                             uint32_t replacementLength,
+                                                                                                             uint32_t cursorIndex)
     {
         if (json.empty())
         {
@@ -682,72 +714,32 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
         }
 
-        std::vector<Model::Command> result;
+        std::vector<Model::CompletionItem> result;
 
         const auto parseElement = [&](const auto& element) {
             std::wstring completionText;
             std::wstring listText;
             std::wstring tooltipText;
+            std::wstring applyMode;
             JsonUtils::GetValueForKey(element, "CompletionText", completionText);
             JsonUtils::GetValueForKey(element, "ListItemText", listText);
             JsonUtils::GetValueForKey(element, "ToolTip", tooltipText);
+            JsonUtils::GetValueForKey(element, "ApplyMode", applyMode);
+            const auto resultType = JsonUtils::GetValueForKey<int>(element, "ResultType");
 
-            auto args = winrt::make_self<SendInputArgs>(til::hstring_format(FMT_COMPILE(L"{:\x7f^{}}{}"), L"", replaceLength, completionText));
-
-            Model::ActionAndArgs actionAndArgs{ ShortcutAction::SendInput, *args };
-
-            auto c = winrt::make_self<Command>();
-            c->_name = CommandNameOrResource{ .name = listText };
-            c->_Description = tooltipText;
-            c->_ActionAndArgs = actionAndArgs;
-            // Try to assign a sensible icon based on the result type. These are
-            // roughly chosen to align with the icons in
-            // https://github.com/PowerShell/PowerShellEditorServices/pull/1738
-            // as best as possible.
-            if (const auto resultType{ JsonUtils::GetValueForKey<int>(element, "ResultType") })
-            {
-                // PowerShell completion result -> Segoe Fluent icon value & name
-                switch (resultType)
-                {
-                case 1: // History          -> 0xe81c History
-                    c->_icon = MediaResource::FromString(L"\ue81c");
-                    break;
-                case 2: // Command          -> 0xecaa AppIconDefault
-                    c->_icon = MediaResource::FromString(L"\uecaa");
-                    break;
-                case 3: // ProviderItem     -> 0xe8e4 AlignLeft
-                    c->_icon = MediaResource::FromString(L"\ue8e4");
-                    break;
-                case 4: // ProviderContainer  -> 0xe838 FolderOpen
-                    c->_icon = MediaResource::FromString(L"\ue838");
-                    break;
-                case 5: // Property         -> 0xe7c1 Flag
-                    c->_icon = MediaResource::FromString(L"\ue7c1");
-                    break;
-                case 6: // Method           -> 0xecaa AppIconDefault
-                    c->_icon = MediaResource::FromString(L"\uecaa");
-                    break;
-                case 7: // ParameterName    -> 0xe7c1 Flag
-                    c->_icon = MediaResource::FromString(L"\ue7c1");
-                    break;
-                case 8: // ParameterValue   -> 0xf000 KnowledgeArticle
-                    c->_icon = MediaResource::FromString(L"\uf000");
-                    break;
-                case 10: // Namespace       -> 0xe943 Code
-                    c->_icon = MediaResource::FromString(L"\ue943");
-                    break;
-                case 13: // DynamicKeyword  -> 0xe945 LightningBolt
-                    c->_icon = MediaResource::FromString(L"\ue945");
-                    break;
-                }
-            }
-
-            result.push_back(*c);
+            result.emplace_back(winrt::make<implementation::CompletionItem>(
+                winrt::hstring{ completionText },
+                winrt::hstring{ listText },
+                winrt::hstring{ tooltipText },
+                resultType,
+                winrt::hstring{ applyMode },
+                replacementIndex,
+                replacementLength,
+                cursorIndex));
         };
 
         if (root.isArray())
         {
-            // If we got a whole array of suggestions, parse each one.
             for (const auto& element : root)
             {
                 parseElement(element);
@@ -755,11 +747,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
         else if (root.isObject())
         {
-            // If we instead only got a single element back, just parse the root element.
             parseElement(root);
         }
 
-        return winrt::single_threaded_vector<Model::Command>(std::move(result));
+        return winrt::single_threaded_vector<Model::CompletionItem>(std::move(result));
     }
 
     // Method description:

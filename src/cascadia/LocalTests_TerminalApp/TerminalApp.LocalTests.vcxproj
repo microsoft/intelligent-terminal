@@ -40,6 +40,8 @@
   <!-- ========================= Cpp Files ======================== -->
   <ItemGroup>
     <ClCompile Include="CommandlineTest.cpp" />
+    <ClCompile Include="CompletionCoordinatorTests.cpp" />
+    <ClCompile Include="PromptPathProviderTests.cpp" />
     <ClCompile Include="SettingsTests.cpp" />
     <ClCompile Include="TabTests.cpp" />
 	<ClCompile Include="FilteredCommandTests.cpp" />

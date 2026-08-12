@@ -128,6 +128,8 @@ public:
 
     til::property<bool> AlwaysNotifyOnBufferRotation;
 
+    bool IsAtShellPrompt() const noexcept;
+    bool IsInAlternateBuffer() const noexcept;
     std::wstring CurrentCommand() const;
 
     void SerializeMainBuffer(HANDLE handle) const;
@@ -164,7 +166,10 @@ public:
     void NotifyBufferRotation(const int delta) override;
     void NotifyShellIntegrationMark() override;
 
-    void InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength) override;
+    void InvokeCompletions(std::wstring_view menuJson,
+                           unsigned int replacementIndex,
+                           unsigned int replacementLength,
+                           unsigned int cursorIndex) override;
 
     void SearchMissingCommand(const std::wstring_view command) override;
 
@@ -237,7 +242,7 @@ public:
     void TaskbarProgressChangedCallback(std::function<void()> pfn) noexcept;
     void SetShowWindowCallback(std::function<void(bool)> pfn) noexcept;
     void SetPlayMidiNoteCallback(std::function<void(const int, const int, const std::chrono::microseconds)> pfn) noexcept;
-    void CompletionsChangedCallback(std::function<void(std::wstring_view, unsigned int)> pfn) noexcept;
+    void CompletionsChangedCallback(std::function<void(std::wstring_view, unsigned int, unsigned int, unsigned int)> pfn) noexcept;
     void SetSearchMissingCommandCallback(std::function<void(std::wstring_view, const til::CoordType)> pfn) noexcept;
     void SetVtSequenceCallback(std::function<void(std::wstring_view)> pfn) noexcept;
     void SetShowNotificationCallback(std::function<void(std::wstring_view, std::wstring_view)> pfn) noexcept;
@@ -347,7 +352,7 @@ private:
     std::function<void()> _pfnTaskbarProgressChanged;
     std::function<void(bool)> _pfnShowWindowChanged;
     std::function<void(const int, const int, const std::chrono::microseconds)> _pfnPlayMidiNote;
-    std::function<void(std::wstring_view, unsigned int)> _pfnCompletionsChanged;
+    std::function<void(std::wstring_view, unsigned int, unsigned int, unsigned int)> _pfnCompletionsChanged;
     std::function<void(std::wstring_view, const til::CoordType)> _pfnSearchMissingCommand;
     std::function<void(std::wstring_view)> _pfnVtSequence;
     std::function<void(std::wstring_view, std::wstring_view)> _pfnShowNotification;

@@ -574,6 +574,88 @@ namespace winrt::TerminalApp::implementation
             [=]() {
                 _adjustProcessPriority();
             });
+
+        _historyCompletionProvider = std::make_shared<HistoryCompletionProvider>();
+        _completionCoordinator = std::make_unique<CompletionCoordinator>(
+            DispatcherQueue::GetForCurrentThread(),
+            [this](const TermControl& target, const CompletionRequestKind kind) {
+                const auto activeControl = _GetActiveControl();
+                if (!activeControl || winrt::get_abi(activeControl) != winrt::get_abi(target))
+                {
+                    return CompletionRequestGateResult{ CompletionRequestGate::InactiveTarget };
+                }
+
+                const auto shellName = target.ShellName();
+                if (!_settings.GlobalSettings().EnableShellCompletionMenu())
+                {
+                    return CompletionRequestGateResult{ CompletionRequestGate::MenuDisabled };
+                }
+
+                const auto powerShell = shellName == L"pwsh" || shellName == L"powershell";
+                if (powerShell && !target.IsAtShellPrompt())
+                {
+                    return CompletionRequestGateResult{ CompletionRequestGate::OutsidePrompt };
+                }
+                if (!powerShell && target.IsInAlternateBuffer())
+                {
+                    return CompletionRequestGateResult{ CompletionRequestGate::OutsidePrompt };
+                }
+
+                if (kind == CompletionRequestKind::Automatic)
+                {
+                    PromptInputSnapshot snapshot;
+                    if (powerShell)
+                    {
+                        const auto context = target.CommandHistory();
+                        snapshot.text = context.CurrentCommandline();
+                        snapshot.cursor = snapshot.text.size();
+                    }
+                    else
+                    {
+                        snapshot = _promptInputSnapshot(target);
+                    }
+                    if (!snapshot.trusted)
+                    {
+                        return CompletionRequestGateResult{ CompletionRequestGate::OutsidePrompt };
+                    }
+                    const auto commandline = std::wstring_view{ snapshot.text };
+                    const auto nonWhitespaceCharacters = std::count_if(commandline.begin(), commandline.end(), [](const auto character) {
+                        return character != L' ' && character != L'\t';
+                    });
+                    if (!_settings.GlobalSettings().AutoTriggerShellCompletion())
+                    {
+                        return CompletionRequestGateResult{ CompletionRequestGate::AutoDisabled };
+                    }
+                    if (nonWhitespaceCharacters < 2)
+                    {
+                        return CompletionRequestGateResult{
+                            CompletionRequestGate::PrefixShort,
+                            gsl::narrow_cast<uint32_t>(nonWhitespaceCharacters),
+                        };
+                    }
+                    return CompletionRequestGateResult{
+                        CompletionRequestGate::Allowed,
+                        gsl::narrow_cast<uint32_t>(nonWhitespaceCharacters),
+                    };
+                }
+
+                return CompletionRequestGateResult{ CompletionRequestGate::Allowed };
+            },
+            [this](const TermControl& target, const uint64_t generation) {
+                const auto shellName = target.ShellName();
+                if (shellName == L"pwsh" || shellName == L"powershell")
+                {
+                    _sendingCompletionProtocolInput = true;
+                    const auto reset = wil::scope_exit([this]() {
+                        _sendingCompletionProtocolInput = false;
+                    });
+                    target.SendInput(L"\x1b[24~b");
+                }
+                else
+                {
+                    _requestGenericCompletions(target, generation);
+                }
+            });
     }
 
     Windows::UI::Xaml::Automation::Peers::AutomationPeer TerminalPage::OnCreateAutomationPeer()
@@ -1871,6 +1953,7 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
+            _removeCompletionTarget(control);
             const auto paneIdStr = _FindSessionIdForControl(control);
             if (paneIdStr.empty())
             {
@@ -5911,6 +5994,11 @@ namespace winrt::TerminalApp::implementation
         {
             SuggestionsElement().Visibility(Visibility::Collapsed);
         }
+        if (const auto intelliSense = IntelliSenseElement();
+            intelliSense && intelliSense.Visibility() == Visibility::Visible)
+        {
+            intelliSense.Close();
+        }
 
         // Let's assume the user has bound the dead key "^" to a sendInput command that sends "b".
         // If the user presses the two keys "^a" it'll produce "bâ", despite us marking the key event as handled.
@@ -5935,7 +6023,16 @@ namespace winrt::TerminalApp::implementation
                         scanCode,
                     }))
                 {
-                    return _actionDispatch->DoAction(cmd.ActionAndArgs());
+                    const auto handled = _actionDispatch->DoAction(cmd.ActionAndArgs());
+                    if (handled)
+                    {
+                        if (const auto intelliSense = IntelliSenseElement();
+                            intelliSense && intelliSense.Visibility() == Visibility::Visible)
+                        {
+                            intelliSense.Close();
+                        }
+                    }
+                    return handled;
                 }
             }
         }
@@ -6041,6 +6138,7 @@ namespace winrt::TerminalApp::implementation
 #define ON_ALL_ACTIONS(action) HOOKUP_ACTION(action);
         ALL_SHORTCUT_ACTIONS
         INTERNAL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
 #undef ON_ALL_ACTIONS
     }
 
@@ -6368,6 +6466,10 @@ namespace winrt::TerminalApp::implementation
                             // pane_id alone is sufficient for the
                             // session-list / PaneClosed prune path.
                             auto term2 = weakTerm.get();
+                            if (term2 && (stateStr == "closed" || stateStr == "failed"))
+                            {
+                                page->_removeCompletionTarget(term2);
+                            }
                             const auto tabIdStr = term2
                                 ? page->_FindTabIdForControl(term2)
                                 : std::string{};
@@ -6392,12 +6494,36 @@ namespace winrt::TerminalApp::implementation
                 });
         }
 
+        winrt::weak_ref<TermControl> weakTerm{ term };
         // Don't even register for the event if the feature is compiled off.
         if constexpr (Feature_ShellCompletions::IsEnabled())
         {
-            term.CompletionsChanged({ get_weak(), &TerminalPage::_ControlCompletionsChangedHandler });
+            term.CompletionsChanged([weak = get_weak(), weakTerm](auto&&, const auto& args) {
+                if (const auto page = weak.get())
+                {
+                    page->_ControlCompletionsChangedHandler(weakTerm.get(), args);
+                }
+            });
+
+            term.KeySent([weak = get_weak(), weakTerm](auto&&, const auto& args) {
+                if (const auto page = weak.get())
+                {
+                    page->_handleCompletionKey(weakTerm.get(), args);
+                }
+            });
+            term.CharSent([weak = get_weak(), weakTerm](auto&&, const auto& args) {
+                if (const auto page = weak.get())
+                {
+                    page->_handleCompletionCharacter(weakTerm.get(), args);
+                }
+            });
+            term.StringSent([weak = get_weak(), weakTerm](auto&&, const auto& args) {
+                if (const auto page = weak.get())
+                {
+                    page->_handleCompletionString(weakTerm.get(), args);
+                }
+            });
         }
-        winrt::weak_ref<TermControl> weakTerm{ term };
         term.ContextMenu().Opening([weak = get_weak(), weakTerm](auto&& sender, auto&& /*args*/) {
             if (const auto& page{ weak.get() })
             {
@@ -6611,6 +6737,29 @@ namespace winrt::TerminalApp::implementation
         p.DispatchCommandRequested({ this, &TerminalPage::_OnDispatchCommandRequested });
         p.PreviewAction({ this, &TerminalPage::_PreviewActionHandler });
 
+        return p;
+    }
+
+    IntelliSenseControl TerminalPage::LoadIntelliSenseUI()
+    {
+        if (const auto p = IntelliSenseElement())
+        {
+            return p;
+        }
+
+        return _loadIntelliSenseElementSlowPath();
+    }
+
+    IntelliSenseControl TerminalPage::_loadIntelliSenseElementSlowPath()
+    {
+        const auto p = FindName(L"IntelliSenseElement").as<IntelliSenseControl>();
+        p.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [this](auto&&, auto&&) {
+            if (IntelliSenseElement().Visibility() == Visibility::Collapsed)
+            {
+                _FocusActiveControl(nullptr, nullptr);
+            }
+        });
+        p.CompletionRequested({ this, &TerminalPage::_OnCompletionRequested });
         return p;
     }
 
@@ -7981,6 +8130,13 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_WindowSizeChanged(const IInspectable sender, const Microsoft::Terminal::Control::WindowSizeChangedEventArgs args)
     {
+        if (const auto intelliSense = IntelliSenseElement();
+            intelliSense && intelliSense.Visibility() == Visibility::Visible)
+        {
+            intelliSense.Close();
+            _completionTargetControl = {};
+        }
+
         // Raise if:
         // - Not in quake mode
         // - Not in fullscreen
@@ -10098,6 +10254,8 @@ namespace winrt::TerminalApp::implementation
     safe_void_coroutine TerminalPage::_ControlCompletionsChangedHandler(const IInspectable sender,
                                                                         const CompletionsChangedEventArgs args)
     {
+        co_await wil::resume_foreground(Dispatcher());
+
         // This won't even get hit if the velocity flag is disabled - we gate
         // registering for the event based off of
         // Feature_ShellCompletions::IsEnabled back in _RegisterTerminalEvents
@@ -10108,23 +10266,355 @@ namespace winrt::TerminalApp::implementation
             co_return;
         }
 
-        // Parse the json string into a collection of actions
+        const auto target = sender.try_as<TermControl>();
+        if (!target || !_completionCoordinator->AcceptResponse(target))
+        {
+            _intelliSenseLog(fmt::format(
+                FMT_COMPILE("event=response_rejected target_present={}"),
+                target ? 1 : 0));
+            co_return;
+        }
+
+        const auto activeControl = _GetActiveControl();
+        if (!activeControl || winrt::get_abi(activeControl) != winrt::get_abi(target))
+        {
+            _completionCoordinator->Invalidate(target);
+            co_return;
+        }
+
+        // Parse the shell payload into typed completion items.
         try
         {
-            auto commandsCollection = Command::ParsePowerShellMenuComplete(args.MenuJson(),
-                                                                           args.ReplacementLength());
+            const auto shellItems = CompletionItem::ParsePowerShell(args.MenuJson(),
+                                                                    args.ReplacementIndex(),
+                                                                    args.ReplacementLength(),
+                                                                    args.CursorIndex());
+            std::vector<std::wstring> history;
+            for (const auto& command : target.CommandHistory().History())
+            {
+                history.emplace_back(command);
+            }
+            const auto targetKey = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+            if (const auto captured = _promptCommandHistory.find(targetKey); captured != _promptCommandHistory.end())
+            {
+                history.insert(history.end(), captured->second.begin(), captured->second.end());
+            }
+            const auto historyResults = _historyCompletionProvider->Query(_promptInputSnapshot(target), history);
 
-            auto weakThis{ get_weak() };
-            Dispatcher().RunAsync(CoreDispatcherPriority::Normal, [weakThis, commandsCollection, sender]() {
-                // On the UI thread...
-                if (const auto& page{ weakThis.get() })
+            std::vector<CompletionItem> mergedItems;
+            mergedItems.reserve(historyResults.size() + (shellItems ? shellItems.Size() : 0));
+            std::unordered_set<std::wstring> seen;
+            for (const auto& result : historyResults)
+            {
+                auto key = result.completionText;
+                std::transform(key.begin(), key.end(), key.begin(), towlower);
+                seen.emplace(std::move(key));
+                mergedItems.emplace_back(CompletionItem{
+                    winrt::hstring{ result.completionText },
+                    winrt::hstring{ result.displayText },
+                    winrt::hstring{ result.description },
+                    result.resultType,
+                    L"terminal-replace-v1",
+                    result.replacementIndex,
+                    result.replacementLength,
+                    result.cursorIndex });
+            }
+            if (shellItems)
+            {
+                for (const auto& item : shellItems)
                 {
-                    // Open the Suggestions UI with the commands from the control
-                    page->_OpenSuggestions(sender.try_as<TermControl>(), commandsCollection, SuggestionsMode::Menu, L"");
+                    auto key = std::wstring{ item.CompletionText() };
+                    std::transform(key.begin(), key.end(), key.begin(), towlower);
+                    if (seen.emplace(std::move(key)).second)
+                    {
+                        mergedItems.emplace_back(item);
+                    }
                 }
-            });
+            }
+            const auto itemCount = mergedItems.size();
+            _intelliSenseLog(fmt::format(
+                FMT_COMPILE("event=response_parsed target=0x{:x} items={} history_items={} replacement_index={} replacement_length={} cursor_index={}"),
+                reinterpret_cast<uintptr_t>(winrt::get_abi(target)),
+                itemCount,
+                historyResults.size(),
+                args.ReplacementIndex(),
+                args.ReplacementLength(),
+                args.CursorIndex()));
+            _OpenCompletions(target, winrt::single_threaded_vector<CompletionItem>(std::move(mergedItems)));
         }
         CATCH_LOG();
+    }
+
+    void TerminalPage::_invalidateCompletion(const TermControl& target)
+    {
+        if (_sendingCompletionProtocolInput || !target)
+        {
+            return;
+        }
+
+        if (_completionCoordinator->Invalidate(target))
+        {
+            if (const auto intelliSense = IntelliSenseElement())
+            {
+                intelliSense.Close();
+            }
+        }
+    }
+
+    void TerminalPage::_removeCompletionTarget(const TermControl& target)
+    {
+        if (target)
+        {
+            const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+            _promptInputModels.erase(key);
+            _promptCommandHistory.erase(key);
+            _completionConsumedKeys.clear();
+        }
+        if (!target || !_completionCoordinator->RemoveTarget(target))
+        {
+            return;
+        }
+
+        if (const auto completionTarget = _completionTargetControl.get();
+            completionTarget && winrt::get_abi(completionTarget) == winrt::get_abi(target))
+        {
+            _completionTargetControl = {};
+        }
+        if (const auto intelliSense = IntelliSenseElement())
+        {
+            intelliSense.Close();
+        }
+    }
+
+    void TerminalPage::_handleCompletionInput(const TermControl& target, const CompletionInputAction action)
+    {
+        if (_sendingCompletionProtocolInput || !target || action == CompletionInputAction::Ignore)
+        {
+            return;
+        }
+
+        _invalidateCompletion(target);
+        if (action == CompletionInputAction::Request && _canAutoTriggerCompletion(target))
+        {
+            _completionCoordinator->Request(target, CompletionRequestKind::Automatic);
+        }
+    }
+
+    void TerminalPage::_handleCompletionKey(const TermControl& target, const KeySentEventArgs& args)
+    {
+        if (_sendingCompletionProtocolInput || !target)
+        {
+            return;
+        }
+
+        if (!args.KeyDown())
+        {
+            if (_completionConsumedKeys.erase(args.VKey()) != 0)
+            {
+                args.Handled(true);
+            }
+            return;
+        }
+
+        if (_completionConsumedKeys.contains(args.VKey()))
+        {
+            args.Handled(true);
+            return;
+        }
+
+        if (const auto intelliSense = IntelliSenseElement();
+            intelliSense && intelliSense.Visibility() == Visibility::Visible)
+        {
+            const auto completionTarget = _completionTargetControl.get();
+            if (!completionTarget || winrt::get_abi(completionTarget) != winrt::get_abi(target))
+            {
+                intelliSense.Close();
+                _completionTargetControl = {};
+            }
+            else if (intelliSense.HandleKey(args.VKey()))
+            {
+                _completionConsumedKeys.emplace(args.VKey());
+                args.Handled(true);
+                return;
+            }
+        }
+
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+        auto& model = _promptInputModels[key];
+        if (args.KeyDown() && args.VKey() == VK_RETURN)
+        {
+            _recordPromptHistory(target, model.Snapshot());
+        }
+        model.ApplyKey(
+            args.VKey(),
+            args.Modifiers().Value,
+            args.KeyDown());
+        _handleCompletionInput(target, CompletionInputClassifier::ClassifyKey(args.VKey(), args.KeyDown()));
+    }
+
+    void TerminalPage::_handleCompletionCharacter(const TermControl& target, const CharSentEventArgs& args)
+    {
+        if (_sendingCompletionProtocolInput || !target)
+        {
+            return;
+        }
+
+        _promptInputModels[reinterpret_cast<uintptr_t>(winrt::get_abi(target))].ApplyCharacter(args.Character());
+        _handleCompletionInput(target, CompletionInputClassifier::ClassifyCharacter(args.Character()));
+    }
+
+    void TerminalPage::_handleCompletionString(const TermControl& target, const StringSentEventArgs& args)
+    {
+        if (_sendingCompletionProtocolInput || !target)
+        {
+            return;
+        }
+
+        const auto action = CompletionInputClassifier::ClassifyString(args.Text());
+        if (action != CompletionInputAction::Ignore)
+        {
+            auto& model = _promptInputModels[reinterpret_cast<uintptr_t>(winrt::get_abi(target))];
+            auto pending = model.Snapshot();
+            if (pending.trusted && pending.cursor == pending.text.size())
+            {
+                for (const auto character : args.Text())
+                {
+                    if (character == L'\r' || character == L'\n')
+                    {
+                        pending.cursor = pending.text.size();
+                        _recordPromptHistory(target, pending);
+                        pending.text.clear();
+                        pending.cursor = 0;
+                    }
+                    else if (character == L'\b')
+                    {
+                        if (!pending.text.empty())
+                        {
+                            pending.text.pop_back();
+                            pending.cursor = pending.text.size();
+                        }
+                    }
+                    else if (character >= L' ' && character != L'\x7f')
+                    {
+                        pending.text.push_back(character);
+                        pending.cursor = pending.text.size();
+                    }
+                }
+            }
+            model.ApplyString(args.Text());
+        }
+        _handleCompletionInput(target, action);
+    }
+
+    bool TerminalPage::_canAutoTriggerCompletion(const TermControl& target) const
+    {
+        return target &&
+               _settings.GlobalSettings().EnableShellCompletionMenu() &&
+               _settings.GlobalSettings().AutoTriggerShellCompletion();
+    }
+
+    PromptInputSnapshot TerminalPage::_promptInputSnapshot(const TermControl& target) const
+    {
+        if (!target)
+        {
+            return PromptInputSnapshot{ .trusted = false };
+        }
+
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+        if (const auto model = _promptInputModels.find(key); model != _promptInputModels.end())
+        {
+            return model->second.Snapshot();
+        }
+        return {};
+    }
+
+    void TerminalPage::_recordPromptHistory(const TermControl& target, const PromptInputSnapshot& snapshot)
+    {
+        if (!target || !snapshot.trusted)
+        {
+            return;
+        }
+
+        const auto first = snapshot.text.find_first_not_of(L" \t");
+        if (first == std::wstring::npos)
+        {
+            return;
+        }
+        const auto last = snapshot.text.find_last_not_of(L" \t");
+        auto command = snapshot.text.substr(first, last - first + 1);
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+        auto& history = _promptCommandHistory[key];
+        if (!history.empty() && history.back() == command)
+        {
+            return;
+        }
+        history.emplace_back(std::move(command));
+        constexpr size_t MaxPromptHistory = 256;
+        if (history.size() > MaxPromptHistory)
+        {
+            history.pop_front();
+        }
+        _intelliSenseLog(fmt::format(
+            FMT_COMPILE("event=history_recorded target=0x{:x} count={}"),
+            key,
+            history.size()));
+    }
+
+    safe_void_coroutine TerminalPage::_requestGenericCompletions(TermControl target, const uint64_t generation)
+    {
+        const auto snapshot = _promptInputSnapshot(target);
+        std::vector<std::wstring> history;
+        for (const auto& command : target.CommandHistory().History())
+        {
+            history.emplace_back(command);
+        }
+        const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(target));
+        if (const auto captured = _promptCommandHistory.find(key); captured != _promptCommandHistory.end())
+        {
+            history.insert(history.end(), captured->second.begin(), captured->second.end());
+        }
+        const auto historyProvider = _historyCompletionProvider;
+        const auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+
+        co_await winrt::resume_background();
+        auto results = historyProvider->Query(snapshot, history);
+        const auto historyResultCount = results.size();
+
+        co_await wil::resume_foreground(dispatcher);
+        const auto page = weak.get();
+        if (!page || !target || !page->_completionCoordinator->AcceptResponse(target))
+        {
+            co_return;
+        }
+
+        const auto activeControl = page->_GetActiveControl();
+        if (!activeControl || winrt::get_abi(activeControl) != winrt::get_abi(target))
+        {
+            page->_completionCoordinator->Invalidate(target);
+            co_return;
+        }
+
+        std::vector<CompletionItem> completionItems;
+        completionItems.reserve(results.size());
+        for (auto& result : results)
+        {
+            completionItems.emplace_back(CompletionItem{
+                winrt::hstring{ std::move(result.completionText) },
+                winrt::hstring{ std::move(result.displayText) },
+                winrt::hstring{ std::move(result.description) },
+                result.resultType,
+                L"terminal-replace-v1",
+                result.replacementIndex,
+                result.replacementLength,
+                result.cursorIndex });
+        }
+
+        _intelliSenseLog(fmt::format(
+            FMT_COMPILE("event=history_response generation={} items={}"),
+            generation,
+            historyResultCount));
+        page->_OpenCompletions(target, winrt::single_threaded_vector<CompletionItem>(std::move(completionItems)));
     }
 
     void TerminalPage::_OpenSuggestions(
@@ -10156,6 +10646,11 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        if (const auto intelliSense = IntelliSenseElement())
+        {
+            intelliSense.Close();
+        }
+
         const auto& sxnUi{ LoadSuggestionsUI() };
 
         const auto characterSize{ control.CharacterDimensions() };
@@ -10171,6 +10666,98 @@ namespace winrt::TerminalApp::implementation
                    realCursorPos,
                    windowDimensions,
                    characterSize.Height);
+    }
+
+    void TerminalPage::_OpenCompletions(const TermControl& sender, IVector<CompletionItem> completionItems)
+    {
+        assert(Dispatcher().HasThreadAccess());
+
+        if (!completionItems || completionItems.Size() == 0)
+        {
+            _intelliSenseLog(fmt::format(
+                FMT_COMPILE("event=widget_closed reason=empty_results target=0x{:x}"),
+                reinterpret_cast<uintptr_t>(winrt::get_abi(sender))));
+            if (const auto p = IntelliSenseElement())
+            {
+                p.Visibility(Visibility::Collapsed);
+            }
+            return;
+        }
+
+        const auto& control{ sender ? sender : _GetActiveControl() };
+        if (!control)
+        {
+            return;
+        }
+
+        if (const auto suggestions = SuggestionsElement())
+        {
+            suggestions.Visibility(Visibility::Collapsed);
+        }
+
+        const auto& intelliSenseUi{ LoadIntelliSenseUI() };
+        _completionTargetControl = control;
+        _intelliSenseLog(fmt::format(
+            FMT_COMPILE("event=widget_opened target=0x{:x} items={}"),
+            reinterpret_cast<uintptr_t>(winrt::get_abi(control)),
+            completionItems.Size()));
+        const auto characterSize{ control.CharacterDimensions() };
+        const auto cursorPos{ control.CursorPositionInDips() };
+        const auto controlTransform = control.TransformToVisual(TabContent());
+        const auto realCursorPos{ controlTransform.TransformPoint({ cursorPos.X, cursorPos.Y }) };
+        const Windows::Foundation::Size windowDimensions{
+            gsl::narrow_cast<float>(TabContent().ActualWidth()),
+            gsl::narrow_cast<float>(TabContent().ActualHeight()),
+        };
+
+        intelliSenseUi.Open(
+            completionItems,
+            realCursorPos,
+            windowDimensions,
+            characterSize.Height);
+    }
+
+    void TerminalPage::_OnCompletionRequested(const IntelliSenseControl& /*sender*/, const CompletionItem& completion)
+    {
+        const auto control = _completionTargetControl.get();
+        _completionTargetControl = {};
+        const auto activeControl = _GetActiveControl();
+        if (control && activeControl && winrt::get_abi(control) == winrt::get_abi(activeControl))
+        {
+            if (auto model = _promptInputModels.find(reinterpret_cast<uintptr_t>(winrt::get_abi(control)));
+                model != _promptInputModels.end())
+            {
+                model->second.ApplyCompletion(
+                    completion.ReplacementIndex(),
+                    completion.ReplacementLength(),
+                    completion.CompletionText());
+            }
+            _intelliSenseLog(fmt::format(
+                FMT_COMPILE("event=completion_applied target=0x{:x} mode={} text_length={} replacement_index={} replacement_length={}"),
+                reinterpret_cast<uintptr_t>(winrt::get_abi(control)),
+                winrt::to_string(completion.ApplyMode()),
+                completion.CompletionText().size(),
+                completion.ReplacementIndex(),
+                completion.ReplacementLength()));
+            _sendingCompletionProtocolInput = true;
+            const auto reset = wil::scope_exit([this]() {
+                _sendingCompletionProtocolInput = false;
+            });
+            if (completion.ApplyMode() == L"psreadline-v1")
+            {
+                std::wstring input{ L"\x1b[24~c" };
+                input.append(completion.CompletionText());
+                control.SendInput(winrt::hstring{ input });
+            }
+            else
+            {
+                control.SendInput(til::hstring_format(
+                    FMT_COMPILE(L"{:\x7f^{}}{}"),
+                    L"",
+                    completion.ReplacementLength(),
+                    completion.CompletionText()));
+            }
+        }
     }
 
     void TerminalPage::_PopulateContextMenu(const TermControl& control,

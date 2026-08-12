@@ -1456,6 +1456,21 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_HandleTriggerCompletion(const IInspectable& sender,
+                                                const ActionEventArgs& args)
+    {
+        if (!args || !_settings.GlobalSettings().EnableShellCompletionMenu())
+        {
+            return;
+        }
+
+        if (const auto termControl{ _senderOrActiveControl(sender) })
+        {
+            _completionCoordinator->Request(termControl, CompletionRequestKind::Manual);
+            args.Handled(true);
+        }
+    }
+
     safe_void_coroutine TerminalPage::_doHandleSuggestions(SuggestionsArgs realArgs)
     {
         const auto weak = get_weak();

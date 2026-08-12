@@ -362,6 +362,14 @@
                                   PreviewKeyDown="_KeyDownHandler"
                                   Visibility="Collapsed" />
 
+        <local:IntelliSenseControl x:Name="IntelliSenseElement"
+                                   Grid.Row="2"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Top"
+                                   x:Load="False"
+                                   PreviewKeyDown="_KeyDownHandler"
+                                   Visibility="Collapsed" />
+
         <!--  First-run experience overlay. Covers the terminal content area
               until the user clicks Next. Lazy-loaded to avoid startup cost.  -->
         <local:FreOverlay x:Name="FreOverlayElement"

@@ -245,6 +245,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         hstring ReadEntireBuffer() const;
         hstring ReadLastPrompt() const;
+        bool IsAtShellPrompt() const noexcept;
+        bool IsInAlternateBuffer() const noexcept;
         Control::CommandHistoryContext CommandHistory() const;
         bool QuickFixesAvailable() const noexcept;
         void UpdateQuickFixes(const Windows::Foundation::Collections::IVector<hstring>& quickFixes);
@@ -341,7 +343,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void _terminalShowNotification(std::wstring_view title, std::wstring_view body);
         void _terminalWindowSizeChanged(int32_t width, int32_t height);
 
-        void _terminalCompletionsChanged(std::wstring_view menuJson, unsigned int replaceLength);
+        void _terminalCompletionsChanged(std::wstring_view menuJson,
+                                         unsigned int replacementIndex,
+                                         unsigned int replacementLength,
+                                         unsigned int cursorIndex);
 #pragma endregion
 
 #pragma region RendererCallbacks

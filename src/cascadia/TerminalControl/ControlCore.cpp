@@ -133,7 +133,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         auto pfnPlayMidiNote = [this](auto&& PH1, auto&& PH2, auto&& PH3) { _terminalPlayMidiNote(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2), std::forward<decltype(PH3)>(PH3)); };
         _terminal->SetPlayMidiNoteCallback(pfnPlayMidiNote);
 
-        auto pfnCompletionsChanged = [=](auto&& menuJson, auto&& replaceLength) { _terminalCompletionsChanged(menuJson, replaceLength); };
+        auto pfnCompletionsChanged = [=](auto&& menuJson, auto&& replacementIndex, auto&& replacementLength, auto&& cursorIndex) {
+            _terminalCompletionsChanged(menuJson, replacementIndex, replacementLength, cursorIndex);
+        };
         _terminal->CompletionsChangedCallback(pfnCompletionsChanged);
 
         auto pfnSearchMissingCommand = [this](auto&& PH1, auto&& PH2) { _terminalSearchMissingCommand(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2)); };
@@ -2549,6 +2551,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return *context;
     }
 
+    bool ControlCore::IsAtShellPrompt() const noexcept
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsAtShellPrompt();
+    }
+
+    bool ControlCore::IsInAlternateBuffer() const noexcept
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsInAlternateBuffer();
+    }
+
     bool ControlCore::QuickFixesAvailable() const noexcept
     {
         return _cachedQuickFixes && _cachedQuickFixes.Size() > 0;
@@ -2814,9 +2828,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
     }
 
-    void ControlCore::_terminalCompletionsChanged(std::wstring_view menuJson, unsigned int replaceLength)
+    void ControlCore::_terminalCompletionsChanged(std::wstring_view menuJson,
+                                                  unsigned int replacementIndex,
+                                                  unsigned int replacementLength,
+                                                  unsigned int cursorIndex)
     {
-        CompletionsChanged.raise(*this, winrt::make<CompletionsChangedEventArgs>(winrt::hstring{ menuJson }, replaceLength));
+        CompletionsChanged.raise(*this,
+                                 winrt::make<CompletionsChangedEventArgs>(
+                                     winrt::hstring{ menuJson },
+                                     replacementIndex,
+                                     replacementLength,
+                                     cursorIndex));
     }
 
     // Select the region of text between [s.start, s.end), in buffer space

@@ -125,6 +125,9 @@
     ON_ALL_ACTIONS(OpenWorkspace)           \
     ON_ALL_ACTIONS(Workspaces)
 
+#define ADDITIONAL_SHORTCUT_ACTIONS \
+    ON_ALL_ACTIONS(TriggerCompletion)
+
 #define ALL_SHORTCUT_ACTIONS_WITH_ARGS             \
     ON_ALL_ACTIONS_WITH_ARGS(AdjustFontSize)       \
     ON_ALL_ACTIONS_WITH_ARGS(CloseOtherTabs)       \

@@ -1223,10 +1223,18 @@ namespace winrt::TerminalApp::implementation
     {
         Mode(mode);
         SetCommands(commands);
+        _open(commands.Size(), std::move(filter), anchor, space, characterHeight);
+    }
 
+    void SuggestionsControl::_open(uint32_t itemCount,
+                                   winrt::hstring filter,
+                                   Windows::Foundation::Point anchor,
+                                   Windows::Foundation::Size space,
+                                   float characterHeight)
+    {
         // LOAD BEARING
         // The control must become visible here, BEFORE we try to get its ActualWidth/Height.
-        Visibility(commands.Size() > 0 ? Visibility::Visible : Visibility::Collapsed);
+        Visibility(itemCount > 0 ? Visibility::Visible : Visibility::Collapsed);
 
         _anchor = anchor;
         _space = space;

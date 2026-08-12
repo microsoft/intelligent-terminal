@@ -40,10 +40,60 @@ namespace TerminalCoreUnitTests
         TEST_METHOD(SetTaskbarProgress);
         TEST_METHOD(SetWorkingDirectory);
         TEST_METHOD(SetShellType);
+        TEST_METHOD(InvokeCompletions);
+        TEST_METHOD(TracksShellPromptInputState);
     };
 };
 
 using namespace TerminalCoreUnitTests;
+
+void TerminalApiTest::InvokeCompletions()
+{
+    Terminal term{ Terminal::TestDummyMarker{} };
+
+    std::wstring menuJson;
+    unsigned int replacementIndex = 0;
+    unsigned int replacementLength = 0;
+    unsigned int cursorIndex = 0;
+    term.CompletionsChangedCallback([&](const std::wstring_view json,
+                                        const unsigned int replacementStart,
+                                        const unsigned int replacementSize,
+                                        const unsigned int cursor) {
+        menuJson = json;
+        replacementIndex = replacementStart;
+        replacementLength = replacementSize;
+        cursorIndex = cursor;
+    });
+
+    term.InvokeCompletions(LR"([{"CompletionText":"Get-ChildItem"}])", 4, 7, 11);
+
+    VERIFY_ARE_EQUAL(LR"([{"CompletionText":"Get-ChildItem"}])", menuJson);
+    VERIFY_ARE_EQUAL(4u, replacementIndex);
+    VERIFY_ARE_EQUAL(7u, replacementLength);
+    VERIFY_ARE_EQUAL(11u, cursorIndex);
+}
+
+void TerminalApiTest::TracksShellPromptInputState()
+{
+    Terminal term{ Terminal::TestDummyMarker{} };
+    DummyRenderer renderer{ &term };
+    term.Create({ 100, 100 }, 0, renderer);
+
+    auto& stateMachine = *term._stateMachine;
+    VERIFY_IS_FALSE(term.IsAtShellPrompt());
+
+    stateMachine.ProcessString(L"\x1b]133;A\x1b\\");
+    VERIFY_IS_FALSE(term.IsAtShellPrompt());
+
+    stateMachine.ProcessString(L"\x1b]133;B\x1b\\");
+    VERIFY_IS_TRUE(term.IsAtShellPrompt());
+
+    stateMachine.ProcessString(L"\x1b]133;C\x1b\\");
+    VERIFY_IS_FALSE(term.IsAtShellPrompt());
+
+    stateMachine.ProcessString(L"\x1b]133;D;0\x1b\\");
+    VERIFY_IS_FALSE(term.IsAtShellPrompt());
+}
 
 void TerminalApiTest::SetColorTableEntry()
 {

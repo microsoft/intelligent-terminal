@@ -155,6 +155,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::ShowContextMenu, USES_RESOURCE(L"ShowContextMenuCommandKey") },
                 { ShortcutAction::SplitPane, USES_RESOURCE(L"SplitPaneCommandKey") },
                 { ShortcutAction::Suggestions, USES_RESOURCE(L"Suggestions") },
+                { ShortcutAction::TriggerCompletion, USES_RESOURCE(L"SuggestionsCommandKey") },
                 { ShortcutAction::SwapPane, USES_RESOURCE(L"SwapPaneCommandKey") },
                 { ShortcutAction::SwitchSelectionEndpoint, USES_RESOURCE(L"SwitchSelectionEndpointCommandKey") },
                 { ShortcutAction::SwitchToTab, USES_RESOURCE(L"SwitchToTabCommandKey") },
@@ -189,6 +190,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 #define ON_ALL_ACTIONS(action) actionNames.emplace(ShortcutAction::action, GetNameForAction(ShortcutAction::action));
 
         ALL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
 
 #undef ON_ALL_ACTIONS
         return winrt::single_threaded_map(std::move(actionNames));
@@ -427,6 +429,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 // now add any ShortcutActions that we might have missed
 #define ON_ALL_ACTIONS(action) RegisterShortcutAction(ShortcutAction::action, availableActions, visitedActionIDs);
             ALL_SHORTCUT_ACTIONS
+            ADDITIONAL_SHORTCUT_ACTIONS
             // Don't include internal actions here
 #undef ON_ALL_ACTIONS
 

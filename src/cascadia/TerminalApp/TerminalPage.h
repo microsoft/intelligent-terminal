@@ -20,6 +20,9 @@
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
+#include "CompletionCoordinator.h"
+#include "HistoryCompletionProvider.h"
+#include "PromptInputModel.h"
 
 #define DECLARE_ACTION_HANDLER(action) void _Handle##action(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::ActionEventArgs& args);
 
@@ -177,6 +180,7 @@ namespace winrt::TerminalApp::implementation
 
         CommandPalette LoadCommandPalette();
         SuggestionsControl LoadSuggestionsUI();
+        IntelliSenseControl LoadIntelliSenseUI();
 
         safe_void_coroutine RequestQuit();
         safe_void_coroutine CloseWindow();
@@ -612,6 +616,7 @@ namespace winrt::TerminalApp::implementation
         bool _commandPaletteIs(winrt::Windows::UI::Xaml::Visibility visibility);
         __declspec(noinline) SuggestionsControl _loadSuggestionsElementSlowPath();
         bool _suggestionsControlIs(winrt::Windows::UI::Xaml::Visibility visibility);
+        __declspec(noinline) IntelliSenseControl _loadIntelliSenseElementSlowPath();
 
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowDialogHelper(const std::wstring_view& name);
 
@@ -894,6 +899,25 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _ControlCompletionsChangedHandler(const winrt::Windows::Foundation::IInspectable sender, const winrt::Microsoft::Terminal::Control::CompletionsChangedEventArgs args);
 
         void _OpenSuggestions(const Microsoft::Terminal::Control::TermControl& sender, Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::Command> commandsCollection, winrt::TerminalApp::SuggestionsMode mode, winrt::hstring filterText);
+        void _OpenCompletions(const Microsoft::Terminal::Control::TermControl& sender, Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::CompletionItem> completionItems);
+        void _OnCompletionRequested(const winrt::TerminalApp::IntelliSenseControl& sender, const winrt::Microsoft::Terminal::Settings::Model::CompletionItem& completion);
+        winrt::weak_ref<winrt::Microsoft::Terminal::Control::TermControl> _completionTargetControl;
+        std::unique_ptr<CompletionCoordinator> _completionCoordinator;
+        std::shared_ptr<HistoryCompletionProvider> _historyCompletionProvider;
+        std::unordered_map<uintptr_t, PromptInputModel> _promptInputModels;
+        std::unordered_map<uintptr_t, std::deque<std::wstring>> _promptCommandHistory;
+        std::unordered_set<uint16_t> _completionConsumedKeys;
+        bool _sendingCompletionProtocolInput{ false };
+        void _recordPromptHistory(const winrt::Microsoft::Terminal::Control::TermControl& target, const PromptInputSnapshot& snapshot);
+        void _invalidateCompletion(const winrt::Microsoft::Terminal::Control::TermControl& target);
+        void _removeCompletionTarget(const winrt::Microsoft::Terminal::Control::TermControl& target);
+        void _handleCompletionInput(const winrt::Microsoft::Terminal::Control::TermControl& target, CompletionInputAction action);
+        void _handleCompletionKey(const winrt::Microsoft::Terminal::Control::TermControl& target, const winrt::Microsoft::Terminal::Control::KeySentEventArgs& args);
+        void _handleCompletionCharacter(const winrt::Microsoft::Terminal::Control::TermControl& target, const winrt::Microsoft::Terminal::Control::CharSentEventArgs& args);
+        void _handleCompletionString(const winrt::Microsoft::Terminal::Control::TermControl& target, const winrt::Microsoft::Terminal::Control::StringSentEventArgs& args);
+        bool _canAutoTriggerCompletion(const winrt::Microsoft::Terminal::Control::TermControl& target) const;
+        PromptInputSnapshot _promptInputSnapshot(const winrt::Microsoft::Terminal::Control::TermControl& target) const;
+        safe_void_coroutine _requestGenericCompletions(winrt::Microsoft::Terminal::Control::TermControl target, uint64_t generation);
 
         void _ShowWindowChangedHandler(const IInspectable sender, const winrt::Microsoft::Terminal::Control::ShowWindowArgs args);
         Windows::Foundation::IAsyncAction _SearchMissingCommandHandler(const IInspectable sender, const winrt::Microsoft::Terminal::Control::SearchMissingCommandEventArgs args);
@@ -933,6 +957,7 @@ namespace winrt::TerminalApp::implementation
 #define ON_ALL_ACTIONS(action) DECLARE_ACTION_HANDLER(action);
         ALL_SHORTCUT_ACTIONS
         INTERNAL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
 #undef ON_ALL_ACTIONS
 #pragma endregion
 

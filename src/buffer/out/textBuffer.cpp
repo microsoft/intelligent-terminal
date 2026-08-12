@@ -3400,6 +3400,11 @@ std::wstring TextBuffer::CurrentCommand() const
     return L"";
 }
 
+bool TextBuffer::IsAtShellPrompt() const noexcept
+{
+    return _currentAttributes.GetMarkAttributes() == MarkKind::Command;
+}
+
 std::vector<std::wstring> TextBuffer::Commands() const
 {
     std::vector<std::wstring> commands{};

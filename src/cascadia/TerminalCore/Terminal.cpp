@@ -1277,7 +1277,7 @@ const size_t Microsoft::Terminal::Core::Terminal::GetTaskbarProgress() const noe
     return _taskbarProgress;
 }
 
-void Microsoft::Terminal::Core::Terminal::CompletionsChangedCallback(std::function<void(std::wstring_view, unsigned int)> pfn) noexcept
+void Microsoft::Terminal::Core::Terminal::CompletionsChangedCallback(std::function<void(std::wstring_view, unsigned int, unsigned int, unsigned int)> pfn) noexcept
 {
     _pfnCompletionsChanged.swap(pfn);
 }
@@ -1552,6 +1552,16 @@ til::color Terminal::GetColorForMark(const ScrollbarData& markData) const
 std::wstring Terminal::CurrentCommand() const
 {
     return _activeBuffer().CurrentCommand();
+}
+
+bool Terminal::IsAtShellPrompt() const noexcept
+{
+    return !_inAltBuffer() && _activeBuffer().IsAtShellPrompt();
+}
+
+bool Terminal::IsInAlternateBuffer() const noexcept
+{
+    return _inAltBuffer();
 }
 
 void Terminal::SerializeMainBuffer(HANDLE handle) const

@@ -16,6 +16,7 @@ namespace TerminalApp
         #define ON_ALL_ACTIONS(action) ACTION_EVENT(action);
         ALL_SHORTCUT_ACTIONS
         INTERNAL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
         #undef ON_ALL_ACTIONS
 
     }

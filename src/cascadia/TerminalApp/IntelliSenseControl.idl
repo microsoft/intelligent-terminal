@@ -1,0 +1,21 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace TerminalApp
+{
+    [default_interface] runtimeclass IntelliSenseControl : Windows.UI.Xaml.Controls.UserControl, Microsoft.Terminal.UI.IDirectKeyListener
+    {
+        IntelliSenseControl();
+
+        Windows.Foundation.Collections.IObservableVector<Microsoft.Terminal.Settings.Model.CompletionItem> Items { get; };
+
+        void Open(Windows.Foundation.Collections.IVector<Microsoft.Terminal.Settings.Model.CompletionItem> items,
+                  Windows.Foundation.Point anchor,
+                  Windows.Foundation.Size space,
+                  Single characterHeight);
+        void Close();
+        Boolean HandleKey(UInt32 vkey);
+
+        event Windows.Foundation.TypedEventHandler<IntelliSenseControl, Microsoft.Terminal.Settings.Model.CompletionItem> CompletionRequested;
+    }
+}

@@ -195,14 +195,21 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     struct CompletionsChangedEventArgs : public CompletionsChangedEventArgsT<CompletionsChangedEventArgs>
     {
     public:
-        CompletionsChangedEventArgs(const winrt::hstring menuJson, const unsigned int replaceLength) :
+        CompletionsChangedEventArgs(const winrt::hstring menuJson,
+                                    const unsigned int replacementIndex,
+                                    const unsigned int replacementLength,
+                                    const unsigned int cursorIndex) :
             _MenuJson(menuJson),
-            _ReplacementLength(replaceLength)
+            _ReplacementIndex(replacementIndex),
+            _ReplacementLength(replacementLength),
+            _CursorIndex(cursorIndex)
         {
         }
 
         WINRT_PROPERTY(winrt::hstring, MenuJson, L"");
+        WINRT_PROPERTY(uint32_t, ReplacementIndex, 0);
         WINRT_PROPERTY(uint32_t, ReplacementLength, 0);
+        WINRT_PROPERTY(uint32_t, CursorIndex, 0);
     };
 
     struct KeySentEventArgs : public KeySentEventArgsT<KeySentEventArgs>
@@ -218,6 +225,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         WINRT_PROPERTY(WORD, ScanCode);
         WINRT_PROPERTY(winrt::Microsoft::Terminal::Core::ControlKeyStates, Modifiers);
         WINRT_PROPERTY(bool, KeyDown, false);
+        WINRT_PROPERTY(bool, Handled, false);
     };
 
     struct CharSentEventArgs : public CharSentEventArgsT<CharSentEventArgs>

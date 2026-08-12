@@ -388,11 +388,14 @@ bool Terminal::IsVtInputEnabled() const noexcept
     return false;
 }
 
-void Terminal::InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength)
+void Terminal::InvokeCompletions(std::wstring_view menuJson,
+                                 unsigned int replacementIndex,
+                                 unsigned int replacementLength,
+                                 unsigned int cursorIndex)
 {
     if (_pfnCompletionsChanged)
     {
-        _pfnCompletionsChanged(menuJson, replaceLength);
+        _pfnCompletionsChanged(menuJson, replacementIndex, replacementLength, cursorIndex);
     }
 }
 

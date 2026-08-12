@@ -3826,7 +3826,9 @@ void AdaptDispatch::DoVsCodeAction(const std::wstring_view string)
             const auto remainder = string.substr(prefixLength);
 
             _api.InvokeCompletions(parts.size() < 5 ? L"" : remainder,
-                                   replacementLength);
+                                   replacementIndex,
+                                   replacementLength,
+                                   cursorIndex);
         }
 
         // If it's poorly formatted, just eat it

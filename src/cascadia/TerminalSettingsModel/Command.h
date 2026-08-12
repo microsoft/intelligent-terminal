@@ -18,6 +18,7 @@ Author(s):
 --*/
 #pragma once
 
+#include "CompletionItem.g.h"
 #include "Command.g.h"
 #include "TerminalWarnings.h"
 #include "Profile.h"
@@ -42,6 +43,43 @@ static constexpr std::string_view DescriptionKey{ "description" };
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    struct CompletionItem : CompletionItemT<CompletionItem>
+    {
+        CompletionItem(winrt::hstring completionText,
+                       winrt::hstring displayText,
+                       winrt::hstring description,
+                       int32_t resultType,
+                       winrt::hstring applyMode,
+                       uint32_t replacementIndex,
+                       uint32_t replacementLength,
+                       uint32_t cursorIndex) :
+            _CompletionText(std::move(completionText)),
+            _DisplayText(std::move(displayText)),
+            _Description(std::move(description)),
+            _ResultType(resultType),
+            _ApplyMode(std::move(applyMode)),
+            _ReplacementIndex(replacementIndex),
+            _ReplacementLength(replacementLength),
+            _CursorIndex(cursorIndex)
+        {
+        }
+
+        static Windows::Foundation::Collections::IVector<Model::CompletionItem> ParsePowerShell(winrt::hstring json,
+                                                                                                uint32_t replacementIndex,
+                                                                                                uint32_t replacementLength,
+                                                                                                uint32_t cursorIndex);
+        winrt::hstring IconGlyph() const noexcept;
+
+        WINRT_PROPERTY(winrt::hstring, CompletionText, L"");
+        WINRT_PROPERTY(winrt::hstring, DisplayText, L"");
+        WINRT_PROPERTY(winrt::hstring, Description, L"");
+        WINRT_PROPERTY(int32_t, ResultType, 0);
+        WINRT_PROPERTY(winrt::hstring, ApplyMode, L"");
+        WINRT_PROPERTY(uint32_t, ReplacementIndex, 0);
+        WINRT_PROPERTY(uint32_t, ReplacementLength, 0);
+        WINRT_PROPERTY(uint32_t, CursorIndex, 0);
+    };
+
     struct Command : CommandT<Command>
     {
         struct CommandNameOrResource
@@ -91,7 +129,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
         void ResolveMediaResourcesWithBasePath(const winrt::hstring& basePath, const Model::MediaResourceResolver& resolver);
 
-        static Windows::Foundation::Collections::IVector<Model::Command> ParsePowerShellMenuComplete(winrt::hstring json, int32_t replaceLength);
         static Windows::Foundation::Collections::IVector<Model::Command> HistoryToCommands(Windows::Foundation::Collections::IVector<winrt::hstring> history,
                                                                                            winrt::hstring currentCommandline,
                                                                                            bool directories,
@@ -121,5 +158,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
 namespace winrt::Microsoft::Terminal::Settings::Model::factory_implementation
 {
+    BASIC_FACTORY(CompletionItem);
     BASIC_FACTORY(Command);
 }

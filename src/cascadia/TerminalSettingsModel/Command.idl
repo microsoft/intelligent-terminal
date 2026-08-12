@@ -10,6 +10,33 @@ import "TerminalWarnings.idl";
 
 namespace Microsoft.Terminal.Settings.Model
 {
+    runtimeclass CompletionItem
+    {
+        CompletionItem(String completionText,
+                       String displayText,
+                       String description,
+                       Int32 resultType,
+                       String applyMode,
+                       UInt32 replacementIndex,
+                       UInt32 replacementLength,
+                       UInt32 cursorIndex);
+
+        String CompletionText { get; };
+        String DisplayText { get; };
+        String Description { get; };
+        Int32 ResultType { get; };
+        String IconGlyph { get; };
+        String ApplyMode { get; };
+        UInt32 ReplacementIndex { get; };
+        UInt32 ReplacementLength { get; };
+        UInt32 CursorIndex { get; };
+
+        static IVector<CompletionItem> ParsePowerShell(String json,
+                                                      UInt32 replacementIndex,
+                                                      UInt32 replacementLength,
+                                                      UInt32 cursorIndex);
+    }
+
     enum ShortcutAction
     {
         Invalid = 0, // treat Invalid as unbound actions
@@ -18,6 +45,7 @@ namespace Microsoft.Terminal.Settings.Model
         #define ON_ALL_ACTIONS(action) action,
         ALL_SHORTCUT_ACTIONS
         INTERNAL_SHORTCUT_ACTIONS
+        ADDITIONAL_SHORTCUT_ACTIONS
         #undef ON_ALL_ACTIONS
     };
 
@@ -53,7 +81,6 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean HasNestedCommands { get; };
         Windows.Foundation.Collections.IMapView<String, Command> NestedCommands { get; };
 
-        static IVector<Command> ParsePowerShellMenuComplete(String json, Int32 replaceLength);
         static IVector<Command> HistoryToCommands(IVector<String> commandHistory, String commandline, Boolean directories, String iconPath);
     }
 }

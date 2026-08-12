@@ -375,8 +375,19 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // true, $Error[0] is null, and Get-History has no entry. Wrap
     // PSConsoleHostReadLine to retain the submitted line, then parse it lazily
     // in prompt only when no normal completion signal exists.
+    //
+    // v7: register the F12,b PSReadLine chord used by the Terminal's
+    // triggerCompletion action. The handler asks TabExpansion2 for native
+    // PowerShell completions and emits the existing OSC 633 completion payload.
+    //
+    // v8: retain the replacement range from the latest completion request and
+    // register F12,c to apply it with PSConsoleReadLine.Replace. Completion
+    // items advertise this support through ApplyMode=psreadline-v1.
+    //
+    // v9: emit an empty completion response when TabExpansion2 has no matches,
+    // allowing the Terminal's single-flight coordinator to release the request.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 6;
+    inline constexpr int kVersion = 9;
 
     inline std::wstring ScriptFileName()
     {
@@ -433,6 +444,7 @@ if (-not $Global:__ShellInteg_Installed) {
     $Global:__ShellInteg_LastHistoryId  = -1
     $Global:__ShellInteg_LastErrorRecord = $Error[0]
     $Global:__ShellInteg_LastSubmittedLine = $null
+    $Global:__ShellInteg_PendingCompletion = $null
     $Global:__ShellInteg_CanInspectErrors =
         $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
     $Global:__ShellInteg_Installed      = $true
@@ -462,6 +474,86 @@ if (-not $Global:__ShellInteg_Installed) {
             return $LastExitCode
         }
         return -1
+    }
+
+    function Global:__ShellInteg_SendCompletions {
+        $Global:__ShellInteg_PendingCompletion = $null
+        $line = $null
+        $cursorIndex = 0
+        $replacementIndex = $cursorIndex
+        $replacementLength = 0
+        $items = @()
+        $completionError = $null
+        try {
+            [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState(
+                [ref]$line,
+                [ref]$cursorIndex)
+            $replacementIndex = $cursorIndex
+
+            $completions = TabExpansion2 -inputScript $line -cursorColumn $cursorIndex
+            if ($null -ne $completions -and $completions.CompletionMatches.Count -gt 0) {
+                $replacementIndex = [int]$completions.ReplacementIndex
+                $replacementLength = [int]$completions.ReplacementLength
+                $Global:__ShellInteg_PendingCompletion = @{
+                    ReplacementIndex = $replacementIndex
+                    ReplacementLength = $replacementLength
+                }
+
+                $items = @(
+                    foreach ($match in $completions.CompletionMatches) {
+                        [ordered]@{
+                            CompletionText = [string]$match.CompletionText
+                            ListItemText = [string]$match.ListItemText
+                            ResultType = [int]$match.ResultType
+                            ToolTip = [string]$match.ToolTip
+                            ApplyMode = 'psreadline-v1'
+                        }
+                    }
+                )
+            }
+            $json = ConvertTo-Json -InputObject $items -Compress -Depth 3
+        }
+        catch {
+            $completionError = $_
+            $Global:__ShellInteg_PendingCompletion = $null
+            $replacementIndex = $cursorIndex
+            $replacementLength = 0
+            $json = '[]'
+        }
+        $E = $Global:__ShellInteg_ESC
+        $B = $Global:__ShellInteg_BEL
+        $sequence = "${E}]633;Completions;" +
+            "${replacementIndex};" +
+            "${replacementLength};" +
+            "${cursorIndex};${json}${B}"
+        [Console]::Write($sequence)
+        if ($null -ne $completionError) {
+            Write-Error -ErrorRecord $completionError
+        }
+    }
+
+    function Global:__ShellInteg_ApplyCompletion {
+        $pending = $Global:__ShellInteg_PendingCompletion
+        $Global:__ShellInteg_PendingCompletion = $null
+        if ($null -eq $pending) {
+            return
+        }
+
+        [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
+            $pending.ReplacementIndex,
+            $pending.ReplacementLength,
+            '')
+        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition(
+            $pending.ReplacementIndex)
+    }
+
+    if (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue) {
+        Set-PSReadLineKeyHandler -Chord 'F12,b' -ScriptBlock {
+            __ShellInteg_SendCompletions
+        }
+        Set-PSReadLineKeyHandler -Chord 'F12,c' -ScriptBlock {
+            __ShellInteg_ApplyCompletion
+        }
     }
 
     function prompt {
