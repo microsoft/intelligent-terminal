@@ -227,6 +227,46 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Clears the keep-running opt-in a persisted window layout recorded for one
+    // durable shell session.
+    //
+    // The layout is the whole-window restore's input, so a stale `true` here
+    // would put the flag back on the next launch even after the database copy
+    // was cleared. Matching is by durable id because that is the only thing
+    // tying a saved layout entry to the session the user just closed.
+    inline bool ClearPersistedKeepRunningInLayouts(
+        const winrt::Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::WindowLayout>& layouts,
+        const winrt::hstring& shellSessionId)
+    {
+        if (!layouts || shellSessionId.empty())
+        {
+            return false;
+        }
+
+        auto changed = false;
+        for (const auto& layout : layouts)
+        {
+            if (!layout || !layout.TabLayout())
+            {
+                continue;
+            }
+
+            for (const auto& action : layout.TabLayout())
+            {
+                const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
+                if (terminalArgs &&
+                    terminalArgs.KeepRunning() &&
+                    terminalArgs.DurableShellSessionId() == shellSessionId)
+                {
+                    terminalArgs.KeepRunning(false);
+                    changed = true;
+                }
+            }
+        }
+
+        return changed;
+    }
+
     inline bool TryAcceptWindowClose(bool& closeAccepted) noexcept
     {
         if (closeAccepted)

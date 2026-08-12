@@ -2121,6 +2121,9 @@ impl HelperHandler {
             Req::ShellSessionSave(p) => handle_shell_session_save(&self.state, p).await,
             Req::ShellSessionGet(p) => handle_shell_session_get(&self.state, p).await,
             Req::ShellSessionDelete(p) => handle_shell_session_delete(&self.state, p).await,
+            Req::ShellSessionSetKeepRunning(p) => {
+                handle_shell_session_set_keep_running(&self.state, p).await
+            }
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
                     .conn
@@ -4252,6 +4255,7 @@ fn scope_shell_session_request(
         Req::ShellSessionSave(params) => &mut params.elevated,
         Req::ShellSessionGet(params) => &mut params.elevated,
         Req::ShellSessionDelete(params) => &mut params.elevated,
+        Req::ShellSessionSetKeepRunning(params) => &mut params.elevated,
         _ => return None,
     };
     let claimed_elevated = *claimed;
@@ -4331,6 +4335,19 @@ async fn handle_shell_session_delete(
         .delete(params)
         .await
         .map_err(|error| shell_session_store_error("delete", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_set_keep_running(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionSetKeepRunningParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .set_keep_running(params)
+        .await
+        .map_err(|error| shell_session_store_error("set_keep_running", error))?;
     Ok(crate::session_registry::build_shell_session_ext_response(
         &response,
     ))

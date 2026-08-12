@@ -108,6 +108,18 @@ pub struct ShellSessionDeleteResponse {
     pub deleted: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellSessionSetKeepRunningParams {
+    pub id: String,
+    pub elevated: bool,
+    pub keep_running: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellSessionSetKeepRunningResponse {
+    pub updated: bool,
+}
+
 /// Cloneable async facade over the dedicated SQLite/file actor thread.
 #[derive(Clone)]
 pub struct ShellSessionStore {
@@ -130,6 +142,10 @@ enum StoreCommand {
     Delete(
         ShellSessionDeleteParams,
         oneshot::Sender<Result<ShellSessionDeleteResponse>>,
+    ),
+    SetKeepRunning(
+        ShellSessionSetKeepRunningParams,
+        oneshot::Sender<Result<ShellSessionSetKeepRunningResponse>>,
     ),
 }
 
@@ -221,6 +237,18 @@ impl ShellSessionStore {
             .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
         rx.await
             .context("shell-session store actor dropped delete response")?
+    }
+
+    pub async fn set_keep_running(
+        &self,
+        params: ShellSessionSetKeepRunningParams,
+    ) -> Result<ShellSessionSetKeepRunningResponse> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCommand::SetKeepRunning(params, tx))
+            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+        rx.await
+            .context("shell-session store actor dropped set-keep-running response")?
     }
 }
 
@@ -354,6 +382,9 @@ impl StoreCore {
             }
             StoreCommand::Delete(params, response) => {
                 let _ = response.send(self.delete(&params));
+            }
+            StoreCommand::SetKeepRunning(params, response) => {
+                let _ = response.send(self.set_keep_running(&params));
             }
         }
     }
@@ -700,8 +731,49 @@ impl StoreCore {
         Ok(ShellSessionDeleteResponse { deleted })
     }
 
-    fn validate_staging_files(&self, buffers: &[ShellSessionBufferInput]) -> Result<Vec<PathBuf>> {
-        let staging_root = fs::canonicalize(&self.staging_root).with_context(|| {
+    /// Rewrites the keep-running opt-in recorded in a saved layout.
+    ///
+    /// Deliberately not expressed as a `save`: that replaces the whole record,
+    /// including the buffer set, so a caller who only wants to clear a flag
+    /// would have to resend every snapshot or silently drop them. It also
+    /// leaves the revision alone — nothing about the layout itself changed, and
+    /// bumping it would make a live tab's expected revision stale and fork the
+    /// record on its next save.
+    fn set_keep_running(
+        &self,
+        params: &ShellSessionSetKeepRunningParams,
+    ) -> Result<ShellSessionSetKeepRunningResponse> {
+        let layout_json: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT layout_json FROM shell_sessions WHERE id = ?1 AND elevated = ?2",
+                params![params.id, params.elevated],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("failed to read shell-session layout")?;
+
+        let Some(layout_json) = layout_json else {
+            return Ok(ShellSessionSetKeepRunningResponse { updated: false });
+        };
+
+        let Some(rewritten) = rewrite_layout_keep_running(&layout_json, params.keep_running) else {
+            return Ok(ShellSessionSetKeepRunningResponse { updated: false });
+        };
+
+        let updated = self
+            .connection
+            .execute(
+                "UPDATE shell_sessions SET layout_json = ?1 WHERE id = ?2 AND elevated = ?3",
+                params![rewritten, params.id, params.elevated],
+            )
+            .context("failed to update shell-session layout")?
+            != 0;
+
+        Ok(ShellSessionSetKeepRunningResponse { updated })
+    }
+
+    fn validate_staging_files(&self, buffers: &[ShellSessionBufferInput]) -> Result<Vec<PathBuf>> {        let staging_root = fs::canonicalize(&self.staging_root).with_context(|| {
             format!(
                 "failed to canonicalize shell-session staging root {}",
                 self.staging_root.display()
@@ -1408,6 +1480,35 @@ fn collect_orphans_recursive(
     Ok(empty)
 }
 
+/// Rewrites `keepRunning` on the first pane of a saved layout.
+///
+/// The opt-in belongs to the tab, and the layout records it on whichever pane
+/// action comes first — the same place `_AddTabIdentityMetadata` writes it on
+/// the C++ side. Returns `None` when the layout cannot be parsed or carries no
+/// pane action, so a malformed record is left untouched rather than replaced.
+fn rewrite_layout_keep_running(layout_json: &str, keep_running: bool) -> Option<String> {
+    let mut layout: serde_json::Value = serde_json::from_str(layout_json).ok()?;
+    let actions = layout.get_mut("tabLayout")?.as_array_mut()?;
+
+    for action in actions.iter_mut() {
+        let object = action.as_object_mut()?;
+        let is_pane_action = matches!(
+            object.get("action").and_then(serde_json::Value::as_str),
+            Some("newTab") | Some("splitPane")
+        );
+        if !is_pane_action {
+            continue;
+        }
+        object.insert(
+            "keepRunning".to_string(),
+            serde_json::Value::Bool(keep_running),
+        );
+        return serde_json::to_string(&layout).ok();
+    }
+
+    None
+}
+
 fn remove_files<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) {
     for path in paths {
         if let Err(error) = fs::remove_file(path) {
@@ -1467,6 +1568,53 @@ pub fn current_process_is_elevated() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearing_keep_running_rewrites_only_the_first_pane_action() {
+        let layout = serde_json::json!({
+            "tabLayout": [
+                { "action": "newTab", "keepRunning": true, "tabTitle": "keep running" },
+                { "action": "splitPane", "keepRunning": true },
+                { "action": "renameTab" }
+            ]
+        })
+        .to_string();
+
+        let rewritten = rewrite_layout_keep_running(&layout, false).expect("layout is rewritable");
+        let actions = serde_json::from_str::<serde_json::Value>(&rewritten).unwrap()["tabLayout"]
+            .as_array()
+            .unwrap()
+            .clone();
+
+        // The opt-in is a tab property recorded on the first pane, so that is
+        // the one the restore reads and the only one worth rewriting.
+        assert_eq!(actions[0]["keepRunning"], serde_json::Value::Bool(false));
+        assert_eq!(actions[1]["keepRunning"], serde_json::Value::Bool(true));
+        // Everything else survives untouched.
+        assert_eq!(actions[0]["tabTitle"], "keep running");
+        assert_eq!(actions[2]["action"], "renameTab");
+    }
+
+    #[test]
+    fn keep_running_is_written_even_when_the_layout_never_carried_it() {
+        let layout = serde_json::json!({ "tabLayout": [{ "action": "newTab" }] }).to_string();
+
+        let rewritten = rewrite_layout_keep_running(&layout, false).expect("layout is rewritable");
+        let value = serde_json::from_str::<serde_json::Value>(&rewritten).unwrap();
+        assert_eq!(value["tabLayout"][0]["keepRunning"], false);
+    }
+
+    #[test]
+    fn a_layout_with_nothing_to_rewrite_is_left_alone() {
+        assert!(rewrite_layout_keep_running("not json", false).is_none());
+        assert!(rewrite_layout_keep_running(r#"{"tabLayout":[]}"#, false).is_none());
+        assert!(rewrite_layout_keep_running(r#"{"other":1}"#, false).is_none());
+        // No pane action to carry the flag.
+        assert!(
+            rewrite_layout_keep_running(r#"{"tabLayout":[{"action":"renameTab"}]}"#, false)
+                .is_none()
+        );
+    }
 
     struct TestDirectory(PathBuf);
 

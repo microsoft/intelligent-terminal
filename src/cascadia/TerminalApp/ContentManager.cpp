@@ -5,6 +5,7 @@
 #include "ContentManager.h"
 #include "ContentManager.g.cpp"
 #include "SharedWta.h"
+#include "KeepRunningSessionHelpers.h"
 
 #include <wil/token_helpers.h>
 #include <json/json.h>
@@ -862,6 +863,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        // Closing from the tray says the user is done keeping this tab alive,
+        // so the opt-in recorded against its saved session has to go too.
+        // Leaving it would resurrect the state: the next restore of that record
+        // reads the flag straight back out of the layout and pins the tab
+        // again, with nothing on screen explaining why.
+        _clearKeepRunningOptIn(it->second.shellSessionId);
+
         const auto sessionIds = it->second.sessionIds;
         auto changed = false;
         for (const auto& sessionId : sessionIds)
@@ -895,6 +903,53 @@ namespace winrt::TerminalApp::implementation
         {
             KeptSessionsChanged.raise(*this, nullptr);
         }
+    }
+
+    // Clears the keep-running opt-in stored against a durable shell session.
+    //
+    // The flag lives in two places, and both have to go or the one left behind
+    // puts it back: `layout_json` in wta-master's database, which the
+    // shell-session list restores from, and the persisted window layout, which
+    // the whole-window restore replays. Best effort — a session that was never
+    // saved has no id, and failing to reach master must not stop the close.
+    void ContentManager::_clearKeepRunningOptIn(const winrt::hstring& shellSessionId)
+    {
+        if (shellSessionId.empty())
+        {
+            return;
+        }
+
+        try
+        {
+            auto& sharedWta = SharedWta::Instance();
+            if (sharedWta.IsRunning())
+            {
+                Json::Value params;
+                params["id"] = winrt::to_string(shellSessionId);
+                params["elevated"] = ::Microsoft::Console::Utils::IsRunningElevated();
+                params["keep_running"] = false;
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                sharedWta.Request(
+                    "_intellterm.wta/shell_sessions/set_keep_running",
+                    Json::writeString(writer, params));
+            }
+        }
+        CATCH_LOG()
+
+        try
+        {
+            const auto state = ApplicationState::SharedInstance();
+            const auto layouts = state.PersistedWindowLayouts();
+            if (ClearPersistedKeepRunningInLayouts(layouts, shellSessionId))
+            {
+                // The layout objects were mutated in place, so re-set the
+                // property to mark the state dirty and flush it to disk.
+                state.PersistedWindowLayouts(layouts);
+                state.Flush();
+            }
+        }
+        CATCH_LOG()
     }
 
     // Removes one session and, once its tab has no members left, the tab.

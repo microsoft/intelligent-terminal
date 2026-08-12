@@ -362,6 +362,8 @@ pub const INTELLTERM_METHOD_SHELL_SESSION_GET: &str =
     "_intellterm.wta/shell_sessions/get";
 pub const INTELLTERM_METHOD_SHELL_SESSION_DELETE: &str =
     "_intellterm.wta/shell_sessions/delete";
+pub const INTELLTERM_METHOD_SHELL_SESSION_SET_KEEP_RUNNING: &str =
+    "_intellterm.wta/shell_sessions/set_keep_running";
 
 fn build_typed_ext_request<T: serde::Serialize>(
     method: &'static str,
@@ -438,6 +440,12 @@ pub fn parse_shell_session_delete_params(
 pub fn parse_shell_session_delete_response(
     raw: &serde_json::value::RawValue,
 ) -> Result<crate::shell_session_store::ShellSessionDeleteResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_session_set_keep_running_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionSetKeepRunningParams, serde_json::Error> {
     serde_json::from_str(raw.get())
 }
 
@@ -563,6 +571,7 @@ pub enum WtaExtRequest {
     ShellSessionSave(crate::shell_session_store::ShellSessionSaveParams),
     ShellSessionGet(crate::shell_session_store::ShellSessionGetParams),
     ShellSessionDelete(crate::shell_session_store::ShellSessionDeleteParams),
+    ShellSessionSetKeepRunning(crate::shell_session_store::ShellSessionSetKeepRunningParams),
     /// Not one of ours (or a future agent-native extension); forward it
     /// verbatim to the agent CLI so unknown extension methods still work.
     ForwardToAgent(acp::schema::v1::ExtRequest),
@@ -622,6 +631,11 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(ShellSessionGet, parse_shell_session_get_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_DELETE) {
         decode!(ShellSessionDelete, parse_shell_session_delete_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_SET_KEEP_RUNNING) {
+        decode!(
+            ShellSessionSetKeepRunning,
+            parse_shell_session_set_keep_running_params
+        )
     } else {
         WtaExtRequest::ForwardToAgent(req)
     }

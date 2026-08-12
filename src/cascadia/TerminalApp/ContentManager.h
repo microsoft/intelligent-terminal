@@ -239,6 +239,7 @@ namespace winrt::TerminalApp::implementation
         void _discardKeptGroupOnOwner(const winrt::guid& groupId);
 
         void _dropKeptSession(const winrt::guid& sessionId);
+        void _clearKeepRunningOptIn(const winrt::hstring& shellSessionId);
         void _reapDetachedSessionIfDead(const winrt::guid& sessionId);
         void _forgetKeptSession(uint64_t contentId, const winrt::hstring& fallbackDetachedEndState);
         bool _processClosedContent(uint64_t contentId, const winrt::hstring& detachedEndState);
