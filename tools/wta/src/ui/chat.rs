@@ -2,6 +2,8 @@ use std::borrow::Cow;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use tui_markdown::{Options as MarkdownOptions, StyleSheet};
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::{
     App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallKind, ToolCallOutput,
@@ -10,7 +12,9 @@ use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
+fn activity_label() -> String {
+    t!("chat.activity_thinking").into_owned()
+}
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
@@ -50,32 +54,32 @@ fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
-    // Fetch once for the pending-height calculation.
-    let pending_text = pending_render_text(tab);
 
-    let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
-    let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
-    let pending = pending_text
-        .as_deref()
-        .map(|text| {
-            let body_width = wrap_width.saturating_sub(2).max(1);
-            dot_wrap_count(text, body_width)
-        })
-        .unwrap_or(0);
+    let messages: usize = tab
+        .messages
+        .iter()
+        .map(|m| message_height(m, wrap_width))
+        .sum();
+    let turns: usize = tab
+        .completed_turns
+        .iter()
+        .map(|t| turn_height(t, wrap_width))
+        .sum();
+    let pending = pending_height(tab, wrap_width);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
     // it off the top of the visible chat block. Always a single row —
     // terminal min-width guarantees the localized title fits without
     // wrapping.
-    let welcome = if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
+    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
         1
     } else {
         0
     };
 
-    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    (messages + turns + pending + welcome)
+        .max(1)
+        .min(u16::MAX as usize) as u16
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -83,7 +87,11 @@ fn wrap_count(text: &str, width: usize) -> usize {
     text.split('\n')
         .map(|line| {
             let chars = line.chars().count();
-            if chars == 0 { 1 } else { chars.div_ceil(w) }
+            if chars == 0 {
+                1
+            } else {
+                chars.div_ceil(w)
+            }
         })
         .sum::<usize>()
         .max(1)
@@ -96,6 +104,160 @@ fn dot_wrap_count(text: &str, width: usize) -> usize {
     wrap_count(text.trim_start_matches('\n'), width)
 }
 
+#[derive(Clone)]
+struct AgentMarkdownStyleSheet;
+
+impl StyleSheet for AgentMarkdownStyleSheet {
+    fn heading(&self, _level: u8) -> Style {
+        theme::MARKDOWN_HEADING
+    }
+
+    fn code(&self) -> Style {
+        theme::MARKDOWN_CODE
+    }
+
+    fn link(&self) -> Style {
+        theme::MARKDOWN_LINK
+    }
+
+    fn blockquote(&self) -> Style {
+        theme::MARKDOWN_QUOTE
+    }
+
+    fn heading_meta(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn metadata_block(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn table_header(&self) -> Style {
+        theme::MARKDOWN_TABLE_HEADER
+    }
+
+    fn table_cell(&self) -> Style {
+        theme::AGENT_TEXT
+    }
+
+    fn table_border(&self) -> Style {
+        theme::MARKDOWN_TABLE_BORDER
+    }
+
+    fn heading_marker(&self, _level: u8) -> &str {
+        ""
+    }
+
+    fn code_block_fence(&self) -> &str {
+        ""
+    }
+}
+
+#[derive(Clone, Copy)]
+struct StyledChar {
+    value: char,
+    style: Style,
+}
+
+fn styled_chars_to_line(chars: &[StyledChar]) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for styled in chars {
+        if let Some(span) = spans.last_mut().filter(|span| span.style == styled.style) {
+            span.content.to_mut().push(styled.value);
+        } else {
+            spans.push(Span::styled(styled.value.to_string(), styled.style));
+        }
+    }
+    Line::from(spans)
+}
+
+fn wrap_markdown_line(line: Line<'_>, width: usize) -> Vec<Line<'static>> {
+    let base_style = theme::AGENT_TEXT.patch(line.style);
+    let chars: Vec<StyledChar> = line
+        .spans
+        .into_iter()
+        .flat_map(|span| {
+            let style = base_style.patch(span.style);
+            span.content
+                .into_owned()
+                .chars()
+                .map(move |value| StyledChar { value, style })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    if chars.is_empty() {
+        return vec![Line::default()];
+    }
+
+    let width = width.max(1);
+    let mut wrapped = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let mut end = start;
+        let mut cells = 0;
+        let mut last_whitespace = None;
+        while end < chars.len() {
+            let char_width = UnicodeWidthChar::width(chars[end].value).unwrap_or(0);
+            if end > start && cells + char_width > width {
+                break;
+            }
+            cells += char_width;
+            if chars[end].value.is_whitespace() {
+                last_whitespace = Some(end);
+            }
+            end += 1;
+            if cells >= width {
+                break;
+            }
+        }
+
+        let next = if end < chars.len() {
+            last_whitespace
+                .filter(|index| *index > start)
+                .unwrap_or(end)
+        } else {
+            end
+        };
+        wrapped.push(styled_chars_to_line(&chars[start..next]));
+        start = next;
+        while start < chars.len() && chars[start].value.is_whitespace() {
+            start += 1;
+        }
+    }
+    wrapped
+}
+
+fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<Line<'static>> {
+    let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+    let markdown = tui_markdown::from_str_with_options(text.trim_start_matches('\n'), &options);
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let mut lines = Vec::new();
+    let mut first_row = true;
+
+    for logical_line in markdown.lines {
+        for mut line in wrap_markdown_line(logical_line, body_width) {
+            if line.width() == 0 {
+                if !first_row {
+                    lines.push(Line::default());
+                }
+                continue;
+            }
+
+            let mut spans = Vec::with_capacity(line.spans.len() + 1);
+            if first_row {
+                spans.push(Span::styled("● ", dot_style));
+                first_row = false;
+            } else {
+                spans.push(Span::raw("  "));
+            }
+            spans.append(&mut line.spans);
+            lines.push(Line::from(spans));
+        }
+    }
+    lines
+}
+
 struct MessageLayout {
     height: usize,
     has_trailing_blank: bool,
@@ -106,7 +268,11 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => MessageLayout {
+        ChatMessage::Agent(t) => MessageLayout {
+            height: agent_markdown_lines(t, wrap_width, theme::DOT_AGENT).len() + 1,
+            has_trailing_blank: true,
+        },
+        ChatMessage::Error(t) => MessageLayout {
             height: dot_wrap_count(t, body_width) + 1,
             has_trailing_blank: true,
         },
@@ -157,10 +323,7 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             };
             let has_trailing_blank = command_lines + output_rows > 0;
             MessageLayout {
-                height: 1
-                    + command_lines
-                    + output_rows
-                    + usize::from(has_trailing_blank),
+                height: 1 + command_lines + output_rows + usize::from(has_trailing_blank),
                 has_trailing_blank,
             }
         }
@@ -215,7 +378,8 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+    {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -306,7 +470,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let pane_focused = app.pane_focused;
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let mut turn_lines =
+                build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
             reversed_lines.extend(turn_lines.drain(..).rev());
             if reversed_lines.len() >= requested_lines {
                 truncated = true;
@@ -316,25 +481,25 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
+    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+        let mut welcome_lines = vec![Line::from(vec![
+            Span::styled(
+                "● ",
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                t!("chat.welcome_title").into_owned(),
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+        ])];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = lines.len();
-    let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
+    let scroll = total_lines
+        .saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
@@ -358,7 +523,11 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         format!(
             "messages={} pending_chars={} requested_lines={} visible_height={} area={}x{}",
             app.current_tab().messages.len(),
-            app.current_tab().turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            app.current_tab()
+                .turn
+                .buffer()
+                .map(|b| b.chars().count())
+                .unwrap_or(0),
             requested_lines,
             visible_height,
             area.width,
@@ -480,10 +649,7 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(
-        &label,
-        tab.activity_frame,
-    ));
+    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -499,9 +665,33 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
     user_visible_stream_text(tab.turn.buffer()?)
 }
 
+fn pending_revealed_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
+    let text = pending_render_text(tab)?;
+    let total = text.chars().count();
+    let shown = tab.reveal_chars.min(total);
+    if shown >= total {
+        Some(text)
+    } else {
+        Some(Cow::Owned(text.chars().take(shown).collect()))
+    }
+}
+
+fn pending_height(tab: &crate::app::TabSession, wrap_width: usize) -> usize {
+    pending_revealed_text(tab)
+        .as_deref()
+        .map(|text| agent_markdown_lines(text, wrap_width, theme::DOT_AGENT).len())
+        .unwrap_or(0)
+}
+
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    let tab = app.current_tab();
-    let Some(text) = pending_render_text(tab) else {
+    build_pending_stream_lines_for_tab(app.current_tab(), wrap_width)
+}
+
+fn build_pending_stream_lines_for_tab<'a>(
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+) -> Vec<Line<'a>> {
+    let Some(revealed) = pending_revealed_text(tab) else {
         return Vec::new();
     };
     // Typewriter smoothing: only reveal the first `reveal_chars` characters of
@@ -510,24 +700,7 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
     // full text is always in `turn.buffer()`, and finalize commits it in full,
     // so this never drops or delays the final content.
-    let revealed: Cow<'_, str> = {
-        let total = text.chars().count();
-        let shown = tab.reveal_chars.min(total);
-        if shown >= total {
-            text
-        } else {
-            Cow::Owned(text.chars().take(shown).collect())
-        }
-    };
-    let mut lines = Vec::new();
-    push_dot_prefixed_lines(
-        &mut lines,
-        &revealed,
-        wrap_width,
-        theme::DOT_AGENT,
-        theme::AGENT_TEXT,
-    );
-    lines
+    agent_markdown_lines(&revealed, wrap_width, theme::DOT_AGENT)
 }
 
 fn build_message_lines<'a>(
@@ -545,13 +718,7 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
-            push_dot_prefixed_lines(
-                &mut lines,
-                text,
-                wrap_width,
-                theme::DOT_AGENT,
-                theme::AGENT_TEXT,
-            );
+            lines.extend(agent_markdown_lines(text, wrap_width, theme::DOT_AGENT));
             if !agent_streaming || !is_last_message {
                 lines.push(Line::default());
             }
@@ -680,7 +847,10 @@ fn build_message_lines<'a>(
             }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(
+                t!("chat.plan_header").into_owned(),
+                theme::PLAN_STYLE,
+            )));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -1032,7 +1202,10 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+        assert_eq!(
+            line.spans.get(3).map(|span| span.style),
+            expected_detail_style
+        );
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1314,6 +1487,59 @@ mod tests {
     }
 
     #[test]
+    fn pending_stream_renders_markdown_and_preserves_partial_syntax() {
+        let complete = "# Heading\n\nStreaming **bold** text";
+        let complete_tab = streaming_tab(complete, complete.chars().count());
+
+        let lines = build_pending_stream_lines_for_tab(&complete_tab, 80);
+        assert_eq!(line_text(&lines[0]), "● Heading");
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold" && span.style == theme::AGENT_TEXT.add_modifier(Modifier::BOLD)
+        }));
+
+        let partial = "# Heading\n\nStreaming **bo";
+        let partial_tab = streaming_tab(partial, partial.chars().count());
+        let partial_text = build_pending_stream_lines_for_tab(&partial_tab, 80)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(partial_text.contains("bo"));
+    }
+
+    #[test]
+    fn narrow_table_preserves_rows_and_matches_finalized_and_pending_heights() {
+        let table = concat!(
+            "| Key | One | Two |\n",
+            "|:----|----:|----:|\n",
+            "| A | A1 | A2 |\n",
+            "| B | B1 | B2 |\n",
+            "| C | C1 | C2 |",
+        );
+        let width = 24_u16;
+        let message = ChatMessage::Agent(table.into());
+        let finalized = build_message_lines(&message, false, false, None, 0, width as usize);
+        let finalized_text = finalized
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for row in ["│ A", "│ B", "│ C"] {
+            assert!(finalized_text.contains(row), "missing table row {row}");
+        }
+        assert_eq!(finalized.len(), message_height(&message, width as usize));
+
+        let mut pending_tab = streaming_tab(table, table.chars().count());
+        let pending = build_pending_stream_lines_for_tab(&pending_tab, width as usize);
+        assert_eq!(pending.len(), pending_height(&pending_tab, width as usize));
+
+        pending_tab.reveal_chars = table.find("| C").expect("final table row");
+        let partial = build_pending_stream_lines_for_tab(&pending_tab, width as usize);
+        assert_eq!(partial.len(), pending_height(&pending_tab, width as usize));
+    }
+
+    #[test]
     fn thinking_activity_follows_turn_lifecycle() {
         let mut tab = streaming_tab("", 0);
         assert!(should_show_turn_activity(&tab));
@@ -1328,10 +1554,7 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(
-            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
-            "●"
-        );
+        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
     }
 
     #[test]
@@ -1359,8 +1582,7 @@ mod tests {
             exit_code: None,
         };
 
-        let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1443,8 +1665,9 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String =
-            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let over: String = std::iter::repeat('é')
+            .take(MAX_RENDER_LINE_CHARS + 10)
+            .collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1455,7 +1678,13 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "\n\nHello",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1463,9 +1692,18 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "A\n\nB",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["● A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
@@ -1480,11 +1718,70 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[0]).starts_with("● "),
+            "first row gets the dot"
+        );
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
         );
+    }
+
+    #[test]
+    fn agent_message_renders_multiline_markdown_with_theme_relative_styles() {
+        let message =
+            ChatMessage::Agent("# Heading\n\nFirst **bold** line\n\nSecond paragraph".into());
+
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+
+        assert_eq!(texts[0], "● Heading");
+        assert!(texts.iter().any(|line| line == "  Second paragraph"));
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold" && span.style == theme::AGENT_TEXT.add_modifier(Modifier::BOLD)
+        }));
+        assert_eq!(lines.len(), message_height(&message, 80));
+    }
+
+    #[test]
+    fn agent_markdown_styles_follow_the_agent_pane_palette() {
+        let pane_relative = [
+            theme::AGENT_TEXT,
+            theme::MARKDOWN_HEADING,
+            theme::MARKDOWN_CODE,
+            theme::MARKDOWN_QUOTE,
+            theme::MARKDOWN_META,
+            theme::MARKDOWN_TABLE_HEADER,
+            theme::MARKDOWN_TABLE_BORDER,
+        ];
+
+        for style in pane_relative {
+            assert_eq!(style.fg, Some(Color::Reset));
+            assert_eq!(style.bg, None);
+        }
+        assert_eq!(theme::MARKDOWN_LINK.fg, Some(Color::Cyan));
+        assert_eq!(theme::MARKDOWN_LINK.bg, None);
+        assert!(
+            theme::MARKDOWN_CODE
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+
+        let lines = agent_markdown_lines(
+            concat!(
+                "# Heading\n\n",
+                "[link](https://example.test) and `code`\n\n",
+                "> quote\n\n",
+                "| H | V |\n|---|---|\n| A | B |",
+            ),
+            80,
+            theme::DOT_AGENT,
+        );
+        assert!(lines
+            .iter()
+            .flat_map(|line| &line.spans)
+            .all(|span| span.style.bg.is_none()));
     }
 
     // ── push_prompt_prefixed_lines (regression: issue #492) ─────────────────
@@ -1499,7 +1796,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> line one".to_string(), "  line two".to_string()]
+        );
     }
 
     #[test]
@@ -1515,7 +1815,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
