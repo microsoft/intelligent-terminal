@@ -110,15 +110,21 @@ pub enum AppEvent {
         id: String,
         title: String,
         status: String,
+        kind: crate::app::ToolCallKind,
         /// See `ChatMessage::ToolCall::location`.
         location: Option<String>,
         /// See `ChatMessage::ToolCall::location_is_command`.
         location_is_command: bool,
+        cwd: Option<String>,
+        output: Option<crate::app::ToolCallOutput>,
+        exit_code: Option<i64>,
     },
     ToolCallUpdate {
         session_id: String,
         id: String,
-        status: String,
+        title: Option<String>,
+        status: Option<String>,
+        kind: Option<crate::app::ToolCallKind>,
         /// `Some` only when the agent's `tool_call_update` actually
         /// reported new `locations`/`raw_input` — `None` means "no
         /// change", so the existing card's location hint (if any) is
@@ -127,6 +133,11 @@ pub enum AppEvent {
         /// See `ChatMessage::ToolCall::location_is_command`. Only
         /// meaningful when `location.is_some()`.
         location_is_command: bool,
+        /// `Some` means the Agent replaced its reported content. An empty
+        /// string clears the previous output.
+        output: Option<crate::app::ToolCallOutput>,
+        cwd: Option<String>,
+        exit_code: Option<i64>,
     },
     ToolCallAutoApproved {
         session_id: String,
@@ -164,6 +175,16 @@ pub enum AppEvent {
         allow_once_id: Option<String>,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
+    },
+    UserInputRequest {
+        request_id: String,
+        session_id: String,
+        request: crate::agent_tools::user_input::UserInputRequest,
+        responder: tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>,
+    },
+    CancelUserInputRequest {
+        request_id: String,
+        session_id: String,
     },
     SystemMessage(String),
     DebugPipeMessage(DebugMessage),

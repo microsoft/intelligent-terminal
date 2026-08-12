@@ -81,8 +81,8 @@ winget install --id Microsoft.IntelligentTerminal -e
 ## Get Started
 
 1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
-2. If you aren't already authenticated, the agent pane walks you through sign-in.
-3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
+2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
+3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
 
 > [!TIP]
 > If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:
@@ -105,6 +105,7 @@ All shortcuts are customizable through Intelligent Terminal settings.
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
 | <kbd>Alt+Shift+B</kbd> | Open an interactive delegate-agent tab with no startup prompt |
+| <kbd>Alt+V</kbd> | Paste a clipboard image into the agent pane |
 
 ---
 
@@ -115,10 +116,14 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Setting | Options |
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
+| Local models (BYOM) | Bring your own model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL and Model ID, then select it from `/model`. API keys aren't stored, so this suits local endpoints like Ollama that don't require one. |
 | Pane placement | Top, Bottom (default), Left, Right |
 | Error detection | Allows Intelligent Terminal to automatically detect command failures |
 | Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
 | Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
+| Token usage display | Show or hide token usage and cost in the agent status bar |
+
+You can also pin a specific agent to a profile. Open a profile in Settings (for example, "PowerShell" or "Ubuntu") and set the agent you want its agent pane to use. For a WSL profile, the picker also lists agents installed inside that distro, so an Ubuntu profile can run a Linux-side agent. Profiles you don't configure keep using the global agent.
 
 ---
 
@@ -130,7 +135,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents.
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your current token usage and cost as you work; toggle this on or off in Agent settings.
 
 ### Agent Pane
 
@@ -138,7 +143,7 @@ The agent status bar sits at the bottom of the window and gives you quick access
   <img src="./images/intelligent-terminal-agent-pane.png" alt="Screenshot of the agent pane with a development conversation">
 </p>
 
-A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells (PowerShell, Bash/WSL). Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
+A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells (PowerShell, Bash/WSL). Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused. When the agent suggests a shell command, the pane gives you the option to run or copy it rather than running it automatically. Paste a clipboard image straight into the chat with <kbd>Alt+V</kbd> to show the agent a screenshot, diagram, or mockup (acting on the image depends on your agent's image support).
 
 <p align="center">
   <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing multiple panes">
@@ -146,31 +151,32 @@ A context-aware, docked pane with your agent CLI of choice. The pane has context
 
 When you have multiple panes active, a small "Agent" indicator will appear on the pane that your agent has "focus" on.
 
+Inside the pane you can scroll and drag to select with the mouse, double-click a word or triple-click a line, and press <kbd>Ctrl+C</kbd> to copy. Press <kbd>Up</kbd> and <kbd>Down</kbd> in the input to recall recent prompts.
+
 #### Slash Commands
 
 Inside the agent pane, type `/` to see available commands. Type `/help` at any time to show the list.
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show the command list |
-| `/clear` | Clear the chat scrollback (keeps the current session) |
-| `/new` | Start a fresh agent session (drops history) |
-| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
-| `/restart` | Restart the agent with a clean session |
-| `/stop` | Cancel the in-flight prompt |
-| `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
 | `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
+| `/clear` | Clear the chat scrollback (keeps the current session) |
+| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
+| `/help` | Show the command list |
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
+| `/new` | Start a fresh agent session (drops history) |
+| `/restart` | Restart the agent with a clean session |
+| `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
+| `/stop` | Cancel the in-flight prompt |
 
-Profiles use the global Windows-hosted agent by default. In a profile's
-**General** settings, **Agent pane agent** can instead select an ACP agent
-installed in that profile's WSL distro. The picker only lists the Windows host
-and that one distro. An explicit profile selection is strict: if that agent
-cannot start, the pane reports the failure without switching to another agent.
-**Command palette agent** independently selects the agent used by `?<prompt>`
-and the interactive delegate action for that profile. Its host or WSL selection
-is also strict: if the selected agent is unavailable, delegation reports that
-error instead of falling back to another agent or execution environment.
+#### Local Models (BYOM)
+
+Run your agent against a model on your own machine instead of a cloud service. BYOM is supported through GitHub Copilot and OpenCode, using any OpenAI-compatible Chat Completions endpoint. Under Agent settings, add a provider with a Base URL and Model ID, then pick it from the `/model` picker (configured models show as `modelId (BYOM)`). No API key is stored, so a local Ollama model works with no key at all:
+
+```text
+Base URL:  http://localhost:11434/v1
+Model ID:  <your local model>
+```
 
 ### Agent Management
 

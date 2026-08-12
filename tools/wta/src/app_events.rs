@@ -741,8 +741,12 @@ impl App {
                 id,
                 title,
                 status,
+                kind,
                 location,
                 location_is_command,
+                cwd,
+                output,
+                exit_code,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
@@ -769,44 +773,80 @@ impl App {
                     id,
                     title,
                     status,
+                    kind,
                     location,
                     location_is_command,
                     policy_note,
+                    cwd,
+                    output,
+                    exit_code,
                 });
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
                 id,
+                title,
                 status,
+                kind,
                 location,
                 location_is_command,
+                output,
+                cwd,
+                exit_code,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
                 if let Some(entry) = tab.tool_calls.get_mut(&id) {
-                    entry.1 = status.clone();
+                    if let Some(title) = &title {
+                        entry.0 = title.clone();
+                    }
+                    if let Some(status) = &status {
+                        entry.1 = status.clone();
+                    }
                 }
                 // Update in-place in messages
                 for msg in &mut tab.messages {
                     if let ChatMessage::ToolCall {
                         id: ref mid,
+                        title: ref mut current_title,
                         status: ref mut s,
+                        kind: ref mut current_kind,
                         location: ref mut loc,
                         location_is_command: ref mut loc_is_cmd,
+                        cwd: ref mut current_cwd,
+                        output: ref mut current_output,
+                        exit_code: ref mut current_exit_code,
                         ..
                     } = msg
                     {
                         if mid == &id {
-                            *s = status.clone();
+                            if let Some(title) = &title {
+                                *current_title = title.clone();
+                            }
+                            if let Some(status) = &status {
+                                *s = status.clone();
+                            }
+                            if let Some(kind) = kind {
+                                *current_kind = kind;
+                            }
                             // Only overwrite when the update actually carried
                             // a fresh location — `None` means "unchanged",
                             // not "clear it" (see `AppEvent::ToolCallUpdate`).
                             if location.is_some() {
                                 *loc = location.clone();
                                 *loc_is_cmd = location_is_command;
+                            }
+                            if let Some(output) = &output {
+                                *current_output = (!output.text.is_empty()).then(|| output.clone());
+                            }
+                            if let Some(cwd) = &cwd {
+                                *current_cwd = (!cwd.is_empty()).then(|| cwd.clone());
+                            }
+                            if let Some(exit_code) = exit_code {
+                                *current_exit_code = Some(exit_code);
                             }
                         }
                     }
@@ -919,6 +959,37 @@ impl App {
                     selected: 0,
                     responder: Some(responder),
                 });
+            }
+            AppEvent::UserInputRequest {
+                request_id,
+                session_id,
+                request,
+                responder,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if !tab.turn.is_in_flight() {
+                    return;
+                }
+                tab.user_input.push_back(UserInputState {
+                    request_id,
+                    request,
+                    selected: 0,
+                    input: String::new(),
+                    responder: Some(responder),
+                });
+            }
+            AppEvent::CancelUserInputRequest {
+                request_id,
+                session_id,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if let Some(index) = tab
+                    .user_input
+                    .iter()
+                    .position(|pending| pending.request_id == request_id)
+                {
+                    tab.user_input.remove(index);
+                }
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

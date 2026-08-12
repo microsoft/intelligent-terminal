@@ -3,7 +3,9 @@ use std::borrow::Cow;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::app::{App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus};
+use crate::app::{
+    App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallKind, ToolCallOutput,
+};
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
@@ -13,6 +15,34 @@ fn activity_label() -> String {
 }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
+const MAX_TOOL_OUTPUT_LINES: usize = 4;
+const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
+
+fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
+    let mut lines = output.text.lines().rev();
+    let mut tail: Vec<String> = lines
+        .by_ref()
+        .take(MAX_TOOL_OUTPUT_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            if chars.next().is_some() {
+                format!("{head}…")
+            } else {
+                head
+            }
+        })
+        .collect();
+    let omitted = output.truncated || lines.next().is_some();
+    tail.reverse();
+
+    let mut lines = Vec::with_capacity(MAX_TOOL_OUTPUT_LINES + usize::from(omitted));
+    if omitted {
+        lines.push("…".to_string());
+    }
+    lines.extend(tail);
+    lines
+}
 
 /// Estimate the chat block's natural height (in visual rows) given the
 /// rendering width. Counts wraps for each message + completed turn. Used by
@@ -107,9 +137,11 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             has_trailing_blank: true,
         },
         ChatMessage::ToolCall {
+            kind,
             location,
             location_is_command,
             policy_note,
+            output,
             ..
         } => {
             // Command targets render one line per split statement (see
@@ -125,12 +157,28 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             } else {
                 0
             };
+            let output_rows = if *kind == ToolCallKind::Execute || *location_is_command {
+                output
+                    .as_ref()
+                    .map(|output| {
+                        tool_output_lines(output)
+                            .iter()
+                            .map(|line| wrap_count(&format!("    │ {line}"), wrap_width))
+                            .sum()
+                    })
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let has_tool_body = command_lines + output_rows > 0;
+            let has_policy_note = policy_note.is_some();
             MessageLayout {
                 height: 1
                     + command_lines
-                    + usize::from(command_lines > 0)
-                    + usize::from(policy_note.is_some()),
-                has_trailing_blank: command_lines > 0 && policy_note.is_none(),
+                    + output_rows
+                    + usize::from(has_tool_body)
+                    + usize::from(has_policy_note),
+                has_trailing_blank: has_tool_body && !has_policy_note,
             }
         }
         ChatMessage::Plan(entries) => MessageLayout {
@@ -551,9 +599,13 @@ fn build_message_lines<'a>(
             id,
             title,
             status,
+            kind,
             location,
             location_is_command,
             policy_note,
+            cwd,
+            output,
+            exit_code,
         } => {
             let (marker, marker_style, detail) = tool_call_presentation(status);
             let marker = if permission_tool_call_id == Some(id.as_str())
@@ -583,11 +635,31 @@ fn build_message_lines<'a>(
                     ));
                 }
             }
+            if *kind == ToolCallKind::Execute {
+                if let Some(cwd) = cwd
+                    .as_deref()
+                    .filter(|cwd| !cwd.is_empty())
+                    .filter(|cwd| !title.contains(cwd))
+                {
+                    spans.push(Span::styled(
+                        format!(" ({})", truncate_render_text(cwd)),
+                        theme::DIM,
+                    ));
+                }
+            }
             if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
                 spans.push(Span::styled(
                     format!(" · {}", truncate_render_text(detail)),
                     theme::DIM,
                 ));
+            }
+            if *kind == ToolCallKind::Execute || *location_is_command {
+                if let Some(exit_code) = exit_code.filter(|_| {
+                    !starts_with_ignore_ascii_case(status, "exited (")
+                        && !starts_with_ignore_ascii_case(status, "failed:")
+                }) {
+                    spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
+                }
             }
             lines.push(Line::from(spans));
             // A command target can be several `;`-chained PowerShell
@@ -612,7 +684,19 @@ fn build_message_lines<'a>(
                     }
                 }
             }
-            if rendered_command {
+            let mut rendered_output = false;
+            if *kind == ToolCallKind::Execute || *location_is_command {
+                if let Some(output) = output {
+                    for line in tool_output_lines(output) {
+                        rendered_output = true;
+                        lines.push(Line::from(Span::styled(
+                            format!("    │ {line}"),
+                            theme::DIM,
+                        )));
+                    }
+                }
+            }
+            if rendered_command || rendered_output {
                 lines.push(Line::default());
             }
             if let Some(note) = policy_note {
@@ -913,9 +997,13 @@ mod tests {
                     id: "tool".into(),
                     title: "Read source".into(),
                     status: "Completed".into(),
+                    kind: ToolCallKind::Read,
                     location: Some(r"C:\src\main.rs".into()),
                     location_is_command: false,
                     policy_note: None,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
                 }],
             ),
             (
@@ -924,9 +1012,13 @@ mod tests {
                     id: "tool".into(),
                     title: "Run tests".into(),
                     status: "Completed".into(),
+                    kind: ToolCallKind::Execute,
                     location: Some("cargo test --workspace".into()),
                     location_is_command: true,
                     policy_note: None,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
                 }],
             ),
             (
@@ -935,9 +1027,13 @@ mod tests {
                     id: "tool".into(),
                     title: "Read source".into(),
                     status: "Completed".into(),
+                    kind: ToolCallKind::Read,
                     location: Some(r"C:\src\main.rs".into()),
                     location_is_command: false,
                     policy_note: Some("Auto-approved by Intelligent Terminal policy".into()),
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
                 }],
             ),
             ("disclaimer", vec![ChatMessage::Disclaimer]),
@@ -970,9 +1066,13 @@ mod tests {
             id: "tool".into(),
             title: "Run: cargo test".into(),
             status: status.into(),
+            kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -995,9 +1095,13 @@ mod tests {
             id: "tool".into(),
             title: "Access paths outside trusted directories".into(),
             status: "Pending".into(),
+            kind: ToolCallKind::Other,
             location: Some(r"C:\src\rust-app".into()),
             location_is_command: false,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -1024,9 +1128,13 @@ mod tests {
             id: "tool".into(),
             title: "Run command".into(),
             status: "Pending".into(),
+            kind: ToolCallKind::Execute,
             location: Some("cargo test --workspace".into()),
             location_is_command: true,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1059,11 +1167,15 @@ mod tests {
             id: "tool".into(),
             title: "Check installed PowerToys and Foundry Local packages".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Execute,
             location: Some(
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
             ),
             location_is_command: true,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1086,6 +1198,61 @@ mod tests {
             4,
             "the height budget must count one row per split statement"
         );
+    }
+
+    #[test]
+    fn execute_tool_call_renders_cwd_reported_output_tail_and_exit_code() {
+        let cwd = concat!("C:", "\\", "repo");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "bash".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            policy_note: None,
+            cwd: Some(cwd.into()),
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(0),
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+        let rendered: Vec<String> = lines.iter().map(line_text).collect();
+
+        assert_eq!(rendered[0], format!("✓ bash ({cwd}) · exit 0"));
+        assert_eq!(rendered[1], "    $ cargo test");
+        assert_eq!(rendered[2], "    │ …");
+        assert_eq!(rendered[3], "    │ line 2");
+        assert_eq!(rendered[6], "    │ line 5");
+        assert!(rendered[7].is_empty());
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn non_execute_tool_call_keeps_reported_content_compact() {
+        let location = concat!("C:", "\\", "repo", "\\", "large.txt");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Read file".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: Some(location.into()),
+            location_is_command: false,
+            policy_note: None,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "the entire file contents".into(),
+                truncated: false,
+            }),
+            exit_code: Some(200),
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+
+        assert_eq!(lines.len(), 1);
+        assert!(!line_text(&lines[0]).contains("entire file contents"));
+        assert!(!line_text(&lines[0]).contains("exit 200"));
     }
 
     #[test]
@@ -1226,17 +1393,25 @@ mod tests {
             id: "tool-2".into(),
             title: "Read Cargo.toml".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Read,
             location: None,
             location_is_command: false,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
         let other = ChatMessage::ToolCall {
             id: "tool-1".into(),
             title: "Find files".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Search,
             location: None,
             location_is_command: false,
             policy_note: None,
+            cwd: None,
+            output: None,
+            exit_code: None,
         };
 
         let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
@@ -1253,9 +1428,13 @@ mod tests {
                 id: "tool".into(),
                 title: "Find files".into(),
                 status: status.into(),
+                kind: ToolCallKind::Search,
                 location: None,
                 location_is_command: false,
                 policy_note: None,
+                cwd: None,
+                output: None,
+                exit_code: None,
             };
             let lines = build_message_lines(&message, false, false, None, 9, 80);
             assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");

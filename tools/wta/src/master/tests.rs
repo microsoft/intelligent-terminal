@@ -140,7 +140,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             );
             assert!(
                 wta_meta.proposal_mcp.is_none(),
-                "unavailable proposal MCP must not be advertised"
+                "unavailable session MCP must not be advertised"
             );
 
             let mut response = initialize_response_for_agent(&agent, true)
@@ -151,7 +151,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
                     .proposal_mcp
                     .as_deref(),
                 Some("http-v1"),
-                "reachable proposal MCP must be advertised to the Helper"
+                "reachable session MCP must be advertised to the Helper"
             );
 
             assert!(complete_tx
@@ -541,10 +541,10 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
 fn make_state() -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(
+        session_mcp_endpoints: session_mcp::Endpoints::new(
             "http://127.0.0.1:1/mcp".to_string(),
         ),
-        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
+        session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -1020,11 +1020,11 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
     let dead_instance = AgentInstanceId::new_v4();
     let replacement_instance = AgentInstanceId::new_v4();
     state
-        .proposal_mcp_capabilities
+        .session_mcp_capabilities
         .prepare(dead_instance, None)
         .await;
     state
-        .proposal_mcp_capabilities
+        .session_mcp_capabilities
         .prepare(replacement_instance, None)
         .await;
 
@@ -1041,7 +1041,7 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
     );
     assert_eq!(
         state
-            .proposal_mcp_capabilities
+            .session_mcp_capabilities
             .remove_owner(dead_instance)
             .await,
         0,
@@ -1049,7 +1049,7 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
     );
     assert_eq!(
         state
-            .proposal_mcp_capabilities
+            .session_mcp_capabilities
             .remove_owner(replacement_instance)
             .await,
         1,
@@ -2197,10 +2197,10 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
 fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(
+        session_mcp_endpoints: session_mcp::Endpoints::new(
             "http://127.0.0.1:1/mcp".to_string(),
         ),
-        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
+        session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),

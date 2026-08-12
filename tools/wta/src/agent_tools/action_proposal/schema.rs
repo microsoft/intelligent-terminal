@@ -705,6 +705,27 @@ mod tests {
     }
 
     #[test]
+    fn flat_mcp_open_and_send_tab_accepts_direction() {
+        let payload = br#"{
+            "type": "open_and_send",
+            "title": "Project walkthrough",
+            "input": "Walk through this project",
+            "target": "tab",
+            "direction": "auto"
+        }"#;
+        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        let set = build_recommendation_set(&wire, false, None, None, None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::OpenAndSend {
+                target: OpenTarget::Tab,
+                direction: Some(direction),
+                ..
+            } if direction == "auto"
+        ));
+    }
+
+    #[test]
     fn flat_mcp_rejects_nested_legacy_payload() {
         let payload = br#"{
             "recommended_choice": 1,

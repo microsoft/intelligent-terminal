@@ -18,6 +18,28 @@ pub enum NoticeKind {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallKind {
+    Read,
+    Edit,
+    Delete,
+    Move,
+    Search,
+    Execute,
+    Think,
+    Fetch,
+    SwitchMode,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallOutput {
+    pub text: String,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
@@ -32,6 +54,8 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        #[serde(default)]
+        kind: ToolCallKind,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -43,6 +67,15 @@ pub enum ChatMessage {
         /// Non-interactive explanation for a client-side permission decision.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         policy_note: Option<String>,
+        /// Working directory reported by the Agent for an execute tool.
+        #[serde(default)]
+        cwd: Option<String>,
+        /// Bounded text reported through ACP tool-call content/raw output.
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        /// Process exit code, only when explicitly reported by the Agent.
+        #[serde(default)]
+        exit_code: Option<i64>,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -160,6 +193,25 @@ pub struct PermissionState {
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
+}
+
+pub struct UserInputState {
+    pub request_id: String,
+    pub request: crate::agent_tools::user_input::UserInputRequest,
+    pub selected: usize,
+    pub input: String,
+    pub responder:
+        Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
+}
+
+impl UserInputState {
+    pub fn selection_count(&self) -> usize {
+        self.request.choices.len() + usize::from(self.request.allow_freeform)
+    }
+
+    pub fn freeform_selected(&self) -> bool {
+        self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
 }
 
 impl PermissionState {
@@ -305,6 +357,8 @@ pub struct TabSession {
     /// entry is the one currently rendered and accepting keys; the rest
     /// queue up.
     pub permission: VecDeque<PermissionState>,
+    /// FIFO of blocking clarification requests from the session MCP tool.
+    pub user_input: VecDeque<UserInputState>,
     // Recommendation card UI focus (the set itself lives on
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
@@ -376,6 +430,7 @@ impl TabSession {
         self.turn.is_in_flight()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && self.user_input.is_empty()
     }
 
     /// Whether the input box is the live, enterable caret target.
@@ -384,6 +439,7 @@ impl TabSession {
             && (self.turn.recommendations().is_none()
                 || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
+            && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
@@ -422,6 +478,7 @@ impl TabSession {
         self.messages.clear();
         self.tool_calls.clear();
         self.permission.clear();
+        self.user_input.clear();
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
