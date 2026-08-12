@@ -6018,12 +6018,26 @@ namespace winrt::TerminalApp::implementation
                 if (const auto rootPane = tabImpl->GetRootPane();
                     rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
                 {
-                    if (!sessionEnded)
+                    if (sessionEnded)
                     {
-                        // This map tracks the most recent resumable agent
-                        // session for durable restore, not merely a currently
-                        // running CLI process. Keep the binding after
-                        // agent.session.end; a later session start replaces it.
+                        // The agent exited, so there is nothing left to resume:
+                        // drop the binding and let the pane restore as the
+                        // plain shell it now is. Match the id when the event
+                        // carries one, so a late end from a previous session
+                        // cannot clear a newer binding.
+                        if (ShouldUnbindPaneAgentSession(paneBound))
+                        {
+                            if (const auto binding = _paneAgentSessions.find(*paneSessionId);
+                                binding != _paneAgentSessions.end() &&
+                                (agentSessionId.empty() ||
+                                 binding->second.sessionId == winrt::to_hstring(agentSessionId)))
+                            {
+                                _paneAgentSessions.erase(binding);
+                            }
+                        }
+                    }
+                    else
+                    {
                         _paneAgentSessions.insert_or_assign(
                             *paneSessionId,
                             _PaneAgentSession{

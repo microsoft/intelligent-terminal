@@ -107,6 +107,18 @@ namespace winrt::TerminalApp::implementation
         return !sessionStarted || paneBound;
     }
 
+    // An agent that exited leaves nothing to resume, so its pane drops the
+    // binding and comes back as the plain shell it now is.
+    //
+    // Only an event that named its own pane may clear one. An agent-pane CLI
+    // has no WT_SESSION, so wtcli stamps its `agent.session.end` with whichever
+    // pane happens to be focused; acting on that would clear an unrelated shell
+    // pane's binding.
+    inline constexpr bool ShouldUnbindPaneAgentSession(const bool paneBound) noexcept
+    {
+        return paneBound;
+    }
+
     // A persisted agent pane is worth restoring as soon as it carries any
     // user-visible state. The ACP session id is optional: wta only projects one
     // after the conversation becomes meaningful, so requiring it would drop the

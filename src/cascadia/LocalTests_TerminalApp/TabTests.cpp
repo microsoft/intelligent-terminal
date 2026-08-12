@@ -204,7 +204,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PersistedLayoutAdoptsStillLiveKeptPanes);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
-        TEST_METHOD(PaneAgentSessionEndPreservesDurableBinding);
+        TEST_METHOD(PaneAgentSessionEndClearsDurableBinding);
         TEST_METHOD(ReattachKeptSessionWhenKeepRunningIsDisabled);
         TEST_METHOD(ReattachKeptSessionUsesActualIdForAgentBinding);
         TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
@@ -528,12 +528,18 @@ namespace TerminalAppLocalTests
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
     {
         using winrt::TerminalApp::implementation::ShouldBindPaneAgentSession;
+        using winrt::TerminalApp::implementation::ShouldUnbindPaneAgentSession;
 
         // wtcli stamps `pane_bound` from whether the event carried an explicit
         // `--pane`, so an inferred (focused-pane) origin never binds.
         VERIFY_IS_FALSE(ShouldBindPaneAgentSession(true, false));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(true, true));
         VERIFY_IS_TRUE(ShouldBindPaneAgentSession(false, false));
+
+        // Unbinding is gated the same way: an inferred origin must not clear a
+        // binding it does not own.
+        VERIFY_IS_FALSE(ShouldUnbindPaneAgentSession(false));
+        VERIFY_IS_TRUE(ShouldUnbindPaneAgentSession(true));
     }
 
     void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
@@ -548,7 +554,7 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(ShouldRestoreAgentPane(false, false, false));
     }
 
-    void TabTests::PaneAgentSessionEndPreservesDurableBinding()
+    void TabTests::PaneAgentSessionEndClearsDurableBinding()
     {
         auto page = _commonSetup();
         VERIFY_IS_NOT_NULL(page);
@@ -561,26 +567,30 @@ namespace TerminalAppLocalTests
             const auto paneSessionId = control.Connection().SessionId();
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
 
-            const auto event = [&](const std::string_view name) {
+            const auto event = [&](const std::string_view name, const bool paneBound) {
                 Json::Value evt;
                 evt["params"]["pane_id"] = paneId;
                 evt["params"]["event"] = std::string{ name };
                 evt["params"]["agent_session_id"] = "agent-session-resumed";
                 evt["params"]["agent"] = "copilot";
-                evt["params"]["pane_bound"] = true;
+                evt["params"]["pane_bound"] = paneBound;
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
                 page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, evt)));
             };
 
-            event("agent.session.start");
+            event("agent.session.start", true);
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
 
-            event("agent.session.end");
-            const auto binding = page->_paneAgentSessions.find(paneSessionId);
-            VERIFY_IS_TRUE(binding != page->_paneAgentSessions.end());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-resumed" }, binding->second.sessionId);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, binding->second.agent);
+            // An agent-pane CLI has no WT_SESSION, so its end event names the
+            // focused pane instead of its own and must leave this binding alone.
+            event("agent.session.end", false);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+
+            // The agent that ran in this pane exited, so there is nothing left
+            // to resume and the pane restores as a plain shell.
+            event("agent.session.end", true);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
         });
     }
 
