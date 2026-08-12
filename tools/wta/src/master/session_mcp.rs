@@ -11,18 +11,21 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::{AgentInstanceId, MasterStateInner};
+use super::{AgentInstanceId, HelperId, MasterStateInner};
 use crate::agent_source::AgentSource;
-use crate::agent_tools::action_proposal::mcp::{
-    HelperRequest, SERVER_ID_HEX_LEN, SERVER_NAME_PREFIX,
-};
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
+use crate::agent_tools::session_mcp::{
+    CancelUserInputHelperRequest, HelperRequest, UserInputHelperRequest, SERVER_ID_HEX_LEN,
+    SERVER_NAME_PREFIX,
+};
 use crate::agent_tools::user_input::{UserInputRequest, UserInputResponse};
+use crate::protocol::acp::conn;
 
 const ENDPOINT_PATH: &str = "/mcp";
 const MAX_HEADER_BYTES: usize = 32 * 1024;
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 32;
+const MAX_USER_INPUT_CONNECTIONS: usize = 32;
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const HELPER_TIMEOUT: Duration = Duration::from_secs(25);
 const USER_INPUT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -33,6 +36,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const WSL_RELAY_SCRIPT: &str = r#"
 import base64
+import json
 import os
 import socket
 import socketserver
@@ -45,6 +49,7 @@ UPSTREAM_HOST = sys.argv[1]
 UPSTREAM_PORT = sys.argv[2]
 LISTEN_PORT = int(sys.argv[3])
 MAX_CONNECTIONS = 32
+MAX_USER_INPUT_CONNECTIONS = 32
 READ_TIMEOUT_SECONDS = 5
 POWERSHELL = r'''
 __D__client = [Net.Sockets.TcpClient]::new()
@@ -119,18 +124,37 @@ def read_request(sock):
         if not chunk:
             raise ValueError("client disconnected before HTTP body")
         body += chunk
-    return b"\r\n".join(rewritten) + b"\r\n\r\n" + body[:content_length]
+    body = body[:content_length]
+    is_user_input = False
+    try:
+        message = json.loads(body.decode("utf-8"))
+        is_user_input = (
+            message.get("method") == "tools/call" and
+            message.get("params", {}).get("name") == "request_user_input")
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        pass
+    return b"\r\n".join(rewritten) + b"\r\n\r\n" + body, is_user_input
 
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         self.request.settimeout(READ_TIMEOUT_SECONDS)
+        if not self.server.read_slots.acquire(blocking=False):
+            send_response(self.request, 503, "Service Unavailable", "relay is busy")
+            return
         try:
-            request = read_request(self.request)
+            request, is_user_input = read_request(self.request)
         except socket.timeout:
             send_response(self.request, 408, "Request Timeout", "request timed out")
             return
         except (OSError, ValueError):
             send_response(self.request, 400, "Bad Request", "invalid HTTP request")
+            return
+        finally:
+            self.server.read_slots.release()
+        slots = (self.server.user_input_slots if is_user_input
+                 else self.server.request_slots)
+        if not slots.acquire(blocking=False):
+            send_response(self.request, 503, "Service Unavailable", "relay is busy")
             return
         try:
             response = forward(request)
@@ -140,6 +164,8 @@ class Handler(socketserver.BaseRequestHandler):
         except (OSError, RuntimeError):
             send_response(self.request, 502, "Bad Gateway", "Windows bridge failed")
             return
+        finally:
+            slots.release()
         self.request.sendall(response)
 
 class Server(socketserver.ThreadingTCPServer):
@@ -148,25 +174,11 @@ class Server(socketserver.ThreadingTCPServer):
     request_queue_size = MAX_CONNECTIONS
 
     def __init__(self, server_address, handler):
-        self.connection_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.read_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.request_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.user_input_slots = threading.BoundedSemaphore(
+            MAX_USER_INPUT_CONNECTIONS)
         super().__init__(server_address, handler)
-
-    def process_request(self, request, client_address):
-        if not self.connection_slots.acquire(blocking=False):
-            send_response(request, 503, "Service Unavailable", "relay is busy")
-            self.shutdown_request(request)
-            return
-        try:
-            super().process_request(request, client_address)
-        except Exception:
-            self.connection_slots.release()
-            raise
-
-    def process_request_thread(self, request, client_address):
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self.connection_slots.release()
 
 def exit_when_owner_disconnects():
     try:
@@ -229,6 +241,7 @@ pub(super) struct PendingCapability {
 #[derive(Default)]
 pub(super) struct CapabilityRegistry {
     routes: Mutex<CapabilityRoutes>,
+    active_user_inputs: Arc<std::sync::Mutex<HashSet<acp::schema::v1::SessionId>>>,
 }
 
 #[derive(Default)]
@@ -241,6 +254,19 @@ struct CapabilityRoutes {
 struct CapabilityRoute {
     session_id: Option<acp::schema::v1::SessionId>,
     owner: AgentInstanceId,
+}
+
+struct UserInputLease {
+    active: Arc<std::sync::Mutex<HashSet<acp::schema::v1::SessionId>>>,
+    session_id: acp::schema::v1::SessionId,
+}
+
+impl Drop for UserInputLease {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active.lock() {
+            active.remove(&self.session_id);
+        }
+    }
 }
 
 impl CapabilityRegistry {
@@ -324,6 +350,24 @@ impl CapabilityRegistry {
         }
     }
 
+    fn try_begin_user_input(
+        &self,
+        session_id: acp::schema::v1::SessionId,
+    ) -> Result<UserInputLease> {
+        let mut active = self
+            .active_user_inputs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("user input request registry is unavailable"))?;
+        if !active.insert(session_id.clone()) {
+            anyhow::bail!("this ACP session already has a pending user input request");
+        }
+        drop(active);
+        Ok(UserInputLease {
+            active: Arc::clone(&self.active_user_inputs),
+            session_id,
+        })
+    }
+
     fn remove_capability(routes: &mut CapabilityRoutes, hash: &[u8; 32]) {
         let Some(route) = routes.by_capability.remove(hash) else {
             return;
@@ -352,6 +396,48 @@ enum CapabilityResolution {
     Unknown,
 }
 
+struct UserInputForwardGuard {
+    forwarder: conn::AgentLink,
+    cancel_request: Option<acp::schema::v1::ExtRequest>,
+}
+
+impl UserInputForwardGuard {
+    fn new(
+        forwarder: conn::AgentLink,
+        request_id: &str,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> Result<Self> {
+        let params = serde_json::value::to_raw_value(&CancelUserInputHelperRequest {
+            request_id: request_id.to_string(),
+            session_id: session_id.to_string(),
+        })
+        .context("encode Helper user input cancellation")?;
+        Ok(Self {
+            forwarder,
+            cancel_request: Some(acp::schema::v1::ExtRequest::new(
+                crate::agent_tools::session_mcp::CANCEL_USER_INPUT_HELPER_REQUEST_METHOD,
+                params.into(),
+            )),
+        })
+    }
+
+    fn disarm(&mut self) {
+        self.cancel_request = None;
+    }
+}
+
+impl Drop for UserInputForwardGuard {
+    fn drop(&mut self) {
+        let Some(request) = self.cancel_request.take() else {
+            return;
+        };
+        let forwarder = self.forwarder.clone();
+        tokio::task::spawn_local(async move {
+            let _ = forwarder.ext_method(request).await;
+        });
+    }
+}
+
 pub(super) fn server_config(
     endpoint: &str,
     pending: &PendingCapability,
@@ -368,11 +454,11 @@ pub(super) async fn endpoint_for(
     source: &AgentSource,
 ) -> Result<String> {
     let AgentSource::Wsl { distro } = source else {
-        return Ok(state.proposal_mcp_endpoints.host.clone());
+        return Ok(state.session_mcp_endpoints.host.clone());
     };
 
     let relay_slot = {
-        let mut relays = state.proposal_mcp_endpoints.wsl.lock().await;
+        let mut relays = state.session_mcp_endpoints.wsl.lock().await;
         Arc::clone(
             relays
                 .entry(distro.clone())
@@ -388,21 +474,16 @@ pub(super) async fn endpoint_for(
     }
 
     let upstream = state
-        .proposal_mcp_endpoints
+        .session_mcp_endpoints
         .host
         .strip_prefix("http://")
         .and_then(|value| value.strip_suffix(ENDPOINT_PATH))
-        .context("proposal MCP host endpoint is malformed")?;
+        .context("session MCP host endpoint is malformed")?;
     let (upstream_host, upstream_port) = upstream
         .rsplit_once(':')
-        .context("proposal MCP host endpoint has no port")?;
-    let relay = start_wsl_relay(
-        distro,
-        upstream_host,
-        upstream_port,
-        slot.port.unwrap_or(0),
-    )
-    .await?;
+        .context("session MCP host endpoint has no port")?;
+    let relay =
+        start_wsl_relay(distro, upstream_host, upstream_port, slot.port.unwrap_or(0)).await?;
     let endpoint = relay.endpoint.clone();
     slot.port = Some(relay.port);
     slot.relay = Some(relay);
@@ -448,11 +529,11 @@ async fn start_wsl_relay(
 
     let mut child = command
         .spawn()
-        .with_context(|| format!("start proposal MCP relay in WSL distro {distro}"))?;
+        .with_context(|| format!("start session MCP relay in WSL distro {distro}"))?;
     let stdout = child
         .stdout
         .take()
-        .context("WSL proposal MCP relay has no stdout")?;
+        .context("WSL session MCP relay has no stdout")?;
     let mut stdout = tokio::io::BufReader::new(stdout);
     let mut port = String::new();
     tokio::time::timeout(
@@ -460,21 +541,21 @@ async fn start_wsl_relay(
         tokio::io::AsyncBufReadExt::read_line(&mut stdout, &mut port),
     )
     .await
-    .with_context(|| format!("timed out starting proposal MCP relay in {distro}"))?
-    .with_context(|| format!("read proposal MCP relay port from {distro}"))?;
+    .with_context(|| format!("timed out starting session MCP relay in {distro}"))?
+    .with_context(|| format!("read session MCP relay port from {distro}"))?;
     let port = port
         .trim()
         .parse::<u16>()
-        .with_context(|| format!("invalid proposal MCP relay port from {distro}"))?;
+        .with_context(|| format!("invalid session MCP relay port from {distro}"))?;
     if child.try_wait()?.is_some() {
-        anyhow::bail!("proposal MCP relay exited during startup in {distro}");
+        anyhow::bail!("session MCP relay exited during startup in {distro}");
     }
     let endpoint = format!("http://127.0.0.1:{port}{ENDPOINT_PATH}");
     tracing::info!(
-        target: "proposal_mcp",
+        target: "session_mcp",
         distro,
         endpoint = %endpoint,
-        "WSL proposal MCP loopback relay ready"
+        "WSL session MCP loopback relay ready"
     );
     Ok(WslRelay {
         endpoint,
@@ -505,19 +586,19 @@ fn spawn_wsl_relay_supervisor(
                     }
                     Ok(Some(status)) => {
                         tracing::warn!(
-                            target: "proposal_mcp",
+                            target: "session_mcp",
                             distro = %distro,
                             ?status,
-                            "WSL proposal MCP relay exited; restarting on the same port"
+                            "WSL session MCP relay exited; restarting on the same port"
                         );
                         true
                     }
                     Err(error) => {
                         tracing::warn!(
-                            target: "proposal_mcp",
+                            target: "session_mcp",
                             distro = %distro,
                             %error,
-                            "failed to inspect WSL proposal MCP relay; restarting on the same port"
+                            "failed to inspect WSL session MCP relay; restarting on the same port"
                         );
                         true
                     }
@@ -536,21 +617,21 @@ fn spawn_wsl_relay_supervisor(
                     slot.relay = Some(relay);
                     retry_delay = Duration::from_secs(1);
                     tracing::info!(
-                        target: "proposal_mcp",
+                        target: "session_mcp",
                         distro = %distro,
                         port,
-                        "WSL proposal MCP relay restarted"
+                        "WSL session MCP relay restarted"
                     );
                 }
                 Err(error) => {
                     retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                     tracing::warn!(
-                        target: "proposal_mcp",
+                        target: "session_mcp",
                         distro = %distro,
                         port,
                         retry_secs = retry_delay.as_secs(),
                         error = %format!("{error:#}"),
-                        "failed to restart WSL proposal MCP relay"
+                        "failed to restart WSL session MCP relay"
                     );
                 }
             }
@@ -559,41 +640,41 @@ fn spawn_wsl_relay_supervisor(
 }
 
 pub(super) async fn run(listener: TcpListener, state: Arc<MasterStateInner>) -> Result<()> {
-    let address = listener.local_addr().context("read proposal MCP address")?;
+    let address = listener.local_addr().context("read session MCP address")?;
     tracing::info!(
-        target: "proposal_mcp",
+        target: "session_mcp",
         address = %address,
-        "master proposal MCP HTTP endpoint listening"
+        "master session MCP HTTP endpoint listening"
     );
     let connections = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    let user_input_connections = Arc::new(tokio::sync::Semaphore::new(MAX_USER_INPUT_CONNECTIONS));
     loop {
-        let (stream, peer) = listener
-            .accept()
-            .await
-            .context("accept proposal MCP HTTP")?;
+        let (stream, peer) = listener.accept().await.context("accept session MCP HTTP")?;
         if !peer.ip().is_loopback() {
             tracing::warn!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 peer = %peer,
-                "rejecting non-loopback proposal MCP connection"
+                "rejecting non-loopback session MCP connection"
             );
             continue;
         }
         let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
             tracing::warn!(
-                target: "proposal_mcp",
-                "rejecting proposal MCP connection at concurrency limit"
+                target: "session_mcp",
+                "rejecting session MCP connection at concurrency limit"
             );
             continue;
         };
         let state = Arc::clone(&state);
+        let user_input_connections = Arc::clone(&user_input_connections);
         tokio::task::spawn_local(async move {
-            let _permit = permit;
-            if let Err(error) = serve_connection(stream, address, state).await {
+            if let Err(error) =
+                serve_connection(stream, address, state, permit, user_input_connections).await
+            {
                 tracing::debug!(
-                    target: "proposal_mcp",
+                    target: "session_mcp",
                     error = %format!("{error:#}"),
-                    "proposal MCP HTTP connection failed"
+                    "session MCP HTTP connection failed"
                 );
             }
         });
@@ -604,7 +685,10 @@ async fn serve_connection(
     mut stream: TcpStream,
     address: std::net::SocketAddr,
     state: Arc<MasterStateInner>,
+    connection_permit: tokio::sync::OwnedSemaphorePermit,
+    user_input_connections: Arc<tokio::sync::Semaphore>,
 ) -> Result<()> {
+    let mut connection_permit = Some(connection_permit);
     let request = match tokio::time::timeout(HTTP_REQUEST_TIMEOUT, read_request(&mut stream)).await
     {
         Ok(Ok(request)) => request,
@@ -669,7 +753,7 @@ async fn serve_connection(
         .await?;
         return Ok(());
     };
-    let capability = state.proposal_mcp_capabilities.resolve(secret).await;
+    let capability = state.session_mcp_capabilities.resolve(secret).await;
     if matches!(capability, CapabilityResolution::Unknown) {
         write_response(
             &mut stream,
@@ -724,17 +808,34 @@ async fn serve_connection(
             let message: Value = match serde_json::from_slice(&request.body) {
                 Ok(message) => message,
                 Err(_) => {
-                    let body = serde_json::to_vec(
-                        &crate::agent_tools::action_proposal::mcp::error_response(
+                    let body =
+                        serde_json::to_vec(&crate::agent_tools::session_mcp::error_response(
                             Value::Null,
                             -32700,
                             "parse error",
-                        ),
-                    )?;
+                        ))?;
                     write_response(&mut stream, 400, "Bad Request", "application/json", &body)
                         .await?;
                     return Ok(());
                 }
+            };
+            let is_user_input = is_user_input_call(&message);
+            let _user_input_permit = if is_user_input {
+                connection_permit.take();
+                let Ok(permit) = user_input_connections.try_acquire_owned() else {
+                    write_response(
+                        &mut stream,
+                        503,
+                        "Service Unavailable",
+                        "text/plain",
+                        b"too many pending user input requests",
+                    )
+                    .await?;
+                    return Ok(());
+                };
+                Some(permit)
+            } else {
+                None
             };
             if message.get("method").and_then(Value::as_str) == Some("tools/call") {
                 let session_id = match &capability {
@@ -742,7 +843,7 @@ async fn serve_connection(
                     CapabilityResolution::Pending | CapabilityResolution::Unknown => None,
                 };
                 tracing::info!(
-                    target: "proposal_mcp",
+                    target: "session_mcp",
                     step = "agent→master",
                     op = "tools/call",
                     session_id = session_id.as_deref(),
@@ -751,12 +852,36 @@ async fn serve_connection(
                 );
             }
             let action_capability = capability.clone();
-            let response = crate::agent_tools::action_proposal::mcp::dispatch(
+            let response = crate::agent_tools::session_mcp::dispatch(
                 message,
                 |arguments| submit_to_helper(&state, action_capability, arguments),
                 |arguments| submit_user_input_to_helper(&state, capability, arguments),
-            )
-            .await;
+            );
+            let response = if is_user_input {
+                tokio::pin!(response);
+                let mut unexpected = [0u8; 1];
+                tokio::select! {
+                    response = &mut response => response,
+                    read = stream.read(&mut unexpected) => {
+                        match read {
+                            Ok(0) | Err(_) => return Ok(()),
+                            Ok(_) => {
+                                write_response(
+                                    &mut stream,
+                                    400,
+                                    "Bad Request",
+                                    "text/plain",
+                                    b"HTTP pipelining is not supported",
+                                )
+                                .await?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            } else {
+                response.await
+            };
             if let Some(response) = response {
                 let body = serde_json::to_vec(&response)?;
                 write_response(&mut stream, 200, "OK", "application/json", &body).await?;
@@ -778,6 +903,11 @@ async fn serve_connection(
     Ok(())
 }
 
+fn is_user_input_call(message: &Value) -> bool {
+    message.get("method").and_then(Value::as_str) == Some("tools/call")
+        && message.pointer("/params/name").and_then(Value::as_str) == Some("request_user_input")
+}
+
 async fn submit_to_helper(
     state: &MasterStateInner,
     capability: CapabilityResolution,
@@ -789,14 +919,14 @@ async fn submit_to_helper(
         capability,
         arguments,
         "request_terminal_actions",
-        crate::agent_tools::action_proposal::mcp::HELPER_REQUEST_METHOD,
+        crate::agent_tools::session_mcp::HELPER_REQUEST_METHOD,
         HELPER_TIMEOUT,
     )
     .await?;
     let response: ProposalValidationResponse =
         serde_json::from_str(&response).context("decode Helper proposal response")?;
     tracing::info!(
-        target: "proposal_mcp",
+        target: "session_mcp",
         step = "helper→master",
         op = "request_terminal_actions",
         session_id = %session_id,
@@ -816,24 +946,78 @@ async fn submit_user_input_to_helper(
     let request: UserInputRequest =
         serde_json::from_value(arguments).context("decode user input request")?;
     let request = request.validate().context("validate user input request")?;
-    let arguments = serde_json::to_value(request).context("encode user input request")?;
     let started = std::time::Instant::now();
-    let (session_id, response) = forward_to_helper(
-        state,
-        capability,
-        arguments,
-        "request_user_input",
-        crate::agent_tools::action_proposal::mcp::USER_INPUT_HELPER_REQUEST_METHOD,
-        USER_INPUT_TIMEOUT,
-    )
-    .await?;
-    let response: UserInputResponse =
-        serde_json::from_str(&response).context("decode Helper user input response")?;
+    let (session_id, helper_id, forwarder) =
+        resolve_helper(state, capability, "request_user_input").await?;
+    let _lease = state
+        .session_mcp_capabilities
+        .try_begin_user_input(session_id.clone())?;
+    let request_id = Uuid::new_v4().simple().to_string();
+    let params = serde_json::value::to_raw_value(&UserInputHelperRequest {
+        request_id: request_id.clone(),
+        session_id: session_id.to_string(),
+        request,
+    })
+    .context("encode Helper user input request")?;
+    let helper_request = acp::schema::v1::ExtRequest::new(
+        crate::agent_tools::session_mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+        params.into(),
+    );
+    let mut cancel_guard = UserInputForwardGuard::new(forwarder.clone(), &request_id, &session_id)?;
     tracing::info!(
-        target: "proposal_mcp",
+        target: "session_mcp",
+        step = "master→helper",
+        op = "request_user_input",
+        helper_id = ?helper_id,
+        session_id = %session_id,
+        request_id = %request_id,
+        "routing user input request to owning Helper"
+    );
+    let helper_response = match tokio::time::timeout(
+        USER_INPUT_TIMEOUT,
+        forwarder.ext_method(helper_request),
+    )
+    .await
+    {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                target: "session_mcp",
+                step = "helper→master",
+                op = "request_user_input",
+                helper_id = ?helper_id,
+                session_id = %session_id,
+                request_id = %request_id,
+                error_code = ?error.code,
+                "owning Helper rejected user input request"
+            );
+            return Err(
+                anyhow::Error::new(error).context("owning Helper rejected user input request")
+            );
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "session_mcp",
+                step = "helper→master",
+                op = "request_user_input",
+                helper_id = ?helper_id,
+                session_id = %session_id,
+                request_id = %request_id,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "timed out waiting for user input"
+            );
+            anyhow::bail!("timed out waiting for user input");
+        }
+    };
+    let response: UserInputResponse = serde_json::from_str(helper_response.0.get())
+        .context("decode Helper user input response")?;
+    cancel_guard.disarm();
+    tracing::info!(
+        target: "session_mcp",
         step = "helper→master",
         op = "request_user_input",
         session_id = %session_id,
+        request_id = %request_id,
         outcome = match &response {
             UserInputResponse::Answered { .. } => "answered",
             UserInputResponse::Cancelled => "cancelled",
@@ -844,20 +1028,16 @@ async fn submit_user_input_to_helper(
     Ok(response)
 }
 
-async fn forward_to_helper(
+async fn resolve_helper(
     state: &MasterStateInner,
     capability: CapabilityResolution,
-    arguments: Value,
     op: &'static str,
-    helper_method: &'static str,
-    timeout: Duration,
-) -> Result<(acp::schema::v1::SessionId, String)> {
-    let started = std::time::Instant::now();
+) -> Result<(acp::schema::v1::SessionId, HelperId, conn::AgentLink)> {
     let session_id = match capability {
         CapabilityResolution::Bound(session_id) => session_id,
         CapabilityResolution::Pending => {
             tracing::warn!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 step = "master→helper",
                 op,
                 stage = "resolve_capability",
@@ -867,7 +1047,7 @@ async fn forward_to_helper(
         }
         CapabilityResolution::Unknown => {
             tracing::warn!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 step = "master→helper",
                 op,
                 stage = "resolve_capability",
@@ -882,7 +1062,7 @@ async fn forward_to_helper(
     };
     let Some(route) = route else {
         tracing::warn!(
-            target: "proposal_mcp",
+            target: "session_mcp",
             step = "master→helper",
             op,
             stage = "resolve_helper",
@@ -893,7 +1073,7 @@ async fn forward_to_helper(
     };
     let Some(forwarder) = route.forwarder else {
         tracing::error!(
-            target: "proposal_mcp",
+            target: "session_mcp",
             step = "master→helper",
             op,
             stage = "resolve_helper",
@@ -903,6 +1083,19 @@ async fn forward_to_helper(
         );
         anyhow::bail!("owning Helper route has no forwarder");
     };
+    Ok((session_id, route.helper_id, forwarder))
+}
+
+async fn forward_to_helper(
+    state: &MasterStateInner,
+    capability: CapabilityResolution,
+    arguments: Value,
+    op: &'static str,
+    helper_method: &'static str,
+    timeout: Duration,
+) -> Result<(acp::schema::v1::SessionId, String)> {
+    let started = std::time::Instant::now();
+    let (session_id, helper_id, forwarder) = resolve_helper(state, capability, op).await?;
     let params = serde_json::value::to_raw_value(&HelperRequest {
         session_id: session_id.to_string(),
         arguments,
@@ -910,10 +1103,10 @@ async fn forward_to_helper(
     .context("encode Helper request")?;
     let request = acp::schema::v1::ExtRequest::new(helper_method, params.into());
     tracing::info!(
-        target: "proposal_mcp",
+        target: "session_mcp",
         step = "master→helper",
         op,
-        helper_id = ?route.helper_id,
+        helper_id = ?helper_id,
         session_id = %session_id,
         "routing MCP request to owning Helper"
     );
@@ -921,11 +1114,11 @@ async fn forward_to_helper(
         Ok(Ok(response)) => response,
         Ok(Err(error)) => {
             tracing::warn!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 step = "helper→master",
                 op,
                 stage = "helper_rpc",
-                helper_id = ?route.helper_id,
+                helper_id = ?helper_id,
                 session_id = %session_id,
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 error_code = ?error.code,
@@ -935,11 +1128,11 @@ async fn forward_to_helper(
         }
         Err(_) => {
             tracing::warn!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 step = "helper→master",
                 op,
                 stage = "helper_rpc",
-                helper_id = ?route.helper_id,
+                helper_id = ?helper_id,
                 session_id = %session_id,
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "timed out waiting for owning Helper"
@@ -1127,6 +1320,16 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn user_input_lease_allows_only_one_request_per_session() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let lease = registry.try_begin_user_input(session_id.clone()).unwrap();
+        assert!(registry.try_begin_user_input(session_id.clone()).is_err());
+        drop(lease);
+        assert!(registry.try_begin_user_input(session_id).is_ok());
+    }
+
     #[tokio::test]
     async fn server_configs_isolate_session_identity_and_capability() {
         let registry = CapabilityRegistry::default();
@@ -1134,28 +1337,26 @@ mod tests {
         let other = registry.prepare(AgentInstanceId::new_v4(), None).await;
         let config = server_config("http://127.0.0.1:4321/mcp", &pending);
         let acp::schema::v1::McpServer::Http(config) = config else {
-            panic!("proposal MCP must use HTTP");
+            panic!("session MCP must use HTTP");
         };
         let other_config = server_config("http://127.0.0.1:4321/mcp", &other);
         let acp::schema::v1::McpServer::Http(other_config) = other_config else {
-            panic!("proposal MCP must use HTTP");
+            panic!("session MCP must use HTTP");
         };
         let repeated = server_config("http://127.0.0.1:4321/mcp", &pending);
         let acp::schema::v1::McpServer::Http(repeated) = repeated else {
-            panic!("proposal MCP must use HTTP");
+            panic!("session MCP must use HTTP");
         };
         assert_ne!(config.name, other_config.name);
         assert_eq!(config.name, repeated.name);
         let server_id = config
             .name
             .strip_prefix("intellterm_")
-            .expect("proposal MCP server name must use the reserved prefix");
+            .expect("session MCP server name must use the reserved prefix");
         assert_eq!(server_id.len(), 20);
-        assert!(
-            server_id
-                .chars()
-                .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
-        );
+        assert!(server_id
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch)));
         assert!(format!("mcp__{}__request_terminal_actions", config.name).len() <= 64);
         assert!(!config.name.contains(&pending.secret));
         assert_eq!(config.url, "http://127.0.0.1:4321/mcp");
@@ -1176,10 +1377,7 @@ mod tests {
         let retained = registry.prepare(retained_owner, None).await;
         assert!(
             registry
-                .bind(
-                    &removed,
-                    acp::schema::v1::SessionId::new("removed-session")
-                )
+                .bind(&removed, acp::schema::v1::SessionId::new("removed-session"))
                 .await
         );
         assert!(

@@ -3818,6 +3818,7 @@ impl App {
             AppEvent::Plan { .. } => "plan",
             AppEvent::PermissionRequest { .. } => "permission_request",
             AppEvent::UserInputRequest { .. } => "user_input_request",
+            AppEvent::CancelUserInputRequest { .. } => "cancel_user_input_request",
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",

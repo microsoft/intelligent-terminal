@@ -3,8 +3,8 @@ use std::future::Future;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::channel::ProposalValidationStatus;
-use super::pipe::ProposalValidationResponse;
+use super::action_proposal::channel::ProposalValidationStatus;
+use super::action_proposal::pipe::ProposalValidationResponse;
 use crate::agent_tools::user_input::UserInputResponse;
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
@@ -16,6 +16,7 @@ pub const SERVER_NAME_PREFIX: &str = "intellterm_";
 pub const SERVER_ID_HEX_LEN: usize = 20;
 pub const HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_terminal_actions";
 pub const USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_user_input";
+pub const CANCEL_USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/cancel_user_input";
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -24,12 +25,32 @@ pub struct HelperRequest {
     pub arguments: Value,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserInputHelperRequest {
+    pub request_id: String,
+    pub session_id: String,
+    pub request: crate::agent_tools::user_input::UserInputRequest,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CancelUserInputHelperRequest {
+    pub request_id: String,
+    pub session_id: String,
+}
+
 pub fn helper_method_matches(method: &str) -> bool {
     method.trim_start_matches('_') == HELPER_REQUEST_METHOD.trim_start_matches('_')
 }
 
 pub fn user_input_helper_method_matches(method: &str) -> bool {
     method.trim_start_matches('_') == USER_INPUT_HELPER_REQUEST_METHOD.trim_start_matches('_')
+}
+
+pub fn cancel_user_input_helper_method_matches(method: &str) -> bool {
+    method.trim_start_matches('_')
+        == CANCEL_USER_INPUT_HELPER_REQUEST_METHOD.trim_start_matches('_')
 }
 
 pub fn server_name_matches(name: &str) -> bool {
@@ -84,7 +105,7 @@ where
                 {
                     "name": TERMINAL_ACTION_TOOL_NAME,
                     "description": "Request one terminal action in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
-                    "inputSchema": super::schema::mcp_input_schema()
+                    "inputSchema": super::action_proposal::schema::mcp_input_schema()
                 },
                 {
                     "name": USER_INPUT_TOOL_NAME,
@@ -112,7 +133,21 @@ where
                                 "type": "boolean",
                                 "default": false
                             }
-                        }
+                        },
+                        "anyOf": [
+                            {
+                                "required": ["choices"],
+                                "properties": {
+                                    "choices": { "minItems": 1 }
+                                }
+                            },
+                            {
+                                "required": ["allow_freeform"],
+                                "properties": {
+                                    "allow_freeform": { "const": true }
+                                }
+                            }
+                        ]
                     }
                 }
             ]
@@ -127,7 +162,9 @@ where
                 Some(TERMINAL_ACTION_TOOL_NAME) => {
                     terminal_action_result(submit_action(arguments).await)
                 }
-                Some(USER_INPUT_TOOL_NAME) => user_input_result(request_user_input(arguments).await),
+                Some(USER_INPUT_TOOL_NAME) => {
+                    user_input_result(request_user_input(arguments).await)
+                }
                 _ => return Some(error_response(id, -32602, "unknown tool")),
             }
         }
@@ -147,8 +184,9 @@ fn terminal_action_result(response: anyhow::Result<ProposalValidationResponse>) 
                 | ProposalValidationStatus::UnknownChannel
                 | ProposalValidationStatus::HelperMismatch
                 | ProposalValidationStatus::Superseded => "stale",
-                ProposalValidationStatus::InvalidSchema
-                | ProposalValidationStatus::Rejected => "rejected",
+                ProposalValidationStatus::InvalidSchema | ProposalValidationStatus::Rejected => {
+                    "rejected"
+                }
                 ProposalValidationStatus::Unavailable => "unavailable",
             };
             let structured = json!({
@@ -161,7 +199,9 @@ fn terminal_action_result(response: anyhow::Result<ProposalValidationResponse>) 
             } else {
                 format!(
                     "Terminal action request {status_text}: {}",
-                    structured["reason"].as_str().unwrap_or("no reason provided")
+                    structured["reason"]
+                        .as_str()
+                        .unwrap_or("no reason provided")
                 )
             };
             json!({
@@ -248,6 +288,19 @@ mod tests {
         assert_eq!(
             response
                 .pointer("/result/tools")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            response
+                .pointer("/result/tools/1/name")
+                .and_then(Value::as_str),
+            Some(USER_INPUT_TOOL_NAME)
+        );
+        assert_eq!(
+            response
+                .pointer("/result/tools/1/inputSchema/anyOf")
                 .and_then(Value::as_array)
                 .map(Vec::len),
             Some(2)

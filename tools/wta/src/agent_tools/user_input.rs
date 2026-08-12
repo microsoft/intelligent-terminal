@@ -34,15 +34,11 @@ impl UserInputRequest {
         if self.choices.len() > MAX_CHOICES {
             bail!("too many choices");
         }
-        if self
-            .choices
-            .iter()
-            .any(|choice| {
-                choice.trim().is_empty()
-                    || choice.chars().count() > MAX_CHOICE_CHARS
-                    || choice.chars().any(char::is_control)
-            })
-        {
+        if self.choices.iter().any(|choice| {
+            choice.trim().is_empty()
+                || choice.chars().count() > MAX_CHOICE_CHARS
+                || choice.chars().any(char::is_control)
+        }) {
             bail!("choices must be non-empty and within the character limit");
         }
         if self.choices.is_empty() && !self.allow_freeform {

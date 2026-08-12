@@ -17,18 +17,18 @@ ACP session
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
-  -> existing recommendation card
-  -> user confirmation
-  -> existing wtcli/COM executor
+       -> request_terminal_actions -> recommendation card -> wtcli/COM executor
+       -> request_user_input -> blocking choice/freeform modal -> structured answer
 ```
 
 The endpoint presents typed terminal actions for review and blocking
 clarification questions. It cannot read or mutate Windows Terminal. The
 existing card confirmation is the sole mutation boundary.
 
-The MCP call returns as soon as the Helper commits the card. User confirmation
-or cancellation happens independently, so an agent turn never waits on a
-human-held tool call.
+`request_terminal_actions` returns as soon as the Helper commits its card;
+confirmation or cancellation then happens independently. `request_user_input`
+deliberately keeps the MCP call open until the user answers, cancels, the
+caller disconnects, or the ten-minute timeout expires.
 
 ## Ownership and routing
 
@@ -60,7 +60,8 @@ sessions.
 
 Before creating or loading a session:
 
-1. the Helper marks the private ACP request as proposal-MCP eligible;
+1. the Helper marks the private ACP request as session-MCP eligible using the
+   legacy `_meta.wta.proposal_mcp` compatibility field;
 2. master generates an opaque capability and sends the HTTP MCP configuration
    to the Agent CLI;
 3. master binds the capability to the returned ACP SessionId on success; or
@@ -144,8 +145,11 @@ and an optional freeform answer. Master routes the request through the same
 session capability and `session_to_helper` ownership lookup, then waits for
 the owning Helper's modal response. Enter submits the selected choice or a
 non-empty freeform answer; Esc returns `cancelled`. The request times out
-after ten minutes. It does not inspect, intercept, or translate an Agent's
-provider-specific `ask_user` implementation.
+after ten minutes. Each session may have only one outstanding user-input
+request. A request ID removes the exact modal when its HTTP caller disconnects,
+the Helper connection drops, the turn is cancelled, or master times out. It
+does not inspect, intercept, or translate an Agent's provider-specific
+`ask_user` implementation.
 
 ## Helper validation
 
@@ -160,7 +164,7 @@ The Helper's `ProposalChannelManager` owns:
 - one active turn binding;
 - bounded CLI channel tombstones.
 
-An MCP request is accepted only when:
+An MCP terminal-action request is accepted only when:
 
 1. master recognizes its bearer capability;
 2. that capability is committed to an ACP SessionId;
@@ -196,8 +200,10 @@ When an adapter requests permission for either the current
 3. does not consume or arm proposal state.
 
 Unrelated MCP and shell permissions continue through the normal permission UI.
-The proposal MCP tool-call row is hidden because the recommendation card is the
-user-facing representation.
+Permission preflights for `request_user_input` are also resolved with
+`AllowOnce`: the blocking modal itself is the user-facing decision point.
+Session MCP tool-call rows are hidden because the recommendation card or
+user-input modal is the user-facing representation.
 
 ## HTTP and ACP boundaries
 
@@ -206,7 +212,10 @@ relays bind only to ephemeral loopback ports inside their distro and rewrite
 loopback Host/Origin authorities to the upstream loopback authority before
 byte-forwarding. A relay limits concurrent handlers, applies a request read
 timeout and the same header/body size ceilings, and returns explicit HTTP
-errors when request parsing or the Windows bridge fails. The master server requires the session bearer capability,
+errors when request parsing or the Windows bridge fails. Long-held user-input
+requests use a separate connection pool from short MCP requests, and duplicate
+user-input requests for one ACP session are rejected. The master server
+requires the session bearer capability,
 validates Host and any Origin header, rejects duplicate or oversized headers,
 rejects transfer encoding, and caps request bodies. Capabilities are stored
 hashed and are never logged.

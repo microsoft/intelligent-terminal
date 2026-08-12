@@ -757,6 +757,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
+        tab.user_input.clear();
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;

@@ -188,6 +188,7 @@ pub struct PermissionState {
 }
 
 pub struct UserInputState {
+    pub request_id: String,
     pub request: crate::agent_tools::user_input::UserInputRequest,
     pub selected: usize,
     pub input: String,
@@ -419,6 +420,7 @@ impl TabSession {
         self.turn.is_in_flight()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && self.user_input.is_empty()
     }
 
     /// Whether the input box is the live, enterable caret target.
@@ -427,6 +429,7 @@ impl TabSession {
             && (self.turn.recommendations().is_none()
                 || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
+            && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
