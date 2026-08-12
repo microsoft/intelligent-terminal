@@ -66,16 +66,16 @@ pub fn server_name_matches(name: &str) -> bool {
         })
 }
 
-pub async fn dispatch<A, AFut, U, UFut>(
+pub async fn dispatch<A, ActionFuture, U, UserInputFuture>(
     request: Value,
     submit_action: A,
     request_user_input: U,
 ) -> Option<Value>
 where
-    A: FnOnce(Value) -> AFut,
-    AFut: Future<Output = anyhow::Result<ProposalValidationResponse>>,
-    U: FnOnce(Value) -> UFut,
-    UFut: Future<Output = anyhow::Result<UserInputResponse>>,
+    A: FnOnce(Value) -> ActionFuture,
+    ActionFuture: Future<Output = anyhow::Result<ProposalValidationResponse>>,
+    U: FnOnce(Value) -> UserInputFuture,
+    UserInputFuture: Future<Output = anyhow::Result<UserInputResponse>>,
 {
     let id = request.get("id").cloned();
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");

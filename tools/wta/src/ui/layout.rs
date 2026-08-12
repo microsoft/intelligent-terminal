@@ -257,13 +257,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         agent_popup::render_popup(frame, agent_state, chunks[7]);
     }
 
-    // `/help` overlay sits on top of everything so the user can always
-    // dismiss it with Esc.
-    command_popup::render_help_overlay(frame, app, area);
-
     if let Some(request) = app.current_tab().user_input.front() {
         user_input::render(frame, request, chunks[7]);
     }
+
+    // `/help` overlay sits on top of everything so the user can always
+    // dismiss it with Esc.
+    command_popup::render_help_overlay(frame, app, area);
 }
 
 /// Truncate `s` so its rendered (display-cell) width fits in `max` columns,

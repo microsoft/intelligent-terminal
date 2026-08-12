@@ -200,7 +200,7 @@ When an adapter requests permission for either the current
 3. does not consume or arm proposal state.
 
 Unrelated MCP and shell permissions continue through the normal permission UI.
-Permission preflights for `request_user_input` are also resolved with
+Permission preflight requests for `request_user_input` are also resolved with
 `AllowOnce`: the blocking modal itself is the user-facing decision point.
 Session MCP tool-call rows are hidden because the recommendation card or
 user-input modal is the user-facing representation.

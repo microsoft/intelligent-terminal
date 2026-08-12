@@ -5622,6 +5622,39 @@ fn user_input_accepts_freeform_and_escape_cancels() {
 }
 
 #[test]
+fn help_overlay_dismisses_before_user_input() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "behind-help".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Continue?".into(),
+            choices: vec!["Yes".into()],
+            allow_freeform: false,
+        },
+        responder,
+    });
+    app.help_overlay_visible = true;
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(!app.help_overlay_visible);
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert!(matches!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Cancelled
+    );
+}
+
+#[test]
 fn user_input_owns_focus_and_cancellation_removes_only_its_request() {
     let mut app = test_app();
     begin_user_input_test(&mut app);

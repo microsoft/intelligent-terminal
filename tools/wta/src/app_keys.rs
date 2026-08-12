@@ -372,6 +372,13 @@ impl App {
             return;
         }
 
+        // Help is rendered above every other modal, so Esc must dismiss it
+        // before interacting with the modal underneath.
+        if self.help_overlay_visible && key.code == KeyCode::Esc {
+            self.help_overlay_visible = false;
+            return;
+        }
+
         // A session MCP clarification blocks the Agent's current tool call.
         // Keep all editing inside the modal so keys never leak into the normal
         // prompt input behind it.
