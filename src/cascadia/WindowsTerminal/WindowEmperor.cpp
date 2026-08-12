@@ -2054,7 +2054,14 @@ void WindowEmperor::_activateHeadlessTrayWindow(const uint32_t showWindowCommand
     const auto env = stringFromDoubleNullTerminated(envMem.get());
     const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
 
-    if (_restoreAllKeptSessions())
+    // Same intent as relaunching the app while it sits headless — "give me my
+    // terminal back" — so answer it the same way. Replaying the persisted
+    // layout brings the whole arrangement the user left, with the kept panes
+    // adopting their still-live shells, instead of only the tabs that were
+    // opted in and with their splits flattened. Rebuilding from the kept groups
+    // alone is the fallback for when there is no layout to replay.
+    if (_restorePersistedLayouts(cwd, env, showWindowCommand) ||
+        _restoreAllKeptSessions())
     {
         return;
     }

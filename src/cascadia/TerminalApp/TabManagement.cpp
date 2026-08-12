@@ -949,10 +949,12 @@ namespace winrt::TerminalApp::implementation
                 params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
                 params["elevated"] = elevated;
                 params["buffers"] = std::move(buffers);
-                if (!tab->DurableShellSessionId().empty())
+                const auto requestedShellSessionId = tab->DurableShellSessionId();
+                const auto requestedShellSessionRevision = tab->DurableShellSessionRevision();
+                if (!requestedShellSessionId.empty())
                 {
-                    params["id"] = winrt::to_string(tab->DurableShellSessionId());
-                    params["expected_revision"] = Json::Int64{ tab->DurableShellSessionRevision() };
+                    params["id"] = winrt::to_string(requestedShellSessionId);
+                    params["expected_revision"] = Json::Int64{ requestedShellSessionRevision };
                 }
 
                 auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
@@ -982,6 +984,19 @@ namespace winrt::TerminalApp::implementation
                 }
                 THROW_HR_IF(E_FAIL, !result);
                 const auto save = _ParseShellSessionSaveResponse(*result);
+                if (save.forked)
+                {
+                    // A fork means the revision this tab was holding no longer
+                    // matched the record, so the store refused to overwrite and
+                    // split off a duplicate instead. That is how the same
+                    // session ends up listed several times, and the pair of
+                    // revisions below is what says which stale copy caused it.
+                    _agentPaneLog(std::string{ "_PersistShellSession: FORKED requested id=" } +
+                                  winrt::to_string(requestedShellSessionId) +
+                                  " expected_revision=" + std::to_string(requestedShellSessionRevision) +
+                                  " -> new id=" + winrt::to_string(save.id) +
+                                  " revision=" + std::to_string(save.revision));
+                }
                 _ApplyShellSessionSaveResult(tab, save);
                 committed = true;
             }
