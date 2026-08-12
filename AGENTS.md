@@ -39,8 +39,8 @@ Agent pane: position configurable (`bottom`/`right`/`top`/`left`). Color-coded V
     "aiIntegration.coordinator.commandline": "wta",
     "aiIntegration.coordinator.profile": "{fd19208a-412b-4857-8a2d-9ca592b4b16e}",
     "aiIntegration.confirmation.readOperations": "auto",
-    "aiIntegration.confirmation.createOperations": "auto",
-    "aiIntegration.confirmation.inputOperations": "auto",
+    "aiIntegration.confirmation.createOperations": "prompt",
+    "aiIntegration.confirmation.inputOperations": "prompt",
 }
 ```
 
