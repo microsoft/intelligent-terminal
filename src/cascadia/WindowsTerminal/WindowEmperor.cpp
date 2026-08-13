@@ -1331,7 +1331,15 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                     // only other record would be whatever the periodic persist
                     // last happened to catch — up to five minutes stale, and
                     // missing every tab opened since.
+                    //
+                    // Take the buffers with it. The layout alone is only enough
+                    // while the kept sessions live: restoring reattaches them
+                    // and their scrollback comes back with the live content. Once
+                    // one is killed from the notification area, the snapshot on
+                    // disk is all that is left to restore from, and a layout
+                    // written without it comes back as empty shells.
                     _persistState(ApplicationState::SharedInstance());
+                    _persistTerminalBuffers();
 
                     // Remember that we are now outliving our windows, so the
                     // persistence passes that follow — the periodic one and the
@@ -1746,8 +1754,6 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 
 void WindowEmperor::_finalizeSessionPersistence() const
 {
-    using namespace std::string_view_literals;
-
     if (_deferPersistedLayoutRestore || _shouldPreservePersistedLayout())
     {
         return;
@@ -1763,6 +1769,20 @@ void WindowEmperor::_finalizeSessionPersistence() const
     const auto state = ApplicationState::SharedInstance();
 
     _persistState(state);
+    _persistTerminalBuffers();
+}
+
+// Writes the "buffer_{guid}.txt" snapshot beside the layout `_persistState`
+// just wrote, and prunes the files no pane claims anymore.
+//
+// Split out from `_finalizeSessionPersistence` because the layout and the
+// buffers have to be captured together: a layout whose panes have no snapshot
+// restores as empty shells. Kept sessions close their last window long before
+// the process exits, so that path has to take both halves for itself while its
+// panes are still alive.
+void WindowEmperor::_persistTerminalBuffers() const
+{
+    using namespace std::string_view_literals;
 
     const auto firstWindowPreference = _app.Logic().Settings().GlobalSettings().FirstWindowPreference();
     const auto wantsPersistence = firstWindowPreference != FirstWindowPreference::DefaultProfile;

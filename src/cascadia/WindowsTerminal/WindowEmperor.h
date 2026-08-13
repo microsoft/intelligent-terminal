@@ -136,6 +136,7 @@ private:
     bool _restoreDeferredPersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupSessionPersistence(bool enabled);
     void _persistState(const winrt::Microsoft::Terminal::Settings::Model::ApplicationState& state) const;
+    void _persistTerminalBuffers() const;
     bool _shouldPreservePersistedLayout() const noexcept;
     void _finalizeSessionPersistence() const;
     void _checkWindowsForNotificationIcon();
