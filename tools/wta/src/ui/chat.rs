@@ -464,32 +464,44 @@ fn build_completed_turn_lines<'a>(
         theme::DIM
     };
 
-    // The collapsed header is always a single `Line` by design (see
-    // `turn_height`'s "Collapsed view = single Line" comment above), so a
-    // multi-line prompt (Shift+Enter) can't keep its line breaks here. Without
-    // this, the embedded '\n' would vanish invisibly and run the two lines
-    // together with no separator at all (e.g. "remember,And ..."), since
-    // ratatui doesn't render embedded newlines as whitespace. Replace each
-    // '\n' with a space so the collapsed preview stays readable.
-    // Only allocate when the collapse step actually rewrote the text (i.e.
-    // the prompt had an embedded '\n'); the common single-line, non-wrapped
-    // prompt stays a zero-copy borrow of `turn.prompt` for the `'a` lifetime.
-    let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
-    let prompt_text: Cow<'a, str> = match collapsed_prompt {
-        Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
-        // `collapsed` is already an owned `String`; only clone again if
-        // truncation actually shortens it; otherwise reuse it as-is instead
-        // of cloning a second time via `truncate_render_text(..).into_owned()`.
-        Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
-            Cow::Borrowed(_) => Cow::Owned(collapsed),
-            Cow::Owned(truncated) => Cow::Owned(truncated),
-        },
+    let mut lines = if turn.expanded {
+        let mut prompt_lines = Vec::new();
+        push_prompt_prefixed_lines(
+            &mut prompt_lines,
+            &turn.prompt,
+            wrap_width.saturating_sub(2).max(1),
+        );
+        for (index, line) in prompt_lines.iter_mut().enumerate() {
+            for span in &mut line.spans {
+                span.style = prompt_style;
+            }
+            line.spans.insert(
+                0,
+                if index == 0 {
+                    Span::styled(chevron, chevron_style)
+                } else {
+                    Span::raw("  ")
+                },
+            );
+        }
+        prompt_lines
+    } else {
+        // Collapsed turns are a single-line summary. Replace embedded newlines
+        // with spaces so Ratatui does not run adjacent source lines together.
+        let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
+        let prompt_text: Cow<'a, str> = match collapsed_prompt {
+            Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
+            Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
+                Cow::Borrowed(_) => Cow::Owned(collapsed),
+                Cow::Owned(truncated) => Cow::Owned(truncated),
+            },
+        };
+        vec![Line::from(vec![
+            Span::styled(chevron, chevron_style),
+            Span::styled("> ", prompt_style),
+            Span::styled(prompt_text, prompt_style),
+        ])]
     };
-    let mut lines = vec![Line::from(vec![
-        Span::styled(chevron, chevron_style),
-        Span::styled("> ", prompt_style),
-        Span::styled(prompt_text, prompt_style),
-    ])];
 
     // Index of the line that should receive an inline trailing marker (eg
     // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
@@ -1136,6 +1148,32 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn expanded_completed_turn_restores_multiline_prompt() {
+        let mut turn = CompletedTurn {
+            prompt: "line one\nline two".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        };
+
+        let collapsed = build_completed_turn_lines(&turn, false, true, 80);
+        assert_eq!(line_text(&collapsed[0]), "▶ > line one line two");
+
+        turn.expanded = true;
+        let expanded = build_completed_turn_lines(&turn, false, true, 80);
+        let texts: Vec<String> = expanded.iter().map(line_text).collect();
+        assert_eq!(
+            texts,
+            vec![
+                "▼ > line one".to_string(),
+                "    line two".to_string(),
+                String::new(),
+            ]
+        );
+        assert_eq!(turn_height(&turn, 80), expanded.len());
     }
 
     fn assert_tool_call(
