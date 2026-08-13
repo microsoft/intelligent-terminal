@@ -119,6 +119,15 @@ impl TurnState {
         }
     }
 
+    /// Take the current streamed prose segment while keeping the turn open.
+    /// Tool and plan events use this to preserve ACP arrival order.
+    pub fn take_buffer(&mut self) -> Option<String> {
+        match self {
+            TurnState::Streaming { buf, .. } if !buf.is_empty() => Some(std::mem::take(buf)),
+            _ => None,
+        }
+    }
+
     /// The surfaced recommendation set, if the outcome is a card.
     pub fn recommendations(&self) -> Option<&RecommendationSet> {
         match self {

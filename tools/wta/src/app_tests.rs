@@ -1540,6 +1540,8 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         },
         ChatMessage::Agent("Here are the files...".to_string()),
     ];
@@ -5451,6 +5453,37 @@ async fn permission_quick_reject_key_round_trips_to_agent() {
         .await;
 }
 
+#[tokio::test]
+async fn permission_enter_resolves_only_the_fifo_front() {
+    let mut app = test_app();
+    let (first_tx, first_rx) = tokio::sync::oneshot::channel();
+    let (second_tx, mut second_rx) = tokio::sync::oneshot::channel();
+
+    let mut first = perm_with("first");
+    first.responder = Some(first_tx);
+    let mut second = perm_with("second");
+    second.responder = Some(second_tx);
+    app.current_tab_mut().permission.push_back(first);
+    app.current_tab_mut().permission.push_back(second);
+
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    assert_eq!(
+        first_rx.await.expect("first responder dropped"),
+        "allow_once"
+    );
+    assert_eq!(
+        second_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "the queued responder must remain pending"
+    );
+    assert_eq!(app.current_tab().permission.len(), 1);
+    assert_eq!(
+        app.current_tab().permission.front().unwrap().title,
+        "second"
+    );
+}
+
 /// The `kind` string is the ACP `PermissionOptionKind` rendered via
 /// `format!("{:?}", …)`, i.e. PascalCase (`AllowOnce`, `RejectAlways`).
 /// `PermOption::is_allow`/`is_reject` must match those case-insensitively
@@ -5937,6 +5970,50 @@ async fn tool_call_completion_updates_card_status() {
         .await;
 }
 
+#[test]
+fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "change it");
+
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "I will update the file.".into(),
+    });
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-1".into(),
+        title: "apply_patch".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Edit,
+        location: Some("src/main.rs".into()),
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "The update is complete.".into(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+
+    let details = &app.current_tab().completed_turns[0].details;
+    assert!(
+        matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file.")
+    );
+    assert!(matches!(
+        &details[1],
+        ChatMessage::ToolCall { title, .. } if title == "apply_patch"
+    ));
+    assert!(
+        matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
+    );
+}
+
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
 #[tokio::test]
 async fn plan_surfaces_card_in_chat() {
@@ -6201,6 +6278,8 @@ fn render_tool_call_card_in_chat() {
         cwd: None,
         output: None,
         exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
     });
 
     let text = render_to_text(&mut app, 80, 24);
@@ -7371,6 +7450,12 @@ fn render_permission_compact_shows_hint() {
         selected: 0,
         responder: None,
     });
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("QUEUED_COMPACT_2"));
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("QUEUED_COMPACT_3"));
 
     let text = render_to_text(&mut app, 80, 7);
     assert!(
@@ -7381,6 +7466,37 @@ fn render_permission_compact_shows_hint() {
         text.contains("Y/N"),
         "the compact permission row must paint the [Y/N] hint; rendered:\n{text}"
     );
+    assert!(
+        text.contains("[1/3]"),
+        "the compact permission row must expose the pending count; rendered:\n{text}"
+    );
+}
+
+#[test]
+fn render_permission_queue_keeps_one_actionable_and_previews_the_rest() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for description in [
+        "CURRENT_PERMISSION",
+        "QUEUED_PERMISSION_2",
+        "QUEUED_PERMISSION_3",
+        "QUEUED_PERMISSION_4",
+        "QUEUED_PERMISSION_5",
+        "QUEUED_PERMISSION_6",
+    ] {
+        app.current_tab_mut()
+            .permission
+            .push_back(perm_with(description));
+    }
+
+    let text = render_to_text(&mut app, 100, 30);
+    assert!(text.contains("[1/6]"), "rendered:\n{text}");
+    assert!(text.contains("CURRENT_PERMISSION"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_2"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_3"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_4"), "rendered:\n{text}");
+    assert!(!text.contains("QUEUED_PERMISSION_5"), "rendered:\n{text}");
+    assert!(text.contains("+2"), "rendered:\n{text}");
 }
 
 #[test]
@@ -7612,6 +7728,8 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
         cwd: None,
         output: None,
         exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
     });
     assert!(app.current_tab().should_show_thinking());
 
@@ -7624,6 +7742,8 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
         location: None,
         location_is_command: false,
         output: None,
+        content: None,
+        locations: None,
         cwd: None,
         exit_code: None,
     });
@@ -7649,6 +7769,8 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         cwd: None,
         output: None,
         exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
     });
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
@@ -7662,6 +7784,8 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
             text: "running tests".into(),
             truncated: false,
         }),
+        content: None,
+        locations: None,
         cwd: Some(expected_cwd.into()),
         exit_code: None,
     });
@@ -7687,6 +7811,248 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         output.as_ref().map(|output| output.text.as_str()),
         Some("running tests")
     );
+}
+
+#[test]
+fn tool_call_update_replaces_and_clears_standard_collections() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Edit source".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Edit,
+        location: Some("old.rs".into()),
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Attachment {
+            label: "old attachment".into(),
+            uri: None,
+        }],
+        locations: vec![ToolCallLocation {
+            path: "old.rs".into(),
+            line: Some(1),
+        }],
+    });
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: None,
+        status: None,
+        kind: None,
+        location: None,
+        location_is_command: false,
+        output: None,
+        content: Some(Vec::new()),
+        locations: Some(Vec::new()),
+        cwd: None,
+        exit_code: None,
+    });
+
+    let Some(ChatMessage::ToolCall {
+        location,
+        content,
+        locations,
+        ..
+    }) = app.current_tab().messages.last()
+    else {
+        panic!("expected tool-call card");
+    };
+    assert_eq!(location, &None);
+    assert!(content.is_empty());
+    assert!(locations.is_empty());
+}
+
+#[test]
+fn terminal_output_updates_only_the_tool_call_referencing_the_terminal() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "run");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-call-1".into(),
+        title: "Run command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Execute,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Terminal {
+            id: "term-1".into(),
+            output: None,
+            exit_code: None,
+        }],
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-call-2".into(),
+        title: "Run another command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Execute,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Terminal {
+            id: "term-2".into(),
+            output: None,
+            exit_code: None,
+        }],
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::ToolTerminalOutput {
+        session_id: DEFAULT_TAB_ID.into(),
+        terminal_id: "term-1".into(),
+        output: ToolCallOutput {
+            text: "terminal output".into(),
+            truncated: false,
+        },
+        exit_code: Some(0),
+    });
+
+    let cards = app
+        .current_tab()
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            ChatMessage::ToolCall {
+                id,
+                output,
+                exit_code,
+                content,
+                ..
+            } => Some((id.as_str(), output, exit_code, content)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let matching = cards
+        .iter()
+        .find(|(id, ..)| *id == "tool-call-1")
+        .expect("matching tool-call card");
+    assert_eq!(
+        matching.1.as_ref().map(|output| output.text.as_str()),
+        Some("terminal output")
+    );
+    assert_eq!(*matching.2, Some(0));
+    assert!(matches!(
+        &matching.3[0],
+        ToolCallContent::Terminal {
+            output: Some(output),
+            exit_code: Some(0),
+            ..
+        } if output.text == "terminal output"
+    ));
+
+    let unrelated = cards
+        .iter()
+        .find(|(id, ..)| *id == "tool-call-2")
+        .expect("unrelated tool-call card");
+    assert_eq!(unrelated.1, &None);
+    assert_eq!(*unrelated.2, None);
+    assert!(matches!(
+        &unrelated.3[0],
+        ToolCallContent::Terminal {
+            output: None,
+            exit_code: None,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn legacy_tool_call_deserialization_defaults_standard_details() {
+    let message: ChatMessage = serde_json::from_value(json!({
+        "ToolCall": {
+            "id": "legacy",
+            "title": "Read file",
+            "status": "Completed",
+            "kind": "Read",
+            "location": null,
+            "location_is_command": false,
+            "cwd": null,
+            "output": null,
+            "exit_code": null
+        }
+    }))
+    .expect("legacy persisted tool call should deserialize");
+
+    assert!(matches!(
+        message,
+        ChatMessage::ToolCall {
+            content,
+            locations,
+            ..
+        } if content.is_empty() && locations.is_empty()
+    ));
+}
+
+#[test]
+fn expanded_tool_call_renders_typed_details() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Update source".into(),
+        details: vec![ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Edit source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some(r"C:\src\main.rs:42".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![
+                ToolCallContent::Diff {
+                    path: r"C:\src\main.rs".into(),
+                    old_text: Some(ToolCallOutput {
+                        text: "OLD_TYPED_LINE".into(),
+                        truncated: false,
+                    }),
+                    new_text: ToolCallOutput {
+                        text: "NEW_TYPED_LINE".into(),
+                        truncated: false,
+                    },
+                },
+                ToolCallContent::Terminal {
+                    id: "TERM_TYPED_ID".into(),
+                    output: Some(ToolCallOutput {
+                        text: "TERM_TYPED_OUTPUT".into(),
+                        truncated: false,
+                    }),
+                    exit_code: Some(0),
+                },
+                ToolCallContent::Attachment {
+                    label: "image/png".into(),
+                    uri: Some("file:///image.png".into()),
+                },
+            ],
+            locations: vec![ToolCallLocation {
+                path: r"C:\src\main.rs".into(),
+                line: Some(42),
+            }],
+        }],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let text = render_to_text(&mut app, 100, 40);
+    for needle in [
+        r"C:\src\main.rs:42",
+        "OLD_TYPED_LINE",
+        "NEW_TYPED_LINE",
+        "TERM_TYPED_ID",
+        "TERM_TYPED_OUTPUT",
+        "image/png",
+    ] {
+        assert!(text.contains(needle), "missing {needle:?}; rendered:\n{text}");
+    }
 }
 
 #[test]
@@ -8040,7 +8406,8 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
 use crate::app::turn_state::{SubmittedPrompt, TurnOutcome, TurnState};
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction};
 use crate::ui::action_panel::{
-    permission_card_height, recommendation_card_height, recommendation_panel_height,
+    permission_card_height, permission_queue_card_height, recommendation_card_height,
+    recommendation_panel_height,
 };
 use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
@@ -8104,6 +8471,16 @@ fn card_content_width_subtracts_chrome_and_floors_at_1() {
 fn permission_card_height_single_line_is_card_min() {
     let perm = perm_with("ok");
     assert_eq!(permission_card_height(&perm, 80) as u16, CARD_MIN_SIZE);
+}
+
+#[test]
+fn permission_queue_card_height_counts_preview_and_overflow_rows() {
+    let perm = perm_with("current");
+    let queued = ["two", "three", "four"].into_iter().map(str::to_string);
+    assert_eq!(
+        permission_queue_card_height(&perm, 6, queued, 2, 80),
+        CARD_MIN_SIZE as usize + 4
+    );
 }
 
 #[test]
