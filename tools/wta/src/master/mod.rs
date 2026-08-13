@@ -360,6 +360,52 @@ async fn bind_session_route(
     routes.len()
 }
 
+/// Retire one session deliberately replaced by its owning helper.
+///
+/// ACP has no session-close request, so the helper first sends
+/// `session/cancel` to stop any active turn. Once the replacement session is
+/// live, master drops every WTA-owned resource for the old SessionId so it is
+/// no longer routable or advertised as live.
+async fn retire_replaced_session(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    session_id: &acp::schema::v1::SessionId,
+) -> bool {
+    let removed = {
+        let mut routes = state.session_to_helper.lock().await;
+        if routes
+            .get(session_id)
+            .is_some_and(|route| route.helper_id == helper_id)
+        {
+            routes.remove(session_id);
+            true
+        } else {
+            false
+        }
+    };
+    if !removed {
+        return false;
+    }
+
+    state.pending_usage.lock().await.remove(session_id);
+    state
+        .session_mcp_capabilities
+        .remove_session(session_id)
+        .await;
+    state.registry.remove(session_id).await;
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_session_removed_notification(session_id),
+    )
+    .await;
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_sessions_changed_notification(),
+    )
+    .await;
+    true
+}
+
 /// Canonical key for the agent-CLI pool: authoritative agent identity,
 /// execution source, and full command line. Two tabs with the same identity,
 /// source, and command share one CLI; custom and built-in agents never share
@@ -1428,6 +1474,13 @@ impl HelperHandler {
         // in the same place as the routing entry.
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let previous_session_id = self
+            .state
+            .helper_meta
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .and_then(|meta| meta.last_session_id.clone());
         let cwd_for_registry = args.cwd.clone();
         let agent = self.resolved_agent("new_session")?;
         let session_mcp_endpoint = self
@@ -1523,6 +1576,20 @@ impl HelperHandler {
             .ok()
             .map(|d| d.as_millis() as u64);
         self.state.registry.upsert(info.clone()).await;
+        if let Some(previous_session_id) =
+            previous_session_id.filter(|sid| sid != &resp.session_id)
+        {
+            let retired =
+                retire_replaced_session(&self.state, self.helper_id, &previous_session_id).await;
+            tracing::info!(
+                target: "master",
+                helper_id = ?self.helper_id,
+                old_session_id = %previous_session_id,
+                new_session_id = %resp.session_id,
+                retired,
+                "retired session replaced by session/new"
+            );
+        }
         // Record crash-recovery metadata for this helper: the owning
         // WT tab StableId (so master can address a `restart_agent_pane`
         // event on disconnect) and the just-created session as the

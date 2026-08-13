@@ -335,6 +335,21 @@ impl CapabilityRegistry {
         count
     }
 
+    pub(super) async fn remove_session(&self, session_id: &acp::schema::v1::SessionId) -> bool {
+        let removed = {
+            let mut routes = self.routes.lock().await;
+            let Some(hash) = routes.by_session.get(session_id).copied() else {
+                return false;
+            };
+            Self::remove_capability(&mut routes, &hash);
+            true
+        };
+        if let Ok(mut active) = self.active_user_inputs.lock() {
+            active.remove(session_id);
+        }
+        removed
+    }
+
     async fn resolve(&self, secret: &str) -> CapabilityResolution {
         match self
             .routes
@@ -1318,6 +1333,21 @@ mod tests {
             registry.resolve(&replacement.secret).await,
             CapabilityResolution::Unknown
         ));
+    }
+
+    #[tokio::test]
+    async fn removing_session_revokes_its_capability() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(registry.bind(&pending, session_id.clone()).await);
+
+        assert!(registry.remove_session(&session_id).await);
+        assert!(matches!(
+            registry.resolve(&pending.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(!registry.remove_session(&session_id).await);
     }
 
     #[test]

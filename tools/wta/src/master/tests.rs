@@ -1899,6 +1899,73 @@ async fn drop_sessions_for_helper_broadcasts_session_removed_to_peers() {
     assert_eq!(got, expected);
 }
 
+#[tokio::test]
+async fn retiring_replaced_session_releases_only_the_owners_old_session() {
+    use crate::session_registry::{self, SessionInfo};
+    use std::path::PathBuf;
+
+    let state = make_state();
+    let owner = HelperId(1);
+    let peer = HelperId(2);
+    let old_sid = SessionId::new("old");
+    let peer_sid = SessionId::new("peer");
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    {
+        let mut routes = state.session_to_helper.lock().await;
+        for (sid, helper_id) in [(&old_sid, owner), (&peer_sid, peer)] {
+            routes.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id,
+                    notif_tx: notif_tx.clone(),
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+        }
+    }
+    state
+        .registry
+        .upsert(SessionInfo::new(
+            old_sid.clone(),
+            PathBuf::from("C:\\old"),
+        ))
+        .await;
+    state
+        .registry
+        .upsert(SessionInfo::new(
+            peer_sid.clone(),
+            PathBuf::from("C:\\peer"),
+        ))
+        .await;
+    let (ext_tx, mut ext_rx) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(peer, ext_tx);
+
+    assert!(retire_replaced_session(&state, owner, &old_sid).await);
+    assert!(!retire_replaced_session(&state, owner, &peer_sid).await);
+
+    let routes = state.session_to_helper.lock().await;
+    assert!(!routes.contains_key(&old_sid));
+    assert!(routes.contains_key(&peer_sid));
+    drop(routes);
+    assert!(state.registry.lookup(&old_sid).await.is_none());
+    assert!(state.registry.lookup(&peer_sid).await.is_some());
+
+    assert!(matches!(
+        session_registry::parse_ext_notification(&ext_rx.try_recv().unwrap()),
+        session_registry::WtaExtNotification::SessionRemoved(sid) if sid == old_sid
+    ));
+    assert!(matches!(
+        session_registry::parse_ext_notification(&ext_rx.try_recv().unwrap()),
+        session_registry::WtaExtNotification::SessionsChanged
+    ));
+    assert!(ext_rx.try_recv().is_err());
+}
+
 /// `route_for` (used by every `MasterClient::<client-method>`
 /// forwarder) must return `internal_error` when the agent CLI
 /// sends a request for a session that no helper has registered
