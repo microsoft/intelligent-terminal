@@ -8232,6 +8232,10 @@ fn stale_autofix_at_close_resets_to_idle() {
         "stale-close must reset to Idle, got {:?}",
         app.current_tab().turn
     );
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "stale-close must discard the invalidated active transcript"
+    );
 }
 
 #[test]

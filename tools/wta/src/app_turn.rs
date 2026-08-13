@@ -387,7 +387,10 @@ impl App {
                     "discarding stale autofix turn at close",
                 );
                 self.turn_clear_agent_activity(session_id);
-                self.session_tab_mut(session_id).turn = TurnState::Idle;
+                let tab = self.session_tab_mut(session_id);
+                tab.messages.clear();
+                tab.reveal_chars = 0;
+                tab.turn = TurnState::Idle;
                 return;
             }
         }
