@@ -3326,11 +3326,11 @@ fn dispatch_load_session(
                 .await
             {
                 tracing::warn!(
-                    target: "acp_new_session",
+                    target: "acp_load_session",
                     tab = %req.tab_id,
                     session_id = %old,
                     error = ?e,
-                    "session/cancel before replacement failed (likely unsupported)"
+                    "session/cancel before load failed (likely unsupported)"
                 );
             }
         }
