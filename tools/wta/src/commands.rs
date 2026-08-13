@@ -338,26 +338,24 @@ pub fn move_position_prefix(input: &str) -> Option<&str> {
 
 /// Whether `/add-dir` is waiting for its default active-pane directory.
 ///
-/// Returns `Some(false)` for plain `/add-dir`, `Some(true)` for
-/// `/add-dir --global`, and `None` once a path or invalid extra argument is
-/// present. A trailing whitespace is required so the ghost never overlaps
-/// command-name completion or attaches directly to `--global`.
-pub fn add_dir_default_is_global(input: &str) -> Option<bool> {
+/// A trailing whitespace is required so the ghost never overlaps command-name
+/// completion. Once any path text is present, the ghost is hidden.
+pub fn add_dir_awaiting_path(input: &str) -> bool {
     let trimmed = input.trim_start();
     let command = "/add-dir";
-    let command_end = trimmed.get(..command.len())?;
+    let Some(command_end) = trimmed.get(..command.len()) else {
+        return false;
+    };
     if !command_end.eq_ignore_ascii_case(command) {
-        return None;
+        return false;
     }
-    let arguments = trimmed.get(command.len()..)?;
+    let Some(arguments) = trimmed.get(command.len()..) else {
+        return false;
+    };
     if !arguments.starts_with(char::is_whitespace) || !input.ends_with(char::is_whitespace) {
-        return None;
+        return false;
     }
-    match arguments.trim() {
-        "" => Some(false),
-        value if value.eq_ignore_ascii_case("--global") => Some(true),
-        _ => None,
-    }
+    arguments.trim().is_empty()
 }
 
 fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {

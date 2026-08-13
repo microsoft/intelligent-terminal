@@ -77,6 +77,11 @@ pub enum ChatMessage {
         #[serde(default)]
         exit_code: Option<i64>,
     },
+    DirectoryList {
+        global: Vec<String>,
+        session: Vec<String>,
+        additional_directories_supported: bool,
+    },
     Plan(Vec<PlanEntry>),
     Error(String),
     /// Informational WT event surfaced inline in the chat (e.g. shell exit

@@ -887,7 +887,7 @@ impl App {
                 if generation == self.add_dir_ghost_generation
                     && self.current_tab().input == input
                     && self.current_tab().cursor_pos == input.len()
-                    && commands::add_dir_default_is_global(&input).is_some()
+                    && commands::add_dir_awaiting_path(&input)
                 {
                     self.source_cwd = cwd;
                 }

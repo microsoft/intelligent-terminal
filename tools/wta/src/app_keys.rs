@@ -679,7 +679,7 @@ impl App {
             }
             KeyCode::Tab
                 if self.current_tab().input_has_nav_focus()
-                    && commands::add_dir_default_is_global(&self.current_tab().input).is_some()
+                    && commands::add_dir_awaiting_path(&self.current_tab().input)
                     && self.command_ghost_suffix().is_some() =>
             {
                 let _ = self.accept_command_ghost();

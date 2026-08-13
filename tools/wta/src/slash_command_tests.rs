@@ -135,23 +135,31 @@ fn list_dirs_distinguishes_global_session_and_capability_state() {
 
     run_slash(&mut app, "list-dirs");
 
-    let (kind, message) = last_notice(&app);
-    assert_eq!(kind, NoticeKind::Info);
-    assert!(message.contains(r"C:\global"));
-    assert!(message.contains(r"D:\session"));
-    assert!(message.contains("additionalDirectories"));
+    assert_eq!(
+        app.current_tab().messages.last(),
+        Some(&ChatMessage::DirectoryList {
+            global: vec![r"C:\global".to_string()],
+            session: vec![r"D:\session".to_string()],
+            additional_directories_supported: false,
+        })
+    );
     let _ = std::fs::remove_file(store_path);
 }
 
 #[test]
-fn global_directory_command_fails_closed_without_window_identity() {
+fn global_flag_is_not_supported_by_session_directory_commands() {
     let (mut app, store_path) = app_with_path_grants("global");
 
     run_slash_with_args(&mut app, "add-dir", r"--global D:\shared");
 
     let (kind, message) = last_notice(&app);
     assert_eq!(kind, NoticeKind::Warning);
-    assert!(message.contains("global"));
+    assert!(message.contains("absolute"));
+    assert_eq!(
+        app.path_grants.configured_directories(),
+        vec![std::path::PathBuf::from(r"C:\global")]
+    );
+    assert!(app.path_grants.session_directories("session-1").is_empty());
     assert!(!store_path.exists());
 }
 
@@ -875,14 +883,11 @@ fn add_dir_ghost_uses_source_cwd_until_user_types_a_path() {
 }
 
 #[test]
-fn add_dir_global_ghost_requires_empty_path_and_cursor_at_end() {
+fn add_dir_global_flag_does_not_offer_ghost_completion() {
     let mut app = test_app();
     app.source_cwd = Some(r"C:\active".into());
 
     type_input(&mut app, "/ADD-DIR --GLOBAL ");
-    assert_eq!(app.command_ghost_suffix(), Some(r"C:\active"));
-
-    app.current_tab_mut().move_cursor_left();
     assert_eq!(app.command_ghost_suffix(), None);
 }
 

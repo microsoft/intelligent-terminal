@@ -51,45 +51,25 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 }
 
 fn add_dir_command_on_enter(input: &str, source_cwd: Option<&str>) -> Option<ParsedCommand> {
-    let global = commands::add_dir_default_is_global(input)?;
+    if !commands::add_dir_awaiting_path(input) {
+        return None;
+    }
     let source_cwd = source_cwd.filter(|cwd| !cwd.is_empty())?;
     Some(ParsedCommand {
         kind: CommandKind::AddDir,
         spec: commands::lookup("add-dir").expect("/add-dir is registered"),
-        rest: if global {
-            format!("--global {source_cwd}")
-        } else {
-            source_cwd.to_string()
-        },
+        rest: source_cwd.to_string(),
     })
 }
 
-fn parse_directory_command_arguments(arguments: &str) -> (bool, Option<String>) {
-    let trimmed = arguments.trim();
-    let (global, path) = match trimmed.strip_prefix("--global") {
-        Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => {
-            (true, rest.trim())
-        }
-        _ => (false, trimmed),
-    };
-    let path = path
+fn parse_directory_command_path(arguments: &str) -> Option<String> {
+    let path = arguments
+        .trim()
         .strip_prefix('"')
         .and_then(|path| path.strip_suffix('"'))
-        .unwrap_or(path)
+        .unwrap_or_else(|| arguments.trim())
         .trim();
-    (global, (!path.is_empty()).then(|| path.to_string()))
-}
-
-fn append_directory_lines(lines: &mut Vec<String>, directories: &[std::path::PathBuf]) {
-    if directories.is_empty() {
-        lines.push(t!("path_grants.none").into_owned());
-    } else {
-        lines.extend(
-            directories
-                .iter()
-                .map(|directory| format!("  {}", directory.display())),
-        );
-    }
+    (!path.is_empty()).then(|| path.to_string())
 }
 
 mod attachments;
@@ -4492,7 +4472,7 @@ impl App {
         if tab.cursor_pos != tab.input.len() {
             return None;
         }
-        if commands::add_dir_default_is_global(&tab.input).is_some() {
+        if commands::add_dir_awaiting_path(&tab.input) {
             return self.source_cwd.as_deref().filter(|cwd| !cwd.is_empty());
         }
         let prefix = commands::agent_id_prefix(&tab.input)?;
@@ -4515,7 +4495,7 @@ impl App {
         let input = {
             let tab = self.current_tab();
             if tab.cursor_pos != tab.input.len()
-                || commands::add_dir_default_is_global(&tab.input).is_none()
+                || !commands::add_dir_awaiting_path(&tab.input)
             {
                 self.add_dir_ghost_refresh_for = None;
                 return;
@@ -4978,11 +4958,7 @@ impl App {
     }
 
     fn cmd_add_dir(&mut self, arguments: String) {
-        let (global, path) = parse_directory_command_arguments(&arguments);
-        if global {
-            self.cmd_update_global_directory("add", path, "/add-dir --global ");
-            return;
-        }
+        let path = parse_directory_command_path(&arguments);
         let Some(session_id) = self.current_tab().session_id.clone() else {
             self.push_path_grant_message(ChatMessage::warning(
                 t!("path_grants.no_active_session").into_owned(),
@@ -5012,11 +4988,7 @@ impl App {
     }
 
     fn cmd_remove_dir(&mut self, arguments: String) {
-        let (global, path) = parse_directory_command_arguments(&arguments);
-        if global {
-            self.cmd_update_global_directory("remove", path, "/remove-dir --global ");
-            return;
-        }
+        let path = parse_directory_command_path(&arguments);
         let Some(session_id) = self.current_tab().session_id.clone() else {
             self.push_path_grant_message(ChatMessage::warning(
                 t!("path_grants.no_active_session").into_owned(),
@@ -5052,74 +5024,19 @@ impl App {
             .as_deref()
             .map(|session_id| self.path_grants.session_directories(session_id))
             .unwrap_or_default();
-        let mut lines = vec![t!("path_grants.list_header").into_owned()];
-        lines.push(t!("path_grants.global_header").into_owned());
-        append_directory_lines(&mut lines, &globals);
-        lines.push(t!("path_grants.session_header").into_owned());
-        append_directory_lines(&mut lines, &sessions);
-        if !self.path_grants.additional_directories_supported() {
-            lines.push(t!("path_grants.not_advertised").into_owned());
-        }
-        self.push_path_grant_message(ChatMessage::info(lines.join("\n")));
-    }
-
-    fn cmd_update_global_directory(
-        &mut self,
-        operation: &'static str,
-        path: Option<String>,
-        input_prefix: &'static str,
-    ) {
-        if !matches!(
-            self.current_agent_source,
-            crate::agent_source::AgentSource::Host
-        ) {
-            self.push_path_grant_message(ChatMessage::warning(
-                t!("path_grants.global_host_only").into_owned(),
-            ));
-            return;
-        }
-        let Some(path) = path else {
-            self.current_tab_mut()
-                .replace_input(input_prefix.to_string());
-            self.refresh_add_dir_ghost_cwd();
-            return;
-        };
-        if !self
-            .path_grants
-            .is_absolute_directory(std::path::Path::new(&path))
-        {
-            self.push_path_grant_message(ChatMessage::warning(
-                t!("path_grants.absolute_required").into_owned(),
-            ));
-            return;
-        }
-        let Some(window_id) = self.window_id.clone() else {
-            self.push_path_grant_message(ChatMessage::warning(
-                t!("path_grants.global_failed", error = "window unavailable").into_owned(),
-            ));
-            return;
-        };
-        let tab_id = self
-            .owner_tab_id
-            .clone()
-            .or_else(|| self.tab_id.clone())
-            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        crate::wt_protocol_events::send(
-            serde_json::json!({
-                "type": "event",
-                "method": "update_allowed_directory",
-                "params": {
-                    "window_id": window_id,
-                    "tab_id": tab_id,
-                    "operation": operation,
-                    "path": path,
-                }
-            })
-            .to_string(),
-        );
-        self.push_path_grant_message(ChatMessage::info(
-            t!("path_grants.updating_global").into_owned(),
-        ));
+        self.push_path_grant_message(ChatMessage::DirectoryList {
+            global: globals
+                .into_iter()
+                .map(|directory| directory.display().to_string())
+                .collect(),
+            session: sessions
+                .into_iter()
+                .map(|directory| directory.display().to_string())
+                .collect(),
+            additional_directories_supported: self
+                .path_grants
+                .additional_directories_supported(),
+        });
     }
 
     fn handle_allowed_directories_changed(&mut self, params: &serde_json::Value) {

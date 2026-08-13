@@ -587,10 +587,6 @@ impl SessionRoots {
         }
     }
 
-    pub(crate) fn is_absolute_directory(&self, path: &Path) -> bool {
-        is_absolute_for_source(path, &self.source)
-    }
-
     pub(crate) fn additional_directories_supported(&self) -> bool {
         self.additional_directories_supported
             .load(Ordering::Relaxed)

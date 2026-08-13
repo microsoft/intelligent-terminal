@@ -136,6 +136,43 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             height: dot_wrap_count(text, body_width) + 1,
             has_trailing_blank: true,
         },
+        ChatMessage::DirectoryList {
+            global,
+            session,
+            additional_directories_supported,
+        } => {
+            let has_roots = !global.is_empty() || !session.is_empty();
+            let mut height = 1;
+            if has_roots {
+                if !global.is_empty() {
+                    height += 1;
+                    height += global
+                        .iter()
+                        .map(|path| wrap_count(&format!("    {path}"), wrap_width))
+                        .sum::<usize>();
+                }
+                if !session.is_empty() {
+                    height += usize::from(!global.is_empty()) + 1;
+                    height += session
+                        .iter()
+                        .map(|path| wrap_count(&format!("    {path}"), wrap_width))
+                        .sum::<usize>();
+                }
+            } else {
+                height += 1;
+            }
+            if !additional_directories_supported {
+                height += usize::from(has_roots);
+                height += wrap_count(
+                    &format!("  {}", t!("path_grants.not_advertised")),
+                    wrap_width,
+                );
+            }
+            MessageLayout {
+                height: height + 1,
+                has_trailing_blank: true,
+            }
+        }
         ChatMessage::ToolCall {
             kind,
             location,
@@ -595,6 +632,55 @@ fn build_message_lines<'a>(
             push_prefixed_lines(&mut lines, marker, text, wrap_width, style);
             lines.push(Line::default());
         }
+        ChatMessage::DirectoryList {
+            global,
+            session,
+            additional_directories_supported,
+        } => {
+            lines.push(Line::from(vec![
+                Span::styled("i ", theme::NOTICE_INFO),
+                Span::styled(
+                    t!("path_grants.list_header").into_owned(),
+                    theme::DIRECTORY_LIST_TITLE,
+                ),
+            ]));
+            let mut rendered_section = false;
+            for (heading, directories) in [
+                (t!("path_grants.global_header").into_owned(), global),
+                (t!("path_grants.session_header").into_owned(), session),
+            ] {
+                if directories.is_empty() {
+                    continue;
+                }
+                if rendered_section {
+                    lines.push(Line::default());
+                }
+                rendered_section = true;
+                lines.push(Line::from(Span::styled(
+                    format!("  {heading}"),
+                    theme::DIRECTORY_LIST_SECTION,
+                )));
+                lines.extend(directories.iter().map(|path| {
+                    Line::from(Span::styled(format!("    {path}"), theme::AGENT_TEXT))
+                }));
+            }
+            if !rendered_section {
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", t!("path_grants.none").trim()),
+                    theme::DIM,
+                )));
+            }
+            if !additional_directories_supported {
+                if rendered_section {
+                    lines.push(Line::default());
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", t!("path_grants.not_advertised")),
+                    theme::DIM,
+                )));
+            }
+            lines.push(Line::default());
+        }
         ChatMessage::ToolCall {
             id,
             title,
@@ -980,6 +1066,28 @@ mod tests {
 
         assert_eq!(line_text(&lines[0]), "i Notice text");
         assert_eq!(lines.len(), message_height(&message, 20));
+    }
+
+    #[test]
+    fn directory_list_uses_hierarchy_and_hides_empty_sections() {
+        let message = ChatMessage::DirectoryList {
+            global: vec![r"C:\global".into()],
+            session: Vec::new(),
+            additional_directories_supported: false,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+
+        assert_eq!(line_text(&lines[0]), "i Allowed directories");
+        assert_eq!(lines[0].spans[0].style, theme::NOTICE_INFO);
+        assert_eq!(lines[0].spans[1].style, theme::DIRECTORY_LIST_TITLE);
+        assert_eq!(line_text(&lines[1]), "  Global:");
+        assert_eq!(lines[1].spans[0].style, theme::DIRECTORY_LIST_SECTION);
+        assert_eq!(line_text(&lines[2]), r"    C:\global");
+        assert_eq!(lines[2].spans[0].style, theme::AGENT_TEXT);
+        assert!(!lines.iter().any(|line| line_text(line) == "  Session:"));
+        assert!(line_text(&lines[4]).contains("additionalDirectories"));
+        assert_eq!(lines[4].spans[0].style, theme::DIM);
+        assert_eq!(lines.len(), message_height(&message, 120));
     }
 
     #[test]

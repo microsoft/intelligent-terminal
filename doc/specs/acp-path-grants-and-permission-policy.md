@@ -71,15 +71,14 @@ resolution.
 
 ```text
 /add-dir <absolute-path>
-/add-dir --global <absolute-path>
 /remove-dir <absolute-path>
-/remove-dir --global <absolute-path>
 /list-dirs
 ```
 
-For `/add-dir` and `/add-dir --global`, ghost completion proposes the owning
-tab's active-pane directory. Enter accepts and executes the completed command;
-right-click accepts the completion without executing it.
+These commands operate on the current ACP session only. Global roots are
+managed in **AI Agents > Allowed directories**. For `/add-dir`, ghost
+completion proposes the owning tab's active-pane directory. Tab or right-click
+accepts the completion without executing it; Enter accepts and executes it.
 
 When an ACP permission request contains one usable location and an
 Agent-provided `allow_once` option, the permission card may also offer:
