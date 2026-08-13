@@ -23,6 +23,9 @@ pub struct PopupState<'a> {
     pub candidates: PopupCandidates<'a>,
     pub selected: usize,
     pub pane_focused: bool,
+    /// Text after the leading `/`, used to highlight the matching part of
+    /// command-name candidates.
+    pub command_query: &'a str,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
     /// they're currently on while typing the command. `None` when no model
@@ -59,10 +62,8 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         PopupCandidates::Commands(candidates) => candidates
             .iter()
             .map(|spec| {
-                let mut spans = vec![
-                    Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
-                    Span::styled(spec.summary(), theme::DIM),
-                ];
+                let mut spans = command_name_spans(spec.name, state.command_query);
+                spans.push(Span::styled(spec.summary(), theme::DIM));
                 // The `/model` row shows the pane's current model so the user can
                 // see what they're on before opening the picker.
                 if spec.name == "model" {
@@ -111,6 +112,30 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     list_state.select(popup_highlight(candidate_count, state.selected));
 
     frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn command_name_spans(name: &str, query: &str) -> Vec<Span<'static>> {
+    let padded_name = format!("{name:<8} ");
+    let needle = query.trim().to_ascii_lowercase();
+    let Some(start) = (!needle.is_empty())
+        .then(|| name.to_ascii_lowercase().find(&needle))
+        .flatten()
+    else {
+        return vec![Span::styled(
+            format!(" /{padded_name}"),
+            theme::INPUT_TEXT,
+        )];
+    };
+    let end = start + needle.len();
+
+    vec![
+        Span::styled(format!(" /{}", &name[..start]), theme::INPUT_TEXT),
+        Span::styled(name[start..end].to_string(), theme::SEARCH_MATCH),
+        Span::styled(
+            format!("{}{}", &name[end..], &padded_name[name.len()..]),
+            theme::INPUT_TEXT,
+        ),
+    ]
 }
 
 /// Which row the command popup highlights: the user's cursor index, clamped
@@ -172,8 +197,9 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::popup_highlight;
+    use super::{command_name_spans, popup_highlight};
     use crate::commands;
+    use crate::theme;
 
     fn spec(name: &str) -> &'static commands::CommandSpec {
         commands::lookup(name).expect("registered command")
@@ -196,5 +222,25 @@ mod tests {
     #[test]
     fn empty_candidates_highlight_nothing() {
         assert_eq!(popup_highlight(0, 0), None);
+    }
+
+    #[test]
+    fn command_name_highlights_matching_substring() {
+        let spans = command_name_spans("clear", "LEAR");
+
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, " /c");
+        assert_eq!(spans[1].content, "lear");
+        assert_eq!(spans[1].style, theme::SEARCH_MATCH);
+        assert_eq!(spans[2].content, "    ");
+    }
+
+    #[test]
+    fn empty_query_keeps_command_name_unhighlighted() {
+        let spans = command_name_spans("clear", "");
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content, " /clear    ");
+        assert_eq!(spans[0].style, theme::INPUT_TEXT);
     }
 }
