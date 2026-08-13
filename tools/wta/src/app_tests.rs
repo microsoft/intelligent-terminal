@@ -5302,13 +5302,13 @@ async fn mock_agent_reply_streams_into_app_chat() {
             );
 
             // "What the chat shows" while streaming: the mock's reply is in
-            // the active tab's streaming buffer.
+            // the active tab's ordered transcript.
             assert!(
                 app.current_tab()
-                    .pending_agent_response
+                    .active_agent_text()
                     .contains("MOCK_OK:hello"),
-                "mock reply must stream into the App chat buffer; got {:?}",
-                app.current_tab().pending_agent_response
+                "mock reply must stream into the App transcript; got {:?}",
+                app.current_tab().active_agent_text()
             );
         })
         .await;
@@ -5919,7 +5919,7 @@ async fn streaming_two_chunks_coalesce_in_app_chat() {
             .await;
 
             assert_eq!(
-                app.current_tab().pending_agent_response,
+                app.current_tab().active_agent_text(),
                 "MOCK_OK",
                 "streamed chunks must coalesce into one contiguous reply"
             );
@@ -5979,6 +5979,7 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         session_id: DEFAULT_TAB_ID.into(),
         text: "I will update the file.".into(),
     });
+    app.current_tab_mut().reveal_chars = 12;
     app.handle_event(AppEvent::ToolCall {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool-1".into(),
@@ -5997,6 +5998,11 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         session_id: DEFAULT_TAB_ID.into(),
         text: "The update is complete.".into(),
     });
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        0,
+        "a new prose segment after a tool must start its own reveal cursor"
+    );
     app.handle_event(AppEvent::AgentMessageEnd {
         session_id: DEFAULT_TAB_ID.into(),
     });
@@ -6012,6 +6018,50 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
     assert!(
         matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
     );
+}
+
+#[test]
+fn tool_only_turn_commits_the_ordered_tool_transcript() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-1".into(),
+        title: "Find files".into(),
+        status: "Completed".into(),
+        kind: ToolCallKind::Search,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+
+    let tab = app.current_tab();
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(matches!(
+        tab.completed_turns[0].details.as_slice(),
+        [ChatMessage::ToolCall { id, .. }] if id == "tool-1"
+    ));
+}
+
+#[test]
+fn live_transcript_does_not_consume_replay_accumulators() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "live");
+    app.current_tab_mut().replay_agent_buffer = "replayed history".into();
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "live response");
+
+    let tab = app.current_tab();
+    assert_eq!(tab.streaming_agent_text(), Some("live response"));
+    assert_eq!(tab.active_agent_text(), "live response");
+    assert_eq!(tab.replay_agent_buffer, "replayed history");
 }
 
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
@@ -7658,34 +7708,34 @@ fn submit_clears_messages_and_pushes_user_bubble() {
 }
 
 #[test]
-fn first_message_chunk_transitions_to_streaming_with_buf() {
+fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     assert!(app.current_tab().should_show_thinking());
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "partial");
     assert!(advanced, "first message chunk must advance the buffer");
-    assert_eq!(app.current_tab().turn.buffer(), Some("partial"));
+    assert_eq!(app.current_tab().streaming_agent_text(), Some("partial"));
     assert!(app.current_tab().turn.is_streaming());
     assert!(
-        app.current_tab().should_show_thinking(),
-        "Thinking remains throughout the in-flight turn"
+        !app.current_tab().should_show_thinking(),
+        "visible response text replaces the generic Thinking row"
     );
     app.advance_reveal();
     assert!(
-        app.current_tab().should_show_thinking(),
-        "revealing response text must not hide Thinking before turn end"
+        !app.current_tab().should_show_thinking(),
+        "revealing response text remains the visible progress indicator"
     );
 }
 
 #[test]
-fn thought_chunk_first_transitions_with_empty_buf() {
+fn thought_chunk_first_transitions_without_visible_text() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
     assert!(!advanced, "thought chunks never advance the buffer");
     let tab = app.current_tab();
     assert!(tab.turn.is_streaming());
-    assert_eq!(tab.turn.buffer(), Some(""));
+    assert_eq!(tab.streaming_agent_text(), None);
     assert!(
         tab.should_show_thinking(),
         "hidden thought chunks are not user-visible feedback"
@@ -7693,7 +7743,7 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn structured_stream_keeps_thinking_after_explanation_is_visible() {
+fn structured_stream_hides_thinking_after_response_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     app.turn_observe_chunk(
@@ -7702,7 +7752,7 @@ fn structured_stream_keeps_thinking_after_explanation_is_visible() {
         r#"{"kind":"explanation""#,
     );
     app.advance_reveal();
-    assert!(app.current_tab().should_show_thinking());
+    assert!(!app.current_tab().should_show_thinking());
 
     app.turn_observe_chunk(
         DEFAULT_TAB_ID,
@@ -7710,11 +7760,11 @@ fn structured_stream_keeps_thinking_after_explanation_is_visible() {
         r#","explanation":"Visible answer"}"#,
     );
     app.advance_reveal();
-    assert!(app.current_tab().should_show_thinking());
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 #[test]
-fn tool_call_keeps_thinking_while_turn_is_in_flight() {
+fn running_tool_replaces_thinking_until_tool_completes() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
@@ -7731,7 +7781,10 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
         content: Vec::new(),
         locations: Vec::new(),
     });
-    assert!(app.current_tab().should_show_thinking());
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "the running tool card is already visible progress"
+    );
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
@@ -7749,7 +7802,7 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
     });
     assert!(
         app.current_tab().should_show_thinking(),
-        "tool completion does not end the agent turn"
+        "after tool completion the generic row indicates that the Agent is still responding"
     );
 }
 
@@ -8159,7 +8212,7 @@ fn stale_autofix_chunks_dropped_when_generation_diverges() {
         "state unchanged on stale drop, got {:?}",
         tab.turn
     );
-    assert_eq!(tab.turn.buffer(), None);
+    assert_eq!(tab.streaming_agent_text(), None);
 }
 
 #[test]
@@ -8178,6 +8231,10 @@ fn stale_autofix_at_close_resets_to_idle() {
         app.current_tab().turn.is_idle(),
         "stale-close must reset to Idle, got {:?}",
         app.current_tab().turn
+    );
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "stale-close must discard the invalidated active transcript"
     );
 }
 
@@ -8226,7 +8283,13 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty(), "messages cleared on cancel");
-    assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
+
+    app.turn_cancel(DEFAULT_TAB_ID);
+    assert_eq!(
+        app.current_tab().completed_turns.len(),
+        1,
+        "cancelling an already-idle turn must not commit the transcript twice"
+    );
 }
 
 #[test]
@@ -8257,7 +8320,6 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty());
-    assert!(tab.tool_calls.is_empty());
 }
 
 #[test]
@@ -8372,6 +8434,134 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     );
     let execution = recommendation_rx.try_recv().unwrap();
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    let tab = app.session_tab(session_id);
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("executed")));
+}
+
+#[test]
+fn direct_proposal_defers_history_until_tool_updates_finish() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-tool-update";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    app.handle_event(AppEvent::ToolCall {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: "Inspect files".into(),
+        status: "Running".into(),
+        kind: ToolCallKind::Search,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+
+    let (proposal_id, _final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    assert!(
+        app.session_tab(session_id).completed_turns.is_empty(),
+        "surfacing a card must not move an in-flight transcript into history"
+    );
+
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: None,
+        status: Some("Completed".into()),
+        kind: None,
+        location: None,
+        location_is_command: false,
+        output: None,
+        content: None,
+        locations: None,
+        cwd: None,
+        exit_code: Some(0),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Everything is ready.".into(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(|detail| {
+        matches!(
+            detail,
+            ChatMessage::ToolCall { id, status, .. }
+                if id == "tool-1" && status == "Completed"
+        )
+    }));
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Everything is ready.")
+    ));
+}
+
+#[test]
+fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-cancel-trailing";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Trailing explanation.".into(),
+    });
+
+    app.turn_cancel(session_id);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    app.turn_cancel(session_id);
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Trailing explanation.")
+    ));
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("canceled")));
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+    );
 }
 
 #[test]
