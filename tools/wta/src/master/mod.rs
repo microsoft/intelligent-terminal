@@ -371,22 +371,19 @@ async fn retire_replaced_session(
     helper_id: HelperId,
     session_id: &acp::schema::v1::SessionId,
 ) -> bool {
-    let removed = {
-        let mut routes = state.session_to_helper.lock().await;
-        if routes
-            .get(session_id)
-            .is_some_and(|route| route.helper_id == helper_id)
-        {
-            routes.remove(session_id);
-            true
-        } else {
-            false
-        }
-    };
-    if !removed {
+    let mut routes = state.session_to_helper.lock().await;
+    if !routes
+        .get(session_id)
+        .is_some_and(|route| route.helper_id == helper_id)
+    {
         return false;
     }
+    routes.remove(session_id);
 
+    // Keep the route lock through all session-scoped cleanup and removal
+    // broadcasts so load_session cannot rebind this SessionId mid-retirement.
+    // This follows the state lock order: route before usage, registry, or
+    // helper-subscriber state; none of those paths re-enters the route map.
     state.pending_usage.lock().await.remove(session_id);
     state
         .session_mcp_capabilities

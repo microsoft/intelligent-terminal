@@ -1966,6 +1966,74 @@ async fn retiring_replaced_session_releases_only_the_owners_old_session() {
     assert!(ext_rx.try_recv().is_err());
 }
 
+#[tokio::test]
+async fn retiring_replaced_session_serializes_rebinding_through_cleanup_broadcasts() {
+    use crate::session_registry::SessionInfo;
+    use std::path::PathBuf;
+
+    let state = make_state();
+    let sid = SessionId::new("rebound-during-retirement");
+    let old_owner = HelperId(1);
+    let new_owner = HelperId(2);
+    let (old_tx, _old_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let (new_tx, _new_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    state.session_to_helper.lock().await.insert(
+        sid.clone(),
+        HelperRoute {
+            helper_id: old_owner,
+            notif_tx: old_tx,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    );
+    state
+        .registry
+        .upsert(SessionInfo::new(sid.clone(), PathBuf::from("C:\\old")))
+        .await;
+
+    // Stall retirement at its first removal broadcast. Once the registry row
+    // disappears, cleanup has reached that stall and must still own the route
+    // lock so a concurrent load_session cannot rebind the same SessionId.
+    let subscribers = state.helper_ext_subscribers.lock().await;
+    let retiring_state = Arc::clone(&state);
+    let retiring_sid = sid.clone();
+    let retire = tokio::spawn(async move {
+        retire_replaced_session(&retiring_state, old_owner, &retiring_sid).await
+    });
+    while state.registry.lookup(&sid).await.is_some() {
+        tokio::task::yield_now().await;
+    }
+
+    let binding_state = Arc::clone(&state);
+    let binding_sid = sid.clone();
+    let bind = tokio::spawn(async move {
+        bind_session_route(
+            &binding_state,
+            binding_sid,
+            HelperRoute {
+                helper_id: new_owner,
+                notif_tx: new_tx,
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    assert!(
+        !bind.is_finished(),
+        "rebind must wait until old session cleanup and broadcasts finish"
+    );
+
+    drop(subscribers);
+    assert!(retire.await.unwrap());
+    bind.await.unwrap();
+    assert_eq!(
+        state.session_to_helper.lock().await[&sid].helper_id,
+        new_owner
+    );
+}
+
 /// `route_for` (used by every `MasterClient::<client-method>`
 /// forwarder) must return `internal_error` when the agent CLI
 /// sends a request for a session that no helper has registered
