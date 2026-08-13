@@ -1,8 +1,13 @@
-# TurnState Refactor — Plan v2
+# TurnState Refactor
 
-**Status**: Plan, not implemented
+**Status**: Superseded by [Conversation TUI Transcript](conversation-tui-transcript.md)
 **Scope**: `tools/wta/src/app.rs`, `tools/wta/src/ui/*.rs`, new `tools/wta/src/app/turn_state.rs`
 **Estimated effort**: 9.5–10.5 h, split across 4 steps
+
+This document records the original lifecycle refactor. The lifecycle state
+machine was implemented, but its proposed streaming buffer and duplicate tool
+index were later removed. The conversation transcript specification is the
+current design authority.
 
 ## Why
 

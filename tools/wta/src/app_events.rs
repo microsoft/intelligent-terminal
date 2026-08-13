@@ -363,8 +363,8 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
-                tab.pending_agent_response.clear();
-                tab.pending_user_replay.clear();
+                tab.replay_agent_buffer.clear();
+                tab.replay_user_buffer.clear();
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
@@ -691,14 +691,17 @@ impl App {
                 // means the previous user turn is complete — flush it
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
-                if tab.loading_session && !tab.pending_user_replay.is_empty() {
-                    let text = std::mem::take(&mut tab.pending_user_replay);
-                    tab.messages.push(ChatMessage::User(text));
+                if tab.loading_session {
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
+                        tab.messages.push(ChatMessage::User(text));
+                    }
+                    tab.replay_agent_buffer.push_str(&text);
+                    return;
                 }
-                tab.pending_agent_response.push_str(&text);
 
-                // Append to the streaming buffer. The state machine drops
-                // late chunks and handles the stale-autofix generation check.
+                // Append directly to the ordered active transcript. The state
+                // machine drops late chunks and stale autofix generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
@@ -711,11 +714,11 @@ impl App {
                 if !tab.loading_session {
                     return;
                 }
-                if !tab.pending_agent_response.is_empty() {
-                    let prev = std::mem::take(&mut tab.pending_agent_response);
+                if !tab.replay_agent_buffer.is_empty() {
+                    let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
                 }
-                tab.pending_user_replay.push_str(&text);
+                tab.replay_user_buffer.push_str(&text);
             }
             AppEvent::AgentMessageEnd { session_id } => {
                 if let Some(summary) = self.session_completion_latency_summary(&session_id) {
@@ -741,27 +744,27 @@ impl App {
                 content,
                 locations,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
                 // Commit streamed prose before the tool so the transcript
                 // follows ACP event order instead of drawing the streaming
                 // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
-                } else {
-                    tab.flush_streamed_agent_segment();
                 }
-                tab.tool_calls
-                    .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages.push(ChatMessage::ToolCall {
                     id,
                     title,
@@ -794,14 +797,6 @@ impl App {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
-                }
-                if let Some(entry) = tab.tool_calls.get_mut(&id) {
-                    if let Some(title) = &title {
-                        entry.0 = title.clone();
-                    }
-                    if let Some(status) = &status {
-                        entry.1 = status.clone();
-                    }
                 }
                 // Update in-place in messages
                 for msg in &mut tab.messages {
@@ -908,7 +903,6 @@ impl App {
             }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
-                tab.tool_calls.remove(&id);
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
                 );
@@ -917,21 +911,23 @@ impl App {
                 session_id,
                 entries,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
-                } else {
-                    tab.flush_streamed_agent_segment();
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
                 tab.scroll_to_bottom();

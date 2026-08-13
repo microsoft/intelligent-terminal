@@ -18,11 +18,9 @@ pub enum TurnState {
     Idle,
     /// Prompt sent over ACP; awaiting first chunk.
     Submitted(SubmittedPrompt),
-    /// Receiving streamed chunks. `buf` is the accumulated assistant text.
-    Streaming {
-        prompt: SubmittedPrompt,
-        buf: String,
-    },
+    /// The Agent started producing events for this prompt. Visible content
+    /// lives in the tab's ordered active transcript, not in lifecycle state.
+    Streaming { prompt: SubmittedPrompt },
     /// Outcome surfaced to UI (card visible, chat turn committed, or empty).
     /// `end_pending` is true until `AgentMessageEnd` arrives — the UI gate
     /// stays held during that window to align with ACP single-flight.
@@ -111,23 +109,6 @@ impl TurnState {
         }
     }
 
-    /// Streaming buffer, if any.
-    pub fn buffer(&self) -> Option<&str> {
-        match self {
-            TurnState::Streaming { buf, .. } => Some(buf.as_str()),
-            _ => None,
-        }
-    }
-
-    /// Take the current streamed prose segment while keeping the turn open.
-    /// Tool and plan events use this to preserve ACP arrival order.
-    pub fn take_buffer(&mut self) -> Option<String> {
-        match self {
-            TurnState::Streaming { buf, .. } if !buf.is_empty() => Some(std::mem::take(buf)),
-            _ => None,
-        }
-    }
-
     /// The surfaced recommendation set, if the outcome is a card.
     pub fn recommendations(&self) -> Option<&RecommendationSet> {
         match self {
@@ -144,7 +125,7 @@ impl TurnState {
         match self {
             TurnState::Idle => None,
             TurnState::Submitted(p) => Some(p),
-            TurnState::Streaming { prompt, .. } => Some(prompt),
+            TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
         }
     }
@@ -156,7 +137,7 @@ impl TurnState {
         match self {
             TurnState::Idle => None,
             TurnState::Submitted(p) => Some(p),
-            TurnState::Streaming { prompt, .. } => Some(prompt),
+            TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
         }
     }
@@ -220,7 +201,6 @@ mod tests {
         assert!(s.is_idle());
         assert!(!s.is_streaming());
         assert!(s.accepts_new_prompt());
-        assert!(s.buffer().is_none());
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_none());
         assert!(s.autofix_generation().is_none());
@@ -234,7 +214,6 @@ mod tests {
         assert!(!s.is_idle());
         assert!(!s.is_streaming());
         assert!(!s.accepts_new_prompt());
-        assert!(s.buffer().is_none());
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_some());
         assert!(s.is_in_flight());
@@ -244,12 +223,10 @@ mod tests {
     fn streaming_state_predicates() {
         let s = TurnState::Streaming {
             prompt: prompt(),
-            buf: "partial".into(),
         };
         assert!(!s.is_idle());
         assert!(s.is_streaming());
         assert!(!s.accepts_new_prompt());
-        assert_eq!(s.buffer(), Some("partial"));
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_some());
         assert!(s.is_in_flight());
@@ -318,7 +295,6 @@ mod tests {
 
         let s = TurnState::Streaming {
             prompt: autofix_prompt(7),
-            buf: String::new(),
         };
         assert_eq!(s.autofix_generation(), Some(7));
 

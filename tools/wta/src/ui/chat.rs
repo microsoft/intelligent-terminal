@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
     App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind,
@@ -170,14 +171,39 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // Fetch once for the pending-height calculation.
     let pending_text = pending_render_text(tab);
 
-    let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
-    let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
-    let pending = pending_text
-        .as_deref()
-        .map(|text| {
-            let body_width = wrap_width.saturating_sub(2).max(1);
-            dot_wrap_count(text, body_width)
+    let streaming_index = tab.streaming_agent_message_index();
+    let permission_tool_call_id = permission_tool_call_id(tab);
+    let messages: usize = tab
+        .messages
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != streaming_index)
+        .map(|(index, message)| {
+            rendered_lines_height(
+                &build_message_lines(
+                    message,
+                    index + 1 == tab.messages.len(),
+                    tab.turn.is_streaming(),
+                    permission_tool_call_id,
+                    tab.activity_frame,
+                    wrap_width,
+                ),
+                wrap_width,
+            )
         })
+        .sum();
+    let turns: usize = tab
+        .completed_turns
+        .iter()
+        .map(|turn| {
+            rendered_lines_height(
+                &build_completed_turn_lines(turn, false, false, wrap_width),
+                wrap_width,
+            )
+        })
+        .sum();
+    let pending = pending_text
+        .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
         .unwrap_or(0);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
@@ -195,152 +221,35 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
 }
 
-fn wrap_count(text: &str, width: usize) -> usize {
-    let w = width.max(1);
-    text.split('\n')
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 { 1 } else { chars.div_ceil(w) }
-        })
-        .sum::<usize>()
-        .max(1)
-}
-
-/// Mirrors `push_dot_prefixed_lines`: leading blank paragraphs are skipped
-/// (the dot lands on the first content row), so they must not be counted
-/// against the chat-area height either.
-fn dot_wrap_count(text: &str, width: usize) -> usize {
-    wrap_count(text.trim_start_matches('\n'), width)
-}
-
-struct MessageLayout {
-    height: usize,
-    has_trailing_blank: bool,
-}
-
-fn message_layout(msg: &ChatMessage, wrap_width: usize, detailed_tools: bool) -> MessageLayout {
-    // Most variants render with a 2-cell prefix ("● " for agent/error,
-    // "> " for user) and a trailing blank line.
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => MessageLayout {
-            height: dot_wrap_count(t, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::User(t) => MessageLayout {
-            height: wrap_count(t, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::System(t) | ChatMessage::AgentEvent(t) => MessageLayout {
-            height: wrap_count(t, wrap_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::Notice { text, .. } => MessageLayout {
-            height: dot_wrap_count(text, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::ToolCall {
-            kind,
-            location,
-            location_is_command,
-            output,
-            content,
-            locations,
-            ..
-        } => {
-            // Command targets render one line per split statement (see
-            // the render arm below, and `command_format`) — must count
-            // the same number of rows here, or the chat area's height
-            // budget undercounts and clips the scrollback.
-            let command_lines = if *location_is_command {
-                location
-                    .as_deref()
-                    .filter(|l| !l.is_empty())
-                    .map(|l| crate::ui::command_format::command_display_lines(l).len())
-                    .unwrap_or(0)
-            } else {
-                0
-            };
-            let output_rows = if !detailed_tools
-                && (*kind == ToolCallKind::Execute || *location_is_command)
-            {
-                output
-                    .as_ref()
-                    .map(|output| {
-                        tool_output_lines(output)
-                            .iter()
-                            .map(|line| wrap_count(&format!("    │ {line}"), wrap_width))
-                            .sum()
-                    })
-                    .unwrap_or(0)
-            } else {
-                0
-            };
-            let has_text_content = content
-                .iter()
-                .any(|item| matches!(item, ToolCallContent::Text(_)));
-            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
-            if !has_text_content {
-                if let Some(output) = output {
-                    if detailed_tools {
-                        detail_lines.extend(full_output_lines(output, "    │ "));
-                    } else if *kind != ToolCallKind::Execute && !*location_is_command {
-                        detail_lines.extend(preview_output_lines(output, "    │ "));
-                    }
-                }
-            }
-            let detail_rows: usize = detail_lines
-                .iter()
-                .map(|line| wrap_count(line, wrap_width))
-                .sum();
-            let has_trailing_blank = command_lines + output_rows + detail_rows > 0;
-            MessageLayout {
-                height: 1
-                    + command_lines
-                    + output_rows
-                    + detail_rows
-                    + usize::from(has_trailing_blank),
-                has_trailing_blank,
-            }
-        }
-        ChatMessage::Plan(entries) => MessageLayout {
-            height: 2 + entries.len(), // header + each entry + blank
-            has_trailing_blank: true,
-        },
-        // Disclaimer is a single dim row — terminal min-width guarantees the
-        // short text fits without wrapping, and no trailing blank is needed.
-        ChatMessage::Disclaimer => MessageLayout {
-            height: 1,
-            has_trailing_blank: false,
-        },
-    }
-}
-
+#[cfg(test)]
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
-    message_layout(msg, wrap_width, false).height
+    rendered_lines_height(
+        &build_message_lines(msg, false, false, None, 0, wrap_width),
+        wrap_width,
+    )
 }
 
+#[cfg(test)]
 fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
-    // Collapsed view = prompt header + trailing blank. Expanded turns put
-    // details immediately after the header, so only add a trailing blank when
-    // the final detail does not already render one.
-    let chars = "▶ > ".chars().count() + turn.prompt.chars().count();
-    let prompt_rows = chars.div_ceil(wrap_width.max(1)).max(1);
-    let mut h = prompt_rows;
-    if turn.expanded {
-        let mut has_trailing_blank = false;
-        for message in &turn.details {
-            let layout = message_layout(message, wrap_width, true);
-            h += layout.height;
-            has_trailing_blank = layout.has_trailing_blank;
-        }
-        if !has_trailing_blank {
-            h += 1;
-        }
-    } else {
-        h += 1;
-    }
-    h
+    rendered_lines_height(
+        &build_completed_turn_lines(turn, false, false, wrap_width),
+        wrap_width,
+    )
+}
+
+fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    let width = wrap_width.max(1);
+    lines
+        .iter()
+        .map(|line| {
+            let display_width: usize = line
+                .spans
+                .iter()
+                .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+                .sum();
+            display_width.max(1).div_ceil(width)
+        })
+        .sum()
 }
 
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
@@ -423,7 +332,11 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
+    let streaming_index = tab.streaming_agent_message_index();
     for (idx, msg) in tab.messages.iter().enumerate().rev() {
+        if Some(idx) == streaming_index {
+            continue;
+        }
         let is_last_message = idx + 1 == tab.messages.len();
         let mut message_lines = build_message_lines(
             msg,
@@ -497,7 +410,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         format!(
             "messages={} pending_chars={} requested_lines={} visible_height={} area={}x{}",
             app.current_tab().messages.len(),
-            app.current_tab().turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            app.current_tab()
+                .streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             requested_lines,
             visible_height,
             area.width,
@@ -636,8 +552,7 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
 }
 
 fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    // Pending text is only meaningful while the turn is actively streaming.
-    user_visible_stream_text(tab.turn.buffer()?)
+    user_visible_stream_text(tab.streaming_agent_text()?)
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -649,8 +564,8 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     // the streaming text. The reveal cursor is advanced toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
-    // full text is always in `turn.buffer()`, and finalize commits it in full,
-    // so this never drops or delays the final content.
+    // full text is always in the ordered transcript, and finalize moves that
+    // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
         let total = text.chars().count();
         let shown = tab.reveal_chars.min(total);
@@ -1005,8 +920,8 @@ fn push_prefixed_lines<'a>(
 /// multiple rows, so without this split any line after the first would
 /// never appear in the rendered transcript (see issue #492). The first
 /// rendered row gets the `"> "` prompt marker; continuation rows get a
-/// matching 2-cell indent, consistent with `message_height`'s
-/// `wrap_count`-based row estimate for `ChatMessage::User`.
+/// matching 2-cell indent. Height measurement consumes these same rendered
+/// lines and counts their terminal display width.
 fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &'a str, wrap_width: usize) {
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
@@ -1130,6 +1045,15 @@ mod tests {
 
         assert_eq!(line_text(&lines[0]), "i Notice text");
         assert_eq!(lines.len(), message_height(&message, 20));
+    }
+
+    #[test]
+    fn message_height_uses_terminal_display_width_for_cjk() {
+        let message = ChatMessage::Agent("你好".into());
+        let lines = build_message_lines(&message, false, false, None, 0, 4);
+
+        assert_eq!(lines.len(), 3, "two CJK glyphs wrap into two body rows");
+        assert_eq!(message_height(&message, 4), lines.len());
     }
 
     #[test]
@@ -1539,8 +1463,10 @@ mod tests {
                 context: crate::app::TurnContext::default(),
                 autofix: None,
             },
-            buf: buf.to_string(),
         };
+        if !buf.is_empty() {
+            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+        }
         tab.reveal_chars = reveal_chars;
         tab
     }

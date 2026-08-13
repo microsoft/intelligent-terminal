@@ -3860,7 +3860,9 @@ impl App {
             tab.messages.len(),
             tab.completed_turns.len(),
             tab.input.chars().count(),
-            tab.turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            tab.streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             tab.chat_scroll.offset,
             tab.activity_frame,
             tab.turn.recommendations().map(|r| r.choices.len()).unwrap_or(0),
@@ -4121,12 +4123,10 @@ impl App {
         }
     }
 
-    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
-    /// the length of what the renderer would show in full. `None` when the
-    /// tab is not streaming visible prose.
+    /// Number of user-visible characters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        let buf = tab.turn.buffer()?;
-        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
+            .map(|text| text.chars().count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
