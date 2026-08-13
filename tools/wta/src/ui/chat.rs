@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
     App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallKind, ToolCallOutput,
@@ -17,6 +18,110 @@ fn activity_label() -> String {
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
+const DIRECTORY_CARD_MAX_WIDTH: usize = 96;
+
+fn push_directory_card_rows(
+    rows: &mut Vec<(String, Style)>,
+    text: &str,
+    width: usize,
+    style: Style,
+) {
+    let wrapped = textwrap::wrap(text, width.max(1));
+    if wrapped.is_empty() {
+        rows.push((String::new(), style));
+    } else {
+        rows.extend(wrapped.into_iter().map(|line| (line.into_owned(), style)));
+    }
+}
+
+fn push_directory_path_rows(rows: &mut Vec<(String, Style)>, path: &str, width: usize) {
+    for line in textwrap::wrap(path, width.saturating_sub(2).max(1)) {
+        rows.push((format!("  {line}"), theme::AGENT_TEXT));
+    }
+}
+
+fn directory_card_lines(
+    global: &[String],
+    session: &[String],
+    additional_directories_supported: bool,
+    wrap_width: usize,
+) -> Vec<Line<'static>> {
+    let card_width = wrap_width.min(DIRECTORY_CARD_MAX_WIDTH);
+    let content_width = card_width.saturating_sub(4).max(1);
+    let mut rows = vec![
+        (
+            t!("path_grants.list_header").into_owned(),
+            theme::DIRECTORY_LIST_TITLE,
+        ),
+        (String::new(), Style::default()),
+    ];
+    let mut rendered_section = false;
+    for (heading, directories) in [
+        (t!("path_grants.global_header").into_owned(), global),
+        (t!("path_grants.session_header").into_owned(), session),
+    ] {
+        if directories.is_empty() {
+            continue;
+        }
+        if rendered_section {
+            rows.push((String::new(), Style::default()));
+        }
+        rendered_section = true;
+        push_directory_card_rows(
+            &mut rows,
+            &heading,
+            content_width,
+            theme::DIRECTORY_LIST_SECTION,
+        );
+        for path in directories {
+            push_directory_path_rows(&mut rows, path, content_width);
+        }
+    }
+    if !rendered_section {
+        push_directory_card_rows(
+            &mut rows,
+            t!("path_grants.none").trim(),
+            content_width,
+            theme::DIM,
+        );
+    }
+    if !additional_directories_supported {
+        rows.push((String::new(), Style::default()));
+        push_directory_card_rows(
+            &mut rows,
+            &t!("path_grants.not_advertised"),
+            content_width,
+            theme::DIM,
+        );
+    }
+
+    if card_width < 6 {
+        return rows
+            .into_iter()
+            .map(|(text, style)| Line::from(Span::styled(text, style)))
+            .collect();
+    }
+
+    let horizontal = "─".repeat(card_width.saturating_sub(2));
+    let mut lines = vec![Line::from(Span::styled(
+        format!("┌{horizontal}┐"),
+        theme::CARD_BORDER,
+    ))];
+    lines.extend(rows.into_iter().map(|(text, style)| {
+        let padding = " ".repeat(content_width.saturating_sub(text.width()));
+        Line::from(vec![
+            Span::styled("│ ", theme::CARD_BORDER),
+            Span::styled(text, style),
+            Span::raw(padding),
+            Span::styled(" │", theme::CARD_BORDER),
+        ])
+    }));
+    lines.push(Line::from(Span::styled(
+        format!("└{horizontal}┘"),
+        theme::CARD_BORDER,
+    )));
+    lines
+}
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
     let mut lines = output.text.lines().rev();
@@ -140,39 +245,17 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             global,
             session,
             additional_directories_supported,
-        } => {
-            let has_roots = !global.is_empty() || !session.is_empty();
-            let mut height = 2;
-            if has_roots {
-                if !global.is_empty() {
-                    height += 1;
-                    height += global
-                        .iter()
-                        .map(|path| wrap_count(&format!("    {path}"), wrap_width))
-                        .sum::<usize>();
-                }
-                if !session.is_empty() {
-                    height += usize::from(!global.is_empty()) + 1;
-                    height += session
-                        .iter()
-                        .map(|path| wrap_count(&format!("    {path}"), wrap_width))
-                        .sum::<usize>();
-                }
-            } else {
-                height += 1;
-            }
-            if !additional_directories_supported {
-                height += 1;
-                height += wrap_count(
-                    &format!("  {}", t!("path_grants.not_advertised")),
-                    wrap_width,
-                );
-            }
-            MessageLayout {
-                height: height + 1,
-                has_trailing_blank: true,
-            }
-        }
+        } => MessageLayout {
+            height: directory_card_lines(
+                global,
+                session,
+                *additional_directories_supported,
+                wrap_width,
+            )
+            .len()
+                + 1,
+            has_trailing_blank: true,
+        },
         ChatMessage::ToolCall {
             kind,
             location,
@@ -637,44 +720,12 @@ fn build_message_lines<'a>(
             session,
             additional_directories_supported,
         } => {
-            lines.push(Line::from(Span::styled(
-                t!("path_grants.list_header").into_owned(),
-                theme::DIRECTORY_LIST_TITLE,
-            )));
-            lines.push(Line::default());
-            let mut rendered_section = false;
-            for (heading, directories) in [
-                (t!("path_grants.global_header").into_owned(), global),
-                (t!("path_grants.session_header").into_owned(), session),
-            ] {
-                if directories.is_empty() {
-                    continue;
-                }
-                if rendered_section {
-                    lines.push(Line::default());
-                }
-                rendered_section = true;
-                lines.push(Line::from(Span::styled(
-                    format!("  {heading}"),
-                    theme::DIRECTORY_LIST_SECTION,
-                )));
-                lines.extend(directories.iter().map(|path| {
-                    Line::from(Span::styled(format!("    {path}"), theme::AGENT_TEXT))
-                }));
-            }
-            if !rendered_section {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", t!("path_grants.none").trim()),
-                    theme::DIM,
-                )));
-            }
-            if !additional_directories_supported {
-                lines.push(Line::default());
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", t!("path_grants.not_advertised")),
-                    theme::DIM,
-                )));
-            }
+            lines.extend(directory_card_lines(
+                global,
+                session,
+                *additional_directories_supported,
+                wrap_width,
+            ));
             lines.push(Line::default());
         }
         ChatMessage::ToolCall {
@@ -1073,17 +1124,53 @@ mod tests {
         };
         let lines = build_message_lines(&message, false, false, None, 0, 120);
 
-        assert_eq!(line_text(&lines[0]), "Allowed directories");
-        assert_eq!(lines[0].spans[0].style, theme::DIRECTORY_LIST_TITLE);
-        assert!(line_text(&lines[1]).is_empty());
-        assert_eq!(line_text(&lines[2]), "  Global:");
-        assert_eq!(lines[2].spans[0].style, theme::DIRECTORY_LIST_SECTION);
-        assert_eq!(line_text(&lines[3]), r"    C:\global");
-        assert_eq!(lines[3].spans[0].style, theme::AGENT_TEXT);
-        assert!(!lines.iter().any(|line| line_text(line) == "  Session:"));
-        assert!(line_text(&lines[5]).contains("permission checks"));
-        assert_eq!(lines[5].spans[0].style, theme::DIM);
-        assert_eq!(message_height(&message, 120), 8);
+        assert!(line_text(&lines[0]).starts_with('┌'));
+        assert_eq!(lines[0].spans[0].style, theme::CARD_BORDER);
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line).contains("Allowed directories")));
+        let global_line = lines
+            .iter()
+            .find(|line| line_text(line).contains("Global:"))
+            .expect("global heading");
+        assert_eq!(global_line.spans[1].style, theme::DIRECTORY_LIST_SECTION);
+        let path_line = lines
+            .iter()
+            .find(|line| line_text(line).contains(r"C:\global"))
+            .expect("global path");
+        assert_eq!(path_line.spans[1].style, theme::AGENT_TEXT);
+        assert!(line_text(path_line).contains(r"  C:\global"));
+        assert!(!lines
+            .iter()
+            .any(|line| line_text(line).contains("Session:")));
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line).contains("permission checks")));
+        assert!(line_text(&lines[lines.len() - 2]).starts_with('└'));
+        assert!(lines[..lines.len() - 1]
+            .iter()
+            .all(|line| line_text(line).width() == DIRECTORY_CARD_MAX_WIDTH));
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn directory_list_card_wraps_inside_borders_at_narrow_width() {
+        let message = ChatMessage::DirectoryList {
+            global: vec![],
+            session: vec![r"C:\a very long directory name\with nested content".to_string()],
+            additional_directories_supported: true,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 24);
+
+        assert!(lines.len() > 7);
+        assert!(lines[..lines.len() - 1]
+            .iter()
+            .all(|line| line_text(line).width() == 24));
+        assert!(lines[1..lines.len() - 2].iter().all(|line| {
+            let text = line_text(line);
+            text.starts_with("│ ") && text.ends_with(" │")
+        }));
+        assert_eq!(lines.len(), message_height(&message, 24));
     }
 
     #[test]
