@@ -5,9 +5,11 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
-    App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind,
-    ToolCallLocation, ToolCallOutput,
+    App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
+    ToolCallOutput,
 };
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
@@ -242,12 +244,24 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
     lines
         .iter()
         .map(|line| {
-            let display_width: usize = line
-                .spans
-                .iter()
-                .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
-                .sum();
-            display_width.max(1).div_ceil(width)
+            let text = match line.spans.as_slice() {
+                [] => return 1,
+                [span] => Cow::Borrowed(span.content.as_ref()),
+                spans => Cow::Owned(
+                    spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<String>(),
+                ),
+            };
+            let display_width = UnicodeWidthStr::width(text.as_ref());
+            if display_width == 0 {
+                1
+            } else if display_width <= width {
+                1
+            } else {
+                textwrap::wrap(text.as_ref(), width).len().max(1)
+            }
         })
         .sum()
 }
@@ -385,14 +399,14 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
-    let total_lines = lines.len();
+    let total_lines = rendered_lines_height(&lines, wrap_width);
     let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
         .alignment(crate::rtl::text_alignment())
         .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
+        .scroll((scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(paragraph, area);
 
@@ -568,7 +582,7 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
         let total = text.chars().count();
-        let shown = tab.reveal_chars.min(total);
+        let shown = tab.reveal_chars.max(1).min(total);
         if shown >= total {
             text
         } else {
@@ -1054,6 +1068,13 @@ mod tests {
 
         assert_eq!(lines.len(), 3, "two CJK glyphs wrap into two body rows");
         assert_eq!(message_height(&message, 4), lines.len());
+    }
+
+    #[test]
+    fn rendered_height_accounts_for_word_wrap_gaps() {
+        let lines = vec![Line::from("aaa aaa aaa aaa")];
+
+        assert_eq!(rendered_lines_height(&lines, 5), 4);
     }
 
     #[test]

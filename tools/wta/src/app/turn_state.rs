@@ -62,6 +62,13 @@ pub enum TurnOutcome {
     /// Recommendation card is visible. Unified across autofix Fix and
     /// planner-mode task suggestions.
     Recommendation(RecommendationSet),
+    /// The user acted on a recommendation before the Agent finished. The
+    /// card is hidden, but its history summary is retained until the active
+    /// transcript can be committed at the real turn boundary.
+    ResolvedRecommendation {
+        summary: String,
+        trailing_marker: String,
+    },
     /// Prose / explain text has been committed to `completed_turns`.
     ChatTurn,
     /// No visible response (cancelled, or model returned nothing parseable).

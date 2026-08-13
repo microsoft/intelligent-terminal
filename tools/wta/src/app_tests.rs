@@ -8430,6 +8430,134 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     );
     let execution = recommendation_rx.try_recv().unwrap();
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    let tab = app.session_tab(session_id);
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("executed")));
+}
+
+#[test]
+fn direct_proposal_defers_history_until_tool_updates_finish() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-tool-update";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    app.handle_event(AppEvent::ToolCall {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: "Inspect files".into(),
+        status: "Running".into(),
+        kind: ToolCallKind::Search,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+
+    let (proposal_id, _final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    assert!(
+        app.session_tab(session_id).completed_turns.is_empty(),
+        "surfacing a card must not move an in-flight transcript into history"
+    );
+
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: None,
+        status: Some("Completed".into()),
+        kind: None,
+        location: None,
+        location_is_command: false,
+        output: None,
+        content: None,
+        locations: None,
+        cwd: None,
+        exit_code: Some(0),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Everything is ready.".into(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(|detail| {
+        matches!(
+            detail,
+            ChatMessage::ToolCall { id, status, .. }
+                if id == "tool-1" && status == "Completed"
+        )
+    }));
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Everything is ready.")
+    ));
+}
+
+#[test]
+fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-cancel-trailing";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Trailing explanation.".into(),
+    });
+
+    app.turn_cancel(session_id);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    app.turn_cancel(session_id);
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Trailing explanation.")
+    ));
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("canceled")));
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+    );
 }
 
 #[test]
