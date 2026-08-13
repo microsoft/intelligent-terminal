@@ -489,6 +489,95 @@ fn tool_call_content_text(
     }))
 }
 
+fn bounded_tool_output(text: &str) -> crate::app::ToolCallOutput {
+    bounded_tool_output_parts(std::iter::once(text)).unwrap_or(crate::app::ToolCallOutput {
+        text: String::new(),
+        truncated: false,
+    })
+}
+
+fn tool_call_content(
+    content: &[acp::schema::v1::ToolCallContent],
+) -> Vec<crate::app::ToolCallContent> {
+    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
+    use crate::app::ToolCallContent as AppContent;
+
+    content
+        .iter()
+        .map(|item| match item {
+            ToolCallContent::Content(content) => match &content.content {
+                ContentBlock::Text(text) => AppContent::Text(bounded_tool_output(&text.text)),
+                ContentBlock::Image(image) => AppContent::Attachment {
+                    label: image.mime_type.clone(),
+                    uri: image.uri.clone(),
+                },
+                ContentBlock::Audio(audio) => AppContent::Attachment {
+                    label: audio.mime_type.clone(),
+                    uri: None,
+                },
+                ContentBlock::ResourceLink(resource) => AppContent::Attachment {
+                    label: resource
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| resource.name.clone()),
+                    uri: Some(resource.uri.clone()),
+                },
+                ContentBlock::Resource(resource) => match &resource.resource {
+                    EmbeddedResourceResource::TextResourceContents(resource) => {
+                        AppContent::Attachment {
+                            label: resource.uri.clone(),
+                            uri: None,
+                        }
+                    }
+                    EmbeddedResourceResource::BlobResourceContents(resource) => {
+                        AppContent::Attachment {
+                            label: resource.mime_type.as_deref().map_or_else(
+                                || resource.uri.clone(),
+                                str::to_string,
+                            ),
+                            uri: resource.mime_type.as_ref().map(|_| resource.uri.clone()),
+                        }
+                    }
+                    _ => AppContent::Attachment {
+                        label: "?".to_string(),
+                        uri: None,
+                    },
+                },
+                _ => AppContent::Attachment {
+                    label: "?".to_string(),
+                    uri: None,
+                },
+            },
+            ToolCallContent::Diff(diff) => AppContent::Diff {
+                path: diff.path.to_string_lossy().into_owned(),
+                old_text: diff.old_text.as_deref().map(bounded_tool_output),
+                new_text: bounded_tool_output(&diff.new_text),
+            },
+            ToolCallContent::Terminal(terminal) => AppContent::Terminal {
+                id: terminal.terminal_id.to_string(),
+                output: None,
+                exit_code: None,
+            },
+            _ => AppContent::Attachment {
+                label: "?".to_string(),
+                uri: None,
+            },
+        })
+        .collect()
+}
+
+fn tool_call_locations(
+    locations: &[acp::schema::v1::ToolCallLocation],
+) -> Vec<crate::app::ToolCallLocation> {
+    locations
+        .iter()
+        .map(|location| crate::app::ToolCallLocation {
+            path: location.path.to_string_lossy().into_owned(),
+            line: location.line,
+        })
+        .collect()
+}
+
 fn raw_output_text(raw_output: &serde_json::Value) -> Option<crate::app::ToolCallOutput> {
     if let Some(text) = raw_output.as_str().filter(|text| !text.is_empty()) {
         return bounded_tool_output_parts(std::iter::once(text));
@@ -548,12 +637,15 @@ fn tool_call_target(
     locations: &[acp::schema::v1::ToolCallLocation],
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
-    if let Some(path) = locations
+    if let Some(location) = locations
         .iter()
-        .map(|loc| loc.path.to_string_lossy())
-        .find(|path| !path.trim().is_empty())
+        .find(|loc| !loc.path.to_string_lossy().trim().is_empty())
     {
-        return Some((path.into_owned(), false));
+        let path = location.path.to_string_lossy().into_owned();
+        let target = location
+            .line
+            .map_or_else(|| path.clone(), |line| format!("{path}:{line}"));
+        return Some((target, false));
     }
     let raw_input = raw_input?;
     if let Some(p) = raw_input
@@ -1147,6 +1239,8 @@ impl WtaClient {
                     cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
                     output: tool_call_output(&tool_call.content, tool_call.raw_output.as_ref()),
                     exit_code: tool_call_exit_code(tool_call.raw_output.as_ref()),
+                    content: tool_call_content(&tool_call.content),
+                    locations: tool_call_locations(&tool_call.locations),
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
@@ -1215,6 +1309,8 @@ impl WtaClient {
                     };
                 let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
                 let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
+                let content = update.fields.content.as_deref().map(tool_call_content);
+                let locations = update.fields.locations.as_deref().map(tool_call_locations);
                 if update.fields.title.is_some()
                     || status.is_some()
                     || update.fields.kind.is_some()
@@ -1222,6 +1318,8 @@ impl WtaClient {
                     || output.is_some()
                     || cwd.is_some()
                     || exit_code.is_some()
+                    || content.is_some()
+                    || locations.is_some()
                 {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
@@ -1232,6 +1330,8 @@ impl WtaClient {
                         location,
                         location_is_command,
                         output,
+                        content,
+                        locations,
                         cwd,
                         exit_code,
                     });
@@ -1342,6 +1442,8 @@ impl WtaClient {
                     cwd: None,
                     output: None,
                     exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 });
                 Ok(acp::schema::v1::CreateTerminalResponse::new(id))
             }
@@ -1360,6 +1462,16 @@ impl WtaClient {
             .await
         {
             Ok(output) => {
+                let terminal_id = args.terminal_id.to_string();
+                let session_id = args.session_id.0.to_string();
+                let app_output = bounded_tool_output(&output.data);
+                let exit_code = output.exit_status.map(i64::from);
+                let _ = self.state.event_tx.send(AppEvent::ToolTerminalOutput {
+                    session_id,
+                    terminal_id,
+                    output: app_output,
+                    exit_code,
+                });
                 let mut resp = acp::schema::v1::TerminalOutputResponse::new(output.data, false);
                 if let Some(code) = output.exit_status {
                     resp = resp
@@ -1390,6 +1502,8 @@ impl WtaClient {
                     location: None,
                     location_is_command: false,
                     output: None,
+                    content: None,
+                    locations: None,
                     cwd: None,
                     exit_code: Some(i64::from(code)),
                 });

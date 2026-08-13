@@ -61,7 +61,7 @@ use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRI
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
     ChatMessage, CompletedTurn, NoticeKind, PermissionState, RecommendationFocus, TabSession,
-    ToolCallKind, ToolCallOutput, View,
+    ToolCallContent, ToolCallKind, ToolCallLocation, ToolCallOutput, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -3814,6 +3814,7 @@ impl App {
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
+            AppEvent::ToolTerminalOutput { .. } => "tool_terminal_output",
             AppEvent::HideToolCall { .. } => "hide_tool_call",
             AppEvent::Plan { .. } => "plan",
             AppEvent::PermissionRequest { .. } => "permission_request",

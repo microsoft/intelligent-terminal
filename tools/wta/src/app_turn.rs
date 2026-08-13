@@ -508,7 +508,9 @@ impl App {
                 let tab = self.session_tab_mut(session_id);
                 let prompt = tab.turn.prompt().cloned().expect("prompt set");
                 let mut details = tab.current_turn_details();
-                details.push(ChatMessage::Agent(buf));
+                if !buf.trim().is_empty() {
+                    details.push(ChatMessage::Agent(buf));
+                }
                 tab.completed_turns.push(CompletedTurn {
                     prompt: prompt.text.clone(),
                     details,
@@ -517,6 +519,7 @@ impl App {
                 });
                 tab.messages.clear();
                 tab.tool_calls.clear();
+                tab.pending_agent_response.clear();
                 tab.scroll_to_bottom();
                 tab.turn = TurnState::Surfaced {
                     prompt,

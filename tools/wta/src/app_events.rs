@@ -738,12 +738,16 @@ impl App {
                 cwd,
                 output,
                 exit_code,
+                content,
+                locations,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
-                // Turn boundary during replay (see AgentMessageChunk).
+                // Commit streamed prose before the tool so the transcript
+                // follows ACP event order instead of drawing the streaming
+                // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
                     if !tab.pending_user_replay.is_empty() {
                         let text = std::mem::take(&mut tab.pending_user_replay);
@@ -753,6 +757,8 @@ impl App {
                         let text = std::mem::take(&mut tab.pending_agent_response);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
+                } else {
+                    tab.flush_streamed_agent_segment();
                 }
                 tab.tool_calls
                     .insert(id.clone(), (title.clone(), status.clone()));
@@ -766,6 +772,8 @@ impl App {
                     cwd,
                     output,
                     exit_code,
+                    content,
+                    locations,
                 });
                 tab.scroll_to_bottom();
             }
@@ -778,6 +786,8 @@ impl App {
                 location,
                 location_is_command,
                 output,
+                content,
+                locations,
                 cwd,
                 exit_code,
             } => {
@@ -805,6 +815,8 @@ impl App {
                         cwd: ref mut current_cwd,
                         output: ref mut current_output,
                         exit_code: ref mut current_exit_code,
+                        content: ref mut current_content,
+                        locations: ref mut current_locations,
                         ..
                     } = msg
                     {
@@ -821,12 +833,18 @@ impl App {
                             // Only overwrite when the update actually carried
                             // a fresh location — `None` means "unchanged",
                             // not "clear it" (see `AppEvent::ToolCallUpdate`).
-                            if location.is_some() {
+                            if location.is_some() || locations.is_some() {
                                 *loc = location.clone();
                                 *loc_is_cmd = location_is_command;
                             }
                             if let Some(output) = &output {
                                 *current_output = (!output.text.is_empty()).then(|| output.clone());
+                            }
+                            if let Some(content) = &content {
+                                *current_content = content.clone();
+                            }
+                            if let Some(locations) = &locations {
+                                *current_locations = locations.clone();
                             }
                             if let Some(cwd) = &cwd {
                                 *current_cwd = (!cwd.is_empty()).then(|| cwd.clone());
@@ -835,6 +853,55 @@ impl App {
                                 *current_exit_code = Some(exit_code);
                             }
                         }
+                    }
+                }
+            }
+            AppEvent::ToolTerminalOutput {
+                session_id,
+                terminal_id,
+                output,
+                exit_code,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                let update_content = |message: &mut ChatMessage| {
+                    let ChatMessage::ToolCall {
+                        id,
+                        output: card_output,
+                        exit_code: card_exit_code,
+                        content,
+                        ..
+                    } = message
+                    else {
+                        return;
+                    };
+                    if id == &terminal_id {
+                        *card_output = Some(output.clone());
+                        if exit_code.is_some() {
+                            *card_exit_code = exit_code;
+                        }
+                    }
+                    for item in content {
+                        if let crate::app::ToolCallContent::Terminal {
+                            id,
+                            output: current_output,
+                            exit_code: current_exit_code,
+                        } = item
+                        {
+                            if id == &terminal_id {
+                                *current_output = Some(output.clone());
+                                if exit_code.is_some() {
+                                    *current_exit_code = exit_code;
+                                }
+                            }
+                        }
+                    }
+                };
+                for message in &mut tab.messages {
+                    update_content(message);
+                }
+                for turn in &mut tab.completed_turns {
+                    for message in &mut turn.details {
+                        update_content(message);
                     }
                 }
             }
@@ -862,6 +929,8 @@ impl App {
                         let text = std::mem::take(&mut tab.pending_agent_response);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
+                } else {
+                    tab.flush_streamed_agent_segment();
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
                 tab.scroll_to_bottom();
