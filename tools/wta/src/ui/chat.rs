@@ -505,8 +505,8 @@ fn build_completed_turn_lines<'a>(
 
     // Index of the line that should receive an inline trailing marker (eg
     // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
-    // first detail row (right after the header chevron line); collapsed
-    // turns put it next to the prompt header.
+    // first detail row (after all expanded prompt rows); collapsed turns
+    // put it next to the prompt header.
     let marker_target_idx = if turn.expanded && !turn.details.is_empty() {
         Some(lines.len())
     } else {
@@ -1153,7 +1153,7 @@ mod tests {
     #[test]
     fn expanded_completed_turn_restores_multiline_prompt() {
         let mut turn = CompletedTurn {
-            prompt: "line one\nline two".into(),
+            prompt: ["line one", "line two"].join("\n"),
             details: Vec::new(),
             expanded: false,
             trailing_marker: None,

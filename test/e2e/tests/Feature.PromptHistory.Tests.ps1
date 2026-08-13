@@ -145,8 +145,10 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
         # capture-pane may normalize leading blanks; the Rust renderer test owns
         # exact four-cell indentation, while this live test proves a distinct row.
         $expandedContinuation = '(?m)^[^\S\r\n]*' + [regex]::Escape($lineTwo) + '[^\r\n]*\r?$'
+        $turnCanceledPattern = Get-WtaLocalizedTextRegex -Key 'chat.turn_canceled'
+        $turnCanceledPattern | Should -Not -BeNullOrEmpty -Because 'the bundled cancellation marker must be discoverable'
         $completionReady = Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
-            (Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50) -match '\(cancelled\)'
+            (Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50) -match $turnCanceledPattern
         }
         $expandedText = Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50
         Set-Content -LiteralPath (Join-Path $evidenceDir 'expanded-capture.txt') -Value $expandedText -Encoding utf8NoBOM
