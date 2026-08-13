@@ -172,6 +172,25 @@ pub enum MasterExtRequest {
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
     },
+    SetSessionConfigOption {
+        session_id: acp::schema::v1::SessionId,
+        config_id: String,
+        value: String,
+    },
+}
+
+fn publish_session_config_options(
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    session_id: &acp::schema::v1::SessionId,
+    options: Option<&[acp::schema::v1::SessionConfigOption]>,
+) {
+    let options = options
+        .map(crate::protocol::acp::session_config::select_options)
+        .unwrap_or_default();
+    let _ = event_tx.send(AppEvent::SessionConfigUpdated {
+        session_id: session_id.to_string(),
+        options,
+    });
 }
 
 /// User-initiated request to resume a historical agent session by calling
@@ -1486,6 +1505,12 @@ impl WtaClient {
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
+                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
+                    session_id: sid.clone(),
+                    options: crate::protocol::acp::session_config::select_options(
+                        &update.config_options,
+                    ),
+                });
                 let (available_models, current_model_id) =
                     crate::protocol::acp::model_select::models_from_config_options(
                         &sid,
@@ -2266,6 +2291,7 @@ async fn handle_load_failure(
                 available_models,
                 current_model_id,
             });
+            publish_session_config_options(&event_tx, &new_sid, resp.config_options.as_deref());
         }
         Err(e) => {
             tracing::error!(
@@ -2838,9 +2864,9 @@ pub async fn run_acp_client_over_pipe(
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
-    let (session_id, available_models, current_model_id, has_bootstrap) = if let Some(load_sid) =
-        initial_load_session_id.as_deref()
-    {
+    let (session_id, available_models, current_model_id, session_config, has_bootstrap) =
+        if let Some(load_sid) = initial_load_session_id.as_deref()
+        {
             // No bootstrap. AgentConnected fires with the to-be-loaded
             // sid as a placeholder so the App flips to Connected (and
             // binds session_id → owner_tab in `session_to_tab` early,
@@ -2862,6 +2888,7 @@ pub async fn run_acp_client_over_pipe(
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
                 Vec::<AcpModelInfo>::new(),
                 None,
+                Vec::new(),
                 false,
             )
         } else {
@@ -2938,7 +2965,18 @@ pub async fn run_acp_client_over_pipe(
 
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&session);
-            (session_id, available_models, current_model_id, true)
+            let session_config = session
+                .config_options
+                .as_deref()
+                .map(crate::protocol::acp::session_config::select_options)
+                .unwrap_or_default();
+            (
+                session_id,
+                available_models,
+                current_model_id,
+                session_config,
+                true,
+            )
         };
 
     // Apply --acp-model if requested. Only valid when we actually have
@@ -3016,6 +3054,10 @@ pub async fn run_acp_client_over_pipe(
         current_model_id,
         load_session_supported,
         image_supported,
+    });
+    let _ = event_tx.send(AppEvent::SessionConfigUpdated {
+        session_id: session_id.to_string(),
+        options: session_config,
     });
     // Per-tab session cache. Only
     // prepopulate the owner-tab binding when we actually have a
@@ -3369,6 +3411,69 @@ fn dispatch_master_ext_request(
                     }
                 }
             }
+            MasterExtRequest::SetSessionConfigOption {
+                session_id,
+                config_id,
+                value,
+            } => {
+                let is_live = {
+                    let sessions = tab_to_session.lock().await;
+                    sessions.values().any(|known| known == &session_id)
+                };
+                if !is_live {
+                    let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                        session_id: session_id.to_string(),
+                        config_id,
+                        message: "the session is no longer active".to_string(),
+                    });
+                    return;
+                }
+
+                let request = acp::schema::v1::SetSessionConfigOptionRequest::new(
+                    session_id.clone(),
+                    config_id.clone(),
+                    value.as_str(),
+                );
+                match conn.set_session_config_option(request).await {
+                    Ok(response) => {
+                        let (available_models, current_model_id) =
+                            crate::protocol::acp::model_select::models_from_config_options(
+                                session_id.0.as_ref(),
+                                &response.config_options,
+                            )
+                            .unwrap_or_default();
+                        publish_session_config_options(
+                            &event_tx,
+                            &session_id,
+                            Some(&response.config_options),
+                        );
+                        let _ = event_tx.send(AppEvent::ModelConfigUpdated {
+                            session_id: session_id.to_string(),
+                            available_models,
+                            current_model_id,
+                        });
+                        let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
+                            session_id: session_id.to_string(),
+                            config_id,
+                        });
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "acp",
+                            session_id = %session_id,
+                            config_id,
+                            value,
+                            error = ?error,
+                            "session config update failed"
+                        );
+                        let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                            session_id: session_id.to_string(),
+                            config_id,
+                            message: error.to_string(),
+                        });
+                    }
+                }
+            }
         }
     });
 }
@@ -3500,6 +3605,11 @@ fn dispatch_load_session(
                     available_models,
                     current_model_id,
                 });
+                publish_session_config_options(
+                    &event_tx,
+                    &session_id,
+                    resp.config_options.as_deref(),
+                );
             }
             Ok(Err(e)) => {
                 tracing::warn!(
@@ -3710,7 +3820,6 @@ fn dispatch_new_session(
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
-
         {
             let mut g = tab_to_session.lock().await;
             g.insert(req.tab_id.clone(), new_sid.clone());
@@ -3722,6 +3831,7 @@ fn dispatch_new_session(
             available_models,
             current_model_id,
         });
+        publish_session_config_options(&event_tx, &new_sid, new_session.config_options.as_deref());
     });
 }
 
@@ -3998,6 +4108,11 @@ async fn dispatch_prompt_body(
                 available_models,
                 current_model_id,
             });
+            publish_session_config_options(
+                &event_tx_task,
+                &new_sid,
+                new_session.config_options.as_deref(),
+            );
             g.insert(tab_key_task.clone(), new_sid.clone());
             new_sid
         }

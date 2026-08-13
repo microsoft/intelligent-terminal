@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "വിൻഡോസ് ടെർമിനൽ �
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ഈ ഏജന്റ് സെഷൻ കോൺഫിഗർ ചെയ്യുക"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ഈ ടാബിന്റെ ഏജന്റ് പേൻ നീക്കുക (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "സെഷൻ കോൺഫിഗറേഷൻ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ബന്ധിപ്പിച്ച ഏജന്റ് കോൺഫിഗർ ചെയ്യാവുന്ന സെഷൻ ഓപ്ഷനുകളൊന്നും പരസ്യപ്പെടുത്തിയില്ല."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: %{error}"
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

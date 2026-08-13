@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "Windows Terminal ట్యాబ్ వెల�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ఈ ఏజెంట్ సెషన్‌ను కాన్ఫిගర్ చేయండి"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ఈ ట్యాబ్ యొక్క ఏజెంట్ పేన్‌ను తరలించండి (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
 system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "సెషన్ కాన్ఫిగరేషన్ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "కనెక్ట్ చేయబడిన ఏజెంట్ కాన్ఫిగర్ చేయదగిన సెషన్ ఎంపికలను ప్రచారం చేయలేదు."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option}ను నవీకరించడం విఫలమైంది: %{error}"
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

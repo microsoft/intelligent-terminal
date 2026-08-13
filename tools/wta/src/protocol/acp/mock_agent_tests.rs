@@ -1901,6 +1901,18 @@ async fn session_notification_routes_model_config_update() {
         .unwrap();
 
     match rx.try_recv() {
+        Ok(AppEvent::SessionConfigUpdated {
+            session_id,
+            options,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(options.len(), 1);
+            assert_eq!(options[0].id, "model");
+            assert_eq!(options[0].current_value, "gpt-5.6-sol");
+        }
+        _ => panic!("expected SessionConfigUpdated"),
+    }
+    match rx.try_recv() {
         Ok(AppEvent::ModelConfigUpdated {
             session_id,
             available_models,
@@ -2031,6 +2043,17 @@ async fn session_notification_clears_removed_model_config() {
         .await
         .unwrap();
 
+    match rx.try_recv() {
+        Ok(AppEvent::SessionConfigUpdated {
+            session_id,
+            options,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(options.len(), 1);
+            assert_eq!(options[0].id, "mode");
+        }
+        _ => panic!("expected SessionConfigUpdated"),
+    }
     match rx.try_recv() {
         Ok(AppEvent::ModelConfigUpdated {
             session_id,

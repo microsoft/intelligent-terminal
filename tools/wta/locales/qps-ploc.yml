@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "[Àğéñţ śŵïţçĥïñğ ïś ûñåṽ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
+commands.config.summary: "[Çöñƒïğûŕé ţĥïś åğéñţ śéśśïöñ!!!! !!!! !!!! !!!!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[Ḿöṽé ţĥïś ţåƀ'ś åğéñţ ṗåñé (/move <position>)!!!! !!!! !!!!]"  # {Locked="/move","<position>"}
 model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
 system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "[Śéśśïöñ çöñƒïğûŕåţïöñ (↑ ↓ • Enter • Esc)!!!! !!!! !!!!]"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ çöñƒïğûŕåƀĺé śéśśïöñ öṗţïöñś.!!!! !!!! !!!! !!!! !!!!]"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

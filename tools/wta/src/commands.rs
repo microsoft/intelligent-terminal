@@ -51,6 +51,8 @@ pub enum CommandKind {
     /// models. Cloud/native models are intentionally omitted; model changes
     /// are made through Settings because they require an agent restart.
     Model,
+    /// Configure the current ACP session using Agent-provided config options.
+    Config,
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
@@ -124,6 +126,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+    },
+    CommandSpec {
+        name: "config",
+        summary_key: "commands.config.summary",
+        kind: CommandKind::Config,
     },
     CommandSpec {
         name: "move",

@@ -1,6 +1,7 @@
 # ACP v1 Support Completion Plan
 
-**Status**: Implementation in progress; Phase 1 core tool details landed locally  
+**Status**: Implementation in progress; Phase 1 core tool details are on `main`;
+Phase 4 select-option support is implemented locally
 **Scope**: `tools/wta`, the agent-pane TUI, and the helper/master ACP bridge  
 **Baseline**: ACP wire `protocolVersion: 1`  
 **Last updated**: 2026-08-12
@@ -124,8 +125,8 @@ merge authorization scopes or synthesize options such as `AllowAlways`.
 
 ### Phase 1: Tool Details follow-up to PR #601
 
-**Implementation status**: Core support is complete on
-`dev/vanzue/acp-tool-details-wave2`.
+**Implementation status**: Core support landed on `main` through PRs #601 and
+#611.
 Standard content, diffs, terminal references/output, rich-content placeholders,
 location lines, collection replacement, persistence compatibility, and
 expanded completed-turn details are covered. A direct file-open action and a
@@ -201,6 +202,12 @@ not currently have a safe file-handler selection model.
 - Close and delete are separate user actions with separate tests.
 
 ### Phase 4: Generic config options and Agent commands
+
+**Implementation status**: The first Config Options slice is implemented
+locally. WTA preserves ordered select options per Session, replaces complete
+snapshots from new/load/update/set responses, exposes a generic `/config`
+two-level picker, and routes `/model` through the standard model option when
+one exists. Boolean options and Agent commands remain follow-ups.
 
 1. Store the complete ordered `configOptions` collection per session.
 2. Render all supported select options, not only the `model` category.

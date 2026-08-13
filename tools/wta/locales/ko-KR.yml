@@ -210,8 +210,17 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+commands.config.summary: "이 에이전트 세션 구성"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "세션 구성 (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "연결된 에이전트가 구성 가능한 세션 옵션을 알리지 않았습니다."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} 업데이트 실패: %{error}"
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

@@ -418,6 +418,14 @@ pub struct TabSession {
     pub model_picker_open: bool,
     /// Highlighted row in the open model picker.
     pub model_picker_selected: usize,
+    /// True while the ACP session configuration picker is open.
+    pub config_picker_open: bool,
+    /// Highlighted option or value in the configuration picker.
+    pub config_picker_selected: usize,
+    /// Config option whose values are currently shown; `None` shows the option list.
+    pub config_picker_value_option_id: Option<String>,
+    /// Config option currently awaiting a `session/set_config_option` response.
+    pub config_pending_id: Option<String>,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
@@ -470,6 +478,7 @@ impl TabSession {
             && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
+            && !self.config_picker_open
             && !self.agent_picker_open
     }
 

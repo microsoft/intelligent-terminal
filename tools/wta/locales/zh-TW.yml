@@ -210,8 +210,17 @@ system.agent_switch_unavailable: "在 Windows Terminal 分頁之外，無法切�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}
+commands.config.summary: "設定此智能體工作階段"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "移動此分頁的智能體窗格 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已連線的智能體未公布任何可選取的模型。"
 system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "工作階段設定（↑ ↓ • Enter • Esc）"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "已連線的智能體未公布任何可設定的工作階段選項。"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "更新 %{option} 失敗：%{error}"
 system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}

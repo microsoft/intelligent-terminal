@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "Agentskifting er ikke tilgjengelig utenfor en 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Velg modellen for dette panelet (/model <id> for å bytte direkte)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurer denne agentsesjonen"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flytt agentpanelet for denne fanen (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Velg modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilkoblede agenten annonserte ingen valgbare modeller."
 system.model_set: "Modellen for dette panelet er satt til %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sesjonskonfigurasjon (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Den tilkoblede agenten annonserte ingen konfigurerbare sesjonsalternativer."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Klarte ikke å oppdatere %{option}: %{error}"
 system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}

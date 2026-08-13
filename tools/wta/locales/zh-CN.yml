@@ -210,8 +210,17 @@ system.agent_switch_unavailable: "在 Windows Terminal 标签页之外，智能�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
+commands.config.summary: "配置此智能体会话"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "移动此标签页的智能体窗格 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "会话配置（↑ ↓ • Enter • Esc）"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "已连接的智能体未公布任何可配置的会话选项。"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "更新 %{option} 失败：%{error}"
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}

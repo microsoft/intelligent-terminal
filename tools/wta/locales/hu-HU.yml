@@ -214,8 +214,17 @@ system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
+commands.config.summary: "Az ügynökmunkamenet konfigurálása"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "A lap ügynökpanelének áthelyezése (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Munkamenet-konfiguráció (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "A csatlakoztatott ügynök nem hirdetett meg konfigurálható munkamenet-beállításokat."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "A(z) %{option} frissítése sikertelen: %{error}"
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
