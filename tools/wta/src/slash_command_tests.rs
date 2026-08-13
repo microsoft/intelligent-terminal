@@ -906,6 +906,21 @@ fn add_dir_enter_accepts_source_cwd_ghost() {
 }
 
 #[test]
+fn tab_accepts_add_dir_ghost_without_dispatching() {
+    let mut app = test_app();
+    app.source_cwd = Some(r"D:\active pane".into());
+    type_input(&mut app, "/add-dir ");
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert_eq!(app.current_tab().input, r"/add-dir D:\active pane");
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
 fn right_click_accepts_add_dir_ghost_without_dispatching() {
     let mut app = test_app();
     app.source_cwd = Some(r"D:\active pane".into());

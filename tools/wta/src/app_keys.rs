@@ -678,6 +678,13 @@ impl App {
                 self.focus_next_recommendation_action();
             }
             KeyCode::Tab
+                if self.current_tab().input_has_nav_focus()
+                    && commands::add_dir_default_is_global(&self.current_tab().input).is_some()
+                    && self.command_ghost_suffix().is_some() =>
+            {
+                let _ = self.accept_command_ghost();
+            }
+            KeyCode::Tab
                 if self.current_tab().input.is_empty()
                     && self.current_tab().turn.recommendations().is_none()
                     && !self.current_tab().completed_turns.is_empty() =>
