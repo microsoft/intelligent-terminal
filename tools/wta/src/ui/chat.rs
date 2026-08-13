@@ -480,7 +480,7 @@ fn build_completed_turn_lines<'a>(
                 if index == 0 {
                     Span::styled(chevron, chevron_style)
                 } else {
-                    Span::raw("  ")
+                    Span::styled("  ", chevron_style)
                 },
             );
         }
@@ -1163,7 +1163,7 @@ mod tests {
         assert_eq!(line_text(&collapsed[0]), "▶ > line one line two");
 
         turn.expanded = true;
-        let expanded = build_completed_turn_lines(&turn, false, true, 80);
+        let expanded = build_completed_turn_lines(&turn, true, true, 80);
         let texts: Vec<String> = expanded.iter().map(line_text).collect();
         assert_eq!(
             texts,
@@ -1173,6 +1173,7 @@ mod tests {
                 String::new(),
             ]
         );
+        assert_eq!(expanded[1].spans[0].style, theme::SELECTED);
         assert_eq!(turn_height(&turn, 80), expanded.len());
     }
 

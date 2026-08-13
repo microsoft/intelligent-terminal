@@ -52,13 +52,13 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
         function Get-HistoryInputRowPattern {
             param([Parameter(Mandatory)][string]$Text)
             '(?m)^\s*(?<border>\S+)\s*>\s*' + [regex]::Escape($Text) +
-                '[^\r\n]*\s+\k<border>\r?$'
+                '[^\r\n]*\s*\k<border>\r?$'
         }
 
         function Get-HistoryInputContinuationPattern {
             param([Parameter(Mandatory)][string]$Text)
             '(?m)^\s*(?<border>\S+)\s{3,}' + [regex]::Escape($Text) +
-                '[^\r\n]*\s+\k<border>\r?$'
+                '[^\r\n]*\s*\k<border>\r?$'
         }
     }
 
