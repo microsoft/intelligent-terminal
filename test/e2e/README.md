@@ -25,7 +25,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentCompactLayout.Tests.ps1` | PR #580: compact-height recommendation, input, and Insert interaction at the real splitter minimum | 1 |
 | `Feature.ProposalMcpRouting.Tests.ps1` | PR #560: per-session proposal MCP names and two-tab Helper routing isolation | 1 |
 | `Feature.AgentMouse.Tests.ps1` | PR #506: chat wheel scrolling, draft preservation, text selection/copy, and stale-selection suppression | 2 |
-| `Feature.PromptHistory.Tests.ps1` | Per-tab prompt recall, draft/multiline preservation, and completed-turn collapse/expand rendering | 4 |
+| `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
