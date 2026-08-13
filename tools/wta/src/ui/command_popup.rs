@@ -43,6 +43,7 @@ pub enum PopupCandidates<'a> {
     Commands(Cow<'a, [&'static CommandSpec]>),
     MovePositions(&'a [&'static MovePositionSpec]),
     Agents(Vec<&'a AvailableAgent>),
+    DirectoryPaths(Vec<String>),
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -54,6 +55,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
         PopupCandidates::Agents(candidates) => candidates.len(),
+        PopupCandidates::DirectoryPaths(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
         return;
@@ -106,6 +108,15 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                 ]))
             })
             .collect(),
+        PopupCandidates::DirectoryPaths(candidates) => candidates
+            .iter()
+            .map(|path| {
+                ListItem::new(Line::from(Span::styled(
+                    format!(" {path} "),
+                    theme::INPUT_TEXT,
+                )))
+            })
+            .collect(),
     };
 
     let selected_style = if state.pane_focused {
@@ -114,7 +125,16 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         theme::SELECTED_INACTIVE
     };
     let list = List::new(items)
-        .block(popup::block(t!("commands.popup_title").into_owned()))
+        .block(popup::block(
+            if matches!(state.candidates, PopupCandidates::DirectoryPaths(_)) {
+                t!("path_grants.session_header")
+                    .trim()
+                    .trim_end_matches([':', '：'])
+                    .to_string()
+            } else {
+                t!("commands.popup_title").into_owned()
+            },
+        ))
         .highlight_style(selected_style)
         .highlight_symbol("> ");
 

@@ -750,6 +750,38 @@ fn move_position_popup_completes_alias_and_dispatches() {
 }
 
 #[test]
+fn remove_dir_popup_lists_filters_and_removes_session_grants() {
+    let (mut app, store_path) = app_with_path_grants("remove-popup");
+    run_slash_with_args(&mut app, "add-dir", r"D:\first path");
+    run_slash_with_args(&mut app, "add-dir", r"E:\second path");
+    type_input(&mut app, "/remove-dir ");
+
+    let state = app.command_popup_state().expect("directory candidates");
+    let crate::ui::PopupCandidates::DirectoryPaths(candidates) = state.candidates else {
+        panic!("expected directory path candidates");
+    };
+    assert_eq!(candidates, vec![r"D:\first path", r"E:\second path"]);
+
+    app.current_tab_mut().replace_input("/remove-dir E:".to_string());
+    let state = app.command_popup_state().expect("filtered directory candidate");
+    let crate::ui::PopupCandidates::DirectoryPaths(candidates) = state.candidates else {
+        panic!("expected directory path candidates");
+    };
+    assert_eq!(candidates, vec![r"E:\second path"]);
+
+    app.current_tab_mut()
+        .replace_input("/remove-dir ".to_string());
+    app.command_popup_down();
+    assert!(app.try_handle_slash_on_enter());
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\first path")]
+    );
+    assert!(app.current_tab().input.is_empty());
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
 fn explicit_empty_agent_allowlist_is_fail_closed() {
     let mut app = test_app();
     app.set_allowed_agent_ids(vec![String::new()]);

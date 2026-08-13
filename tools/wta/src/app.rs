@@ -4342,6 +4342,7 @@ impl App {
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
         let agent_candidates: Vec<_> = self.agent_command_candidates().collect();
+        let directory_candidates = self.remove_dir_command_candidates();
         let candidates = if self.transport_lost {
             let filtered: Vec<&'static crate::commands::CommandSpec> = tab
                 .command_popup_candidates
@@ -4355,6 +4356,8 @@ impl App {
             crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
         } else if !agent_candidates.is_empty() {
             crate::ui::PopupCandidates::Agents(agent_candidates)
+        } else if !directory_candidates.is_empty() {
+            crate::ui::PopupCandidates::DirectoryPaths(directory_candidates)
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
         } else {
@@ -4407,6 +4410,7 @@ impl App {
     pub(super) fn command_popup_visible(&self) -> bool {
         if !self.current_tab().command_popup_visible()
             && self.agent_command_candidates().next().is_none()
+            && self.remove_dir_command_candidates().is_empty()
         {
             return false;
         }
@@ -4445,11 +4449,43 @@ impl App {
             .last()
     }
 
+    fn remove_dir_command_candidates(&self) -> Vec<String> {
+        if self.transport_lost {
+            return Vec::new();
+        }
+        let Some(prefix) = commands::remove_dir_prefix(&self.current_tab().input) else {
+            return Vec::new();
+        };
+        let Some(session_id) = self.current_tab().session_id.as_deref() else {
+            return Vec::new();
+        };
+        let prefix = prefix.to_lowercase();
+        self.path_grants
+            .session_directories(session_id)
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .filter(|path| path.to_lowercase().starts_with(&prefix))
+            .collect()
+    }
+
+    fn selected_remove_dir_command_candidate(&self) -> Option<String> {
+        let candidates = self.remove_dir_command_candidates();
+        let selected = self
+            .current_tab()
+            .command_popup_selected
+            .min(candidates.len().saturating_sub(1));
+        candidates.get(selected).cloned()
+    }
+
     fn command_popup_candidate_count(&self) -> usize {
         let agent_count = self.agent_command_candidates().count();
         if agent_count > 0 {
             agent_count
         } else {
+            let directory_count = self.remove_dir_command_candidates().len();
+            if directory_count > 0 {
+                return directory_count;
+            }
             let tab = self.current_tab();
             tab.command_popup_candidates.len() + tab.move_position_candidates.len()
         }
@@ -4592,6 +4628,17 @@ impl App {
                 if let Some(parsed) =
                     agent_command_on_enter(&self.current_tab().input, selected_agent)
                 {
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
+                if let Some(path) = self.selected_remove_dir_command_candidate() {
+                    let spec = commands::lookup("remove-dir").expect("/remove-dir is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::RemoveDir,
+                        spec,
+                        rest: path,
+                    };
                     self.current_tab_mut().clear_input();
                     self.handle_slash_command(parsed);
                     return true;

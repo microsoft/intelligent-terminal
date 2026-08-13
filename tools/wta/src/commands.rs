@@ -336,6 +336,25 @@ pub fn move_position_prefix(input: &str) -> Option<&str> {
     single_argument_prefix(input, "move")
 }
 
+/// Return the path prefix while completing `/remove-dir <path>`.
+///
+/// Unlike the single-token argument completers, directory paths may contain
+/// whitespace, so the entire remainder is used as the filter.
+pub fn remove_dir_prefix(input: &str) -> Option<&str> {
+    let trimmed = input.trim_start();
+    let rest = trimmed.strip_prefix('/')?;
+    let command = "remove-dir";
+    let command_end = rest.get(..command.len())?;
+    if !command_end.eq_ignore_ascii_case(command) {
+        return None;
+    }
+    let arguments = rest.get(command.len()..)?;
+    if !arguments.starts_with(char::is_whitespace) {
+        return None;
+    }
+    Some(arguments.trim_start())
+}
+
 /// Whether `/add-dir` is waiting for its default active-pane directory.
 ///
 /// A trailing whitespace is required so the ghost never overlaps command-name
@@ -529,6 +548,15 @@ mod tests {
         assert_eq!(move_position_prefix("/move"), None);
         assert_eq!(move_position_prefix("/move left extra"), None);
         assert_eq!(move_position_prefix("/model r"), None);
+    }
+
+    #[test]
+    fn remove_dir_prefix_accepts_paths_with_spaces() {
+        assert_eq!(remove_dir_prefix("/remove-dir "), Some(""));
+        assert_eq!(remove_dir_prefix("/REMOVE-DIR D:\\work tree"), Some("D:\\work tree"));
+        assert_eq!(remove_dir_prefix("  /remove-dir C:\\src"), Some("C:\\src"));
+        assert_eq!(remove_dir_prefix("/remove-directory "), None);
+        assert_eq!(remove_dir_prefix("/remove-dir"), None);
     }
 
     #[test]
