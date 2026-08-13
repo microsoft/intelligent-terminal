@@ -11,6 +11,36 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 #[derive(Clone)]
 struct PendingNewSessionAgent;
 
+#[derive(Clone)]
+struct ControlledNewSessionAgent {
+    next: Arc<std::sync::atomic::AtomicUsize>,
+    arrivals: mpsc::UnboundedSender<(usize, tokio::sync::oneshot::Sender<()>)>,
+}
+
+impl ControlledNewSessionAgent {
+    async fn new_session(
+        &self,
+        _args: acp::schema::v1::NewSessionRequest,
+    ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+        let index = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        self.arrivals
+            .send((index, release_tx))
+            .map_err(|_| acp::Error::internal_error().data("test arrival receiver dropped"))?;
+        release_rx
+            .await
+            .map_err(|_| acp::Error::internal_error().data("test release sender dropped"))?;
+        let session_id = match index {
+            0 => "replacement-b",
+            1 => "replacement-c",
+            _ => return Err(acp::Error::internal_error().data("unexpected test request")),
+        };
+        Ok(acp::schema::v1::NewSessionResponse::new(SessionId::new(
+            session_id,
+        )))
+    }
+}
+
 impl PendingNewSessionAgent {
     async fn initialize(
         &self,
@@ -567,6 +597,77 @@ fn make_state() -> Arc<MasterStateInner> {
     })
 }
 
+fn client_connection_to_controlled_new_session_agent(
+    arrivals: mpsc::UnboundedSender<(usize, tokio::sync::oneshot::Sender<()>)>,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+    let mock = ControlledNewSessionAgent {
+        next: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        arrivals,
+    };
+    let agent_builder = acp::Agent
+        .builder()
+        .name("controlled-new-session-agent")
+        .on_receive_request(
+            {
+                let mock = mock.clone();
+                move |req: acp::schema::v1::NewSessionRequest,
+                      responder: acp::Responder<acp::schema::v1::NewSessionResponse>,
+                      _cx| {
+                    let mock = mock.clone();
+                    async move {
+                        match mock.new_session(req).await {
+                            Ok(response) => responder.respond(response),
+                            Err(error) => responder.respond_with_error(error),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("controlled-new-session-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+
+    client_conn
+}
+
+fn agent_link_to_noop_client() -> conn::AgentLink {
+    let (agent_pipe, client_pipe) = tokio::io::duplex(4096);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_link, agent_io) = conn::spawn_agent(
+        acp::Agent.builder().name("noop-helper-agent"),
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+    let (_client_link, client_io) = conn::spawn_client(
+        acp::Client.builder().name("noop-helper-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    agent_link
+}
+
 fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
     let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
     let (client_read, client_write) = tokio::io::split(client_pipe);
@@ -691,6 +792,7 @@ fn model_handler(agent: Arc<AgentCli>, helper_id: u64) -> HelperHandler {
         helper_id: HelperId(helper_id),
         agent: slot,
         state: make_state(),
+        replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
         agent_side_slot: Arc::new(OnceLock::new()),
     }
@@ -858,6 +960,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 helper_id: HelperId(1),
                 agent,
                 state: make_state(),
+                replacement_gate: Arc::new(Mutex::new(())),
                 notif_tx,
                 agent_side_slot: Arc::new(OnceLock::new()),
             };
@@ -886,6 +989,7 @@ fn cloned_helper_handlers_share_the_lazy_agent_binding() {
         helper_id: HelperId(1),
         agent: Arc::new(OnceLock::new()),
         state: make_state(),
+        replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
         agent_side_slot: Arc::new(OnceLock::new()),
     };
@@ -895,6 +999,153 @@ fn cloned_helper_handlers_share_the_lazy_agent_binding() {
         Arc::ptr_eq(&handler.agent, &request_handler.agent),
         "all request handler clones must share initialize's binding slot"
     );
+    assert!(
+        Arc::ptr_eq(&handler.replacement_gate, &request_handler.replacement_gate),
+        "all request handler clones must share the replacement gate"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(17);
+            let initial_session = SessionId::new("replacement-a");
+            let intermediate_session = SessionId::new("replacement-b");
+            let final_session = SessionId::new("replacement-c");
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (arrivals_tx, mut arrivals_rx) = mpsc::unbounded_channel();
+            let agent_side_slot = Arc::new(OnceLock::new());
+            agent_side_slot
+                .set(agent_link_to_noop_client())
+                .expect("agent-side forwarder should be set once");
+            let agent = Arc::new(OnceLock::new());
+            assert!(agent
+                .set(Arc::new(AgentCli {
+                    instance_id: AgentInstanceId::new_v4(),
+                    conn: client_connection_to_controlled_new_session_agent(arrivals_tx),
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: "serialized-replacement-agent".to_string(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                }))
+                .is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx: notif_tx.clone(),
+                agent_side_slot,
+            };
+
+            bind_session_route(
+                &state,
+                initial_session.clone(),
+                HelperRoute {
+                    helper_id,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    initial_session.clone(),
+                    PathBuf::from(r"C:\repo-a"),
+                ))
+                .await;
+            state.helper_meta.lock().await.insert(
+                helper_id,
+                HelperRecoveryMeta {
+                    last_session_id: Some(initial_session.clone()),
+                    ..Default::default()
+                },
+            );
+
+            let first = tokio::task::spawn_local({
+                let handler = handler.clone();
+                async move {
+                    handler
+                        .new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
+                            r"C:\repo-b",
+                        )))
+                        .await
+                }
+            });
+            let (first_index, release_first) = arrivals_rx
+                .recv()
+                .await
+                .expect("first replacement should reach the agent");
+            assert_eq!(first_index, 0);
+
+            let (second_started_tx, second_started_rx) = tokio::sync::oneshot::channel();
+            let second = tokio::task::spawn_local({
+                let handler = handler.clone();
+                async move {
+                    let _ = second_started_tx.send(());
+                    handler
+                        .new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
+                            r"C:\repo-c",
+                        )))
+                        .await
+                }
+            });
+            second_started_rx
+                .await
+                .expect("overlapping replacement task should start");
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(25), arrivals_rx.recv(),)
+                    .await
+                    .is_err(),
+                "the second replacement must wait for the first transaction"
+            );
+
+            release_first
+                .send(())
+                .expect("first replacement should still be waiting");
+            let first_response = first
+                .await
+                .expect("first replacement task should finish")
+                .expect("first replacement should succeed");
+            assert_eq!(first_response.session_id, intermediate_session);
+
+            let (second_index, release_second) = arrivals_rx
+                .recv()
+                .await
+                .expect("final replacement should reach the agent after the first commits");
+            assert_eq!(second_index, 1);
+            release_second
+                .send(())
+                .expect("final replacement should still be waiting");
+            let second_response = second
+                .await
+                .expect("final replacement task should finish")
+                .expect("final replacement should succeed");
+            assert_eq!(second_response.session_id, final_session);
+
+            let routes = state.session_to_helper.lock().await;
+            assert_eq!(routes.len(), 1);
+            assert!(routes.contains_key(&final_session));
+            assert!(!routes.contains_key(&initial_session));
+            assert!(!routes.contains_key(&intermediate_session));
+            drop(routes);
+            assert!(state.registry.lookup(&initial_session).await.is_none());
+            assert!(state.registry.lookup(&intermediate_session).await.is_none());
+            assert!(state.registry.lookup(&final_session).await.is_some());
+            assert_eq!(
+                state.helper_meta.lock().await[&helper_id].last_session_id,
+                Some(final_session)
+            );
+        })
+        .await;
 }
 
 /// An orphan session's `request_permission` (owning tab closed
@@ -1204,6 +1455,7 @@ async fn prompt_forward_survives_reentrant_permission() {
                 helper_id: HelperId(1),
                 agent,
                 state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
                 notif_tx: notif_tx.clone(),
                 agent_side_slot: Arc::new(OnceLock::new()),
             };

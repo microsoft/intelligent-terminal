@@ -1135,6 +1135,10 @@ struct HelperHandler {
     /// `resolved_agent()` always finds it populated for those.
     agent: Arc<OnceLock<Arc<AgentCli>>>,
     state: Arc<MasterStateInner>,
+    /// Serializes complete session replacement transactions for this helper.
+    /// Shared by every cloned request handler, while unrelated helpers retain
+    /// their own independent gate. This is always acquired before state locks.
+    replacement_gate: Arc<Mutex<()>>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
     /// `state.session_to_helper` so future agent-CLI notifications
@@ -1461,6 +1465,7 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::NewSessionRequest,
     ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+        let _replacement_guard = self.replacement_gate.lock().await;
         // Pull our `_meta.wta` payload off the request before forwarding
         // to the agent CLI. Two reasons we strip here and not after the
         // RPC: (1) the spec lets third-party agents reject unknown
@@ -1640,9 +1645,17 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::LoadSessionRequest,
     ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        let _replacement_guard = self.replacement_gate.lock().await;
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
+        let previous_session_id = self
+            .state
+            .helper_meta
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .and_then(|meta| meta.last_session_id.clone());
         let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
@@ -1841,6 +1854,18 @@ impl HelperHandler {
             }
         }
         self.state.registry.upsert(info.clone()).await;
+        if let Some(previous_session_id) = previous_session_id.filter(|sid| sid != &session_id) {
+            let retired =
+                retire_replaced_session(&self.state, self.helper_id, &previous_session_id).await;
+            tracing::info!(
+                target: "master",
+                helper_id = ?self.helper_id,
+                old_session_id = %previous_session_id,
+                new_session_id = %session_id,
+                retired,
+                "retired session replaced by session/load"
+            );
+        }
         // Refresh crash-recovery metadata so a later resume targets this session.
         {
             let mut meta = self.state.helper_meta.lock().await;
@@ -3203,6 +3228,7 @@ async fn serve_helper(
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
         state: Arc::clone(&state),
+        replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
     };
