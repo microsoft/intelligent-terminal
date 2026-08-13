@@ -2,12 +2,12 @@ use std::borrow::Cow;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
     App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallKind, ToolCallOutput,
 };
 use crate::theme;
+use crate::ui::card::{TranscriptCardRow, TRANSCRIPT_CARD};
 use crate::ui::shimmer;
 use crate::ui_trace;
 
@@ -18,27 +18,6 @@ fn activity_label() -> String {
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
-const DIRECTORY_CARD_MAX_WIDTH: usize = 96;
-
-fn push_directory_card_rows(
-    rows: &mut Vec<(String, Style)>,
-    text: &str,
-    width: usize,
-    style: Style,
-) {
-    let wrapped = textwrap::wrap(text, width.max(1));
-    if wrapped.is_empty() {
-        rows.push((String::new(), style));
-    } else {
-        rows.extend(wrapped.into_iter().map(|line| (line.into_owned(), style)));
-    }
-}
-
-fn push_directory_path_rows(rows: &mut Vec<(String, Style)>, path: &str, width: usize) {
-    for line in textwrap::wrap(path, width.saturating_sub(2).max(1)) {
-        rows.push((format!("  {line}"), theme::AGENT_TEXT));
-    }
-}
 
 fn directory_card_lines(
     global: &[String],
@@ -46,14 +25,12 @@ fn directory_card_lines(
     additional_directories_supported: bool,
     wrap_width: usize,
 ) -> Vec<Line<'static>> {
-    let card_width = wrap_width.min(DIRECTORY_CARD_MAX_WIDTH);
-    let content_width = card_width.saturating_sub(4).max(1);
     let mut rows = vec![
-        (
+        TranscriptCardRow::new(
             t!("path_grants.list_header").into_owned(),
             theme::DIRECTORY_LIST_TITLE,
         ),
-        (String::new(), Style::default()),
+        TranscriptCardRow::blank(),
     ];
     let mut rendered_section = false;
     for (heading, directories) in [
@@ -64,63 +41,36 @@ fn directory_card_lines(
             continue;
         }
         if rendered_section {
-            rows.push((String::new(), Style::default()));
+            rows.push(TranscriptCardRow::blank());
         }
         rendered_section = true;
-        push_directory_card_rows(
-            &mut rows,
-            &heading,
-            content_width,
+        rows.push(TranscriptCardRow::new(
+            heading,
             theme::DIRECTORY_LIST_SECTION,
-        );
+        ));
         for path in directories {
-            push_directory_path_rows(&mut rows, path, content_width);
+            rows.push(TranscriptCardRow::indented(
+                path,
+                2,
+                theme::AGENT_TEXT,
+            ));
         }
     }
     if !rendered_section {
-        push_directory_card_rows(
-            &mut rows,
+        rows.push(TranscriptCardRow::new(
             t!("path_grants.none").trim(),
-            content_width,
             theme::DIM,
-        );
+        ));
     }
     if !additional_directories_supported {
-        rows.push((String::new(), Style::default()));
-        push_directory_card_rows(
-            &mut rows,
-            &t!("path_grants.not_advertised"),
-            content_width,
+        rows.push(TranscriptCardRow::blank());
+        rows.push(TranscriptCardRow::new(
+            t!("path_grants.not_advertised").into_owned(),
             theme::DIM,
-        );
+        ));
     }
 
-    if card_width < 6 {
-        return rows
-            .into_iter()
-            .map(|(text, style)| Line::from(Span::styled(text, style)))
-            .collect();
-    }
-
-    let horizontal = "─".repeat(card_width.saturating_sub(2));
-    let mut lines = vec![Line::from(Span::styled(
-        format!("┌{horizontal}┐"),
-        theme::CARD_BORDER,
-    ))];
-    lines.extend(rows.into_iter().map(|(text, style)| {
-        let padding = " ".repeat(content_width.saturating_sub(text.width()));
-        Line::from(vec![
-            Span::styled("│ ", theme::CARD_BORDER),
-            Span::styled(text, style),
-            Span::raw(padding),
-            Span::styled(" │", theme::CARD_BORDER),
-        ])
-    }));
-    lines.push(Line::from(Span::styled(
-        format!("└{horizontal}┘"),
-        theme::CARD_BORDER,
-    )));
-    lines
+    TRANSCRIPT_CARD.lines(rows, wrap_width)
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -1077,6 +1027,8 @@ fn truncate_render_text(text: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::card::TRANSCRIPT_CARD_MAX_WIDTH;
+    use unicode_width::UnicodeWidthStr;
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
@@ -1149,7 +1101,7 @@ mod tests {
         assert!(line_text(&lines[lines.len() - 2]).starts_with('└'));
         assert!(lines[..lines.len() - 1]
             .iter()
-            .all(|line| line_text(line).width() == DIRECTORY_CARD_MAX_WIDTH));
+            .all(|line| line_text(line).width() == TRANSCRIPT_CARD_MAX_WIDTH));
         assert_eq!(lines.len(), message_height(&message, 120));
     }
 

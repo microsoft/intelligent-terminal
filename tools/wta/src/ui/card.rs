@@ -1,5 +1,6 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 use crate::theme;
 
@@ -11,6 +12,116 @@ pub const CARD_H_CHROME: u16 = 8;
 /// 2 borders + content(1) + divider(1) + buttons(1) = 5. Callers reserving
 /// fewer rows than this would leave the card invisible — clamp to 0 instead.
 pub const CARD_MIN_SIZE: u16 = 5;
+
+/// Shared style for lightweight cards embedded in transcript line streams.
+///
+/// Unlike [`render_card_shell`], transcript cards do not own a frame area or
+/// contain buttons. They return bordered [`Line`]s that participate in normal
+/// chat scrolling.
+#[derive(Clone, Copy)]
+pub struct TranscriptCardStyle {
+    pub max_width: usize,
+    pub horizontal_padding: usize,
+    pub border_style: Style,
+}
+
+pub const TRANSCRIPT_CARD_MAX_WIDTH: usize = 96;
+pub const TRANSCRIPT_CARD: TranscriptCardStyle = TranscriptCardStyle {
+    max_width: TRANSCRIPT_CARD_MAX_WIDTH,
+    horizontal_padding: 1,
+    border_style: theme::CARD_BORDER,
+};
+
+pub struct TranscriptCardRow {
+    text: String,
+    style: Style,
+    indent: usize,
+}
+
+impl TranscriptCardRow {
+    pub fn new(text: impl Into<String>, style: Style) -> Self {
+        Self {
+            text: text.into(),
+            style,
+            indent: 0,
+        }
+    }
+
+    pub fn indented(text: impl Into<String>, indent: usize, style: Style) -> Self {
+        Self {
+            text: text.into(),
+            style,
+            indent,
+        }
+    }
+
+    pub fn blank() -> Self {
+        Self::new(String::new(), Style::default())
+    }
+}
+
+impl TranscriptCardStyle {
+    pub fn content_width(self, available_width: usize) -> usize {
+        available_width
+            .min(self.max_width)
+            .saturating_sub(2 + self.horizontal_padding * 2)
+            .max(1)
+    }
+
+    pub fn lines(
+        self,
+        rows: impl IntoIterator<Item = TranscriptCardRow>,
+        available_width: usize,
+    ) -> Vec<Line<'static>> {
+        let card_width = available_width.min(self.max_width);
+        let content_width = self.content_width(available_width);
+        let mut content = Vec::new();
+        for row in rows {
+            let indent = row.indent.min(content_width.saturating_sub(1));
+            let wrap_width = content_width.saturating_sub(indent).max(1);
+            let wrapped = textwrap::wrap(&row.text, wrap_width);
+            if wrapped.is_empty() {
+                content.push((String::new(), row.style));
+            } else {
+                content.extend(wrapped.into_iter().map(|line| {
+                    (
+                        format!("{}{line}", " ".repeat(indent)),
+                        row.style,
+                    )
+                }));
+            }
+        }
+
+        let minimum_width = 2 + self.horizontal_padding * 2 + 1;
+        if card_width < minimum_width {
+            return content
+                .into_iter()
+                .map(|(text, style)| Line::from(Span::styled(text, style)))
+                .collect();
+        }
+
+        let horizontal = "─".repeat(card_width.saturating_sub(2));
+        let side_padding = " ".repeat(self.horizontal_padding);
+        let mut lines = vec![Line::from(Span::styled(
+            format!("┌{horizontal}┐"),
+            self.border_style,
+        ))];
+        lines.extend(content.into_iter().map(|(text, style)| {
+            let trailing = " ".repeat(content_width.saturating_sub(text.width()));
+            Line::from(vec![
+                Span::styled(format!("│{side_padding}"), self.border_style),
+                Span::styled(text, style),
+                Span::raw(trailing),
+                Span::styled(format!("{side_padding}│"), self.border_style),
+            ])
+        }));
+        lines.push(Line::from(Span::styled(
+            format!("└{horizontal}┘"),
+            self.border_style,
+        )));
+        lines
+    }
+}
 
 /// Wrap width inside a card given the outer panel width. Floors at 1 so
 /// `div_ceil` callers don't divide by zero on absurdly narrow terminals.
@@ -109,3 +220,44 @@ pub fn render_buttons(
     frame.render_widget(para, area);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn transcript_card_wraps_indents_and_preserves_width() {
+        let lines = TRANSCRIPT_CARD.lines(
+            [
+                TranscriptCardRow::new("Title", Style::default()),
+                TranscriptCardRow::indented("a long directory path", 2, Style::default()),
+            ],
+            16,
+        );
+
+        assert!(line_text(&lines[0]).starts_with('┌'));
+        assert!(line_text(&lines[1]).contains("Title"));
+        assert!(lines[2..lines.len() - 1]
+            .iter()
+            .all(|line| line_text(line).starts_with("│   ")));
+        assert!(lines.iter().all(|line| line_text(line).width() == 16));
+    }
+
+    #[test]
+    fn transcript_card_caps_width_and_handles_wide_characters() {
+        let lines = TRANSCRIPT_CARD.lines(
+            [TranscriptCardRow::new("目录", Style::default())],
+            TRANSCRIPT_CARD_MAX_WIDTH + 20,
+        );
+
+        assert!(lines
+            .iter()
+            .all(|line| line_text(line).width() == TRANSCRIPT_CARD_MAX_WIDTH));
+    }
+}
