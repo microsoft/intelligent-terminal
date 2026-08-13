@@ -1049,6 +1049,91 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(2);
+            let agent_instance = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let agent_side_slot = Arc::new(OnceLock::new());
+            agent_side_slot
+                .set(agent_link_to_noop_client())
+                .expect("agent-side forwarder should be set once");
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp.agent_capabilities.mcp_capabilities.http = true;
+            let (load_arrivals_tx, mut load_arrivals_rx) = mpsc::unbounded_channel();
+            let agent = Arc::new(OnceLock::new());
+            assert!(agent
+                .set(Arc::new(AgentCli {
+                    instance_id: agent_instance,
+                    conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
+                    cached_init_resp,
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: "pending-load-session-agent".to_string(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                }))
+                .is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx,
+                agent_side_slot,
+            };
+            let gated_session = SessionId::new("gate-timeout-session");
+            let mut request = acp::schema::v1::LoadSessionRequest::new(
+                gated_session.clone(),
+                PathBuf::from("C:\\repo-a"),
+            );
+            crate::session_registry::inject_wta_meta(
+                &mut request.meta,
+                &crate::session_registry::WtaMeta {
+                    proposal_mcp: Some("http-v1".to_string()),
+                    ..Default::default()
+                },
+            );
+
+            let replacement_guard = handler.replacement_gate.lock().await;
+            let error = handler
+                .load_session_with_timeout(request, std::time::Duration::from_millis(10))
+                .await
+                .expect_err("master should include gate acquisition in the load deadline");
+            drop(replacement_guard);
+
+            assert_eq!(error.code, acp::ErrorCode::InternalError);
+            assert!(format!("{error}").contains("agent CLI session/load timed out"));
+            assert!(
+                matches!(
+                    load_arrivals_rx.try_recv(),
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+                ),
+                "gate timeout must not forward session/load to the agent"
+            );
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&gated_session));
+            assert!(state.registry.lookup(&gated_session).await.is_none());
+            assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(agent_instance)
+                    .await,
+                0,
+                "gate timeout must not prepare a session MCP capability"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
     tokio::task::LocalSet::new()
         .run_until(async {

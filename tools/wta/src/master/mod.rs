@@ -1261,6 +1261,27 @@ impl HelperHandler {
         })?
     }
 
+    fn load_session_timeout_error(
+        &self,
+        timeout: std::time::Duration,
+        phase: &'static str,
+    ) -> acp::Error {
+        let timeout_secs = timeout.as_secs();
+        let message = format!("agent CLI session/load timed out after {timeout_secs}s");
+        tracing::error!(
+            target: "master",
+            step = "helper→agent",
+            op = "load_session",
+            helper_id = ?self.helper_id,
+            phase,
+            timeout_secs,
+            "agent CLI session/load timed out"
+        );
+        acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+            "message": message
+        }))
+    }
+
     /// Forward `session/load` to this helper's bound agent CLI under the
     /// master's deadline. This deadline must expire before the helper's
     /// outer 60-second timeout so the replacement transaction can roll back
@@ -1268,26 +1289,13 @@ impl HelperHandler {
     async fn forward_load_session_to_agent(
         &self,
         args: acp::schema::v1::LoadSessionRequest,
-        timeout: std::time::Duration,
+        rpc_timeout: std::time::Duration,
+        total_timeout: std::time::Duration,
     ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
-        let timeout_secs = timeout.as_secs();
         let agent = self.resolved_agent("load_session")?;
-        tokio::time::timeout(timeout, agent.conn.load_session(args))
+        tokio::time::timeout(rpc_timeout, agent.conn.load_session(args))
             .await
-            .map_err(|_| {
-                let message = format!("agent CLI session/load timed out after {timeout_secs}s");
-                tracing::error!(
-                    target: "master",
-                    step = "helper→agent",
-                    op = "load_session",
-                    helper_id = ?self.helper_id,
-                    timeout_secs,
-                    "agent CLI session/load timed out"
-                );
-                acp::Error::new(-32603, message.clone()).data(serde_json::json!({
-                    "message": message
-                }))
-            })?
+            .map_err(|_| self.load_session_timeout_error(total_timeout, "agent_rpc"))?
     }
 }
 
@@ -1687,7 +1695,10 @@ impl HelperHandler {
         args: acp::schema::v1::LoadSessionRequest,
         timeout: std::time::Duration,
     ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
-        let _replacement_guard = self.replacement_gate.lock().await;
+        let deadline = tokio::time::Instant::now() + timeout;
+        let _replacement_guard = tokio::time::timeout_at(deadline, self.replacement_gate.lock())
+            .await
+            .map_err(|_| self.load_session_timeout_error(timeout, "replacement_gate"))?;
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
@@ -1795,7 +1806,11 @@ impl HelperHandler {
             } else {
                 None
             };
-            match self.forward_load_session_to_agent(args, timeout).await {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match self
+                .forward_load_session_to_agent(args, remaining, timeout)
+                .await
+            {
                 Ok(resp) => {
                     if let Some(pending) = session_mcp.as_ref() {
                         if !self
