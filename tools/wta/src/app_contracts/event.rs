@@ -174,6 +174,16 @@ pub enum AppEvent {
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
     },
+    UserInputRequest {
+        request_id: String,
+        session_id: String,
+        request: crate::agent_tools::user_input::UserInputRequest,
+        responder: tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>,
+    },
+    CancelUserInputRequest {
+        request_id: String,
+        session_id: String,
+    },
     SystemMessage(String),
     DebugPipeMessage(DebugMessage),
     WtEvent {

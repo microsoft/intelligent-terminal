@@ -865,7 +865,6 @@ impl App {
                 let tab = self.session_tab_mut(&session_id);
                 let update_content = |message: &mut ChatMessage| {
                     let ChatMessage::ToolCall {
-                        id,
                         output: card_output,
                         exit_code: card_exit_code,
                         content,
@@ -874,12 +873,7 @@ impl App {
                     else {
                         return;
                     };
-                    if id == &terminal_id {
-                        *card_output = Some(output.clone());
-                        if exit_code.is_some() {
-                            *card_exit_code = exit_code;
-                        }
-                    }
+                    let mut contains_terminal = false;
                     for item in content {
                         if let crate::app::ToolCallContent::Terminal {
                             id,
@@ -888,11 +882,18 @@ impl App {
                         } = item
                         {
                             if id == &terminal_id {
+                                contains_terminal = true;
                                 *current_output = Some(output.clone());
                                 if exit_code.is_some() {
                                     *current_exit_code = exit_code;
                                 }
                             }
+                        }
+                    }
+                    if contains_terminal {
+                        *card_output = Some(output.clone());
+                        if exit_code.is_some() {
+                            *card_exit_code = exit_code;
                         }
                     }
                 };
@@ -968,6 +969,37 @@ impl App {
                     selected: 0,
                     responder: Some(responder),
                 });
+            }
+            AppEvent::UserInputRequest {
+                request_id,
+                session_id,
+                request,
+                responder,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if !tab.turn.is_in_flight() {
+                    return;
+                }
+                tab.user_input.push_back(UserInputState {
+                    request_id,
+                    request,
+                    selected: 0,
+                    input: String::new(),
+                    responder: Some(responder),
+                });
+            }
+            AppEvent::CancelUserInputRequest {
+                request_id,
+                session_id,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if let Some(index) = tab
+                    .user_input
+                    .iter()
+                    .position(|pending| pending.request_id == request_id)
+                {
+                    tab.user_input.remove(index);
+                }
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

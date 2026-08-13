@@ -28,11 +28,11 @@ WTA runs as a **helper + master** pair, never as a standalone process: Windows
 Terminal spawns one **`wta-master`** singleton that owns the single connection to
 the agent CLI, and one **`wta-helper`** per agent pane that renders the TUI and
 talks ACP to master over a named pipe. Stateless **CLI helpers** provide one-shot
-WT control, and the master-owned **proposal MCP endpoint** accepts typed terminal
-action requests with per-session capabilities.
+WT control, and the master-owned **session MCP endpoint** accepts typed terminal
+action and user-input requests with per-session capabilities.
 
 > There is no standalone agent / TUI mode. Bare `wta` with neither a role flag
-> nor a subcommand exits with an error (`main.rs`). The proposal MCP endpoint is
+> nor a subcommand exits with an error (`main.rs`). The session MCP endpoint is
 > not a general WT-control server and exposes no read or execution tools.
 
 ---
@@ -91,7 +91,7 @@ Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit, except local
 helpers such as `resolve-command`, which inspect cwd and machine state directly. Used by
 humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
-this way too — by shelling out to `wta` / `wtcli`. The proposal MCP endpoint
+this way too — by shelling out to `wta` / `wtcli`. The session MCP endpoint
 is separate and cannot perform these operations.)
 
 Packaged builds register `wta.exe` as an App Execution Alias. WTA prepends the
@@ -100,7 +100,7 @@ current package family's alias directory to the agent process `PATH`, so a short
 even when multiple variants are installed. Unpackaged builds prepend the
 running executable's directory instead.
 
-### 4. Proposal MCP endpoint — master-owned
+### 4. Session MCP endpoint — master-owned
 
 `wta-master` owns one stateless Streamable HTTP endpoint on Windows loopback.
 Host Agents use it directly; WSL Agents use an on-demand loopback relay inside
@@ -113,9 +113,11 @@ name and a distinct bearer capability, so name-keyed Agent caches cannot
 overwrite another session's header. Master maps the capability to SessionId,
 resolves the current Helper through `session_to_helper`, and forwards the typed
 input over the existing ACP pipe.
-The endpoint exposes only `request_terminal_actions` and returns after the
-Helper confirms that the recommendation card was presented. The user confirms
-or cancels independently.
+The endpoint exposes `request_terminal_actions`, which returns after the Helper
+confirms that the recommendation card was presented, and `request_user_input`,
+which blocks until the user answers, cancels, disconnects, or the request times
+out. The latter is a WTA-owned fallback and does not intercept provider-native
+question tools.
 
 ---
 

@@ -65,7 +65,7 @@ use crate::protocol::acp::spawn::{
 };
 
 pub(crate) mod config;
-mod proposal_mcp;
+mod session_mcp;
 
 use config::MasterConfig;
 
@@ -149,8 +149,8 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
-    proposal_mcp_endpoints: proposal_mcp::Endpoints,
-    proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry,
+    session_mcp_endpoints: session_mcp::Endpoints,
+    session_mcp_capabilities: session_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
     /// SessionId while an omitted optional cost is retained from an
     /// undelivered prior update.
@@ -512,11 +512,11 @@ async fn inject_ready_cloud_catalog(
 
 async fn initialize_response_for_agent(
     agent: &AgentCli,
-    proposal_mcp_available: bool,
+    session_mcp_available: bool,
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
     inject_ready_cloud_catalog(agent, &mut response.meta).await?;
-    if proposal_mcp_available {
+    if session_mcp_available {
         crate::session_registry::inject_wta_meta(
             &mut response.meta,
             &crate::session_registry::WtaMeta {
@@ -1215,7 +1215,7 @@ impl HelperHandler {
 }
 
 impl HelperHandler {
-    async fn proposal_endpoint_for_session(
+    async fn session_mcp_endpoint_for_session(
         &self,
         agent: &AgentCli,
         wta_meta: &crate::session_registry::WtaMeta,
@@ -1231,31 +1231,31 @@ impl HelperHandler {
             .http
         {
             tracing::error!(
-                target: "proposal_mcp",
+                target: "session_mcp",
                 helper_id = ?self.helper_id,
                 op = operation,
                 source = %agent.source,
-                "helper requested proposal MCP after agent HTTP support disappeared"
+                "helper requested session MCP after agent HTTP support disappeared"
             );
             return Err(acp::Error::internal_error().data(serde_json::json!(
-                "proposal MCP is unavailable because the agent does not support HTTP MCP"
+                "session MCP is unavailable because the agent does not support HTTP MCP"
             )));
         }
-        proposal_mcp::endpoint_for(&self.state, &agent.source)
+        session_mcp::endpoint_for(&self.state, &agent.source)
             .await
             .map(Some)
             .map_err(|error| {
                 let error_chain = format!("{error:#}");
                 tracing::error!(
-                    target: "proposal_mcp",
+                    target: "session_mcp",
                     helper_id = ?self.helper_id,
                     op = operation,
                     source = %agent.source,
                     error = %error_chain,
-                    "proposal MCP endpoint became unavailable after initialize"
+                    "session MCP endpoint became unavailable after initialize"
                 );
                 acp::Error::internal_error().data(serde_json::json!(format!(
-                    "proposal MCP endpoint unavailable: {error_chain}"
+                    "session MCP endpoint unavailable: {error_chain}"
                 )))
             })
     }
@@ -1356,21 +1356,21 @@ impl HelperHandler {
             .get()
             .expect("helper agent binding is set before initialize response");
         agent.bound_helpers.lock().await.insert(self.helper_id);
-        let proposal_mcp_available = if agent
+        let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
             .mcp_capabilities
             .http
         {
-            match proposal_mcp::endpoint_for(&self.state, &agent.source).await {
+            match session_mcp::endpoint_for(&self.state, &agent.source).await {
                 Ok(_) => true,
                 Err(error) => {
                     tracing::warn!(
-                        target: "proposal_mcp",
+                        target: "session_mcp",
                         helper_id = ?self.helper_id,
                         source = %agent.source,
                         error = %format!("{error:#}"),
-                        "proposal MCP is unavailable for helper source"
+                        "session MCP is unavailable for helper source"
                     );
                     false
                 }
@@ -1383,7 +1383,7 @@ impl HelperHandler {
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent, proposal_mcp_available).await {
+        match initialize_response_for_agent(agent, session_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -1430,17 +1430,17 @@ impl HelperHandler {
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let cwd_for_registry = args.cwd.clone();
         let agent = self.resolved_agent("new_session")?;
-        let proposal_endpoint = self
-            .proposal_endpoint_for_session(&agent, &wta_meta, "new_session")
+        let session_mcp_endpoint = self
+            .session_mcp_endpoint_for_session(&agent, &wta_meta, "new_session")
             .await?;
-        let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
+        let session_mcp = if let Some(endpoint) = session_mcp_endpoint {
             let pending = self
                 .state
-                .proposal_mcp_capabilities
+                .session_mcp_capabilities
                 .prepare(agent.instance_id, None)
                 .await;
             args.mcp_servers
-                .push(proposal_mcp::server_config(&endpoint, &pending));
+                .push(session_mcp::server_config(&endpoint, &pending));
             Some(pending)
         } else {
             None
@@ -1463,23 +1463,23 @@ impl HelperHandler {
         {
             Ok(response) => response,
             Err(error) => {
-                if let Some(pending) = proposal_mcp.as_ref() {
-                    self.state.proposal_mcp_capabilities.cancel(pending).await;
+                if let Some(pending) = session_mcp.as_ref() {
+                    self.state.session_mcp_capabilities.cancel(pending).await;
                 }
                 return Err(error);
             }
         };
-        if let Some(pending) = proposal_mcp.as_ref() {
+        if let Some(pending) = session_mcp.as_ref() {
             if !self
                 .state
-                .proposal_mcp_capabilities
+                .session_mcp_capabilities
                 .bind(pending, resp.session_id.clone())
                 .await
             {
                 tracing::warn!(
-                    target: "proposal_mcp",
+                    target: "session_mcp",
                     session_id = %resp.session_id,
-                    "proposal MCP capability disappeared before session binding"
+                    "session MCP capability disappeared before session binding"
                 );
             }
         }
@@ -1650,8 +1650,8 @@ impl HelperHandler {
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
-            let proposal_endpoint = match self
-                .proposal_endpoint_for_session(&agent, &wta_meta, "load_session")
+            let session_mcp_endpoint = match self
+                .session_mcp_endpoint_for_session(&agent, &wta_meta, "load_session")
                 .await
             {
                 Ok(endpoint) => endpoint,
@@ -1664,31 +1664,31 @@ impl HelperHandler {
                     return Err(error);
                 }
             };
-            let proposal_mcp = if let Some(endpoint) = proposal_endpoint {
+            let session_mcp = if let Some(endpoint) = session_mcp_endpoint {
                 let pending = self
                     .state
-                    .proposal_mcp_capabilities
+                    .session_mcp_capabilities
                     .prepare(agent.instance_id, Some(session_id.clone()))
                     .await;
                 args.mcp_servers
-                    .push(proposal_mcp::server_config(&endpoint, &pending));
+                    .push(session_mcp::server_config(&endpoint, &pending));
                 Some(pending)
             } else {
                 None
             };
             match agent.conn.load_session(args).await {
                 Ok(resp) => {
-                    if let Some(pending) = proposal_mcp.as_ref() {
+                    if let Some(pending) = session_mcp.as_ref() {
                         if !self
                             .state
-                            .proposal_mcp_capabilities
+                            .session_mcp_capabilities
                             .bind(pending, session_id.clone())
                             .await
                         {
                             tracing::warn!(
-                                target: "proposal_mcp",
+                                target: "session_mcp",
                                 session_id = %session_id,
-                                "proposal MCP capability disappeared before load binding"
+                                "session MCP capability disappeared before load binding"
                             );
                         }
                     }
@@ -1698,8 +1698,8 @@ impl HelperHandler {
                 // this master): the CLI reports "already loaded", so re-bind
                 // onto the pre-registered routing just like the fast path.
                 Err(err) if is_already_loaded_error(&err) => {
-                    if let Some(pending) = proposal_mcp.as_ref() {
-                        self.state.proposal_mcp_capabilities.cancel(pending).await;
+                    if let Some(pending) = session_mcp.as_ref() {
+                        self.state.session_mcp_capabilities.cancel(pending).await;
                     }
                     tracing::info!(
                         target: "master",
@@ -1712,8 +1712,8 @@ impl HelperHandler {
                     acp::schema::v1::LoadSessionResponse::new()
                 }
                 Err(err) => {
-                    if let Some(pending) = proposal_mcp.as_ref() {
-                        self.state.proposal_mcp_capabilities.cancel(pending).await;
+                    if let Some(pending) = session_mcp.as_ref() {
+                        self.state.session_mcp_capabilities.cancel(pending).await;
                     }
                     // Roll back the pre-registration. Only `session_to_helper`
                     // needs touching — we never wrote to `registry` and we
@@ -2381,22 +2381,19 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "agent allowlist resolved"
     );
 
-    let proposal_mcp_listener = tokio::net::TcpListener::bind((
-        std::net::Ipv4Addr::LOCALHOST,
-        0,
-    ))
-    .await
-    .context("bind master proposal MCP HTTP endpoint")?;
-    let proposal_mcp_endpoint = format!(
+    let session_mcp_listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .context("bind master session MCP HTTP endpoint")?;
+    let session_mcp_endpoint = format!(
         "http://{}/mcp",
-        proposal_mcp_listener
+        session_mcp_listener
             .local_addr()
-            .context("read master proposal MCP HTTP endpoint")?
+            .context("read master session MCP HTTP endpoint")?
     );
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
-        proposal_mcp_endpoints: proposal_mcp::Endpoints::new(proposal_mcp_endpoint),
-        proposal_mcp_capabilities: proposal_mcp::CapabilityRegistry::default(),
+        session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
+        session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -2423,15 +2420,13 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
     {
-        let proposal_mcp_state = Arc::clone(&inner);
+        let session_mcp_state = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
-            if let Err(error) =
-                proposal_mcp::run(proposal_mcp_listener, proposal_mcp_state).await
-            {
+            if let Err(error) = session_mcp::run(session_mcp_listener, session_mcp_state).await {
                 tracing::error!(
-                    target: "proposal_mcp",
+                    target: "session_mcp",
                     error = %format!("{error:#}"),
-                    "master proposal MCP HTTP endpoint stopped"
+                    "master session MCP HTTP endpoint stopped"
                 );
             }
         });
@@ -3088,7 +3083,7 @@ async fn reap_agent(
         state.orphaned_sessions.lock().await.remove(key);
     }
     let capabilities_removed = state
-        .proposal_mcp_capabilities
+        .session_mcp_capabilities
         .remove_owner(instance_id)
         .await;
     tracing::info!(

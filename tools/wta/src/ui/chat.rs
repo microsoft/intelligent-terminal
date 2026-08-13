@@ -153,7 +153,7 @@ fn tool_detail_lines(
         }
     }
     if omitted {
-        lines.truncate(MAX_TOOL_DETAIL_LINES);
+        lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
         lines.push("    …".to_string());
     }
     lines
@@ -1414,6 +1414,21 @@ mod tests {
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
         assert_eq!(lines[0], "    │ …");
         assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+    }
+
+    #[test]
+    fn tool_detail_lines_strictly_caps_locations_including_ellipsis() {
+        let locations: Vec<ToolCallLocation> = (0..=MAX_TOOL_DETAIL_LINES)
+            .map(|index| ToolCallLocation {
+                path: format!("file-{index}.rs"),
+                line: None,
+            })
+            .collect();
+
+        let lines = tool_detail_lines(&[], &locations, true);
+
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
+        assert_eq!(lines.last().map(String::as_str), Some("    …"));
     }
 
     #[test]
