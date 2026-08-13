@@ -145,8 +145,8 @@ relay. Other Windows Terminal operations remain available through the `wta` /
 Claude and Codex are launched through ACP adapters:
 
 ```
-wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
-wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.4"
+wta --agent "npx -y @agentclientprotocol/claude-agent-acp@0.64.2"
+wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.9"
 ```
 
 The Terminal settings layer resolves the built-in agent IDs to these adapter commands.
