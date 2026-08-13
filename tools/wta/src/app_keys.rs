@@ -51,68 +51,6 @@ impl App {
             return;
         }
 
-        if option.is_global_directory_grant() {
-            let Some(directory) = permission.grant_directory.clone() else {
-                self.current_tab_mut().permission.push_front(permission);
-                return;
-            };
-            let Some(allow_once_id) = permission.allow_once_id.clone() else {
-                self.current_tab_mut().permission.push_front(permission);
-                return;
-            };
-            let Some(window_id) = self.window_id.clone() else {
-                permission.selected = selected;
-                self.current_tab_mut().permission.push_front(permission);
-                self.push_path_grant_message(ChatMessage::warning(
-                    t!("path_grants.global_failed", error = "window unavailable").into_owned(),
-                ));
-                return;
-            };
-            self.next_allowed_directory_request_id =
-                self.next_allowed_directory_request_id.wrapping_add(1);
-            let request_id = format!(
-                "permission-{}-{}",
-                std::process::id(),
-                self.next_allowed_directory_request_id
-            );
-            let tab_id = self
-                .owner_tab_id
-                .clone()
-                .or_else(|| self.tab_id.clone())
-                .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-            crate::wt_protocol_events::send(
-                serde_json::json!({
-                    "type": "event",
-                    "method": "update_allowed_directory",
-                    "params": {
-                        "window_id": window_id,
-                        "tab_id": tab_id,
-                        "operation": "add",
-                        "path": directory,
-                        "request_id": request_id,
-                    }
-                })
-                .to_string(),
-            );
-            self.pending_global_permissions.insert(
-                request_id.clone(),
-                PendingGlobalPermission {
-                    responder: permission.responder,
-                    allow_once_id,
-                },
-            );
-            if let Some(event_tx) = self.event_tx.clone() {
-                tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    let _ = event_tx.send(AppEvent::AllowedDirectoryUpdateTimedOut { request_id });
-                });
-            }
-            self.push_path_grant_message(ChatMessage::info(
-                t!("path_grants.updating_global").into_owned(),
-            ));
-            return;
-        }
-
         if let Some(responder) = permission.responder {
             let _ = responder.send(option.id);
         } else {
@@ -507,8 +445,8 @@ impl App {
                         request.selected = request.selected.saturating_sub(1);
                     }
                     KeyCode::Down => {
-                        request.selected = (request.selected + 1)
-                            .min(request.selection_count().saturating_sub(1));
+                        request.selected =
+                            (request.selected + 1).min(request.selection_count().saturating_sub(1));
                     }
                     KeyCode::Char(character)
                         if request.request.allow_freeform
@@ -532,9 +470,7 @@ impl App {
                                     selected_index: None,
                                 });
                             }
-                        } else if let Some(answer) =
-                            request.request.choices.get(request.selected)
-                        {
+                        } else if let Some(answer) = request.request.choices.get(request.selected) {
                             resolved = Some(UserInputResponse::Answered {
                                 answer: answer.clone(),
                                 selected_index: Some(request.selected),

@@ -39,9 +39,8 @@ impl App {
                 self.handle_key(key);
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
-                crossterm::event::MouseEventKind::Down(
-                    crossterm::event::MouseButton::Right,
-                ) if self.current_tab().input_has_nav_focus() =>
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right)
+                    if self.current_tab().input_has_nav_focus() =>
                 {
                     self.text_selection.clear();
                     if self.accept_command_ghost() {
@@ -296,6 +295,7 @@ impl App {
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
+                    tab.auto_approved_tool_calls.clear();
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -372,8 +372,9 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
-                tab.pending_agent_response.clear();
-                tab.pending_user_replay.clear();
+                tab.replay_agent_buffer.clear();
+                tab.replay_user_buffer.clear();
+                tab.auto_approved_tool_calls.clear();
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
@@ -700,14 +701,17 @@ impl App {
                 // means the previous user turn is complete — flush it
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
-                if tab.loading_session && !tab.pending_user_replay.is_empty() {
-                    let text = std::mem::take(&mut tab.pending_user_replay);
-                    tab.messages.push(ChatMessage::User(text));
+                if tab.loading_session {
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
+                        tab.messages.push(ChatMessage::User(text));
+                    }
+                    tab.replay_agent_buffer.push_str(&text);
+                    return;
                 }
-                tab.pending_agent_response.push_str(&text);
 
-                // Append to the streaming buffer. The state machine drops
-                // late chunks and handles the stale-autofix generation check.
+                // Append directly to the ordered active transcript. The state
+                // machine drops late chunks and stale autofix generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
@@ -720,11 +724,11 @@ impl App {
                 if !tab.loading_session {
                     return;
                 }
-                if !tab.pending_agent_response.is_empty() {
-                    let prev = std::mem::take(&mut tab.pending_agent_response);
+                if !tab.replay_agent_buffer.is_empty() {
+                    let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
                 }
-                tab.pending_user_replay.push_str(&text);
+                tab.replay_user_buffer.push_str(&text);
             }
             AppEvent::AgentMessageEnd { session_id } => {
                 if let Some(summary) = self.session_completion_latency_summary(&session_id) {
@@ -750,30 +754,32 @@ impl App {
                 content,
                 locations,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
                 // Commit streamed prose before the tool so the transcript
                 // follows ACP event order instead of drawing the streaming
                 // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
-                } else {
-                    tab.flush_streamed_agent_segment();
                 }
                 tab.tool_calls
                     .insert(id.clone(), (title.clone(), status.clone()));
                 let policy_note = tab
                     .auto_approved_tool_calls
-                    .contains(&id)
+                    .remove(&id)
                     .then(|| t!("permission.auto_approved").into_owned());
                 tab.messages.push(ChatMessage::ToolCall {
                     id,
@@ -808,14 +814,6 @@ impl App {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
-                }
-                if let Some(entry) = tab.tool_calls.get_mut(&id) {
-                    if let Some(title) = &title {
-                        entry.0 = title.clone();
-                    }
-                    if let Some(status) = &status {
-                        entry.1 = status.clone();
-                    }
                 }
                 // Update in-place in messages
                 for msg in &mut tab.messages {
@@ -872,7 +870,7 @@ impl App {
             }
             AppEvent::ToolCallAutoApproved { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
-                tab.auto_approved_tool_calls.insert(id.clone());
+                let mut annotated = false;
                 for message in &mut tab.messages {
                     if let ChatMessage::ToolCall {
                         id: message_id,
@@ -882,19 +880,12 @@ impl App {
                     {
                         if message_id == &id {
                             *policy_note = Some(t!("permission.auto_approved").into_owned());
+                            annotated = true;
                         }
                     }
                 }
-            }
-            AppEvent::AllowedDirectoryUpdateTimedOut { request_id } => {
-                if self
-                    .pending_global_permissions
-                    .remove(&request_id)
-                    .is_some()
-                {
-                    self.push_path_grant_message(ChatMessage::warning(
-                        t!("path_grants.global_failed", error = "request timed out").into_owned(),
-                    ));
+                if !annotated && (tab.turn.is_in_flight() || tab.loading_session) {
+                    tab.auto_approved_tool_calls.insert(id);
                 }
             }
             AppEvent::AddDirGhostCwdResolved {
@@ -907,7 +898,14 @@ impl App {
                     && self.current_tab().cursor_pos == input.len()
                     && commands::add_dir_awaiting_path(&input)
                 {
-                    self.source_cwd = cwd;
+                    if cwd.is_none() {
+                        self.add_dir_ghost_refresh_for = None;
+                    }
+                    self.resolved_add_dir_ghost_cwd = Some(ResolvedAddDirGhostCwd {
+                        generation,
+                        input,
+                        cwd,
+                    });
                 }
             }
             AppEvent::ToolTerminalOutput {
@@ -972,21 +970,23 @@ impl App {
                 session_id,
                 entries,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
-                } else {
-                    tab.flush_streamed_agent_segment();
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
                 tab.scroll_to_bottom();
@@ -1448,6 +1448,40 @@ impl App {
                         }
                     }
 
+                    if params.get("confirmation_read_operations").is_some()
+                        || params.get("confirmation_create_operations").is_some()
+                        || params.get("confirmation_input_operations").is_some()
+                    {
+                        use crate::protocol::acp::permission_policy::ConfirmationPolicy;
+
+                        let current = self.operation_policies.snapshot();
+                        let updated = crate::protocol::acp::permission_policy::OperationPolicies {
+                            read: params
+                                .get("confirmation_read_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.read),
+                            create: params
+                                .get("confirmation_create_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.create),
+                            input: params
+                                .get("confirmation_input_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.input),
+                        };
+                        tracing::info!(
+                            target: "permission_policy",
+                            read = ?updated.read,
+                            create = ?updated.create,
+                            input = ?updated.input,
+                            "confirmation policies hot-reloaded from settings change"
+                        );
+                        self.operation_policies.replace(updated);
+                    }
+
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
@@ -1472,7 +1506,7 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                        tracing::info!(
+                            tracing::info!(
                             target: "autofix",
                             model = raw,
                                 target_agent_id,
@@ -1502,10 +1536,10 @@ impl App {
                                 Ok(models) => self.set_cloud_models(models),
                                 Err(error) => {
                                     tracing::error!(
-                                        target: "cloud_models",
-                                        %error,
-                                        "invalid cloud model catalog in agent_config_changed"
-                        );
+                                                    target: "cloud_models",
+                                                    %error,
+                                                    "invalid cloud model catalog in agent_config_changed"
+                                    );
                                     return;
                                 }
                             }
@@ -2413,9 +2447,7 @@ impl App {
                             acp_model: None,
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
-                            operation_policies:
-                                crate::protocol::acp::permission_policy::OperationPolicies::default(
-                                ),
+                            operation_policies: self.operation_policies.clone(),
                             path_grants: Arc::clone(&self.path_grants),
                             prompt_rx: None, // try_start_acp will create fresh channels
                             cancel_rx: None,

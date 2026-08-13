@@ -1700,6 +1700,9 @@ namespace winrt::TerminalApp::implementation
         {
             snapshot.allowedHostDirectories.emplace_back(directory);
         }
+        snapshot.confirmationReadOperations = globals.AiConfirmationReadOps();
+        snapshot.confirmationCreateOperations = globals.AiConfirmationCreateOps();
+        snapshot.confirmationInputOperations = globals.AiConfirmationInputOps();
         snapshot.autofixEnabled = globals.EffectiveAutoFixEnabled();
         return snapshot;
     }
@@ -1713,14 +1716,16 @@ namespace winrt::TerminalApp::implementation
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
+    //   - allowed_host_directories + confirmation_*_operations :
+    //     permission evaluation inputs shared by the running ACP client.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
 
         // First call just seeds the baseline — there's no running helper to
-        // notify yet. Each helper requests the full catalog after its ACP
-        // connection reaches Connected; argv carries only bounded bootstrap
-        // identity/selection data.
+        // notify yet. Each helper requests permission inputs before ACP
+        // initialization and the full model catalog after it connects; argv
+        // carries only bounded bootstrap identity/selection data.
         if (!_agentRuntimeConfigInitialized)
         {
             _lastAgentRuntimeConfig = current;
@@ -1737,8 +1742,12 @@ namespace winrt::TerminalApp::implementation
             last.customModels != current.customModels;
         const bool allowedDirectoriesChanged =
             last.allowedHostDirectories != current.allowedHostDirectories;
+        const bool confirmationPoliciesChanged =
+            last.confirmationReadOperations != current.confirmationReadOperations ||
+            last.confirmationCreateOperations != current.confirmationCreateOperations ||
+            last.confirmationInputOperations != current.confirmationInputOperations;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged && !allowedDirectoriesChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged && !allowedDirectoriesChanged && !confirmationPoliciesChanged)
         {
             return;
         }
@@ -1767,6 +1776,12 @@ namespace winrt::TerminalApp::implementation
                 directories.append(winrt::to_string(directory));
             }
             params["allowed_host_directories"] = std::move(directories);
+        }
+        if (confirmationPoliciesChanged)
+        {
+            params["confirmation_read_operations"] = winrt::to_string(current.confirmationReadOperations);
+            params["confirmation_create_operations"] = winrt::to_string(current.confirmationCreateOperations);
+            params["confirmation_input_operations"] = winrt::to_string(current.confirmationInputOperations);
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -2442,16 +2457,6 @@ namespace winrt::TerminalApp::implementation
         if (!globals.EffectiveAutoFixEnabled())
         {
             helperCmd.append(L" --no-autofix");
-        }
-        appendHelperFlagValue(L"--confirmation-read-operations", globals.AiConfirmationReadOps());
-        appendHelperFlagValue(L"--confirmation-create-operations", globals.AiConfirmationCreateOps());
-        appendHelperFlagValue(L"--confirmation-input-operations", globals.AiConfirmationInputOps());
-        if (effectiveAgentSource == L"host")
-        {
-            for (const auto& directory : globals.AiAllowedHostDirectories())
-            {
-                appendHelperFlagValue(L"--allowed-directory", directory);
-            }
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -5127,8 +5132,34 @@ namespace winrt::TerminalApp::implementation
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
         const auto statusTabId = pickStr("tab_id");
+        const auto runtimeConfigRequestId = pickStr("runtime_config_request_id");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
+
+        if (!runtimeConfigRequestId.empty())
+        {
+            if (statusTabId.empty() || !_FindTabByStableId(statusTabId))
+            {
+                return;
+            }
+
+            const auto runtimeConfig = _CaptureAgentRuntimeConfig();
+            Json::Value config{ Json::objectValue };
+            config["tab_id"] = winrt::to_string(statusTabId);
+            config["runtime_config_request_id"] = winrt::to_string(runtimeConfigRequestId);
+            config["confirmation_read_operations"] = winrt::to_string(runtimeConfig.confirmationReadOperations);
+            config["confirmation_create_operations"] = winrt::to_string(runtimeConfig.confirmationCreateOperations);
+            config["confirmation_input_operations"] = winrt::to_string(runtimeConfig.confirmationInputOperations);
+            Json::Value directories{ Json::arrayValue };
+            for (const auto& directory : runtimeConfig.allowedHostDirectories)
+            {
+                directories.append(winrt::to_string(directory));
+            }
+            config["allowed_host_directories"] = std::move(directories);
+            _agentPaneLog("OnAgentStatusChanged: delivering initial runtime configuration");
+            _RaiseProtocolEvent("agent_config_changed", config);
+            return;
+        }
 
         // If WTA signals a new agent selection (e.g. from FRE or preflight),
         // persist it to settings so the next launch uses the same agent.
@@ -5561,168 +5592,6 @@ namespace winrt::TerminalApp::implementation
         // here so the chip can't get pinned by a dead helper.
         ownerTab->SetAgentChipOverride(std::nullopt);
         _TeardownAgentPane(ownerTab);
-    }
-
-    void TerminalPage::OnAllowedDirectoryUpdateRequested(hstring eventJson)
-    {
-        Json::Value evt;
-        Json::CharReaderBuilder rb;
-        std::istringstream ss(winrt::to_string(eventJson));
-        std::string errs;
-        if (!Json::parseFromStream(rb, ss, &evt, &errs))
-        {
-            return;
-        }
-        const auto& params = evt["params"];
-        if (!params.isObject() ||
-            !params.isMember("window_id") || !params["window_id"].isString() ||
-            !params.isMember("tab_id") || !params["tab_id"].isString() ||
-            !params.isMember("operation") || !params["operation"].isString() ||
-            !params.isMember("path") || !params["path"].isString())
-        {
-            _agentPaneLog("OnAllowedDirectoryUpdateRequested: malformed payload");
-            return;
-        }
-        if (params["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
-        {
-            return;
-        }
-
-        const auto tabId = params["tab_id"].asString();
-        const auto operation = params["operation"].asString();
-        const auto path = winrt::to_hstring(params["path"].asString());
-        const auto isSeparator = [](const wchar_t ch) {
-            return ch == L'\\' || ch == L'/';
-        };
-        const auto isAbsoluteHostPath = [&](const std::wstring_view value) {
-            if (value.size() >= 3 &&
-                std::iswalpha(value[0]) &&
-                value[1] == L':' &&
-                isSeparator(value[2]))
-            {
-                return true;
-            }
-            if (value.size() < 5 || !isSeparator(value[0]) || !isSeparator(value[1]))
-            {
-                return false;
-            }
-            const auto separator = value.find_first_of(L"\\/", 2);
-            return separator != std::wstring_view::npos &&
-                   separator > 2 &&
-                   separator + 1 < value.size() &&
-                   !isSeparator(value[separator + 1]);
-        };
-        const auto pathsEqual = [&](std::wstring_view left, std::wstring_view right) {
-            while (left.size() > 3 && isSeparator(left.back()))
-            {
-                left.remove_suffix(1);
-            }
-            while (right.size() > 3 && isSeparator(right.back()))
-            {
-                right.remove_suffix(1);
-            }
-            if (left.size() != right.size())
-            {
-                return false;
-            }
-            for (size_t i = 0; i < left.size(); ++i)
-            {
-                const auto leftChar = isSeparator(left[i]) ? L'\\' : std::towlower(left[i]);
-                const auto rightChar = isSeparator(right[i]) ? L'\\' : std::towlower(right[i]);
-                if (leftChar != rightChar)
-                {
-                    return false;
-                }
-            }
-            return true;
-        };
-
-        std::vector<winrt::hstring> directories;
-        const auto globals = _settings.GlobalSettings();
-        for (const auto& directory : globals.AiAllowedHostDirectories())
-        {
-            directories.emplace_back(directory);
-        }
-        const auto originalDirectories = directories;
-
-        const auto publishResult = [&](const bool success,
-                                       const bool changed,
-                                       const std::string_view error) {
-            Json::Value response{ Json::objectValue };
-            response["tab_id"] = tabId;
-            response["operation"] = operation;
-            response["path"] = winrt::to_string(path);
-            response["success"] = success;
-            response["changed"] = changed;
-            response["error"] = std::string{ error };
-            if (params.isMember("request_id") && params["request_id"].isString())
-            {
-                response["request_id"] = params["request_id"].asString();
-            }
-            Json::Value values{ Json::arrayValue };
-            for (const auto& directory : directories)
-            {
-                values.append(winrt::to_string(directory));
-            }
-            response["directories"] = std::move(values);
-            _RaiseProtocolEvent("allowed_directories_changed", response);
-        };
-
-        if ((operation != "add" && operation != "remove") ||
-            !isAbsoluteHostPath(std::wstring_view{ path }))
-        {
-            publishResult(false, false, "invalid_request");
-            return;
-        }
-
-        const auto existing = std::find_if(
-            directories.begin(),
-            directories.end(),
-            [&](const auto& candidate) {
-                return pathsEqual(std::wstring_view{ candidate }, std::wstring_view{ path });
-            });
-        bool changed = false;
-        if (operation == "add")
-        {
-            if (existing == directories.end())
-            {
-                directories.emplace_back(path);
-                changed = true;
-            }
-        }
-        else if (existing != directories.end())
-        {
-            directories.erase(existing);
-            changed = true;
-        }
-
-        if (changed)
-        {
-            auto updated = winrt::single_threaded_vector<winrt::hstring>();
-            for (const auto& directory : directories)
-            {
-                updated.Append(directory);
-            }
-            try
-            {
-                globals.AiAllowedHostDirectories(updated);
-                _settings.WriteSettingsToDisk();
-            }
-            catch (...)
-            {
-                LOG_CAUGHT_EXCEPTION();
-                directories = originalDirectories;
-                auto rollback = winrt::single_threaded_vector<winrt::hstring>();
-                for (const auto& directory : directories)
-                {
-                    rollback.Append(directory);
-                }
-                globals.AiAllowedHostDirectories(rollback);
-                publishResult(false, false, "settings_write_failed");
-                return;
-            }
-        }
-        publishResult(true, changed, {});
     }
 
     // Inbound `/agent` selection from WTA. SendEvent fans out to every page;

@@ -104,13 +104,14 @@ When an ACP permission request contains one usable location and an
 Agent-provided `allow_once` option, the permission card may also offer:
 
 ```text
-Once | This session | Always | Deny
+Once | This session | Deny
 ```
 
-`This session` and `Always` store the displayed directory, then answer the
-current ACP request with the Agent's exact `allow_once` option. Intelligent
-Terminal never invents an option ID or converts `allow_once` to
-`allow_always`.
+`This session` stores the displayed directory, then answers the current ACP
+request with the Agent's exact `allow_once` option. Persistent global roots are
+managed only in Settings; the externally callable COM event surface cannot
+mutate them. Intelligent Terminal never invents an option ID or converts
+`allow_once` to `allow_always`.
 
 ### Settings
 
@@ -215,10 +216,10 @@ ACP request_permission ──┴─► permission_policy::evaluate
                                 └─ compact permission card
 ```
 
-Global mutations initiated in WTA are routed to the owning `TerminalPage`,
-written through the Settings Model, and broadcast back as
-`allowed_directories_changed`. Window and stable-tab IDs prevent another
-window or tab from consuming the result.
+Global mutations are performed by the Settings UI through the Settings Model.
+Settings changes are broadcast as `allowed_directories_changed` so active
+helpers refresh their local policy. The generic COM `SendEvent` surface is
+untrusted and does not accept persistent allowed-directory mutations.
 
 ## Storage and safety
 

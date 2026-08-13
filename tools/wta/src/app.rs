@@ -14,7 +14,7 @@ struct DeferredAcpParams {
     acp_model: Option<String>,
     agent_source: crate::agent_source::AgentSource,
     source_cwd: Option<String>,
-    operation_policies: crate::protocol::acp::permission_policy::OperationPolicies,
+    operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
     path_grants: Arc<crate::path_grants::SessionRoots>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
     cancel_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>>,
@@ -50,16 +50,22 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
     })
 }
 
-fn add_dir_command_on_enter(input: &str, source_cwd: Option<&str>) -> Option<ParsedCommand> {
+fn add_dir_command_on_enter(input: &str, ghost_cwd: Option<&str>) -> Option<ParsedCommand> {
     if !commands::add_dir_awaiting_path(input) {
         return None;
     }
-    let source_cwd = source_cwd.filter(|cwd| !cwd.is_empty())?;
+    let ghost_cwd = ghost_cwd.filter(|cwd| !cwd.is_empty())?;
     Some(ParsedCommand {
         kind: CommandKind::AddDir,
         spec: commands::lookup("add-dir").expect("/add-dir is registered"),
-        rest: source_cwd.to_string(),
+        rest: ghost_cwd.to_string(),
     })
+}
+
+struct ResolvedAddDirGhostCwd {
+    generation: u64,
+    input: String,
+    cwd: Option<String>,
 }
 
 fn parse_directory_command_path(arguments: &str) -> Option<String> {
@@ -567,7 +573,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                        .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -882,11 +888,6 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
-struct PendingGlobalPermission {
-    responder: Option<tokio::sync::oneshot::Sender<String>>,
-    allow_once_id: String,
-}
-
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -966,8 +967,7 @@ pub struct App {
     restart_tx: mpsc::UnboundedSender<RestartRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
     path_grants: Arc<crate::path_grants::SessionRoots>,
-    pending_global_permissions: HashMap<String, PendingGlobalPermission>,
-    next_allowed_directory_request_id: u64,
+    operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -1110,6 +1110,8 @@ pub struct App {
     pub source_cwd: Option<String>,
     add_dir_ghost_generation: u64,
     add_dir_ghost_refresh_for: Option<String>,
+    /// Active-pane cwd produced for the exact `/add-dir` input generation.
+    resolved_add_dir_ghost_cwd: Option<ResolvedAddDirGhostCwd>,
     /// When true, surface raw `agent_event` payloads in the chat as
     /// `ChatMessage::AgentEvent` for diagnostics. Controlled by the
     /// `WTA_LOG_AGENT_EVENT` env var (1/true/yes).
@@ -1166,10 +1168,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude  => Some("claude"),
-        CliSource::Codex   => Some("codex"),
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini  => Some("gemini"),
+        CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1287,8 +1289,8 @@ impl App {
                 crate::agent_source::AgentSource::Host,
                 Vec::new(),
             )),
-            pending_global_permissions: HashMap::new(),
-            next_allowed_directory_request_id: 0,
+            operation_policies:
+                crate::protocol::acp::permission_policy::SharedOperationPolicies::default(),
             debug_capture_enabled,
             help_overlay_visible: false,
             transport_lost: false,
@@ -1328,6 +1330,7 @@ impl App {
             source_cwd: None,
             add_dir_ghost_generation: 0,
             add_dir_ghost_refresh_for: None,
+            resolved_add_dir_ghost_cwd: None,
             log_agent_events: false,
             activity_frame: 0,
             close_pane_armed_at: None,
@@ -1375,7 +1378,7 @@ impl App {
         acp_model: Option<String>,
         agent_source: crate::agent_source::AgentSource,
         source_cwd: Option<String>,
-        operation_policies: crate::protocol::acp::permission_policy::OperationPolicies,
+        operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
         path_grants: Arc<crate::path_grants::SessionRoots>,
         owner_tab_id: Option<String>,
         shell_mgr: Arc<crate::shell::ShellManager>,
@@ -1481,7 +1484,7 @@ impl App {
                 let acp_model = params.acp_model.clone();
                 let agent_source = params.agent_source.clone();
                 let source_cwd = params.source_cwd.clone();
-                let operation_policies = params.operation_policies;
+                let operation_policies = params.operation_policies.clone();
                 let path_grants = Arc::clone(&params.path_grants);
                 let event_tx = tx.clone();
                 let shell_mgr = Arc::clone(&params.shell_mgr);
@@ -1523,32 +1526,32 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                                pipe_name,
-                                acp_model,
+                            pipe_name,
+                            acp_model,
                             cloud_models,
-                                agent_id_opt,
-                                agent_source,
-                                source_cwd,
-                                owner_tab_opt,
-                                None, // initial_load_session_id: already handled by the dead initial task
+                            agent_id_opt,
+                            agent_source,
+                            source_cwd,
+                            owner_tab_opt,
+                            None, // initial_load_session_id: already handled by the dead initial task
                             operation_policies,
                             path_grants,
-                                event_tx_for_pipe.clone(),
-                                prompt_rx,
-                                cancel_rx,
-                                new_session_rx,
-                                load_session_rx,
-                                drop_session_rx,
-                                rename_session_rx,
-                                restart_rx,
-                                shrx,
-                                master_ext_rx,
-                                shell_mgr,
-                                wt_connected,
-                                post_login_auth, // only true on genuine LoginComplete reconnects
+                            event_tx_for_pipe.clone(),
+                            prompt_rx,
+                            cancel_rx,
+                            new_session_rx,
+                            load_session_rx,
+                            drop_session_rx,
+                            rename_session_rx,
+                            restart_rx,
+                            shrx,
+                            master_ext_rx,
+                            shell_mgr,
+                            wt_connected,
+                            post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                            )
-                            .await
+                        )
+                        .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -2208,7 +2211,7 @@ impl App {
         let idx = self.current_tab().model_picker_selected;
         let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
-        self.close_model_picker();
+            self.close_model_picker();
             self.apply_model_pick(id);
         }
     }
@@ -3866,7 +3869,6 @@ impl App {
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
             AppEvent::ToolCallAutoApproved { .. } => "tool_call_auto_approved",
-            AppEvent::AllowedDirectoryUpdateTimedOut { .. } => "allowed_directory_update_timed_out",
             AppEvent::AddDirGhostCwdResolved { .. } => "add_dir_ghost_cwd_resolved",
             AppEvent::ToolTerminalOutput { .. } => "tool_terminal_output",
             AppEvent::HideToolCall { .. } => "hide_tool_call",
@@ -3914,7 +3916,9 @@ impl App {
             tab.messages.len(),
             tab.completed_turns.len(),
             tab.input.chars().count(),
-            tab.turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            tab.streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             tab.chat_scroll.offset,
             tab.activity_frame,
             tab.turn.recommendations().map(|r| r.choices.len()).unwrap_or(0),
@@ -4175,12 +4179,10 @@ impl App {
         }
     }
 
-    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
-    /// the length of what the renderer would show in full. `None` when the
-    /// tab is not streaming visible prose.
+    /// Number of user-visible characters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        let buf = tab.turn.buffer()?;
-        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
+            .map(|text| text.chars().count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
@@ -4434,13 +4436,13 @@ impl App {
             commands::agent_id_prefix(&self.current_tab().input)
         };
         self.available_agents.iter().filter(move |agent| {
-                prefix.is_some_and(|prefix| {
-                    agent
-                        .id
-                        .get(..prefix.len())
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
-                })
+            prefix.is_some_and(|prefix| {
+                agent
+                    .id
+                    .get(..prefix.len())
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
             })
+        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4510,7 +4512,7 @@ impl App {
             return None;
         }
         if commands::add_dir_awaiting_path(&tab.input) {
-            return self.source_cwd.as_deref().filter(|cwd| !cwd.is_empty());
+            return self.resolved_add_dir_ghost_cwd();
         }
         let prefix = commands::agent_id_prefix(&tab.input)?;
         let candidate = self.selected_agent_command_candidate()?;
@@ -4518,6 +4520,19 @@ impl App {
             .id
             .get(prefix.len()..)
             .filter(|suffix| !suffix.is_empty())
+    }
+
+    fn resolved_add_dir_ghost_cwd(&self) -> Option<&str> {
+        let tab = self.current_tab();
+        let resolved = self.resolved_add_dir_ghost_cwd.as_ref()?;
+        if resolved.generation != self.add_dir_ghost_generation
+            || resolved.input != tab.input
+            || tab.cursor_pos != tab.input.len()
+            || !commands::add_dir_awaiting_path(&tab.input)
+        {
+            return None;
+        }
+        resolved.cwd.as_deref().filter(|cwd| !cwd.is_empty())
     }
 
     fn accept_command_ghost(&mut self) -> bool {
@@ -4531,10 +4546,9 @@ impl App {
     fn refresh_add_dir_ghost_cwd(&mut self) {
         let input = {
             let tab = self.current_tab();
-            if tab.cursor_pos != tab.input.len()
-                || !commands::add_dir_awaiting_path(&tab.input)
-            {
+            if tab.cursor_pos != tab.input.len() || !commands::add_dir_awaiting_path(&tab.input) {
                 self.add_dir_ghost_refresh_for = None;
+                self.resolved_add_dir_ghost_cwd = None;
                 return;
             }
             tab.input.clone()
@@ -4542,6 +4556,7 @@ impl App {
         if self.add_dir_ghost_refresh_for.as_deref() == Some(input.as_str()) {
             return;
         }
+        self.resolved_add_dir_ghost_cwd = None;
         let Some(event_tx) = self.event_tx.clone() else {
             return;
         };
@@ -4551,15 +4566,15 @@ impl App {
         let shell_mgr = Arc::clone(&self.shell_mgr);
         tokio::spawn(async move {
             let cwd = shell_mgr
-            .wt_get_active_pane()
-            .await
-            .ok()
-            .and_then(|pane| {
-                pane.get("cwd")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-            })
-            .filter(|cwd| !cwd.is_empty());
+                .wt_get_active_pane()
+                .await
+                .ok()
+                .and_then(|pane| {
+                    pane.get("cwd")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                })
+                .filter(|cwd| !cwd.is_empty());
             let _ = event_tx.send(AppEvent::AddDirGhostCwdResolved {
                 generation,
                 input,
@@ -4690,10 +4705,9 @@ impl App {
         if self.current_tab().input.is_empty() {
             return false;
         }
-        if let Some(command) = add_dir_command_on_enter(
-            &self.current_tab().input,
-            self.source_cwd.as_deref(),
-        ) {
+        if let Some(command) =
+            add_dir_command_on_enter(&self.current_tab().input, self.resolved_add_dir_ghost_cwd())
+        {
             self.current_tab_mut().clear_input();
             self.handle_slash_command(command);
             return true;
@@ -4831,9 +4845,9 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-                tab_id,
-                cwd: self.source_cwd.clone(),
-            });
+            tab_id,
+            cwd: self.source_cwd.clone(),
+        });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
         }
@@ -5081,9 +5095,7 @@ impl App {
                 .into_iter()
                 .map(|directory| directory.display().to_string())
                 .collect(),
-            additional_directories_supported: self
-                .path_grants
-                .additional_directories_supported(),
+            additional_directories_supported: self.path_grants.additional_directories_supported(),
         });
     }
 
@@ -5113,63 +5125,6 @@ impl App {
             return;
         };
         self.path_grants.replace_configured_directories(directories);
-
-        if let Some(request_id) = params.get("request_id").and_then(serde_json::Value::as_str) {
-            if let Some(pending) = self.pending_global_permissions.remove(request_id) {
-                let success = params
-                    .get("success")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                if success {
-                    if let Some(responder) = pending.responder {
-                        let _ = responder.send(pending.allow_once_id);
-                    } else {
-                        let _ = self.permission_tx.send(pending.allow_once_id);
-                    }
-                }
-            }
-        }
-
-        let path = params
-            .get("path")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        let operation = params
-            .get("operation")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        let success = params
-            .get("success")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        let changed = params
-            .get("changed")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        let message = if success {
-            match (operation, changed) {
-                ("add", true) => {
-                    ChatMessage::success(t!("path_grants.global_added", path = path).into_owned())
-                }
-                ("add", false) => ChatMessage::info(
-                    t!("path_grants.global_already_present", path = path).into_owned(),
-                ),
-                ("remove", true) => {
-                    ChatMessage::success(t!("path_grants.global_removed", path = path).into_owned())
-                }
-                ("remove", false) => {
-                    ChatMessage::info(t!("path_grants.global_not_found", path = path).into_owned())
-                }
-                _ => return,
-            }
-        } else {
-            let error = params
-                .get("error")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("unknown error");
-            ChatMessage::warning(t!("path_grants.global_failed", error = error).into_owned())
-        };
-        self.push_path_grant_message(message);
     }
 
     fn push_path_grant_message(&mut self, message: ChatMessage) {
@@ -5180,6 +5135,13 @@ impl App {
 
     pub(crate) fn set_path_grants(&mut self, path_grants: Arc<crate::path_grants::SessionRoots>) {
         self.path_grants = path_grants;
+    }
+
+    pub(crate) fn set_operation_policies(
+        &mut self,
+        operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
+    ) {
+        self.operation_policies = operation_policies;
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which

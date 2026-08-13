@@ -4,6 +4,7 @@ use acp::schema::v1::{
     PermissionOption, PermissionOptionId, PermissionOptionKind, ToolCallLocation, ToolKind,
 };
 use agent_client_protocol as acp;
+use std::sync::{Arc, RwLock};
 
 use crate::agent_source::AgentSource;
 
@@ -40,6 +41,35 @@ impl OperationPolicies {
             create: ConfirmationPolicy::parse(create),
             input: ConfirmationPolicy::parse(input),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SharedOperationPolicies(Arc<RwLock<OperationPolicies>>);
+
+impl SharedOperationPolicies {
+    pub(crate) fn new(policies: OperationPolicies) -> Self {
+        Self(Arc::new(RwLock::new(policies)))
+    }
+
+    pub(crate) fn snapshot(&self) -> OperationPolicies {
+        *self.0.read().unwrap_or_else(|error| error.into_inner())
+    }
+
+    pub(crate) fn replace(&self, policies: OperationPolicies) {
+        *self.0.write().unwrap_or_else(|error| error.into_inner()) = policies;
+    }
+}
+
+impl Default for SharedOperationPolicies {
+    fn default() -> Self {
+        Self::new(OperationPolicies::default())
+    }
+}
+
+impl From<OperationPolicies> for SharedOperationPolicies {
+    fn from(policies: OperationPolicies) -> Self {
+        Self::new(policies)
     }
 }
 

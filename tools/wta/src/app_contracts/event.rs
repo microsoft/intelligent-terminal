@@ -149,9 +149,6 @@ pub enum AppEvent {
         session_id: String,
         id: String,
     },
-    AllowedDirectoryUpdateTimedOut {
-        request_id: String,
-    },
     AddDirGhostCwdResolved {
         generation: u64,
         input: String,

@@ -1069,9 +1069,6 @@ try
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);
         return S_OK;
-    case ProtocolParsing::SendEventRoute::AllowedDirectoryUpdate:
-        _dispatchAllowedDirectoryUpdateToPage(eventH);
-        return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
         // thread; the page-side handler resolves the tab via `tab_id`
@@ -1222,39 +1219,6 @@ void TerminalProtocolComServer::_dispatchAgentSwitchToPage(const winrt::hstring&
                 catch (...)
                 {
                     // Page may have been torn down during dispatch.
-                }
-            });
-    }
-}
-
-void TerminalProtocolComServer::_dispatchAllowedDirectoryUpdateToPage(const winrt::hstring& eventJson)
-{
-    if (!s_emperor)
-    {
-        return;
-    }
-    for (const auto& host : s_emperor->GetWindows())
-    {
-        auto page = _getPage(host.get());
-        if (!page)
-        {
-            continue;
-        }
-        const auto dispatcher = page.Dispatcher();
-        if (!dispatcher)
-        {
-            continue;
-        }
-        dispatcher.RunAsync(
-            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-            [page, eventJson]() {
-                try
-                {
-                    page.OnAllowedDirectoryUpdateRequested(eventJson);
-                }
-                catch (...)
-                {
-                    LOG_CAUGHT_EXCEPTION();
                 }
             });
     }

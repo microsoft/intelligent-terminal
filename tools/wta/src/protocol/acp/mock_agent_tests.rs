@@ -333,7 +333,8 @@ fn connect_with(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
-        operation_policies: crate::protocol::acp::permission_policy::OperationPolicies::default(),
+        operation_policies:
+            crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
         session_roots: Arc::new(SessionRoots::new(
             "copilot".to_string(),
             crate::agent_source::AgentSource::Host,
@@ -684,7 +685,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: Mutex::new(HashMap::new()),
-        operation_policies: crate::protocol::acp::permission_policy::OperationPolicies::default(),
+        operation_policies:
+            crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
         session_roots: Arc::new(SessionRoots::new(
             "copilot".to_string(),
             crate::agent_source::AgentSource::Host,
@@ -1806,7 +1808,7 @@ fn bare_client_with_policy(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
-        operation_policies,
+        operation_policies: operation_policies.into(),
         session_roots,
     });
     (WtaClient { state }, event_rx)

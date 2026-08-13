@@ -257,14 +257,188 @@ fn spawn_restart_agent_stack_forwarder(
     });
 }
 
+async fn request_initial_runtime_config(
+    config: &mut HelperConfig,
+    wt_event_rx: &mut Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
+    tab_id: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let Some(rx) = wt_event_rx.as_mut() else {
+        return Vec::new();
+    };
+    let Some(tab_id) = tab_id.filter(|value| !value.is_empty()) else {
+        return Vec::new();
+    };
+    let request_id = format!("{}:{tab_id}", std::process::id());
+    crate::wt_protocol_events::send(
+        serde_json::json!({
+            "type": "event",
+            "method": "agent_status",
+            "params": {
+                "agent_id": config.agent_id.as_deref(),
+                "tab_id": tab_id,
+                "runtime_config_request_id": request_id,
+            },
+        })
+        .to_string(),
+    );
+
+    let mut pending = Vec::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let event = match tokio::time::timeout_at(deadline, rx.recv()).await {
+            Ok(Some(event)) => event,
+            Ok(None) => break,
+            Err(_) => {
+                tracing::warn!(
+                    target: "runtime_config",
+                    tab_id,
+                    "timed out waiting for initial runtime configuration; using safe CLI defaults"
+                );
+                break;
+            }
+        };
+        let is_response = event.get("method").and_then(serde_json::Value::as_str)
+            == Some("agent_config_changed")
+            && event
+                .get("params")
+                .and_then(|params| params.get("runtime_config_request_id"))
+                .and_then(serde_json::Value::as_str)
+                == Some(request_id.as_str());
+        if is_response {
+            if let Some(params) = event.get("params") {
+                apply_initial_runtime_config(config, params);
+            }
+            tracing::info!(
+                target: "runtime_config",
+                tab_id,
+                configured_directories = config.allowed_directories.len(),
+                "initial runtime configuration received before ACP initialization"
+            );
+            break;
+        }
+        pending.push(event);
+    }
+    pending
+}
+
+fn apply_initial_runtime_config(config: &mut HelperConfig, params: &serde_json::Value) {
+    if let Some(value) = params
+        .get("confirmation_read_operations")
+        .and_then(serde_json::Value::as_str)
+    {
+        config.confirmation_read_operations = value.to_string();
+    }
+    if let Some(value) = params
+        .get("confirmation_create_operations")
+        .and_then(serde_json::Value::as_str)
+    {
+        config.confirmation_create_operations = value.to_string();
+    }
+    if let Some(value) = params
+        .get("confirmation_input_operations")
+        .and_then(serde_json::Value::as_str)
+    {
+        config.confirmation_input_operations = value.to_string();
+    }
+    if config.agent_source.as_deref() == Some(crate::agent_source::AgentSource::HOST_KIND) {
+        if let Some(directories) = params
+            .get("allowed_host_directories")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|value| value.as_str().map(std::path::PathBuf::from))
+                    .collect::<Option<Vec<_>>>()
+            })
+        {
+            config.allowed_directories = directories;
+        }
+    }
+}
+
+fn app_event_from_wt_event(event_json: serde_json::Value) -> app::AppEvent {
+    let method = event_json
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let params = event_json
+        .get("params")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    // Keep the legacy `session_id` fallback so older wtcli builds do not
+    // collapse every hook event onto an empty pane id.
+    let pane_id = params
+        .get("pane_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .or_else(|| params.get("session_id").and_then(serde_json::Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    let tab_id = params
+        .get("tab_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    app::AppEvent::WtEvent {
+        method,
+        pane_id,
+        tab_id,
+        params,
+    }
+}
+
+#[cfg(test)]
+mod runtime_config_tests {
+    use super::*;
+    use crate::Cli;
+    use clap::Parser;
+
+    #[test]
+    fn initial_runtime_config_replaces_policies_and_unbounded_directory_bootstrap() {
+        let cli = Cli::try_parse_from([
+            "wta",
+            "--connect-master",
+            r"\\.\pipe\helper",
+            "--agent-source",
+            "host",
+            "--confirmation-read-operations",
+            "prompt",
+        ])
+        .expect("valid helper CLI");
+        let mut config = crate::helper_config(cli);
+        let directories = (0..256)
+            .map(|index| format!(r"C:\roots\directory-{index}"))
+            .collect::<Vec<_>>();
+
+        apply_initial_runtime_config(
+            &mut config,
+            &serde_json::json!({
+                "confirmation_read_operations": "deny",
+                "confirmation_create_operations": "auto",
+                "confirmation_input_operations": "prompt",
+                "allowed_host_directories": directories,
+            }),
+        );
+
+        assert_eq!(config.confirmation_read_operations, "deny");
+        assert_eq!(config.confirmation_create_operations, "auto");
+        assert_eq!(config.confirmation_input_operations, "prompt");
+        assert_eq!(config.allowed_directories.len(), 256);
+        assert_eq!(
+            config.allowed_directories.last(),
+            Some(&std::path::PathBuf::from(r"C:\roots\directory-255"))
+        );
+    }
+}
+
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    config: HelperConfig,
+    mut config: HelperConfig,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     mut debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
     pane_identity: Option<(String, String, String)>,
-    wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
+    mut wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
 ) -> Result<()> {
@@ -368,11 +542,21 @@ async fn run_acp_app(
                 tracing::warn!("no wt_pipe_channel — events won't work");
             }
 
+            let pending_wt_events = request_initial_runtime_config(
+                &mut config,
+                &mut wt_event_rx,
+                pane_identity.as_ref().map(|(_, tab_id, _)| tab_id.as_str()),
+            )
+            .await;
+
             // Background WT event reader: forwards push events from the protocol channel to the TUI.
             if let Some(mut wt_rx) = wt_event_rx {
                 tracing::info!("wt_event_rx: starting background reader task");
                 let wt_event_tx = event_tx.clone();
                 tokio::task::spawn_local(async move {
+                    for event_json in pending_wt_events {
+                        let _ = wt_event_tx.send(app_event_from_wt_event(event_json));
+                    }
                     while let Some(event_json) = wt_rx.recv().await {
                         let method = event_json
                             .get("method")
@@ -408,47 +592,7 @@ async fn run_acp_app(
                             tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
                         }
 
-                        let params = event_json
-                            .get("params")
-                            .cloned()
-                            .unwrap_or(serde_json::Value::Null);
-                        // Read `pane_id` (current name) with a fallback
-                        // to `session_id` (the old name before the
-                        // per-tab autofix routing PR renamed it). The
-                        // C++ TerminalPage side now emits `pane_id` for
-                        // `connection_state` / `vt_sequence`, but the
-                        // wtcli `send-event` builder
-                        // (`BuildSendEventJson`) was missed in that
-                        // rename pass — `agent_event` envelopes from
-                        // hook bridge still carried `session_id`.
-                        // Without this fallback every hook event
-                        // arrived with `pane_id = ""`, and downstream
-                        // `route_agent_event_to_registry` collided all
-                        // sessions on the empty-string key in
-                        // `active_by_pane`, triggering spurious
-                        // orphan-handover demotions whenever a second
-                        // session started in the same window (e.g.
-                        // session A → Ended the moment session B's
-                        // first hook fires). Keep the fallback even
-                        // after wtcli is fixed so an old wtcli build
-                        // can talk to a new wta without surprises.
-                        let pane_id = params
-                            .get("pane_id")
-                            .and_then(|v| v.as_str())
-                            .filter(|s| !s.is_empty())
-                            .or_else(|| params.get("session_id").and_then(|v| v.as_str()))
-                            .unwrap_or("")
-                            .to_string();
-                        let tab_id = params
-                            .get("tab_id")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string);
-                        let _ = wt_event_tx.send(app::AppEvent::WtEvent {
-                            method,
-                            pane_id,
-                            tab_id,
-                            params,
-                        });
+                        let _ = wt_event_tx.send(app_event_from_wt_event(event_json));
                     }
                 });
             }
@@ -523,10 +667,12 @@ async fn run_acp_app(
                 "resolved-from-cmd"
             };
             let operation_policies =
-                protocol::acp::permission_policy::OperationPolicies::new(
+                protocol::acp::permission_policy::SharedOperationPolicies::new(
+                    protocol::acp::permission_policy::OperationPolicies::new(
                     &config.confirmation_read_operations,
                     &config.confirmation_create_operations,
                     &config.confirmation_input_operations,
+                    ),
                 );
             let allowed_directories = config.allowed_directories.clone();
             let path_grants = Arc::new(crate::path_grants::SessionRoots::new(
@@ -708,7 +854,7 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
-                let operation_policies_for_client = operation_policies;
+                let operation_policies_for_client = operation_policies.clone();
                 let path_grants_for_client = Arc::clone(&path_grants);
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
@@ -793,6 +939,7 @@ async fn run_acp_app(
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
             app_state.set_path_grants(Arc::clone(&path_grants));
+            app_state.set_operation_policies(operation_policies.clone());
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared

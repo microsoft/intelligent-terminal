@@ -118,7 +118,9 @@ pub struct CancelRequest {
 /// User-initiated request to spin up a fresh ACP session for a given tab,
 /// dropping the previous session's history. Emitted by the `/new` slash
 /// command. The ACP client task removes the old SessionId from its
-/// per-tab cache and calls `new_session(cwd)`; the resulting
+/// per-tab cache, cancels any active turn, and calls `new_session(cwd)`.
+/// Once the replacement is bound, master retires the old session's routing,
+/// live-registry row, and session-scoped capabilities. The resulting
 /// [`AppEvent::SessionAttached`] then propagates back to the UI to
 /// rewire `session_to_tab` and update the model dropdown.
 #[derive(Debug, Clone)]
@@ -377,7 +379,7 @@ struct ClientState {
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), SessionMcpTool>>,
-    operation_policies: super::permission_policy::OperationPolicies,
+    operation_policies: super::permission_policy::SharedOperationPolicies,
     session_roots: Arc<SessionRoots>,
 }
 
@@ -970,7 +972,7 @@ fn permission_options(
         return agent_options;
     }
 
-    let mut options = Vec::with_capacity(4);
+    let mut options = Vec::with_capacity(3);
     if let Some(allow_once) = allow_once_id
         .and_then(|id| agent_options.iter().find(|option| option.id == id))
         .cloned()
@@ -981,11 +983,6 @@ fn permission_options(
         id: "intellterm-session-directory-grant".to_string(),
         name: t!("permission.allow_directory_session").into_owned(),
         kind: crate::app_contracts::SESSION_DIRECTORY_GRANT_KIND.to_string(),
-    });
-    options.push(PermOption {
-        id: "intellterm-global-directory-grant".to_string(),
-        name: t!("permission.allow_directory_global").into_owned(),
-        kind: crate::app_contracts::GLOBAL_DIRECTORY_GRANT_KIND.to_string(),
     });
     if let Some(reject) = agent_options.iter().find(|option| option.is_reject()).cloned() {
         options.push(reject);
@@ -1300,7 +1297,7 @@ impl WtaClient {
             &args.options,
             &effective_roots,
             self.state.session_roots.source(),
-            self.state.operation_policies,
+            self.state.operation_policies.snapshot(),
         ) {
             super::permission_policy::PermissionDecision::AutoApprove {
                 option_id,
@@ -2472,7 +2469,7 @@ pub async fn run_acp_client_over_pipe(
     source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
-    operation_policies: super::permission_policy::OperationPolicies,
+    operation_policies: super::permission_policy::SharedOperationPolicies,
     session_roots: Arc<SessionRoots>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
@@ -3634,9 +3631,18 @@ fn dispatch_load_session(
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
-            let _ = conn
+            if let Err(e) = conn
                 .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    target: "acp_load_session",
+                    tab = %req.tab_id,
+                    session_id = %old,
+                    error = ?e,
+                    "session/cancel before load failed (likely unsupported)"
+                );
+            }
         }
 
         let session_id = acp::schema::v1::SessionId::new(req.session_id.clone());
@@ -4477,7 +4483,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_permission_options_are_compact_and_scope_specific() {
+    fn directory_permission_options_offer_session_scope_but_not_global_persistence() {
         use acp::schema::v1::{
             PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
             ToolCallUpdate, ToolCallUpdateFields,
@@ -4507,7 +4513,6 @@ mod tests {
             vec![
                 "allow-once",
                 "intellterm-session-directory-grant",
-                "intellterm-global-directory-grant",
                 "reject-once",
             ]
         );
@@ -4626,8 +4631,8 @@ mod tests {
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
             hidden_tool_calls: Mutex::new(HashMap::new()),
-            operation_policies: crate::protocol::acp::permission_policy::OperationPolicies::default(
-            ),
+            operation_policies:
+                crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
             session_roots: Arc::new(SessionRoots::new(
                 "copilot".to_string(),
                 crate::agent_source::AgentSource::Host,
@@ -5414,7 +5419,7 @@ mod tests {
                 ),
                 hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
                 operation_policies:
-                    crate::protocol::acp::permission_policy::OperationPolicies::default(),
+                    crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
                 session_roots: Arc::new(super::super::SessionRoots::new(
                     "copilot".to_string(),
                     crate::agent_source::AgentSource::Host,

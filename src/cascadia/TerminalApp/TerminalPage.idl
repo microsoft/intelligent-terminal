@@ -167,7 +167,6 @@ namespace TerminalApp
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.
         // Applies a runtime override and rebuilds only the target tab.
         void OnAgentSwitchRequested(String eventJson);
-        void OnAllowedDirectoryUpdateRequested(String eventJson);
 
         // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.
         // Emitted when the user presses Ctrl+C twice in the agent pane TUI.

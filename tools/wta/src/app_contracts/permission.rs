@@ -1,5 +1,4 @@
 pub const SESSION_DIRECTORY_GRANT_KIND: &str = "intellterm_session_directory_grant";
-pub const GLOBAL_DIRECTORY_GRANT_KIND: &str = "intellterm_global_directory_grant";
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PermOption {
@@ -26,9 +25,5 @@ impl PermOption {
 
     pub fn is_session_directory_grant(&self) -> bool {
         self.kind == SESSION_DIRECTORY_GRANT_KIND
-    }
-
-    pub fn is_global_directory_grant(&self) -> bool {
-        self.kind == GLOBAL_DIRECTORY_GRANT_KIND
     }
 }

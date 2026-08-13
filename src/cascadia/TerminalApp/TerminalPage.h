@@ -254,7 +254,6 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
-        void OnAllowedDirectoryUpdateRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
@@ -448,7 +447,8 @@ namespace winrt::TerminalApp::implementation
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
         // agent setting that can be hot-reloaded (autofix gate, delegate
-        // agent/model, credential-free model catalogs).
+        // agent/model, credential-free model catalogs, directory roots, and
+        // confirmation policies).
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
@@ -458,6 +458,9 @@ namespace winrt::TerminalApp::implementation
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             std::vector<std::wstring> allowedHostDirectories;
+            std::wstring confirmationReadOperations;
+            std::wstring confirmationCreateOperations;
+            std::wstring confirmationInputOperations;
             bool autofixEnabled{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};

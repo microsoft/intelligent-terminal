@@ -311,6 +311,11 @@ attacker-controlled user-context process (in-pane shell, Agent CLI, etc.)
 
 The mutation path is a direct filesystem write. This is not a new OS privilege — the attacker already runs as the user — but it can persistently change AI behavior without any in-band confirmation. Agent selection, custom agent commands, delegate behavior, Autofix, and future confirmation knobs are all policy-relevant even if some knobs are not enforced today. An Agent CLI (semi-trusted) and a pane-context process can both reach the file: `settings.json` lives at a well-known per-user path that any user-context process can discover via `%LOCALAPPDATA%` or by enumerating package data, so path knowledge is not a meaningful gate. The mitigation is therefore at the *read* side: WT's settings-load / agent-launch path must meta-confirm policy-relevant changes before honoring them, rather than relying on the file being write-protected.
 
+The untrusted COM `SendEvent` surface does not expose an allowed-directory
+settings-write route. Global allowed-directory mutations are user-initiated
+through the Settings UI; active WTA helpers only consume the resulting
+settings-change notification.
+
 ### 5.3 Agent hook bridge path
 
 Install path:

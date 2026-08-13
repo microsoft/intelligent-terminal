@@ -45,6 +45,14 @@ fn last_notice(app: &App) -> (NoticeKind, &str) {
     }
 }
 
+fn resolve_add_dir_ghost(app: &mut App, generation: u64, input: &str, cwd: Option<&str>) {
+    app.handle_event(AppEvent::AddDirGhostCwdResolved {
+        generation,
+        input: input.to_string(),
+        cwd: cwd.map(str::to_string),
+    });
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -164,25 +172,12 @@ fn global_flag_is_not_supported_by_session_directory_commands() {
 }
 
 #[test]
-fn global_directory_result_replaces_authoritative_configured_roots() {
-    let (mut app, store_path) = app_with_path_grants("global-result");
+fn settings_directory_update_replaces_authoritative_configured_roots() {
+    let (mut app, store_path) = app_with_path_grants("settings-update");
     app.owner_tab_id = Some("tab-1".to_string());
-    let (responder, response) = tokio::sync::oneshot::channel();
-    app.pending_global_permissions.insert(
-        "permission-1".to_string(),
-        PendingGlobalPermission {
-            responder: Some(responder),
-            allow_once_id: "agent-allow-once".to_string(),
-        },
-    );
 
     app.handle_allowed_directories_changed(&serde_json::json!({
         "tab_id": "tab-1",
-        "request_id": "permission-1",
-        "operation": "add",
-        "path": r"D:\shared",
-        "success": true,
-        "changed": true,
         "directories": [r"C:\global", r"D:\shared"],
     }));
 
@@ -193,11 +188,6 @@ fn global_directory_result_replaces_authoritative_configured_roots() {
             std::path::PathBuf::from(r"D:\shared"),
         ]
     );
-    let (kind, message) = last_notice(&app);
-    assert_eq!(kind, NoticeKind::Success);
-    assert!(message.contains(r"D:\shared"));
-    assert_eq!(response.blocking_recv().unwrap(), "agent-allow-once");
-    assert!(app.pending_global_permissions.is_empty());
     assert!(!store_path.exists());
 }
 
@@ -903,11 +893,10 @@ fn agent_ghost_requires_cursor_at_end() {
 }
 
 #[test]
-fn add_dir_ghost_uses_source_cwd_until_user_types_a_path() {
+fn add_dir_ghost_uses_resolved_active_cwd_until_user_types_a_path() {
     let mut app = test_app();
-    app.source_cwd = Some(r"C:\work tree".into());
-
     type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"C:\work tree"));
     assert_eq!(app.command_ghost_suffix(), Some(r"C:\work tree"));
 
     app.current_tab_mut().insert_input_char('D');
@@ -924,10 +913,10 @@ fn add_dir_global_flag_does_not_offer_ghost_completion() {
 }
 
 #[test]
-fn add_dir_enter_accepts_source_cwd_ghost() {
+fn add_dir_enter_accepts_resolved_active_cwd_ghost() {
     let (mut app, store_path) = app_with_path_grants("cwd-ghost");
-    app.source_cwd = Some(r"D:\active pane".into());
     type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
 
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Enter,
@@ -943,10 +932,54 @@ fn add_dir_enter_accepts_source_cwd_ghost() {
 }
 
 #[test]
+fn add_dir_enter_waits_for_current_lookup_instead_of_using_source_cwd() {
+    let (mut app, store_path) = app_with_path_grants("cwd-pending");
+    app.source_cwd = Some(r"C:\stale source".into());
+    type_input(&mut app, "/add-dir ");
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert!(app.path_grants.session_directories("session-1").is_empty());
+    assert_eq!(app.current_tab().input, "/add-dir ");
+
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\current pane"));
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\current pane")]
+    );
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn add_dir_ghost_requires_matching_generation_and_input() {
+    let mut app = test_app();
+    type_input(&mut app, "/add-dir ");
+    app.add_dir_ghost_generation = 2;
+
+    resolve_add_dir_ghost(&mut app, 1, "/add-dir ", Some(r"C:\old generation"));
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    resolve_add_dir_ghost(&mut app, 2, "/ADD-DIR ", Some(r"C:\other input"));
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    resolve_add_dir_ghost(&mut app, 2, "/add-dir ", Some(r"D:\current"));
+    assert_eq!(app.command_ghost_suffix(), Some(r"D:\current"));
+}
+
+#[test]
 fn tab_accepts_add_dir_ghost_without_dispatching() {
     let mut app = test_app();
-    app.source_cwd = Some(r"D:\active pane".into());
     type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
 
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Tab,
@@ -960,8 +993,8 @@ fn tab_accepts_add_dir_ghost_without_dispatching() {
 #[test]
 fn right_click_accepts_add_dir_ghost_without_dispatching() {
     let mut app = test_app();
-    app.source_cwd = Some(r"D:\active pane".into());
     type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
 
     app.handle_event(AppEvent::Mouse(crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(
