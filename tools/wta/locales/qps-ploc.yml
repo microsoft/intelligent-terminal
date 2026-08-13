@@ -238,7 +238,7 @@ path_grants.list_header: "[Åĺĺöŵéď ďïŕéçţöŕïéś!!!!]"
 path_grants.global_header: "[Ğĺöƀåĺ:!!!!]"
 path_grants.session_header: "[Ŝéśśïöñ:!!!!]"
 path_grants.none: "[  (ñöñé)!!!!]"
-path_grants.not_advertised: "[Ŝţöŕéď ĺöçåĺĺÿ; ţĥé åçţïṽé Åğéñţ ďïď ñöţ åďṽéŕţïśé ACP additionalDirectories śûṗṗöŕţ.!!!!]"
+path_grants.not_advertised: "[Ţĥïś Agent çåñ'ţ ŕéçéïṽé åďďïţïöñåĺ ďïŕéçţöŕïéś ţĥŕöûğĥ ACP. Intelligent Terminal śţïĺĺ ûśéś ţĥéśé ṗåţĥś ƒöŕ ṗéŕḿïśśïöñ çĥéçķś.!!!!]"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "[Ûṗďåţïñğ ğĺöƀåĺ ďïŕéçţöŕÿ ğŕåñţś...!!!!]"
 path_grants.global_host_only: "[Ğĺöƀåĺ ďïŕéçţöŕÿ ğŕåñţś çûŕŕéñţĺÿ śûṗṗöŕţ Windows-ĥöśţéď åğéñţś öñĺÿ.!!!! !!!!]"
 path_grants.absolute_required: "[Éñţéŕ åñ åƀśöĺûţé ďïŕéçţöŕÿ ṗåţĥ.!!!!]"

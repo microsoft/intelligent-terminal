@@ -237,7 +237,7 @@ path_grants.list_header: "ໄດເລກະທໍລີທີ່ອະນຸຍ
 path_grants.global_header: "ຂອບເຂດທົ່ວໂລກ:"
 path_grants.session_header: "ຂອບເຂດຂອງເຊດຊັນ:"
 path_grants.none: "  (ບໍ່ມີລາຍຊື່)"
-path_grants.not_advertised: "ເກັບຮັກສາຢູ່ໃນທ້ອງຖິ່ນ; ຕົວແທນ AI ທີ່ໃຊ້ວຽກບໍ່ໄດ້ໂຄສະນາ ACP additionalDirectories support."
+path_grants.not_advertised: "Agent ນີ້ບໍ່ສາມາດຮັບໄດເຣັກທໍຣີເພີ່ມເຕີມຜ່ານ ACP ໄດ້. Intelligent Terminal ຍັງຄົງໃຊ້ເສັ້ນທາງເຫຼົ່ານີ້ເພື່ອກວດສອບສິດ."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ກຳລັງອັບເດດສິດໄດເຣັກທໍຣີທົ່ວໄປ..."
 path_grants.global_host_only: "ປັດຈຸບັນ ສິດໄດເຣັກທໍຣີທົ່ວໄປຮອງຮັບສະເພາະເອເຈັນທີ່ໂຮສຢູ່ໃນ Windows ເທົ່ານັ້ນ."
 path_grants.absolute_required: "ປ້ອນເສັ້ນທາງໄດເຣັກທໍຣີແບບສົມບູນ."

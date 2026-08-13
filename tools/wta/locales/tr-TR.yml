@@ -237,7 +237,7 @@ path_grants.list_header: "İzin verilen dizinler"
 path_grants.global_header: "Küresel kapsam:"
 path_grants.session_header: "Oturum kapsamı:"
 path_grants.none: "  (dizin yok)"
-path_grants.not_advertised: "Yerel olarak depolanır; etkin AI Aracısı ACP additionalDirectories desteğinin reklamını yapmadı."
+path_grants.not_advertised: "Bu Agent, ACP üzerinden ek dizinler alamaz. Intelligent Terminal izin denetimleri için bu yolları kullanmaya devam eder."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Genel dizin izinleri güncelleştiriliyor..."
 path_grants.global_host_only: "Genel dizin izinleri şu anda yalnızca Windows üzerinde barındırılan aracıları destekliyor."
 path_grants.absolute_required: "Mutlak bir dizin yolu girin."

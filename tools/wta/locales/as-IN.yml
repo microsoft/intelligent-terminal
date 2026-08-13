@@ -240,7 +240,7 @@ path_grants.list_header: "অনুমোদিত ডাইৰেকটৰি�
 path_grants.global_header: "গ্লোবেল স্কোপ:"
 path_grants.session_header: "অধিবেশনৰ পৰিসৰ:"
 path_grants.none: "  (কোনো ডাইৰেকটৰি নাই)"
-path_grants.not_advertised: "স্থানীয়ভাৱে সংৰক্ষণ কৰা হৈছে; সক্ৰিয় AI এজেণ্টে ACP additionalDirectories সমৰ্থনৰ বিজ্ঞাপন দিয়া নাছিল।"
+path_grants.not_advertised: "এই Agent-এ ACP-ৰ জৰিয়তে অতিৰিক্ত ডাইৰেক্টৰি গ্ৰহণ কৰিব নোৱাৰে। Intelligent Terminal-এ এতিয়াও অনুমতি পৰীক্ষাৰ বাবে এই পথসমূহ ব্যৱহাৰ কৰে।"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহ আপডেইট কৰা হৈছে..."
 path_grants.global_host_only: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহে বৰ্তমান কেৱল Windows-ত হ'ষ্ট কৰা এজেণ্টসমূহ সমৰ্থন কৰে।"
 path_grants.absolute_required: "এটা নিৰপেক্ষ ডাইৰেকটৰি পথ দিয়ক।"

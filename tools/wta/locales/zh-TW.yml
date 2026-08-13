@@ -232,7 +232,7 @@ path_grants.list_header: "允許的目錄"
 path_grants.global_header: "全球範圍:"
 path_grants.session_header: "會話範圍:"
 path_grants.none: "  (沒有目錄)"
-path_grants.not_advertised: "儲存在本地；活動 AI 代理未宣傳 ACP additionalDirectories 支援。"
+path_grants.not_advertised: "此 Agent 無法透過 ACP 接收其他目錄。Intelligent Terminal 仍會使用這些路徑進行權限檢查。"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "正在更新全域目錄授權..."
 path_grants.global_host_only: "全域目錄授權目前僅支援裝載於 Windows 的代理程式。"
 path_grants.absolute_required: "請輸入絕對目錄路徑。"

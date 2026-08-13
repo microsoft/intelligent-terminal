@@ -237,7 +237,7 @@ path_grants.list_header: "Рұқсат етілген каталогтар"
 path_grants.global_header: "Ғаламдық ауқым:"
 path_grants.session_header: "Сеанс ауқымы:"
 path_grants.none: "  (каталогтар жоқ)"
-path_grants.not_advertised: "Жергілікті жерде сақталады; белсенді AI агенті ACP additionalDirectories қолдауын жарнамаламады."
+path_grants.not_advertised: "Бұл Agent ACP арқылы қосымша каталогтарды қабылдай алмайды. Intelligent Terminal бұл жолдарды рұқсаттарды тексеру үшін әлі де пайдаланады."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Глобалдық каталог рұқсаттары жаңартылуда..."
 path_grants.global_host_only: "Глобалдық каталог рұқсаттары қазір тек Windows жүйесінде орналастырылған агенттерді қолдайды."
 path_grants.absolute_required: "Каталогтің абсолюттік жолын енгізіңіз."

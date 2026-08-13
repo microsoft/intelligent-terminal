@@ -236,7 +236,7 @@ path_grants.list_header: "Direttorji permessi"
 path_grants.global_header: "Ambitu globali:"
 path_grants.session_header: "Ambitu tas-sessjoni:"
 path_grants.none: "  (ebda direttorji)"
-path_grants.not_advertised: "Maħżuna lokalment; l-aġent AI attiv ma rreklamax l-appoġġ ACP additionalDirectories."
+path_grants.not_advertised: "Dan l-Agent ma jistax jirċievi direttorji addizzjonali permezz ta’ ACP. Intelligent Terminal xorta juża dawn il-mogħdijiet għall-verifiki tal-permessi."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Qed jiġu aġġornati l-għotjiet globali tad-direttorji..."
 path_grants.global_host_only: "Bħalissa, l-għotjiet globali tad-direttorji jappoġġjaw biss aġenti ospitati fuq Windows."
 path_grants.absolute_required: "Daħħal mogħdija assoluta tad-direttorju."

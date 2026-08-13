@@ -237,7 +237,7 @@ path_grants.list_header: "Répertoires autorisés"
 path_grants.global_header: "Portée mondiale:"
 path_grants.session_header: "Portée de la session:"
 path_grants.none: "  (pas de répertoires)"
-path_grants.not_advertised: "Stocké localement ; l'agent AI actif n'a pas annoncé la prise en charge de ACP additionalDirectories."
+path_grants.not_advertised: "Cet Agent ne peut pas recevoir de répertoires supplémentaires via ACP. Intelligent Terminal utilise toujours ces chemins pour vérifier les autorisations."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Mise à jour des autorisations globales de répertoires..."
 path_grants.global_host_only: "Les autorisations globales de répertoires prennent actuellement en charge uniquement les agents hébergés sur Windows."
 path_grants.absolute_required: "Entrez un chemin d’accès absolu au répertoire."

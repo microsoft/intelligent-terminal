@@ -239,7 +239,7 @@ path_grants.list_header: "Directoris permesos"
 path_grants.global_header: "Àmbit global:"
 path_grants.session_header: "Àmbit de la sessió:"
 path_grants.none: "  (sense directoris)"
-path_grants.not_advertised: "Emmagatzemat localment; l'agent AI actiu no va anunciar el suport ACP additionalDirectories."
+path_grants.not_advertised: "Este Agent no pot rebre directoris addicionals mitjançant ACP. Intelligent Terminal continua utilitzant estes rutes per a comprovar els permisos."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "S'estan actualitzant les concessions de directoris globals..."
 path_grants.global_host_only: "Actualment, les concessions de directoris globals només admeten agents allotjats al Windows."
 path_grants.absolute_required: "Introduïu un camí de directori absolut."

@@ -237,7 +237,7 @@ path_grants.list_header: "Ruxsat berilgan kataloglar"
 path_grants.global_header: "Global qamrov:"
 path_grants.session_header: "Sessiya doirasi:"
 path_grants.none: "  (kataloglar yo'q)"
-path_grants.not_advertised: "Mahalliy darajada saqlanadi; faol AI agenti ACP additionalDirectories qo'llab-quvvatlashini reklama qilmadi."
+path_grants.not_advertised: "Bu Agent ACP orqali qo‘shimcha kataloglarni qabul qila olmaydi. Intelligent Terminal ruxsatlarni tekshirish uchun bu yo‘llardan foydalanishda davom etadi."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Global katalog ruxsatlari yangilanmoqda..."
 path_grants.global_host_only: "Global katalog ruxsatlari hozirda faqat Windows tizimida joylashtirilgan agentlarni qoʻllab-quvvatlaydi."
 path_grants.absolute_required: "Mutlaq katalog yoʻlini kiriting."

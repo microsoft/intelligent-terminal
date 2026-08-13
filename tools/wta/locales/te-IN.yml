@@ -238,7 +238,7 @@ path_grants.list_header: "అనుమతించబడిన డైరెక�
 path_grants.global_header: "ప్రపంచ పరిధి:"
 path_grants.session_header: "సెషన్ పరిధి:"
 path_grants.none: "  (డైరెక్టరీలు లేవు)"
-path_grants.not_advertised: "స్థానికంగా నిల్వ చేయబడుతుంది; క్రియాశీల AI ఏజెంట్ ACP additionalDirectories మద్దతుని ప్రకటించలేదు."
+path_grants.not_advertised: "ఈ Agent ACP ద్వారా అదనపు డైరెక్టరీలను స్వీకరించలేరు. Intelligent Terminal అనుమతి తనిఖీల కోసం ఇప్పటికీ ఈ పాత్‌లను ఉపయోగిస్తుంది."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "గ్లోబల్ డైరెక్టరీ అనుమతులను నవీకరిస్తోంది..."
 path_grants.global_host_only: "గ్లోబల్ డైరెక్టరీ అనుమతులు ప్రస్తుతం Windowsలో హోస్ట్ చేసిన ఏజెంట్లకు మాత్రమే మద్దతు ఇస్తాయి."
 path_grants.absolute_required: "సంపూర్ణ డైరెక్టరీ పాత్‌ను నమోదు చేయండి."

@@ -237,7 +237,7 @@ path_grants.list_header: "Sallitut hakemistot"
 path_grants.global_header: "Globaali ulottuvuus:"
 path_grants.session_header: "Istunnon laajuus:"
 path_grants.none: "  (ei hakemistoja)"
-path_grants.not_advertised: "Säilytetty paikallisesti; aktiivinen AI-agentti ei mainostanut ACP additionalDirectories tukea."
+path_grants.not_advertised: "Tämä Agent ei voi vastaanottaa lisähakemistoja ACP:n kautta. Intelligent Terminal käyttää näitä polkuja edelleen käyttöoikeuksien tarkistamiseen."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Päivitetään yleisiä hakemisto-oikeuksia..."
 path_grants.global_host_only: "Yleiset hakemisto-oikeudet tukevat tällä hetkellä vain Windowsissa isännöityjä agentteja."
 path_grants.absolute_required: "Anna absoluuttinen hakemistopolku."

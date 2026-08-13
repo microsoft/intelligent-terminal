@@ -238,7 +238,7 @@ path_grants.list_header: "Επιτρεπόμενοι κατάλογοι"
 path_grants.global_header: "Παγκόσμια εμβέλεια:"
 path_grants.session_header: "Πεδίο συνεδρίας:"
 path_grants.none: "  (δεν υπάρχουν κατάλογοι)"
-path_grants.not_advertised: "Αποθηκεύεται τοπικά. ο ενεργός πράκτορας AI δεν διαφήμιζε ACP additionalDirectories υποστήριξη."
+path_grants.not_advertised: "Αυτό το Agent δεν μπορεί να λάβει πρόσθετους καταλόγους μέσω ACP. Το Intelligent Terminal εξακολουθεί να χρησιμοποιεί αυτές τις διαδρομές για ελέγχους δικαιωμάτων."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Ενημέρωση καθολικών εκχωρήσεων καταλόγων..."
 path_grants.global_host_only: "Οι καθολικές εκχωρήσεις καταλόγων υποστηρίζουν προς το παρόν μόνο παράγοντες που φιλοξενούνται στα Windows."
 path_grants.absolute_required: "Εισαγάγετε μια απόλυτη διαδρομή καταλόγου."

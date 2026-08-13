@@ -237,7 +237,7 @@ path_grants.list_header: "Dovoljeni imeniki"
 path_grants.global_header: "Globalni obseg:"
 path_grants.session_header: "Obseg seje:"
 path_grants.none: "  (brez imenikov)"
-path_grants.not_advertised: "Shranjeno lokalno; aktivni agent AI ni oglaševal ACP additionalDirectories podpore."
+path_grants.not_advertised: "Ta Agent ne more prejemati dodatnih imenikov prek ACP. Intelligent Terminal te poti še vedno uporablja za preverjanje dovoljenj."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Posodabljanje globalnih dovoljenj za imenike..."
 path_grants.global_host_only: "Globalna dovoljenja za imenike trenutno podpirajo samo posrednike, gostovane v sistemu Windows."
 path_grants.absolute_required: "Vnesite absolutno pot imenika."

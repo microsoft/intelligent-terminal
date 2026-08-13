@@ -237,7 +237,7 @@ path_grants.list_header: "ספריות מותרות"
 path_grants.global_header: "היקף גלובלי:"
 path_grants.session_header: "היקף הפגישה:"
 path_grants.none: "  (אין ספריות)"
-path_grants.not_advertised: "מאוחסן באופן מקומי; סוכן הבינה המלאכותית הפעיל לא פרסם ACP additionalDirectories support."
+path_grants.not_advertised: "ל-Agent הזה אין אפשרות לקבל ספריות נוספות דרך ACP. Intelligent Terminal עדיין משתמש בנתיבים האלה לבדיקות הרשאה."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "מעדכן הרשאות כלליות לספריות..."
 path_grants.global_host_only: "הרשאות כלליות לספריות תומכות כעת רק בסוכנים שמתארחים ב-Windows."
 path_grants.absolute_required: "הזן נתיב מוחלט לספריה."

@@ -236,7 +236,7 @@ path_grants.list_header: "Engedélyezett könyvtárak"
 path_grants.global_header: "Globális hatókör:"
 path_grants.session_header: "A munkamenet hatóköre:"
 path_grants.none: "  (nincs könyvtár)"
-path_grants.not_advertised: "Helyben tárolva; az aktív AI-ügynök nem hirdette a ACP additionalDirectories támogatást."
+path_grants.not_advertised: "Ez az Agent nem tud további könyvtárakat fogadni az ACP-n keresztül. Az Intelligent Terminal továbbra is használja ezeket az elérési utakat az engedélyek ellenőrzéséhez."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Globális könyvtárengedélyek frissítése..."
 path_grants.global_host_only: "A globális könyvtárengedélyek jelenleg csak a Windows rendszeren üzemeltetett ügynököket támogatják."
 path_grants.absolute_required: "Adjon meg egy abszolút könyvtárelérési utat."

@@ -109,7 +109,7 @@ path_grants.list_header: "Allowed directories"
 path_grants.global_header: "Global:"
 path_grants.session_header: "Session:"
 path_grants.none: "  (none)"
-path_grants.not_advertised: "Stored locally; the active Agent did not advertise ACP additionalDirectories support."
+path_grants.not_advertised: "This Agent can't receive additional directories through ACP. Intelligent Terminal still uses these paths for permission checks."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Updating global directory grants..."
 path_grants.global_host_only: "Global directory grants currently support Windows-hosted agents only."
 path_grants.absolute_required: "Enter an absolute directory path."

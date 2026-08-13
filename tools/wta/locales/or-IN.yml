@@ -238,7 +238,7 @@ path_grants.list_header: "ଅନୁମତିପ୍ରାପ୍ତ ଡିରେ�
 path_grants.global_header: "ବିଶ୍ୱସ୍ତରୀୟ ପରିସର |:"
 path_grants.session_header: "ଅଧିବେଶନ ପରିସର |:"
 path_grants.none: "  (କ directory ଣସି ଡିରେକ୍ଟୋରୀ ନାହିଁ |)"
-path_grants.not_advertised: "ସ୍ଥାନୀୟ ଭାବରେ ଗଚ୍ଛିତ; ସକ୍ରିୟ AI ଏଜେଣ୍ଟ ACP additionalDirectories ସମର୍ଥନକୁ ବିଜ୍ଞାପନ କରିନଥିଲେ |"
+path_grants.not_advertised: "ଏହି Agent ACP ମାଧ୍ୟମରେ ଅତିରିକ୍ତ ଡିରେକ୍ଟୋରୀ ଗ୍ରହଣ କରିପାରିବ ନାହିଁ। Intelligent Terminal ଅନୁମତି ଯାଞ୍ଚ ପାଇଁ ଏବେ ମଧ୍ୟ ଏହି ପଥଗୁଡ଼ିକୁ ବ୍ୟବହାର କରେ।"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ଗ୍ଲୋବାଲ୍ ଡିରେକ୍ଟୋରୀ ଅନୁମତିଗୁଡ଼ିକ ଅଦ୍ୟତନ କରାଯାଉଛି..."
 path_grants.global_host_only: "ଗ୍ଲୋବାଲ୍ ଡିରେକ୍ଟୋରୀ ଅନୁମତିଗୁଡ଼ିକ ବର୍ତ୍ତମାନ କେବଳ Windows ରେ ହୋଷ୍ଟ ହୋଇଥିବା ଏଜେଣ୍ଟଗୁଡ଼ିକୁ ସମର୍ଥନ କରେ।"
 path_grants.absolute_required: "ଏକ ସମ୍ପୂର୍ଣ୍ଣ ଡିରେକ୍ଟୋରୀ ପଥ ପ୍ରବେଶ କରନ୍ତୁ।"

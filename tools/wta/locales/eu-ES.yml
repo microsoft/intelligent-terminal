@@ -237,7 +237,7 @@ path_grants.list_header: "Baimendutako direktorioak"
 path_grants.global_header: "Esparru globala:"
 path_grants.session_header: "Saioaren esparrua:"
 path_grants.none: "  (direktoriorik ez)"
-path_grants.not_advertised: "Tokian gordeta; AI Agent aktiboak ez zuen ACP additionalDirectories laguntza iragartzen."
+path_grants.not_advertised: "Agent honek ezin ditu direktorio gehigarriak ACP bidez jaso. Intelligent Terminal aplikazioak bide hauek erabiltzen jarraitzen du baimenak egiaztatzeko."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Direktorio-emate globalak eguneratzen..."
 path_grants.global_host_only: "Direktorio-emate globalek Windows-en ostatatutako agenteak soilik onartzen dituzte une honetan."
 path_grants.absolute_required: "Idatzi direktorio-bide absolutu bat."

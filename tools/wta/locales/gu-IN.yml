@@ -238,7 +238,7 @@ path_grants.list_header: "મંજૂર ડિરેક્ટરીઓ"
 path_grants.global_header: "વૈશ્વિક અવકાશ:"
 path_grants.session_header: "સત્રનો અવકાશ:"
 path_grants.none: "  (કોઈ ડિરેક્ટરીઓ નથી)"
-path_grants.not_advertised: "સ્થાનિક રીતે સંગ્રહિત; સક્રિય AI એજન્ટે ACP additionalDirectories સમર્થનની જાહેરાત કરી નથી."
+path_grants.not_advertised: "આ Agent ACP મારફતે વધારાની ડિરેક્ટરીઓ મેળવી શકતું નથી. Intelligent Terminal હજી પણ પરવાનગીની ચકાસણી માટે આ પાથનો ઉપયોગ કરે છે."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "વૈશ્વિક ડિરેક્ટરી અનુમતિઓ અપડેટ કરી રહ્યાં છીએ..."
 path_grants.global_host_only: "વૈશ્વિક ડિરેક્ટરી અનુમતિઓ હાલમાં માત્ર Windows પર હોસ્ટ કરેલા એજન્ટને સમર્થન આપે છે."
 path_grants.absolute_required: "સંપૂર્ણ ડિરેક્ટરી પાથ દાખલ કરો."

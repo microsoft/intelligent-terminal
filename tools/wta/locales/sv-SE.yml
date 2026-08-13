@@ -237,7 +237,7 @@ path_grants.list_header: "Tillåtna kataloger"
 path_grants.global_header: "Globalt omfång:"
 path_grants.session_header: "Sessionens omfattning:"
 path_grants.none: "  (inga kataloger)"
-path_grants.not_advertised: "Förvaras lokalt; den aktiva AI-agenten annonserade inte ACP additionalDirectories support."
+path_grants.not_advertised: "Denna Agent kan inte ta emot ytterligare kataloger via ACP. Intelligent Terminal använder fortfarande dessa sökvägar för behörighetskontroller."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Uppdaterar globala katalogbehörigheter..."
 path_grants.global_host_only: "Globala katalogbehörigheter stöder för närvarande endast agenter som körs på Windows."
 path_grants.absolute_required: "Ange en absolut katalogsökväg."

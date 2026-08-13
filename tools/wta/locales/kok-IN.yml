@@ -238,7 +238,7 @@ path_grants.list_header: "परवानगी दिल्ले निर्�
 path_grants.global_header: "जागतीक व्याप्ती:"
 path_grants.session_header: "सत्राची व्याप्ती:"
 path_grants.none: "  (निर्देशिका नात)"
-path_grants.not_advertised: "थळाव्या स्वरुपांत सांठोवन दवरतात; सक्रिय AI एजंटान ACP additionalDirectories समर्थनाची जायरात करूंक ना."
+path_grants.not_advertised: "ह्या Agent कडेन ACP वरवीं चड निर्देशिका मेळोवपाक शक्य ना. Intelligent Terminal परवानगी तपासपा खातीर अजूनय हे मार्ग वापरता."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "जागतिक निर्देशिका परवानगीं अपडेट करतात..."
 path_grants.global_host_only: "जागतिक निर्देशिका परवानगीं सद्या फकत Windows चेर होस्ट केल्ल्या एजंटांक आदार दितात."
 path_grants.absolute_required: "एक पूर्ण निर्देशिका मार्ग घालात."

@@ -238,7 +238,7 @@ path_grants.list_header: "Toegelate dopgehou"
 path_grants.global_header: "Globale omvang:"
 path_grants.session_header: "Sessie omvang:"
 path_grants.none: "  (geen gidse nie)"
-path_grants.not_advertised: "Plaaslik gestoor; die aktiewe KI-agent het nie ACP additionalDirectories ondersteuning geadverteer nie."
+path_grants.not_advertised: "Hierdie Agent kan nie bykomende gidse deur ACP ontvang nie. Intelligent Terminal gebruik steeds hierdie paaie vir toestemmingskontroles."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Dateer tans globale gidstoekennings op..."
 path_grants.global_host_only: "Globale gidstoekennings ondersteun tans slegs agente wat op Windows gehuisves word."
 path_grants.absolute_required: "Voer 'n absolute gidspad in."

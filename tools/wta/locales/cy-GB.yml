@@ -238,7 +238,7 @@ path_grants.list_header: "Cyfeiriaduron a ganiateir"
 path_grants.global_header: "Cwmpas byd-eang:"
 path_grants.session_header: "Cwmpas y sesiwn:"
 path_grants.none: "  (dim cyfeiriaduron)"
-path_grants.not_advertised: "Wedi'i storio'n lleol; ni hysbysebodd yr Asiant AI gweithredol gefnogaeth ACP additionalDirectories."
+path_grants.not_advertised: "Ni all yr Agent hwn dderbyn cyfeiriaduron ychwanegol drwy ACP. Mae Intelligent Terminal yn dal i ddefnyddio'r llwybrau hyn ar gyfer gwiriadau caniatâd."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Wrthi'n diweddaru grantiau cyfeiriadur byd-eang..."
 path_grants.global_host_only: "Ar hyn o bryd, dim ond asiantau sy'n cael eu lletya ar Windows y mae grantiau cyfeiriadur byd-eang yn eu cefnogi."
 path_grants.absolute_required: "Rhowch lwybr cyfeiriadur absoliwt."

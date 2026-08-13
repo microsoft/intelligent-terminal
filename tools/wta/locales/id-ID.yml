@@ -237,7 +237,7 @@ path_grants.list_header: "Direktori yang diizinkan"
 path_grants.global_header: "Ruang lingkup global:"
 path_grants.session_header: "Ruang lingkup sesi:"
 path_grants.none: "  (tidak ada direktori)"
-path_grants.not_advertised: "Disimpan secara lokal; Agen AI yang aktif tidak mengiklankan ACP additionalDirectories support."
+path_grants.not_advertised: "Agent ini tidak dapat menerima direktori tambahan melalui ACP. Intelligent Terminal tetap menggunakan jalur ini untuk pemeriksaan izin."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Memperbarui pemberian direktori global..."
 path_grants.global_host_only: "Pemberian direktori global saat ini hanya mendukung agen yang dihosting di Windows."
 path_grants.absolute_required: "Masukkan jalur direktori absolut."

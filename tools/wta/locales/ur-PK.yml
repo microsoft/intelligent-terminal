@@ -238,7 +238,7 @@ path_grants.list_header: "اجازت یافتہ ڈائریکٹریز"
 path_grants.global_header: "عالمی دائرہ کار:"
 path_grants.session_header: "سیشن کا دائرہ کار:"
 path_grants.none: "  (کوئی ڈائریکٹریز نہیں)"
-path_grants.not_advertised: "مقامی طور پر ذخیرہ شدہ؛ فعال AI ایجنٹ نے ACP additionalDirectories سپورٹ کی تشہیر نہیں کی۔"
+path_grants.not_advertised: "یہ Agent، ACP کے ذریعے اضافی ڈائریکٹریاں وصول نہیں کر سکتا۔ Intelligent Terminal اب بھی اجازتوں کی جانچ کے لیے ان پاتھز کو استعمال کرتا ہے۔"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "عالمی ڈائریکٹری اجازتیں اپ ڈیٹ کی جا رہی ہیں..."
 path_grants.global_host_only: "عالمی ڈائریکٹری اجازتیں فی الحال صرف Windows پر ہوسٹ کیے گئے ایجنٹس کو سپورٹ کرتی ہیں۔"
 path_grants.absolute_required: "ایک مطلق ڈائریکٹری پاتھ درج کریں۔"

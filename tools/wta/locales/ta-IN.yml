@@ -238,7 +238,7 @@ path_grants.list_header: "அனுமதிக்கப்பட்ட கோ�
 path_grants.global_header: "உலகளாவிய நோக்கம்:"
 path_grants.session_header: "அமர்வு நோக்கம்:"
 path_grants.none: "  (கோப்பகங்கள் இல்லை)"
-path_grants.not_advertised: "உள்நாட்டில் சேமிக்கப்படுகிறது; செயலில் உள்ள AI முகவர் ACP additionalDirectories ஆதரவை விளம்பரப்படுத்தவில்லை."
+path_grants.not_advertised: "இந்த Agent-ஆல் ACP மூலம் கூடுதல் கோப்பகங்களைப் பெற முடியாது. Intelligent Terminal அனுமதிச் சரிபார்ப்புகளுக்கு இந்தப் பாதைகளைத் தொடர்ந்து பயன்படுத்துகிறது."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "உலகளாவிய அடைவு அனுமதிகளைப் புதுப்பிக்கிறது..."
 path_grants.global_host_only: "உலகளாவிய அடைவு அனுமதிகள் தற்போது Windows-இல் ஹோஸ்ட் செய்யப்பட்ட முகவர்களை மட்டுமே ஆதரிக்கின்றன."
 path_grants.absolute_required: "ஒரு முழுமையான அடைவுப் பாதையை உள்ளிடவும்."

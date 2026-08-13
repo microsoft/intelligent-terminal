@@ -237,7 +237,7 @@ path_grants.list_header: "Dopušteni direktoriji"
 path_grants.global_header: "Globalni opseg:"
 path_grants.session_header: "Opseg sesije:"
 path_grants.none: "  (nema imenika)"
-path_grants.not_advertised: "Pohranjeno lokalno; aktivni AI agent nije oglašavao ACP additionalDirectories podršku."
+path_grants.not_advertised: "Ovaj Agent ne može primati dodatne direktorije putem ACP-a. Intelligent Terminal i dalje koristi ove putove za provjere dozvola."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Ažuriranje globalnih dodjela direktorija..."
 path_grants.global_host_only: "Globalne dodjele direktorija trenutačno podržavaju samo agente smještene u sustavu Windows."
 path_grants.absolute_required: "Unesite apsolutni put direktorija."

@@ -239,7 +239,7 @@ path_grants.list_header: "İcazə verilən qovluqlar"
 path_grants.global_header: "Qlobal əhatə dairəsi:"
 path_grants.session_header: "Sessiyanın əhatə dairəsi:"
 path_grants.none: "  (kataloqlar yoxdur)"
-path_grants.not_advertised: "Yerli olaraq saxlanılır; aktiv AI Agent ACP additionalDirectories dəstəyini reklam etmədi."
+path_grants.not_advertised: "Bu Agent ACP vasitəsilə əlavə kataloqlar qəbul edə bilmir. Intelligent Terminal icazə yoxlamaları üçün hələ də bu yollardan istifadə edir."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Qlobal kataloq qrantları yenilənir..."
 path_grants.global_host_only: "Qlobal kataloq qrantları hazırda yalnız Windows-da yerləşdirilən agentləri dəstəkləyir."
 path_grants.absolute_required: "Mütləq kataloq yolu daxil edin."

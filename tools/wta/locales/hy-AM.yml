@@ -253,7 +253,7 @@ path_grants.list_header: "Թույլատրված գրացուցակներ"
 path_grants.global_header: "Համաշխարհային շրջանակ:"
 path_grants.session_header: "Նիստի շրջանակը:"
 path_grants.none: "  (գրացուցակներ չկան)"
-path_grants.not_advertised: "Պահպանվում է տեղում; ակտիվ AI գործակալը չի ​​գովազդել ACP additionalDirectories աջակցությունը:"
+path_grants.not_advertised: "Այս Agent-ը չի կարող լրացուցիչ գրացուցակներ ստանալ ACP-ի միջոցով։ Intelligent Terminal-ը դեռ օգտագործում է այս ուղիները թույլտվությունները ստուգելու համար։"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Ընդհանուր գրացուցակների թույլտվությունները թարմացվում են..."
 path_grants.global_host_only: "Ընդհանուր գրացուցակների թույլտվություններն այժմ աջակցում են միայն Windows-ում տեղակայված գործակալներին։"
 path_grants.absolute_required: "Մուտքագրեք գրացուցակի բացարձակ ուղի։"

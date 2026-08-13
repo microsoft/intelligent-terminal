@@ -238,7 +238,7 @@ path_grants.list_header: "የተፈቀዱ ማውጫዎች"
 path_grants.global_header: "ዓለም አቀፍ ስፋት:"
 path_grants.session_header: "የክፍለ-ጊዜው ወሰን:"
 path_grants.none: "  (ማውጫዎች የሉም)"
-path_grants.not_advertised: "በአካባቢው የተከማቸ; ንቁው AI ወኪል ACP additionalDirectories ድጋፍ አላስተዋወቀም።"
+path_grants.not_advertised: "ይህ Agent በACP በኩል ተጨማሪ ማውጫዎችን መቀበል አይችልም። Intelligent Terminal አሁንም እነዚህን ዱካዎች ለፈቃድ ማረጋገጫዎች ይጠቀማል።"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "የዓለም አቀፍ ማውጫ ፈቃዶችን በማዘመን ላይ..."
 path_grants.global_host_only: "የዓለም አቀፍ ማውጫ ፈቃዶች በአሁኑ ጊዜ በWindows ላይ የሚስተናገዱ ወኪሎችን ብቻ ይደግፋሉ።"
 path_grants.absolute_required: "ፍጹም የማውጫ ዱካ ያስገቡ።"

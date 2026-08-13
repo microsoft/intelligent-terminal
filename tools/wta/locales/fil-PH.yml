@@ -237,7 +237,7 @@ path_grants.list_header: "Pinapayagan ang mga direktoryo"
 path_grants.global_header: "Pandaigdigang saklaw:"
 path_grants.session_header: "Saklaw ng session:"
 path_grants.none: "  (walang mga direktoryo)"
-path_grants.not_advertised: "Naka-imbak sa lokal; ang aktibong AI Agent ay hindi nag-advertise ng ACP additionalDirectories support."
+path_grants.not_advertised: "Hindi makakatanggap ang Agent na ito ng mga karagdagang direktoryo sa pamamagitan ng ACP. Ginagamit pa rin ng Intelligent Terminal ang mga path na ito para sa mga pagsusuri ng pahintulot."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Ina-update ang mga pandaigdigang pahintulot sa direktoryo..."
 path_grants.global_host_only: "Sa kasalukuyan, sinusuportahan lamang ng mga pandaigdigang pahintulot sa direktoryo ang mga agent na naka-host sa Windows."
 path_grants.absolute_required: "Maglagay ng absolute na path ng direktoryo."

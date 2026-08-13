@@ -237,7 +237,7 @@ path_grants.list_header: "Рөхсәт ителгән каталоглар"
 path_grants.global_header: "Глобаль масштаб:"
 path_grants.session_header: "Сессия күләме:"
 path_grants.none: "  (белешмәләр юк)"
-path_grants.not_advertised: "Locallyирле сакланган; актив AI агенты ACP additionalDirectories ярдәмен рекламаламады."
+path_grants.not_advertised: "Бу Agent ACP аша өстәмә каталогларны кабул итә алмый. Intelligent Terminal рөхсәт тикшерүләре өчен бу юлларны һаман да куллана."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Глобаль каталог рөхсәтләре яңартыла..."
 path_grants.global_host_only: "Глобаль каталог рөхсәтләре хәзерге вакытта Windows системасында урнаштырылган агентларны гына хуплый."
 path_grants.absolute_required: "Каталогның абсолют юлын кертегез."

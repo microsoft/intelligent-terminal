@@ -237,7 +237,7 @@ path_grants.list_header: "Lubatud kataloogid"
 path_grants.global_header: "Globaalne ulatus:"
 path_grants.session_header: "Seansi ulatus:"
 path_grants.none: "  (katalooge pole)"
-path_grants.not_advertised: "Säilitatakse kohapeal; aktiivne AI agent ei reklaaminud ACP additionalDirectories tuge."
+path_grants.not_advertised: "See Agent ei saa ACP kaudu täiendavaid katalooge vastu võtta. Intelligent Terminal kasutab neid teid endiselt õiguste kontrollimiseks."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Globaalsete kataloogilubade värskendamine..."
 path_grants.global_host_only: "Globaalsed kataloogiload toetavad praegu ainult Windowsis hostitud agente."
 path_grants.absolute_required: "Sisestage absoluutne kataloogitee."

@@ -238,7 +238,7 @@ path_grants.list_header: "ಅನುಮತಿಸಲಾದ ಡೈರೆಕ್ಟ�
 path_grants.global_header: "ಜಾಗತಿಕ ವ್ಯಾಪ್ತಿ:"
 path_grants.session_header: "ಅಧಿವೇಶನ ವ್ಯಾಪ್ತಿ:"
 path_grants.none: "  (ಯಾವುದೇ ಡೈರೆಕ್ಟರಿಗಳಿಲ್ಲ)"
-path_grants.not_advertised: "ಸ್ಥಳೀಯವಾಗಿ ಸಂಗ್ರಹಿಸಲಾಗಿದೆ; ಸಕ್ರಿಯ AI ಏಜೆಂಟ್ ACP additionalDirectories ಬೆಂಬಲವನ್ನು ಜಾಹೀರಾತು ಮಾಡಿಲ್ಲ."
+path_grants.not_advertised: "ಈ Agent ACP ಮೂಲಕ ಹೆಚ್ಚುವರಿ ಡೈರೆಕ್ಟರಿಗಳನ್ನು ಸ್ವೀಕರಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ. Intelligent Terminal ಅನುಮತಿ ಪರಿಶೀಲನೆಗಳಿಗಾಗಿ ಇನ್ನೂ ಈ ಪಥಗಳನ್ನು ಬಳಸುತ್ತದೆ."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳನ್ನು ನವೀಕರಿಸಲಾಗುತ್ತಿದೆ..."
 path_grants.global_host_only: "ಜಾಗತಿಕ ಡೈರೆಕ್ಟರಿ ಅನುಮತಿಗಳು ಪ್ರಸ್ತುತ Windows ನಲ್ಲಿ ಹೋಸ್ಟ್ ಮಾಡಲಾದ ಏಜೆಂಟ್‌ಗಳನ್ನು ಮಾತ್ರ ಬೆಂಬಲಿಸುತ್ತವೆ."
 path_grants.absolute_required: "ಸಂಪೂರ್ಣ ಡೈರೆಕ್ಟರಿ ಮಾರ್ಗವನ್ನು ನಮೂದಿಸಿ."

@@ -237,7 +237,7 @@ path_grants.list_header: "Povolené adresáre"
 path_grants.global_header: "Globálny rozsah:"
 path_grants.session_header: "Rozsah relácie:"
 path_grants.none: "  (žiadne adresáre)"
-path_grants.not_advertised: "Uložené lokálne; aktívny agent AI neinzeroval ACP additionalDirectories podporu."
+path_grants.not_advertised: "Tento Agent nemôže prijímať ďalšie adresáre prostredníctvom ACP. Intelligent Terminal tieto cesty naďalej používa na kontroly povolení."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Aktualizujú sa globálne povolenia adresárov..."
 path_grants.global_host_only: "Globálne povolenia adresárov momentálne podporujú iba agentov hosťovaných vo Windowse."
 path_grants.absolute_required: "Zadajte absolútnu cestu k adresáru."

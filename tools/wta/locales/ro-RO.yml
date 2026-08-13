@@ -236,7 +236,7 @@ path_grants.list_header: "Directoare permise"
 path_grants.global_header: "Sfera globală:"
 path_grants.session_header: "Domeniul sesiunii:"
 path_grants.none: "  (fara directoare)"
-path_grants.not_advertised: "Stocat local; agentul AI activ nu a făcut publicitate suport pentru ACP additionalDirectories."
+path_grants.not_advertised: "Acest Agent nu poate primi directoare suplimentare prin ACP. Intelligent Terminal utilizează în continuare aceste căi pentru verificarea permisiunilor."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Se actualizează permisiunile globale pentru directoare..."
 path_grants.global_host_only: "Permisiunile globale pentru directoare acceptă momentan doar agenți găzduiți în Windows."
 path_grants.absolute_required: "Introduceți o cale absolută de director."

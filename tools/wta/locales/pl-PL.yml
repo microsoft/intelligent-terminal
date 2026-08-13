@@ -237,7 +237,7 @@ path_grants.list_header: "Dozwolone katalogi"
 path_grants.global_header: "Globalny zasięg:"
 path_grants.session_header: "Zakres sesji:"
 path_grants.none: "  (żadnych katalogów)"
-path_grants.not_advertised: "Przechowywane lokalnie; aktywny agent AI nie ogłaszał wsparcia ACP additionalDirectories."
+path_grants.not_advertised: "Ten Agent nie może odbierać dodatkowych katalogów za pośrednictwem ACP. Intelligent Terminal nadal używa tych ścieżek do sprawdzania uprawnień."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Aktualizowanie globalnych przydziałów katalogów..."
 path_grants.global_host_only: "Globalne przydziały katalogów obsługują obecnie tylko agentów hostowanych w systemie Windows."
 path_grants.absolute_required: "Wprowadź bezwzględną ścieżkę katalogu."

@@ -239,7 +239,7 @@ path_grants.list_header: "Erlaubte Verzeichnisse"
 path_grants.global_header: "Globaler Geltungsbereich:"
 path_grants.session_header: "Sitzungsbereich:"
 path_grants.none: "  (keine Verzeichnisse)"
-path_grants.not_advertised: "Lokal gespeichert; Der aktive AI Agent hat keine ACP additionalDirectories-Unterstützung angekündigt."
+path_grants.not_advertised: "Dieser Agent kann über ACP keine zusätzlichen Verzeichnisse empfangen. Intelligent Terminal verwendet diese Pfade weiterhin für Berechtigungsprüfungen."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Globale Verzeichnisfreigaben werden aktualisiert..."
 path_grants.global_host_only: "Globale Verzeichnisfreigaben unterstützen derzeit nur unter Windows gehostete Agents."
 path_grants.absolute_required: "Geben Sie einen absoluten Verzeichnispfad ein."

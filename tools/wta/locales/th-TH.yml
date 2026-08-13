@@ -237,7 +237,7 @@ path_grants.list_header: "ไดเร็กทอรีที่ได้รั
 path_grants.global_header: "ขอบเขตทั่วโลก:"
 path_grants.session_header: "ขอบเขตเซสชัน:"
 path_grants.none: "  (ไม่มีไดเรกทอรี)"
-path_grants.not_advertised: "เก็บไว้ในเครื่อง; AI Agent ที่ใช้งานอยู่ไม่ได้โฆษณาการสนับสนุน ACP additionalDirectories"
+path_grants.not_advertised: "Agent นี้ไม่สามารถรับไดเรกทอรีเพิ่มเติมผ่าน ACP ได้ Intelligent Terminal ยังคงใช้พาธเหล่านี้เพื่อตรวจสอบสิทธิ์"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "กำลังอัปเดตสิทธิ์ไดเรกทอรีส่วนกลาง..."
 path_grants.global_host_only: "ขณะนี้สิทธิ์ไดเรกทอรีส่วนกลางรองรับเฉพาะเอเจนต์ที่โฮสต์บน Windows เท่านั้น"
 path_grants.absolute_required: "ป้อนเส้นทางไดเรกทอรีแบบเต็ม"

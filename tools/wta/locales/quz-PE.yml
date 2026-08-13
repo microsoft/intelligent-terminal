@@ -236,7 +236,7 @@ path_grants.list_header: "Saqisqa directoriokuna"
 path_grants.global_header: "Tukuy pachantinpi alcance:"
 path_grants.session_header: "Sesión nisqapa alcance nisqa:"
 path_grants.none: "  (mana directoriokunayuq)"
-path_grants.not_advertised: "Llaqtapi waqaychasqa; chay ruwaq AI Agente mana ACP additionalDirectories yanapakuyta willarqanchu."
+path_grants.not_advertised: "Kay Agent mana ACP kaqnintachu yapasqa qillqa-churana wasikunata chaskiyta atin. Intelligent Terminal kay ñankunata kamachiykunata qhawanapaqraq llamk'achin."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Tukuynin willañiqi qillqana qunakuykunata musuqchachkan..."
 path_grants.global_host_only: "Tukuynin willañiqi qillqana qunakuykuna kunanqa Windows-pi qurpachasqa agentekunallatam yanapan."
 path_grants.absolute_required: "Hunt'asqa willañiqi qillqana ñanta qillqay."

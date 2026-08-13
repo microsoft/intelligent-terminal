@@ -237,7 +237,7 @@ path_grants.list_header: "Leidžiami katalogai"
 path_grants.global_header: "Pasaulinė apimtis:"
 path_grants.session_header: "Sesijos apimtis:"
 path_grants.none: "  (jokių katalogų)"
-path_grants.not_advertised: "Saugomas vietoje; aktyvus AI agentas nereklamavo ACP additionalDirectories palaikymo."
+path_grants.not_advertised: "Šis Agent negali gauti papildomų katalogų per ACP. Intelligent Terminal vis tiek naudoja šiuos kelius teisėms tikrinti."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Atnaujinami visuotiniai katalogų leidimai..."
 path_grants.global_host_only: "Visuotiniai katalogų leidimai šiuo metu palaiko tik sistemoje „Windows“ nuomojamus agentus."
 path_grants.absolute_required: "Įveskite absoliutų katalogo kelią."

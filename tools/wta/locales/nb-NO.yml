@@ -237,7 +237,7 @@ path_grants.list_header: "Tillatte kataloger"
 path_grants.global_header: "Globalt omfang:"
 path_grants.session_header: "Sesjonsomfang:"
 path_grants.none: "  (ingen kataloger)"
-path_grants.not_advertised: "Lagret lokalt; den aktive AI-agenten annonserte ikke ACP additionalDirectories support."
+path_grants.not_advertised: "Denne Agent kan ikke motta flere kataloger via ACP. Intelligent Terminal bruker fortsatt disse banene til tillatelseskontroller."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Oppdaterer globale mappetillatelser..."
 path_grants.global_host_only: "Globale mappetillatelser støtter for øyeblikket bare agenter som driftes på Windows."
 path_grants.absolute_required: "Skriv inn en absolutt mappebane."

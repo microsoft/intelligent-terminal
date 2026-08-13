@@ -232,7 +232,7 @@ path_grants.list_header: "허용된 디렉터리"
 path_grants.global_header: "글로벌 범위:"
 path_grants.session_header: "세션 범위:"
 path_grants.none: "  (디렉토리 없음)"
-path_grants.not_advertised: "로컬에 저장됨 활성 AI 에이전트가 ACP additionalDirectories 지원을 광고하지 않았습니다."
+path_grants.not_advertised: "이 Agent는 ACP를 통해 추가 디렉터리를 받을 수 없습니다. Intelligent Terminal은 권한 검사에 계속 이 경로를 사용합니다."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "전역 디렉터리 권한을 업데이트하는 중..."
 path_grants.global_host_only: "전역 디렉터리 권한은 현재 Windows에서 호스트되는 에이전트만 지원합니다."
 path_grants.absolute_required: "절대 디렉터리 경로를 입력하세요."

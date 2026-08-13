@@ -238,7 +238,7 @@ path_grants.list_header: "അനുവദനീയമായ ഡയറക്ട�
 path_grants.global_header: "ആഗോള വ്യാപ്തി:"
 path_grants.session_header: "സെഷൻ വ്യാപ്തി:"
 path_grants.none: "  (ഡയറക്ടറികൾ ഇല്ല)"
-path_grants.not_advertised: "പ്രാദേശികമായി സംഭരിച്ചിരിക്കുന്നു; സജീവ AI ഏജൻ്റ് ACP additionalDirectories പിന്തുണ പരസ്യം ചെയ്തില്ല."
+path_grants.not_advertised: "ഈ Agent-ന് ACP വഴി അധിക ഡയറക്ടറികൾ സ്വീകരിക്കാനാവില്ല. അനുമതി പരിശോധനകൾക്കായി Intelligent Terminal ഇപ്പോഴും ഈ പാതകൾ ഉപയോഗിക്കുന്നു."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ആഗോള ഡയറക്ടറി അനുമതികൾ അപ്ഡേറ്റ് ചെയ്യുന്നു..."
 path_grants.global_host_only: "ആഗോള ഡയറക്ടറി അനുമതികൾ നിലവിൽ Windows-ൽ ഹോസ്റ്റ് ചെയ്ത ഏജന്റുമാരെ മാത്രമേ പിന്തുണയ്ക്കൂ."
 path_grants.absolute_required: "ഒരു സമ്പൂർണ്ണ ഡയറക്ടറി പാത്ത് നൽകുക."

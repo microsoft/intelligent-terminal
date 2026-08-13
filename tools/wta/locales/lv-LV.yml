@@ -237,7 +237,7 @@ path_grants.list_header: "Atļautie direktoriji"
 path_grants.global_header: "Globālais tvērums:"
 path_grants.session_header: "Sesijas apjoms:"
 path_grants.none: "  (nav direktoriju)"
-path_grants.not_advertised: "Uzglabāts lokāli; aktīvais AI aģents nereklamēja ACP additionalDirectories atbalstu."
+path_grants.not_advertised: "Šis Agent nevar saņemt papildu direktorijus, izmantojot ACP. Intelligent Terminal joprojām izmanto šos ceļus atļauju pārbaudēm."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Notiek globālo direktoriju atļauju atjaunināšana..."
 path_grants.global_host_only: "Globālās direktoriju atļaujas pašlaik atbalsta tikai sistēmā Windows viesotus aģentus."
 path_grants.absolute_required: "Ievadiet absolūtu direktorija ceļu."

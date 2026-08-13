@@ -237,7 +237,7 @@ path_grants.list_header: "დაშვებული დირექტორ�
 path_grants.global_header: "გლობალური ფარგლები:"
 path_grants.session_header: "სესიის ფარგლები:"
 path_grants.none: "  (არ არის დირექტორიები)"
-path_grants.not_advertised: "ინახება ადგილობრივად; აქტიურ AI აგენტს არ გაუკეთებია ACP additionalDirectories მხარდაჭერა."
+path_grants.not_advertised: "ამ Agent-ს ACP-ის მეშვეობით დამატებითი დირექტორიების მიღება არ შეუძლია. Intelligent Terminal კვლავ იყენებს ამ ბილიკებს ნებართვების შესამოწმებლად."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "მიმდინარეობს გლობალური დირექტორიის ნებართვების განახლება..."
 path_grants.global_host_only: "გლობალური დირექტორიის ნებართვები ამჟამად მხოლოდ Windows-ში განთავსებულ აგენტებს უჭერს მხარს."
 path_grants.absolute_required: "შეიყვანეთ დირექტორიის აბსოლუტური გზა."

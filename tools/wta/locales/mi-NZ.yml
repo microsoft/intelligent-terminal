@@ -236,7 +236,7 @@ path_grants.list_header: "Whaiaronga kua whakaaetia"
 path_grants.global_header: "Te whānuitanga o te ao:"
 path_grants.session_header: "Wātū hōkai:"
 path_grants.none: "  (kahore he whaiaronga)"
-path_grants.not_advertised: "Kei te rongoa i te rohe; kaore te Agent AI kaha i panui ACP additionalDirectories tautoko."
+path_grants.not_advertised: "Kāore e taea e tēnei Agent te whiwhi whaiaronga tāpiri mā ACP. Ka whakamahi tonu a Intelligent Terminal i ēnei ara hei arowhai whakaaetanga."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "E whakahōu ana i ngā whakaaetanga whaiaronga ao..."
 path_grants.global_host_only: "I tēnei wā, ka tautoko ngā whakaaetanga whaiaronga ao i ngā āpiha e hautūhia ana ki Windows anake."
 path_grants.absolute_required: "Tāurua he ara whaiaronga pū."

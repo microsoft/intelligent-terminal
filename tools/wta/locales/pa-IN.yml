@@ -238,7 +238,7 @@ path_grants.list_header: "ਮਨਜ਼ੂਰ ਡਾਇਰੈਕਟਰੀਆਂ"
 path_grants.global_header: "ਗਲੋਬਲ ਸਕੋਪ:"
 path_grants.session_header: "ਸੈਸ਼ਨ ਦਾ ਘੇਰਾ:"
 path_grants.none: "  (ਕੋਈ ਡਾਇਰੈਕਟਰੀ ਨਹੀਂ)"
-path_grants.not_advertised: "ਸਥਾਨਕ ਤੌਰ 'ਤੇ ਸਟੋਰ ਕੀਤਾ; ਸਰਗਰਮ AI ਏਜੰਟ ਨੇ ACP additionalDirectories ਸਮਰਥਨ ਦਾ ਇਸ਼ਤਿਹਾਰ ਨਹੀਂ ਦਿੱਤਾ।"
+path_grants.not_advertised: "ਇਹ Agent ACP ਰਾਹੀਂ ਵਾਧੂ ਡਾਇਰੈਕਟਰੀਆਂ ਪ੍ਰਾਪਤ ਨਹੀਂ ਕਰ ਸਕਦਾ। Intelligent Terminal ਅਜੇ ਵੀ ਇਜਾਜ਼ਤ ਜਾਂਚਾਂ ਲਈ ਇਨ੍ਹਾਂ ਪਾਥਾਂ ਦੀ ਵਰਤੋਂ ਕਰਦਾ ਹੈ।"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ਗਲੋਬਲ ਡਾਇਰੈਕਟਰੀ ਮਨਜ਼ੂਰੀਆਂ ਅੱਪਡੇਟ ਕੀਤੀਆਂ ਜਾ ਰਹੀਆਂ ਹਨ..."
 path_grants.global_host_only: "ਗਲੋਬਲ ਡਾਇਰੈਕਟਰੀ ਮਨਜ਼ੂਰੀਆਂ ਇਸ ਵੇਲੇ ਸਿਰਫ਼ Windows 'ਤੇ ਹੋਸਟ ਕੀਤੇ ਏਜੰਟਾਂ ਦਾ ਸਮਰਥਨ ਕਰਦੀਆਂ ਹਨ।"
 path_grants.absolute_required: "ਇੱਕ ਪੂਰਾ ਡਾਇਰੈਕਟਰੀ ਪਾਥ ਦਾਖਲ ਕਰੋ।"

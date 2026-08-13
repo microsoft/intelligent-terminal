@@ -236,7 +236,7 @@ path_grants.list_header: "Clàran ceadaichte"
 path_grants.global_header: "Raon cruinne:"
 path_grants.session_header: "Raon an t-seisean:"
 path_grants.none: "  (gun chlàran)"
-path_grants.not_advertised: "Air a stòradh gu h-ionadail; cha do chuir an Gnìomhaiche AI ​​gnìomhach sanas ACP taic additionalDirectories."
+path_grants.not_advertised: "Chan urrainn dhan Agent seo eòlairean a bharrachd fhaighinn tro ACP. Tha Intelligent Terminal fhathast a’ cleachdadh nan slighean seo airson sgrùdaidhean cead."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Ag ùrachadh thabhartasan eòlaire cruinneil..."
 path_grants.global_host_only: "Chan eil tabhartasan eòlaire cruinneil a’ cur taic an-dràsta ach ri àidseantan air an òstadh air Windows."
 path_grants.absolute_required: "Cuir a-steach slighe eòlaire iomlan."

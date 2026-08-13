@@ -237,7 +237,7 @@ path_grants.list_header: "Разрешенные каталоги"
 path_grants.global_header: "Глобальная область действия:"
 path_grants.session_header: "Область сеанса:"
 path_grants.none: "  (нет каталогов)"
-path_grants.not_advertised: "Хранится локально; активный агент AI не объявлял поддержку ACP additionalDirectories."
+path_grants.not_advertised: "Этот Agent не может получать дополнительные каталоги через ACP. Intelligent Terminal по-прежнему использует эти пути для проверки разрешений."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Обновление глобальных разрешений для каталогов..."
 path_grants.global_host_only: "Глобальные разрешения для каталогов сейчас поддерживают только агентов, размещенных в Windows."
 path_grants.absolute_required: "Введите абсолютный путь к каталогу."

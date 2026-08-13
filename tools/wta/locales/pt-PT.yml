@@ -237,7 +237,7 @@ path_grants.list_header: "Diretórios permitidos"
 path_grants.global_header: "Escopo global:"
 path_grants.session_header: "Escopo da sessão:"
 path_grants.none: "  (sem diretórios)"
-path_grants.not_advertised: "Armazenado localmente; o agente AI ativo não anunciou suporte ACP additionalDirectories."
+path_grants.not_advertised: "Este Agent não pode receber diretórios adicionais através do ACP. O Intelligent Terminal continua a utilizar estes caminhos para verificações de permissões."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "A atualizar concessões globais de diretório..."
 path_grants.global_host_only: "Atualmente, as concessões globais de diretório só suportam agentes alojados no Windows."
 path_grants.absolute_required: "Introduza um caminho absoluto de diretório."

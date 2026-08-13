@@ -236,7 +236,7 @@ path_grants.list_header: "Eolairí ceadaithe"
 path_grants.global_header: "Raon feidhme domhanda:"
 path_grants.session_header: "Scóip an tseisiúin:"
 path_grants.none: "  (aon eolairí)"
-path_grants.not_advertised: "Stóráilte go háitiúil; níor fhógraigh an Gníomhaire AI gníomhach tacaíocht ACP additionalDirectories."
+path_grants.not_advertised: "Ní féidir leis an Agent seo eolairí breise a fháil trí ACP. Úsáideann Intelligent Terminal na conairí seo fós chun ceadanna a sheiceáil."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Deontais eolaire domhanda á nuashonrú..."
 path_grants.global_host_only: "Faoi láthair, ní thacaíonn deontais eolaire domhanda ach le gníomhairí atá á n-óstáil ar Windows."
 path_grants.absolute_required: "Cuir isteach cosán absalóideach eolaire."

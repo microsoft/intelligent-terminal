@@ -253,7 +253,7 @@ path_grants.list_header: "ថតដែលបានអនុញ្ញាត"
 path_grants.global_header: "វិសាលភាពសកល:"
 path_grants.session_header: "វិសាលភាពនៃសម័យ:"
 path_grants.none: "  (គ្មាន​ថត)"
-path_grants.not_advertised: "រក្សាទុកក្នុងមូលដ្ឋាន; ភ្នាក់ងារ AI សកម្មមិនបានផ្សព្វផ្សាយ ACP additionalDirectories support ទេ។"
+path_grants.not_advertised: "Agent នេះមិនអាចទទួលថតបន្ថែមតាមរយៈ ACP បានទេ។ Intelligent Terminal នៅតែប្រើផ្លូវទាំងនេះសម្រាប់ការត្រួតពិនិត្យសិទ្ធិ។"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "កំពុងធ្វើបច្ចុប្បន្នភាពការអនុញ្ញាតថតសកល..."
 path_grants.global_host_only: "បច្ចុប្បន្ន ការអនុញ្ញាតថតសកលគាំទ្រតែភ្នាក់ងារដែលបង្ហោះនៅលើ Windows ប៉ុណ្ណោះ។"
 path_grants.absolute_required: "បញ្ចូលផ្លូវថតដាច់ខាត។"

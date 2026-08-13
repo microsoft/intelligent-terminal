@@ -239,7 +239,7 @@ path_grants.list_header: "Позволени директории"
 path_grants.global_header: "Глобален обхват:"
 path_grants.session_header: "Обхват на сесията:"
 path_grants.none: "  (няма директории)"
-path_grants.not_advertised: "Съхранява се локално; активният AI агент не е рекламирал ACP additionalDirectories поддръжка."
+path_grants.not_advertised: "Този Agent не може да получава допълнителни директории чрез ACP. Intelligent Terminal продължава да използва тези пътища за проверки на разрешенията."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Актуализиране на глобалните разрешения за директории..."
 path_grants.global_host_only: "Глобалните разрешения за директории в момента поддържат само агенти, хоствани в Windows."
 path_grants.absolute_required: "Въведете абсолютен път до директория."

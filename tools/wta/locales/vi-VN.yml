@@ -237,7 +237,7 @@ path_grants.list_header: "Thư mục được phép"
 path_grants.global_header: "phạm vi toàn cầu:"
 path_grants.session_header: "Phạm vi phiên:"
 path_grants.none: "  (không có thư mục)"
-path_grants.not_advertised: "Được lưu trữ cục bộ; Tác nhân AI đang hoạt động không quảng cáo hỗ trợ ACP additionalDirectories."
+path_grants.not_advertised: "Agent này không thể nhận thêm thư mục thông qua ACP. Intelligent Terminal vẫn sử dụng các đường dẫn này để kiểm tra quyền."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Đang cập nhật các quyền thư mục chung..."
 path_grants.global_host_only: "Các quyền thư mục chung hiện chỉ hỗ trợ các tác nhân được lưu trữ trên Windows."
 path_grants.absolute_required: "Nhập đường dẫn thư mục tuyệt đối."

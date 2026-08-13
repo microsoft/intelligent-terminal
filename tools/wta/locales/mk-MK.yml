@@ -237,7 +237,7 @@ path_grants.list_header: "Дозволени директориуми"
 path_grants.global_header: "Глобален опсег:"
 path_grants.session_header: "Опсег на сесија:"
 path_grants.none: "  (нема директориуми)"
-path_grants.not_advertised: "Се чува локално; активниот агент за вештачка интелигенција не рекламираше ACP additionalDirectories поддршка."
+path_grants.not_advertised: "Овој Agent не може да прима дополнителни директориуми преку ACP. Intelligent Terminal и понатаму ги користи овие патеки за проверки на дозволите."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Се ажурираат глобалните дозволи за директориуми..."
 path_grants.global_host_only: "Глобалните дозволи за директориуми моментално поддржуваат само агенти хостирани на Windows."
 path_grants.absolute_required: "Внесете апсолутна патека до директориум."

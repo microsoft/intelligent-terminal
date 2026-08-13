@@ -232,7 +232,7 @@ path_grants.list_header: "許可されたディレクトリ"
 path_grants.global_header: "グローバルな範囲:"
 path_grants.session_header: "セッションスコープ:"
 path_grants.none: "  (ディレクトリがありません)"
-path_grants.not_advertised: "ローカルに保存されます。アクティブな AI エージェントは ACP additionalDirectories サポートをアドバタイズしませんでした。"
+path_grants.not_advertised: "この Agent は ACP 経由で追加のディレクトリを受け取ることができません。Intelligent Terminal は引き続き、これらのパスをアクセス許可の確認に使用します。"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "グローバル ディレクトリ許可を更新しています..."
 path_grants.global_host_only: "現在、グローバル ディレクトリ許可でサポートされるのは、Windows でホストされているエージェントのみです。"
 path_grants.absolute_required: "絶対ディレクトリ パスを入力してください。"

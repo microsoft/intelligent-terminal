@@ -237,7 +237,7 @@ path_grants.list_header: "Erlaabt Verzeichnungen"
 path_grants.global_header: "Global Ëmfang:"
 path_grants.session_header: "Sëtzung Ëmfang:"
 path_grants.none: "  (keng Verzeechnes)"
-path_grants.not_advertised: "Lokal gespäichert; den aktiven AI Agent huet net annoncéiert ACP additionalDirectories support."
+path_grants.not_advertised: "Dësen Agent kann iwwer ACP keng zousätzlech Verzeechnesser kréien. Intelligent Terminal benotzt dës Weeër weider fir Berechtegungsprüfungen."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Global Verzeechnesrechter ginn aktualiséiert..."
 path_grants.global_host_only: "Global Verzeechnesrechter ënnerstëtzen de Moment nëmmen Agenten, déi op Windows gehost ginn."
 path_grants.absolute_required: "Gitt en absolute Verzeechneswee an."

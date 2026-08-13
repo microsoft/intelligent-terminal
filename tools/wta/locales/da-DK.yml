@@ -239,7 +239,7 @@ path_grants.list_header: "Tilladte mapper"
 path_grants.global_header: "Globalt omfang:"
 path_grants.session_header: "Sessionsomfang:"
 path_grants.none: "  (ingen mapper)"
-path_grants.not_advertised: "Opbevares lokalt; den aktive AI-agent annoncerede ikke ACP additionalDirectories support."
+path_grants.not_advertised: "Denne Agent kan ikke modtage yderligere mapper via ACP. Intelligent Terminal bruger stadig disse stier til kontrol af tilladelser."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Opdaterer globale mappetilladelser..."
 path_grants.global_host_only: "Globale mappetilladelser understøtter i øjeblikket kun agenter, der hostes på Windows."
 path_grants.absolute_required: "Angiv en absolut mappesti."

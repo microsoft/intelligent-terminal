@@ -239,7 +239,7 @@ path_grants.list_header: "الدلائل المسموح بها"
 path_grants.global_header: "النطاق العالمي:"
 path_grants.session_header: "نطاق الجلسة:"
 path_grants.none: "  (لا الدلائل)"
-path_grants.not_advertised: "مخزنة محليا. لم يعلن وكيل الذكاء الاصطناعي النشط عن دعم ACP additionalDirectories."
+path_grants.not_advertised: "لا يمكن لهذا Agent تلقي أدلة إضافية عبر ACP. لا يزال Intelligent Terminal يستخدم هذه المسارات للتحقق من الأذونات."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "جارٍ تحديث منح الدلائل العمومية..."
 path_grants.global_host_only: "تدعم منح الدلائل العمومية حاليًا الوكلاء المستضافين على Windows فقط."
 path_grants.absolute_required: "أدخل مسار دليل مطلقًا."

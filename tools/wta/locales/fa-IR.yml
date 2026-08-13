@@ -237,7 +237,7 @@ path_grants.list_header: "دایرکتوری های مجاز"
 path_grants.global_header: "گستره جهانی:"
 path_grants.session_header: "محدوده جلسه:"
 path_grants.none: "  (هیچ دایرکتوری وجود ندارد)"
-path_grants.not_advertised: "ذخیره شده به صورت محلی؛ عامل فعال AI پشتیبانی ACP additionalDirectories را تبلیغ نکرده است."
+path_grants.not_advertised: "این Agent نمی‌تواند دایرکتوری‌های بیشتری را از طریق ACP دریافت کند. Intelligent Terminal همچنان از این مسیرها برای بررسی مجوزها استفاده می‌کند."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "در حال به‌روزرسانی مجوزهای سراسری پوشه..."
 path_grants.global_host_only: "مجوزهای سراسری پوشه در حال حاضر فقط از عامل‌های میزبانی‌شده در Windows پشتیبانی می‌کنند."
 path_grants.absolute_required: "یک مسیر مطلق پوشه وارد کنید."

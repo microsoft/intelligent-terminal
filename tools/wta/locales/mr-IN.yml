@@ -238,7 +238,7 @@ path_grants.list_header: "अनुमत निर्देशिका"
 path_grants.global_header: "जागतिक व्याप्ती:"
 path_grants.session_header: "सत्राची व्याप्ती:"
 path_grants.none: "  (निर्देशिका नाहीत)"
-path_grants.not_advertised: "स्थानिक पातळीवर संग्रहित; सक्रिय AI एजंटने ACP additionalDirectories समर्थनाची जाहिरात केली नाही."
+path_grants.not_advertised: "हा Agent ACP द्वारे अतिरिक्त डिरेक्टरी प्राप्त करू शकत नाही. Intelligent Terminal परवानगी तपासण्यासाठी अजूनही हे पाथ वापरते."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "जागतिक निर्देशिका अनुमती अपडेट करत आहे..."
 path_grants.global_host_only: "जागतिक निर्देशिका अनुमती सध्या फक्त Windows वर होस्ट केलेल्या एजंटना समर्थन देतात."
 path_grants.absolute_required: "निरपेक्ष निर्देशिका पथ प्रविष्ट करा."

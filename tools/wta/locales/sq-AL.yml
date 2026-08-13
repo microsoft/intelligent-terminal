@@ -236,7 +236,7 @@ path_grants.list_header: "Drejtoritë e lejuara"
 path_grants.global_header: "Shtrirja globale:"
 path_grants.session_header: "Shtrirja e seancës:"
 path_grants.none: "  (nuk ka drejtori)"
-path_grants.not_advertised: "Ruhet në vend; Agjenti aktiv i AI nuk ka reklamuar mbështetjen ACP additionalDirectories."
+path_grants.not_advertised: "Ky Agent nuk mund të marrë direktori shtesë përmes ACP. Intelligent Terminal vazhdon t'i përdorë këto shtigje për kontrollet e lejeve."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Po përditësohen lejet globale të direktorive..."
 path_grants.global_host_only: "Lejet globale të direktorive aktualisht mbështesin vetëm agjentët e pritur në Windows."
 path_grants.absolute_required: "Fut një shteg absolut të direktorive."

@@ -237,7 +237,7 @@ path_grants.list_header: "Toegestane mappen"
 path_grants.global_header: "Mondiale reikwijdte:"
 path_grants.session_header: "Sessiebereik:"
 path_grants.none: "  (geen mappen)"
-path_grants.not_advertised: "Lokaal opgeslagen; de actieve AI-agent heeft geen ACP additionalDirectories-ondersteuning geadverteerd."
+path_grants.not_advertised: "Deze Agent kan geen extra mappen ontvangen via ACP. Intelligent Terminal gebruikt deze paden nog steeds voor machtigingscontroles."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Algemene maptoekenningen worden bijgewerkt..."
 path_grants.global_host_only: "Algemene maptoekenningen ondersteunen momenteel alleen agents die op Windows worden gehost."
 path_grants.absolute_required: "Voer een absoluut mappad in."

@@ -240,7 +240,7 @@ path_grants.list_header: "অনুমোদিত ডিরেক্টরি"
 path_grants.global_header: "বিশ্বব্যাপী সুযোগ:"
 path_grants.session_header: "সেশনের সুযোগ:"
 path_grants.none: "  (কোন ডিরেক্টরি নেই)"
-path_grants.not_advertised: "স্থানীয়ভাবে সংরক্ষিত; সক্রিয় এআই এজেন্ট ACP additionalDirectories সমর্থনের বিজ্ঞাপন দেয়নি।"
+path_grants.not_advertised: "এই Agent ACP-এর মাধ্যমে অতিরিক্ত ডিরেক্টরি গ্রহণ করতে পারে না। Intelligent Terminal এখনও অনুমতি যাচাইয়ের জন্য এই পাথগুলি ব্যবহার করে।"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "গ্লোবাল ডিরেক্টরি অনুদান আপডেট করা হচ্ছে..."
 path_grants.global_host_only: "গ্লোবাল ডিরেক্টরি অনুদান বর্তমানে শুধুমাত্র Windows-এ হোস্ট করা এজেন্ট সমর্থন করে।"
 path_grants.absolute_required: "একটি সম্পূর্ণ ডিরেক্টরি পাথ লিখুন।"

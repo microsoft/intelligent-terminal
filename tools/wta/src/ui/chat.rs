@@ -142,7 +142,7 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             additional_directories_supported,
         } => {
             let has_roots = !global.is_empty() || !session.is_empty();
-            let mut height = 1;
+            let mut height = 2;
             if has_roots {
                 if !global.is_empty() {
                     height += 1;
@@ -162,7 +162,7 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
                 height += 1;
             }
             if !additional_directories_supported {
-                height += usize::from(has_roots);
+                height += 1;
                 height += wrap_count(
                     &format!("  {}", t!("path_grants.not_advertised")),
                     wrap_width,
@@ -637,13 +637,11 @@ fn build_message_lines<'a>(
             session,
             additional_directories_supported,
         } => {
-            lines.push(Line::from(vec![
-                Span::styled("i ", theme::NOTICE_INFO),
-                Span::styled(
-                    t!("path_grants.list_header").into_owned(),
-                    theme::DIRECTORY_LIST_TITLE,
-                ),
-            ]));
+            lines.push(Line::from(Span::styled(
+                t!("path_grants.list_header").into_owned(),
+                theme::DIRECTORY_LIST_TITLE,
+            )));
+            lines.push(Line::default());
             let mut rendered_section = false;
             for (heading, directories) in [
                 (t!("path_grants.global_header").into_owned(), global),
@@ -671,9 +669,7 @@ fn build_message_lines<'a>(
                 )));
             }
             if !additional_directories_supported {
-                if rendered_section {
-                    lines.push(Line::default());
-                }
+                lines.push(Line::default());
                 lines.push(Line::from(Span::styled(
                     format!("  {}", t!("path_grants.not_advertised")),
                     theme::DIM,
@@ -1077,17 +1073,17 @@ mod tests {
         };
         let lines = build_message_lines(&message, false, false, None, 0, 120);
 
-        assert_eq!(line_text(&lines[0]), "i Allowed directories");
-        assert_eq!(lines[0].spans[0].style, theme::NOTICE_INFO);
-        assert_eq!(lines[0].spans[1].style, theme::DIRECTORY_LIST_TITLE);
-        assert_eq!(line_text(&lines[1]), "  Global:");
-        assert_eq!(lines[1].spans[0].style, theme::DIRECTORY_LIST_SECTION);
-        assert_eq!(line_text(&lines[2]), r"    C:\global");
-        assert_eq!(lines[2].spans[0].style, theme::AGENT_TEXT);
+        assert_eq!(line_text(&lines[0]), "Allowed directories");
+        assert_eq!(lines[0].spans[0].style, theme::DIRECTORY_LIST_TITLE);
+        assert!(line_text(&lines[1]).is_empty());
+        assert_eq!(line_text(&lines[2]), "  Global:");
+        assert_eq!(lines[2].spans[0].style, theme::DIRECTORY_LIST_SECTION);
+        assert_eq!(line_text(&lines[3]), r"    C:\global");
+        assert_eq!(lines[3].spans[0].style, theme::AGENT_TEXT);
         assert!(!lines.iter().any(|line| line_text(line) == "  Session:"));
-        assert!(line_text(&lines[4]).contains("additionalDirectories"));
-        assert_eq!(lines[4].spans[0].style, theme::DIM);
-        assert_eq!(lines.len(), message_height(&message, 120));
+        assert!(line_text(&lines[5]).contains("permission checks"));
+        assert_eq!(lines[5].spans[0].style, theme::DIM);
+        assert_eq!(message_height(&message, 120), 8);
     }
 
     #[test]

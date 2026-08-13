@@ -246,7 +246,7 @@ path_grants.list_header: "رۇخسەت قىلىنغان مۇندەرىجە"
 path_grants.global_header: "يەر شارى دائىرىسى:"
 path_grants.session_header: "يىغىن دائىرىسى:"
 path_grants.none: "  (مۇندەرىجە يوق)"
-path_grants.not_advertised: "يەرلىكتە ساقلانغان ئاكتىپ AI ۋاكالەتچىسى ACP additionalDirectories قوللاشنى ئېلان قىلمىدى."
+path_grants.not_advertised: "بۇ Agent، ACP ئارقىلىق قوشۇمچە مۇندەرىجىلەرنى قوبۇل قىلالمايدۇ. Intelligent Terminal ئىجازەت تەكشۈرۈش ئۈچۈن بۇ يوللارنى يەنىلا ئىشلىتىدۇ."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "ئومۇمىي مۇندەرىجە ئىجازەتلىرى يېڭىلىنىۋاتىدۇ..."
 path_grants.global_host_only: "ئومۇمىي مۇندەرىجە ئىجازەتلىرى نۆۋەتتە پەقەت Windows دا ساھىبخانلىق قىلىنغان ۋاكالەتچىلەرنىلا قوللايدۇ."
 path_grants.absolute_required: "مۇتلەق مۇندەرىجە يولىنى كىرگۈزۈڭ."

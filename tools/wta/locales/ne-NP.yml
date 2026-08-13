@@ -238,7 +238,7 @@ path_grants.list_header: "अनुमति दिइएको निर्द�
 path_grants.global_header: "विश्वव्यापी दायरा:"
 path_grants.session_header: "सत्र दायरा:"
 path_grants.none: "  (कुनै निर्देशिका छैन)"
-path_grants.not_advertised: "स्थानीय रूपमा भण्डारण; सक्रिय एआई एजेन्टले ACP additionalDirectories समर्थनको विज्ञापन गरेन।"
+path_grants.not_advertised: "यो Agent ले ACP मार्फत थप डाइरेक्टरीहरू प्राप्त गर्न सक्दैन। Intelligent Terminal ले अझै पनि अनुमति जाँचका लागि यी पाथहरू प्रयोग गर्छ।"  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "विश्वव्यापी डाइरेक्टरी अनुमतिहरू अद्यावधिक गरिँदै छ..."
 path_grants.global_host_only: "विश्वव्यापी डाइरेक्टरी अनुमतिहरूले हाल Windows मा होस्ट गरिएका एजेन्टहरूलाई मात्र समर्थन गर्छन्।"
 path_grants.absolute_required: "एउटा निरपेक्ष डाइरेक्टरी पथ प्रविष्ट गर्नुहोस्।"

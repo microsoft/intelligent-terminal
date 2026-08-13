@@ -237,7 +237,7 @@ path_grants.list_header: "Leyfðar möppur"
 path_grants.global_header: "Alþjóðlegt umfang:"
 path_grants.session_header: "Umfang þings:"
 path_grants.none: "  (engar möppur)"
-path_grants.not_advertised: "Geymt á staðnum; virki gervigreindarfulltrúinn auglýsti ekki ACP additionalDirectories support."
+path_grants.not_advertised: "Þessi Agent getur ekki tekið við fleiri möppum í gegnum ACP. Intelligent Terminal notar þessar slóðir áfram við heimildarathuganir."  # {Locked="Agent","ACP","Intelligent Terminal"}
 path_grants.updating_global: "Uppfæri altækar möppuheimildir..."
 path_grants.global_host_only: "Altækar möppuheimildir styðja sem stendur aðeins fulltrúa sem hýstir eru í Windows."
 path_grants.absolute_required: "Sláðu inn algilda möppuslóð."
