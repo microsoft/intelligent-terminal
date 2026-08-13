@@ -397,22 +397,68 @@ async fn rollback_swapped_session_route(
     helper_id: HelperId,
     session_id: &acp::schema::v1::SessionId,
     previous: Option<HelperRoute>,
-) -> bool {
+) -> SwappedSessionRouteRollback {
     let gate = session_lifecycle_gate(state, session_id).await;
     let _guard = gate.lock().await;
     let mut routes = state.session_to_helper.lock().await;
+    rollback_swapped_session_route_locked(&mut routes, helper_id, session_id, previous)
+}
+
+async fn rollback_orphan_rebind(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    agent_key: &AgentCmdKey,
+    session_id: &acp::schema::v1::SessionId,
+    previous: Option<HelperRoute>,
+) -> SwappedSessionRouteRollback {
+    let gate = session_lifecycle_gate(state, session_id).await;
+    let _guard = gate.lock().await;
+    let (rollback, route_absent) = {
+        let mut routes = state.session_to_helper.lock().await;
+        let rollback =
+            rollback_swapped_session_route_locked(&mut routes, helper_id, session_id, previous);
+        (rollback, !routes.contains_key(session_id))
+    };
+    if rollback == SwappedSessionRouteRollback::Restored && route_absent {
+        state
+            .orphaned_sessions
+            .lock()
+            .await
+            .entry(agent_key.clone())
+            .or_default()
+            .insert(session_id.clone());
+    }
+    rollback
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SwappedSessionRouteRollback {
+    Restored,
+    OwnershipChanged {
+        current_agent_instance_id: Option<AgentInstanceId>,
+    },
+}
+
+fn rollback_swapped_session_route_locked(
+    routes: &mut HashMap<acp::schema::v1::SessionId, HelperRoute>,
+    helper_id: HelperId,
+    session_id: &acp::schema::v1::SessionId,
+    previous: Option<HelperRoute>,
+) -> SwappedSessionRouteRollback {
     if !routes
         .get(session_id)
         .is_some_and(|route| route.helper_id == helper_id)
     {
-        return false;
+        return SwappedSessionRouteRollback::OwnershipChanged {
+            current_agent_instance_id: routes.get(session_id).map(|route| route.agent_instance_id),
+        };
     }
     if let Some(previous) = previous {
         routes.insert(session_id.clone(), previous);
     } else {
         routes.remove(session_id);
     }
-    true
+    SwappedSessionRouteRollback::Restored
 }
 
 const SESSION_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1472,6 +1518,35 @@ impl HelperHandler {
             .map_err(|_| self.load_session_timeout_error(total_timeout, "agent_rpc"))?
     }
 
+    async fn rollback_and_maybe_close_loaded_target(
+        &self,
+        agent: &AgentCli,
+        session_id: &acp::schema::v1::SessionId,
+        previous: Option<HelperRoute>,
+        previous_used_same_agent: bool,
+        timeout: std::time::Duration,
+    ) -> SwappedSessionRouteRollback {
+        let gate = session_lifecycle_gate(&self.state, session_id).await;
+        let _guard = gate.lock().await;
+        let rollback = {
+            let mut routes = self.state.session_to_helper.lock().await;
+            rollback_swapped_session_route_locked(&mut routes, self.helper_id, session_id, previous)
+        };
+        let should_close = match rollback {
+            SwappedSessionRouteRollback::Restored => !previous_used_same_agent,
+            SwappedSessionRouteRollback::OwnershipChanged {
+                current_agent_instance_id,
+            } => current_agent_instance_id != Some(agent.instance_id),
+        };
+        if should_close {
+            // Keep the SessionId lifecycle gate held through the send so a
+            // same-agent rebind cannot start after the safety check.
+            self.best_effort_close_loaded_target(agent, session_id, timeout)
+                .await;
+        }
+        rollback
+    }
+
     async fn best_effort_close_loaded_target(
         &self,
         agent: &AgentCli,
@@ -2096,28 +2171,22 @@ impl HelperHandler {
                     // needs touching — we never wrote to `registry` and we
                     // never broadcast `session_added`, so peers never saw
                     // this row.
-                    let route_rolled_back = rollback_swapped_session_route(
-                        &self.state,
-                        self.helper_id,
-                        &session_id,
-                        previous_target_route,
-                    )
-                    .await;
-                    if route_rolled_back && !previous_target_used_same_agent {
-                        let remaining =
-                            deadline.saturating_duration_since(tokio::time::Instant::now());
-                        self.best_effort_close_loaded_target(
+                    let route_rollback = self
+                        .rollback_and_maybe_close_loaded_target(
                             &agent,
                             &session_id,
-                            remaining.min(rollback_reserve),
+                            previous_target_route,
+                            previous_target_used_same_agent,
+                            deadline
+                                .saturating_duration_since(tokio::time::Instant::now())
+                                .min(rollback_reserve),
                         )
                         .await;
-                    }
                     tracing::warn!(
                         target: "master",
                         helper_id = ?self.helper_id,
                         session_id = ?session_id,
-                        route_rolled_back,
+                        route_rollback = ?route_rollback,
                         error = %err,
                         "load_session failed; rolled back routing entry"
                     );
@@ -2152,41 +2221,41 @@ impl HelperHandler {
                     if let Some(pending) = session_mcp.as_ref() {
                         self.state.session_mcp_capabilities.cancel(pending).await;
                     }
-                    let route_rolled_back = rollback_swapped_session_route(
-                        &self.state,
-                        self.helper_id,
-                        &session_id,
-                        previous_target_route,
-                    )
-                    .await;
-                    if is_orphan_rebind {
-                        self.state
-                            .orphaned_sessions
-                            .lock()
-                            .await
-                            .entry(agent.cmd_key.clone())
-                            .or_default()
-                            .insert(session_id.clone());
-                    }
-                    if loaded_target_physically
-                        && route_rolled_back
-                        && !previous_target_used_same_agent
-                    {
-                        let remaining =
-                            deadline.saturating_duration_since(tokio::time::Instant::now());
-                        self.best_effort_close_loaded_target(
+                    let route_rollback = if loaded_target_physically {
+                        self.rollback_and_maybe_close_loaded_target(
                             &agent,
                             &session_id,
-                            remaining.min(rollback_reserve),
+                            previous_target_route,
+                            previous_target_used_same_agent,
+                            deadline
+                                .saturating_duration_since(tokio::time::Instant::now())
+                                .min(rollback_reserve),
                         )
-                        .await;
-                    }
+                        .await
+                    } else if is_orphan_rebind {
+                        rollback_orphan_rebind(
+                            &self.state,
+                            self.helper_id,
+                            &agent.cmd_key,
+                            &session_id,
+                            previous_target_route,
+                        )
+                        .await
+                    } else {
+                        rollback_swapped_session_route(
+                            &self.state,
+                            self.helper_id,
+                            &session_id,
+                            previous_target_route,
+                        )
+                        .await
+                    };
                     tracing::error!(
                         target: "master",
                         helper_id = ?self.helper_id,
                         old_session_id = %previous_session_id,
                         target_session_id = %session_id,
-                        route_rolled_back,
+                        route_rollback = ?route_rollback,
                         "predecessor close failed after session/load; target transaction rolled back"
                     );
                     return Err(error);

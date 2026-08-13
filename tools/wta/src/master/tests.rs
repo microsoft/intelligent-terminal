@@ -30,9 +30,16 @@ struct BlockingCloseAgent {
     events: mpsc::UnboundedSender<ReplacementEvent>,
 }
 
+#[derive(Clone)]
+struct RebindDuringCloseAgent {
+    predecessor: SessionId,
+    events: mpsc::UnboundedSender<ReplacementEvent>,
+}
+
 enum ReplacementEvent {
     Close(SessionId),
     BlockingClose(SessionId, tokio::sync::oneshot::Sender<()>),
+    FailingClose(SessionId, tokio::sync::oneshot::Sender<()>),
     Load(SessionId),
     New(usize, tokio::sync::oneshot::Sender<()>),
 }
@@ -117,6 +124,39 @@ impl BlockingCloseAgent {
             .await
             .map_err(|_| acp::Error::internal_error().data("test release sender dropped"))?;
         Ok(acp::schema::v1::CloseSessionResponse::new())
+    }
+}
+
+impl RebindDuringCloseAgent {
+    async fn load_session(
+        &self,
+        args: acp::schema::v1::LoadSessionRequest,
+    ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        self.events
+            .send(ReplacementEvent::Load(args.session_id))
+            .map_err(|_| acp::Error::internal_error().data("test event receiver dropped"))?;
+        Ok(acp::schema::v1::LoadSessionResponse::new())
+    }
+
+    async fn close_session(
+        &self,
+        args: acp::schema::v1::CloseSessionRequest,
+    ) -> acp::Result<acp::schema::v1::CloseSessionResponse> {
+        if args.session_id == self.predecessor {
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+            self.events
+                .send(ReplacementEvent::FailingClose(args.session_id, release_tx))
+                .map_err(|_| acp::Error::internal_error().data("test event receiver dropped"))?;
+            release_rx
+                .await
+                .map_err(|_| acp::Error::internal_error().data("test release sender dropped"))?;
+            Err(acp::Error::internal_error().data("injected predecessor close failure"))
+        } else {
+            self.events
+                .send(ReplacementEvent::Close(args.session_id))
+                .map_err(|_| acp::Error::internal_error().data("test event receiver dropped"))?;
+            Ok(acp::schema::v1::CloseSessionResponse::new())
+        }
     }
 }
 
@@ -761,6 +801,68 @@ fn client_connection_to_controlled_new_session_agent(
         let _ = client_io.await;
     });
 
+    client_conn
+}
+
+fn client_connection_to_rebind_during_close_agent(
+    predecessor: SessionId,
+    events: mpsc::UnboundedSender<ReplacementEvent>,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let mock = RebindDuringCloseAgent {
+        predecessor,
+        events,
+    };
+    let agent_builder = acp::Agent
+        .builder()
+        .name("rebind-during-close-agent")
+        .on_receive_request(
+            {
+                let mock = mock.clone();
+                move |req: acp::schema::v1::LoadSessionRequest,
+                      responder: acp::Responder<acp::schema::v1::LoadSessionResponse>,
+                      _cx| {
+                    let mock = mock.clone();
+                    async move {
+                        match mock.load_session(req).await {
+                            Ok(response) => responder.respond(response),
+                            Err(error) => responder.respond_with_error(error),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_request(
+            move |req: acp::schema::v1::CloseSessionRequest,
+                  responder: acp::Responder<acp::schema::v1::CloseSessionResponse>,
+                  _cx| {
+                let mock = mock.clone();
+                async move {
+                    match mock.close_session(req).await {
+                        Ok(response) => responder.respond(response),
+                        Err(error) => responder.respond_with_error(error),
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("rebind-during-close-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
     client_conn
 }
 
@@ -2277,6 +2379,282 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
                 HashSet::from([old_session]),
                 "the target loaded into the current agent must be physically closed"
             );
+        })
+        .await;
+}
+
+async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_agent: bool) {
+    let state = make_state();
+    let helper_id = HelperId(30);
+    let peer_id = HelperId(31);
+    let old_session = SessionId::new("rebound-old");
+    let target_session = SessionId::new("rebound-target");
+    let current_agent_instance = AgentInstanceId::new_v4();
+    let rebound_agent_instance = if rebound_to_current_agent {
+        current_agent_instance
+    } else {
+        AgentInstanceId::new_v4()
+    };
+    let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let (peer_tx, _peer_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let agent_side_slot = Arc::new(OnceLock::new());
+    agent_side_slot
+        .set(agent_link_to_noop_client())
+        .expect("agent-side forwarder should be set once");
+    let mut cached_init_resp =
+        acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+    cached_init_resp
+        .agent_capabilities
+        .session_capabilities
+        .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+    let agent = Arc::new(OnceLock::new());
+    assert!(agent
+        .set(Arc::new(AgentCli {
+            instance_id: current_agent_instance,
+            conn: client_connection_to_rebind_during_close_agent(old_session.clone(), events_tx,),
+            cached_init_resp,
+            cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+            source: crate::agent_source::AgentSource::Host,
+            cmd_key: "rebind-during-close-agent".to_string(),
+            cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+            bound_helpers: Mutex::new(HashSet::new()),
+        }))
+        .is_ok());
+    let handler = HelperHandler {
+        helper_id,
+        agent,
+        state: Arc::clone(&state),
+        replacement_gate: Arc::new(Mutex::new(())),
+        notif_tx: notif_tx.clone(),
+        agent_side_slot,
+    };
+    bind_session_route(
+        &state,
+        old_session.clone(),
+        HelperRoute {
+            helper_id,
+            agent_instance_id: current_agent_instance,
+            notif_tx,
+            forwarder: Some(agent_link_to_noop_client()),
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+    state.helper_meta.lock().await.insert(
+        helper_id,
+        HelperRecoveryMeta {
+            last_session_id: Some(old_session.clone()),
+            ..Default::default()
+        },
+    );
+
+    let request = tokio::task::spawn_local({
+        let handler = handler.clone();
+        let target_session = target_session.clone();
+        async move {
+            handler
+                .load_session_with_timeout(
+                    acp::schema::v1::LoadSessionRequest::new(
+                        target_session,
+                        PathBuf::from("C:\\target"),
+                    ),
+                    std::time::Duration::from_secs(3),
+                )
+                .await
+        }
+    });
+    assert!(matches!(
+        events_rx.recv().await,
+        Some(ReplacementEvent::Load(ref sid)) if sid == &target_session
+    ));
+    let release = match events_rx.recv().await {
+        Some(ReplacementEvent::FailingClose(sid, release)) if sid == old_session => release,
+        _ => panic!("predecessor close must block before failing"),
+    };
+    bind_session_route(
+        &state,
+        target_session.clone(),
+        HelperRoute {
+            helper_id: peer_id,
+            agent_instance_id: rebound_agent_instance,
+            notif_tx: peer_tx,
+            forwarder: Some(agent_link_to_noop_client()),
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+    release
+        .send(())
+        .expect("predecessor close should still be waiting");
+    let error = request
+        .await
+        .expect("load task should finish")
+        .expect_err("predecessor close failure must fail the transaction");
+    assert!(format!("{error}").contains("injected predecessor close failure"));
+
+    if rebound_to_current_agent {
+        assert!(
+            events_rx.try_recv().is_err(),
+            "same-agent rebound owns the physical target and must suppress rollback close"
+        );
+    } else {
+        assert!(matches!(
+            events_rx.try_recv(),
+            Ok(ReplacementEvent::Close(ref sid)) if sid == &target_session
+        ));
+        assert!(events_rx.try_recv().is_err());
+    }
+    let routes = state.session_to_helper.lock().await;
+    assert_eq!(routes[&target_session].helper_id, peer_id);
+    assert_eq!(
+        routes[&target_session].agent_instance_id,
+        rebound_agent_instance
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn load_close_failure_closes_target_rebound_to_different_agent() {
+    tokio::task::LocalSet::new()
+        .run_until(run_target_rebound_during_predecessor_close_failure(false))
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn load_close_failure_keeps_target_rebound_to_same_agent() {
+    tokio::task::LocalSet::new()
+        .run_until(run_target_rebound_during_predecessor_close_failure(true))
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helper() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(32);
+            let peer_id = HelperId(33);
+            let old_session = SessionId::new("orphan-rebound-old");
+            let target_session = SessionId::new("orphan-rebound-target");
+            let current_agent_instance = AgentInstanceId::new_v4();
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (peer_tx, _peer_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let agent_key = "orphan-rebind-close-agent".to_string();
+            let agent_side_slot = Arc::new(OnceLock::new());
+            agent_side_slot
+                .set(agent_link_to_noop_client())
+                .expect("agent-side forwarder should be set once");
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(OnceLock::new());
+            assert!(agent
+                .set(Arc::new(AgentCli {
+                    instance_id: current_agent_instance,
+                    conn: client_connection_to_rebind_during_close_agent(
+                        old_session.clone(),
+                        events_tx,
+                    ),
+                    cached_init_resp,
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: agent_key.clone(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                }))
+                .is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx: notif_tx.clone(),
+                agent_side_slot,
+            };
+            bind_session_route(
+                &state,
+                old_session.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id: current_agent_instance,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(agent_key.clone())
+                .or_default()
+                .insert(target_session.clone());
+            state.helper_meta.lock().await.insert(
+                helper_id,
+                HelperRecoveryMeta {
+                    last_session_id: Some(old_session.clone()),
+                    ..Default::default()
+                },
+            );
+
+            let request = tokio::task::spawn_local({
+                let handler = handler.clone();
+                let target_session = target_session.clone();
+                async move {
+                    handler
+                        .load_session_with_timeout(
+                            acp::schema::v1::LoadSessionRequest::new(
+                                target_session,
+                                PathBuf::from("C:\\target"),
+                            ),
+                            std::time::Duration::from_secs(3),
+                        )
+                        .await
+                }
+            });
+            let release = match events_rx.recv().await {
+                Some(ReplacementEvent::FailingClose(sid, release)) if sid == old_session => release,
+                _ => panic!("orphan rebind must skip load and reach predecessor close"),
+            };
+            bind_session_route(
+                &state,
+                target_session.clone(),
+                HelperRoute {
+                    helper_id: peer_id,
+                    agent_instance_id: AgentInstanceId::new_v4(),
+                    notif_tx: peer_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            release
+                .send(())
+                .expect("predecessor close should still be waiting");
+            request
+                .await
+                .expect("load task should finish")
+                .expect_err("predecessor close failure must fail the transaction");
+
+            assert!(
+                !state
+                    .orphaned_sessions
+                    .lock()
+                    .await
+                    .get(&agent_key)
+                    .is_some_and(|sessions| sessions.contains(&target_session)),
+                "ownership change must not restore the orphan marker"
+            );
+            assert_eq!(
+                state.session_to_helper.lock().await[&target_session].helper_id,
+                peer_id
+            );
+            assert!(events_rx.try_recv().is_err());
         })
         .await;
 }
