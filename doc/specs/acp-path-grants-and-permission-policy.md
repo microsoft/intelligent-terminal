@@ -1,7 +1,7 @@
 ---
 author: Kaitao Chen vanzue@github
 created on: 2026-08-10
-last updated: 2026-08-12
+last updated: 2026-08-13
 status: Implemented
 ---
 
@@ -18,6 +18,26 @@ An Agent session has two independent controls:
 A path grant is not approval to edit or execute, and it is not an operating
 system sandbox. The Agent process retains the access granted by its user token,
 its own sandbox, and the operating system.
+
+### What `cwd` means
+
+An Agent working directory can serve three distinct purposes:
+
+1. **Process base**: resolve relative paths and choose where commands start.
+2. **Context root**: define the project files the Agent searches or indexes.
+3. **Trust boundary**: limit which paths its tools may access without another
+   decision.
+
+Agent products do not interpret these identically. Some use `cwd` as all three;
+some treat it only as a process directory; IDE Agents commonly derive context
+from a separate project model; and an Agent process may still have broader OS
+access than its declared workspace.
+
+ACP standardizes the Session's absolute `cwd` and optional
+`additionalDirectories`, including relative-path resolution against `cwd`. It
+does not require either field to be an Agent sandbox, indexing boundary, or
+permission policy. Intelligent Terminal must therefore define and enforce its
+own client-side semantics rather than infer trust from an Agent's `cwd`.
 
 ## Session model
 
@@ -110,6 +130,39 @@ Operation policies are currently JSON-only:
 
 Each value is `auto`, `prompt`, or `deny`. Missing or invalid values fail closed
 to `prompt`.
+
+### Meaning of an allowed directory
+
+An effective root admits a path into Intelligent Terminal's **eligible work
+scope**. It does not by itself authorize an operation. A request must pass
+three independent gates:
+
+```text
+path scope ──► operation policy ──► Agent sandbox / user token / OS ACL
+```
+
+- **Path scope** asks whether every reported target is inside an effective
+  root.
+- **Operation policy** decides whether Intelligent Terminal may answer the ACP
+  permission request automatically.
+- **Runtime enforcement** determines whether the Agent process can actually
+  perform the operation.
+
+The default policy intentionally makes an explicitly scoped workspace useful
+without making it fully trusted:
+
+| In-scope operation | Default | Rationale |
+|---|---|---|
+| Read / search | `auto` | Agents need routine discovery to understand a project; prompting for every file makes the workspace unusable. |
+| Edit / move / delete | `prompt` | Mutations have persistent side effects and remain user decisions. |
+| Execute / terminal input | `prompt` | Command effects cannot be proven safe from a path or command label. |
+| Unknown operation | `prompt` | Unclassified behavior fails closed. |
+
+Read access is still disclosure-capable. A broad root may contain `.env`,
+credentials, keys, or unrelated private data, so global roots should be
+specific rather than a home directory or drive root. Future sensitive-file
+rules may add another prompt inside an otherwise allowed root; directory scope
+is deliberately coarse and must not be described as complete trust.
 
 ## Permission evaluation
 
