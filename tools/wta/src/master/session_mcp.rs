@@ -335,6 +335,15 @@ impl CapabilityRegistry {
         count
     }
 
+    pub(super) async fn remove_session(&self, session_id: &acp::schema::v1::SessionId) -> bool {
+        let mut routes = self.routes.lock().await;
+        let Some(hash) = routes.by_session.get(session_id).copied() else {
+            return false;
+        };
+        Self::remove_capability(&mut routes, &hash);
+        true
+    }
+
     async fn resolve(&self, secret: &str) -> CapabilityResolution {
         match self
             .routes
@@ -1320,11 +1329,40 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn removing_session_revokes_its_capability() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(registry.bind(&pending, session_id.clone()).await);
+
+        assert!(registry.remove_session(&session_id).await);
+        assert!(matches!(
+            registry.resolve(&pending.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(!registry.remove_session(&session_id).await);
+    }
+
     #[test]
     fn user_input_lease_allows_only_one_request_per_session() {
         let registry = CapabilityRegistry::default();
         let session_id = acp::schema::v1::SessionId::new("session");
         let lease = registry.try_begin_user_input(session_id.clone()).unwrap();
+        assert!(registry.try_begin_user_input(session_id.clone()).is_err());
+        drop(lease);
+        assert!(registry.try_begin_user_input(session_id).is_ok());
+    }
+
+    #[tokio::test]
+    async fn removing_session_preserves_active_user_input_lease() {
+        let registry = CapabilityRegistry::default();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(registry.bind(&pending, session_id.clone()).await);
+        let lease = registry.try_begin_user_input(session_id.clone()).unwrap();
+
+        assert!(registry.remove_session(&session_id).await);
         assert!(registry.try_begin_user_input(session_id.clone()).is_err());
         drop(lease);
         assert!(registry.try_begin_user_input(session_id).is_ok());

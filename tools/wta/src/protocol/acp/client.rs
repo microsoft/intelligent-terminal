@@ -116,7 +116,9 @@ pub struct CancelRequest {
 /// User-initiated request to spin up a fresh ACP session for a given tab,
 /// dropping the previous session's history. Emitted by the `/new` slash
 /// command. The ACP client task removes the old SessionId from its
-/// per-tab cache and calls `new_session(cwd)`; the resulting
+/// per-tab cache, cancels any active turn, and calls `new_session(cwd)`.
+/// Once the replacement is bound, master retires the old session's routing,
+/// live-registry row, and session-scoped capabilities. The resulting
 /// [`AppEvent::SessionAttached`] then propagates back to the UI to
 /// rewire `session_to_tab` and update the model dropdown.
 #[derive(Debug, Clone)]
@@ -3433,9 +3435,18 @@ fn dispatch_load_session(
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
-            let _ = conn
+            if let Err(e) = conn
                 .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    target: "acp_load_session",
+                    tab = %req.tab_id,
+                    session_id = %old,
+                    error = ?e,
+                    "session/cancel before load failed (likely unsupported)"
+                );
+            }
         }
 
         let session_id = acp::schema::v1::SessionId::new(req.session_id.clone());
