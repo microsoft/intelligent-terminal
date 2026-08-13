@@ -118,6 +118,8 @@ pub enum AppEvent {
         cwd: Option<String>,
         output: Option<crate::app::ToolCallOutput>,
         exit_code: Option<i64>,
+        content: Vec<crate::app::ToolCallContent>,
+        locations: Vec<crate::app::ToolCallLocation>,
     },
     ToolCallUpdate {
         session_id: String,
@@ -136,6 +138,10 @@ pub enum AppEvent {
         /// `Some` means the Agent replaced its reported content. An empty
         /// string clears the previous output.
         output: Option<crate::app::ToolCallOutput>,
+        /// Replacement ACP content collection. `Some(vec![])` clears it.
+        content: Option<Vec<crate::app::ToolCallContent>>,
+        /// Replacement ACP locations collection. `Some(vec![])` clears it.
+        locations: Option<Vec<crate::app::ToolCallLocation>>,
         cwd: Option<String>,
         exit_code: Option<i64>,
     },
@@ -150,6 +156,12 @@ pub enum AppEvent {
         generation: u64,
         input: String,
         cwd: Option<String>,
+    },
+    ToolTerminalOutput {
+        session_id: String,
+        terminal_id: String,
+        output: crate::app::ToolCallOutput,
+        exit_code: Option<i64>,
     },
     HideToolCall {
         session_id: String,

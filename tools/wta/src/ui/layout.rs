@@ -130,14 +130,35 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .map(|recommendations| {
             action_panel::recommendation_panel_height(recommendations, main_area.width)
         });
-    let permission_natural_height = app
-        .current_tab()
-        .permission
-        .front()
-        .map(|permission| {
-            action_panel::permission_card_height(permission, main_area.width)
-                .min(u16::MAX as usize) as u16
-        });
+    let permission_natural_height = app.current_tab().permission.front().map(|permission| {
+        let queue = &app.current_tab().permission;
+        let queued = queue
+            .iter()
+            .skip(1)
+            .take(permission::MAX_QUEUE_PREVIEW)
+            .map(|queued| {
+                queued
+                    .target
+                    .as_deref()
+                    .filter(|target| !target.is_empty())
+                    .unwrap_or(&queued.title)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            });
+        let hidden = queue
+            .len()
+            .saturating_sub(1 + permission::MAX_QUEUE_PREVIEW);
+        action_panel::permission_queue_card_height(
+            permission,
+            queue.len(),
+            queued,
+            hidden,
+            main_area.width,
+        )
+        .min(u16::MAX as usize) as u16
+    });
     let panel_layout = action_panel::plan(action_panel::LayoutRequest {
         available_rows: main_area.height,
         input_height,

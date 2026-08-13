@@ -40,6 +40,36 @@ pub struct ToolCallOutput {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallLocation {
+    pub path: String,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallContent {
+    Text(ToolCallOutput),
+    Diff {
+        path: String,
+        #[serde(default)]
+        old_text: Option<ToolCallOutput>,
+        new_text: ToolCallOutput,
+    },
+    Terminal {
+        id: String,
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        #[serde(default)]
+        exit_code: Option<i64>,
+    },
+    Attachment {
+        label: String,
+        #[serde(default)]
+        uri: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
@@ -76,6 +106,12 @@ pub enum ChatMessage {
         /// Process exit code, only when explicitly reported by the Agent.
         #[serde(default)]
         exit_code: Option<i64>,
+        /// Standard ACP tool content, retained for expanded details.
+        #[serde(default)]
+        content: Vec<ToolCallContent>,
+        /// All standard ACP locations, including optional line numbers.
+        #[serde(default)]
+        locations: Vec<ToolCallLocation>,
     },
     DirectoryList {
         global: Vec<String>,
@@ -507,6 +543,16 @@ impl TabSession {
         if !self.pending_agent_response.is_empty() {
             let text = std::mem::take(&mut self.pending_agent_response);
             self.messages.push(ChatMessage::Agent(text));
+        }
+    }
+
+    pub fn flush_streamed_agent_segment(&mut self) {
+        if let Some(text) = self.turn.take_buffer() {
+            if !text.trim().is_empty() {
+                self.messages.push(ChatMessage::Agent(text));
+            }
+            self.pending_agent_response.clear();
+            self.reveal_chars = 0;
         }
     }
 

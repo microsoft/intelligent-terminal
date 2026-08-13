@@ -158,10 +158,25 @@ pub(crate) fn recommendation_card_height(choice: &RecommendationChoice, panel_wi
 
 /// Natural height of the blocking permission card.
 pub(crate) fn permission_card_height(permission: &PermissionState, panel_width: u16) -> usize {
+    permission_queue_card_height(permission, 1, std::iter::empty(), 0, panel_width)
+}
+
+pub(crate) fn permission_queue_card_height(
+    permission: &PermissionState,
+    total: usize,
+    queued: impl Iterator<Item = String>,
+    hidden: usize,
+    panel_width: u16,
+) -> usize {
     let inner_width = card_content_width(panel_width);
-    let header = match &permission.kind_label {
+    let title = match &permission.kind_label {
         Some(icon) => format!("{icon} {}", permission.title),
         None => permission.title.clone(),
+    };
+    let header = if total > 1 {
+        format!("[1/{total}]  {title}")
+    } else {
+        title
     };
     let mut content_lines = wrapped_line_count(&header, inner_width);
     if let Some(target) = &permission.target {
@@ -173,6 +188,12 @@ pub(crate) fn permission_card_height(permission: &PermissionState, panel_width: 
         } else {
             content_lines += wrapped_line_count(target, inner_width);
         }
+    }
+    content_lines += queued
+        .map(|summary| wrapped_line_count(&format!("  • {summary}"), inner_width))
+        .sum::<usize>();
+    if hidden > 0 {
+        content_lines += 1;
     }
     CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }

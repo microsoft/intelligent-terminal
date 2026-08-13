@@ -2244,6 +2244,71 @@ async fn session_notification_tool_call_surfaces_location_from_locations() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_preserves_standard_tool_content_and_location_lines() {
+    let (client, mut rx) = bare_client();
+    let content = vec![
+        acp::schema::v1::Diff::new(r"C:\src\main.rs", "new line")
+            .old_text("old line")
+            .into(),
+        acp::schema::v1::ToolCallContent::Terminal(acp::schema::v1::Terminal::new("term-1")),
+        acp::schema::v1::ToolCallContent::Content(acp::schema::v1::Content::new(
+            acp::schema::v1::ContentBlock::Image(acp::schema::v1::ImageContent::new(
+                "base64",
+                "image/png",
+            )),
+        )),
+    ];
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-typed"),
+                    "Edit source",
+                )
+                .content(content)
+                .locations(vec![
+                    acp::schema::v1::ToolCallLocation::new(r"C:\src\main.rs").line(42),
+                ]),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            location,
+            content,
+            locations,
+            ..
+        }) => {
+            assert_eq!(location.as_deref(), Some(r"C:\src\main.rs:42"));
+            assert_eq!(locations[0].line, Some(42));
+            assert!(matches!(
+                &content[0],
+                crate::app::ToolCallContent::Diff {
+                    path,
+                    old_text: Some(old_text),
+                    new_text,
+                } if path == r"C:\src\main.rs"
+                    && old_text.text == "old line"
+                    && new_text.text == "new line"
+            ));
+            assert!(matches!(
+                &content[1],
+                crate::app::ToolCallContent::Terminal { id, .. } if id == "term-1"
+            ));
+            assert!(matches!(
+                &content[2],
+                crate::app::ToolCallContent::Attachment { label, .. }
+                    if label == "image/png"
+            ));
+        }
+        _ => panic!("expected typed ToolCall"),
+    }
+}
+
 /// When `locations` is empty (typical for `execute` tool calls), the
 /// `location` hint falls back to `raw_input.command` so the card can still
 /// show what's actually being run.
@@ -2413,6 +2478,35 @@ async fn session_notification_routes_tool_call_content_without_status() {
             assert_eq!(output.expect("expected text content").text, "step 1 of 3");
         }
         _ => panic!("expected content-only ToolCallUpdate"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_preserves_empty_tool_content_replacement() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new().content(Vec::new()),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            content: Some(content),
+            output: Some(output),
+            ..
+        }) => {
+            assert!(content.is_empty());
+            assert!(output.text.is_empty());
+        }
+        _ => panic!("expected empty content replacement"),
     }
 }
 

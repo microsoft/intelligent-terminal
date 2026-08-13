@@ -4,7 +4,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{
-    App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallKind, ToolCallOutput,
+    App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind,
+    ToolCallLocation, ToolCallOutput,
 };
 use crate::theme;
 use crate::ui::card::{TranscriptCardRow, TRANSCRIPT_CARD};
@@ -18,6 +19,9 @@ fn activity_label() -> String {
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
+const MAX_TOOL_PREVIEW_LINES: usize = 2;
+const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
+const MAX_TOOL_DETAIL_LINES: usize = 32;
 
 fn directory_card_lines(
     global: &[String],
@@ -99,6 +103,119 @@ fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
     lines
 }
 
+fn full_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
+    let mut source = output.text.lines().rev();
+    let mut lines: Vec<String> = source
+        .by_ref()
+        .take(MAX_TOOL_DETAIL_OUTPUT_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            let suffix = if chars.next().is_some() { "…" } else { "" };
+            format!("{prefix}{head}{suffix}")
+        })
+        .collect();
+    let omitted = output.truncated || source.next().is_some();
+    lines.reverse();
+    if omitted {
+        lines.insert(0, format!("{prefix}…"));
+    }
+    if lines.is_empty() {
+        lines.push(prefix.trim_end().to_string());
+    }
+    lines
+}
+
+fn preview_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
+    let mut source = output.text.lines().rev();
+    let mut lines: Vec<String> = source
+        .by_ref()
+        .take(MAX_TOOL_PREVIEW_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            let suffix = if chars.next().is_some() { "…" } else { "" };
+            format!("{prefix}{head}{suffix}")
+        })
+        .collect();
+    let omitted = output.truncated || source.next().is_some();
+    lines.reverse();
+    if omitted {
+        lines.insert(0, format!("{prefix}…"));
+    }
+    lines
+}
+
+fn tool_detail_lines(
+    content: &[ToolCallContent],
+    locations: &[ToolCallLocation],
+    detailed: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut omitted = false;
+    if detailed {
+        for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
+            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            lines.push(format!("    {}{suffix}", location.path));
+        }
+        omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
+    }
+    for item in content {
+        if lines.len() >= MAX_TOOL_DETAIL_LINES {
+            omitted = true;
+            break;
+        }
+        match item {
+            ToolCallContent::Text(output) => {
+                if detailed {
+                    lines.extend(full_output_lines(output, "    │ "));
+                } else {
+                    lines.extend(preview_output_lines(output, "    │ "));
+                }
+            }
+            ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            } => {
+                lines.push(format!("    Δ {path}"));
+                if detailed {
+                    if let Some(old_text) = old_text {
+                        lines.extend(full_output_lines(old_text, "    - "));
+                    }
+                    lines.extend(full_output_lines(new_text, "    + "));
+                }
+            }
+            ToolCallContent::Terminal {
+                id,
+                output,
+                exit_code,
+            } => {
+                let status = exit_code.map_or_else(String::new, |code| format!(" · exit {code}"));
+                lines.push(format!("    $ {id}{status}"));
+                if detailed {
+                    if let Some(output) = output {
+                        lines.extend(full_output_lines(output, "    │ "));
+                    }
+                }
+            }
+            ToolCallContent::Attachment { label, uri } => {
+                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                lines.push(format!("    ↳ {label}{target}"));
+            }
+        }
+        if lines.len() > MAX_TOOL_DETAIL_LINES {
+            omitted = true;
+            break;
+        }
+    }
+    if omitted {
+        lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
+        lines.push("    …".to_string());
+    }
+    lines
+}
+
 /// Estimate the chat block's natural height (in visual rows) given the
 /// rendering width. Counts wraps for each message + completed turn. Used by
 /// `layout::render` to size the
@@ -170,7 +287,7 @@ struct MessageLayout {
     has_trailing_blank: bool,
 }
 
-fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
+fn message_layout(msg: &ChatMessage, wrap_width: usize, detailed_tools: bool) -> MessageLayout {
     // Most variants render with a 2-cell prefix ("● " for agent/error,
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
@@ -212,6 +329,8 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             location_is_command,
             policy_note,
             output,
+            content,
+            locations,
             ..
         } => {
             // Command targets render one line per split statement (see
@@ -227,7 +346,9 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             } else {
                 0
             };
-            let output_rows = if *kind == ToolCallKind::Execute || *location_is_command {
+            let output_rows = if !detailed_tools
+                && (*kind == ToolCallKind::Execute || *location_is_command)
+            {
                 output
                     .as_ref()
                     .map(|output| {
@@ -240,12 +361,30 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
             } else {
                 0
             };
-            let has_tool_body = command_lines + output_rows > 0;
+            let has_text_content = content
+                .iter()
+                .any(|item| matches!(item, ToolCallContent::Text(_)));
+            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
+            if !has_text_content {
+                if let Some(output) = output {
+                    if detailed_tools {
+                        detail_lines.extend(full_output_lines(output, "    │ "));
+                    } else if *kind != ToolCallKind::Execute && !*location_is_command {
+                        detail_lines.extend(preview_output_lines(output, "    │ "));
+                    }
+                }
+            }
+            let detail_rows: usize = detail_lines
+                .iter()
+                .map(|line| wrap_count(line, wrap_width))
+                .sum();
+            let has_tool_body = command_lines + output_rows + detail_rows > 0;
             let has_policy_note = policy_note.is_some();
             MessageLayout {
                 height: 1
                     + command_lines
                     + output_rows
+                    + detail_rows
                     + usize::from(has_tool_body)
                     + usize::from(has_policy_note),
                 has_trailing_blank: has_tool_body && !has_policy_note,
@@ -265,7 +404,7 @@ fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
 }
 
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
-    message_layout(msg, wrap_width).height
+    message_layout(msg, wrap_width, false).height
 }
 
 fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
@@ -278,7 +417,7 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
     if turn.expanded {
         let mut has_trailing_blank = false;
         for message in &turn.details {
-            let layout = message_layout(message, wrap_width);
+            let layout = message_layout(message, wrap_width, true);
             h += layout.height;
             has_trailing_blank = layout.has_trailing_blank;
         }
@@ -532,7 +671,9 @@ fn build_completed_turn_lines<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
-            lines.extend(build_message_lines(msg, false, false, None, 0, wrap_width));
+            lines.extend(build_message_lines_with_details(
+                msg, false, false, None, 0, wrap_width, true,
+            ));
         }
     }
 
@@ -628,6 +769,26 @@ fn build_message_lines<'a>(
     activity_frame: usize,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    build_message_lines_with_details(
+        msg,
+        is_last_message,
+        agent_streaming,
+        permission_tool_call_id,
+        activity_frame,
+        wrap_width,
+        false,
+    )
+}
+
+fn build_message_lines_with_details<'a>(
+    msg: &'a ChatMessage,
+    is_last_message: bool,
+    agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
+    wrap_width: usize,
+    detailed_tools: bool,
+) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
         ChatMessage::User(text) => {
@@ -689,6 +850,8 @@ fn build_message_lines<'a>(
             cwd,
             output,
             exit_code,
+            content,
+            locations,
         } => {
             let (marker, marker_style, detail) = tool_call_presentation(status);
             let marker = if permission_tool_call_id == Some(id.as_str())
@@ -736,7 +899,7 @@ fn build_message_lines<'a>(
                     theme::DIM,
                 ));
             }
-            if *kind == ToolCallKind::Execute || *location_is_command {
+            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
                 if let Some(exit_code) = exit_code.filter(|_| {
                     !starts_with_ignore_ascii_case(status, "exited (")
                         && !starts_with_ignore_ascii_case(status, "failed:")
@@ -768,7 +931,7 @@ fn build_message_lines<'a>(
                 }
             }
             let mut rendered_output = false;
-            if *kind == ToolCallKind::Execute || *location_is_command {
+            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
                 if let Some(output) = output {
                     for line in tool_output_lines(output) {
                         rendered_output = true;
@@ -779,7 +942,24 @@ fn build_message_lines<'a>(
                     }
                 }
             }
-            if rendered_command || rendered_output {
+            let has_text_content = content
+                .iter()
+                .any(|item| matches!(item, ToolCallContent::Text(_)));
+            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
+            if !has_text_content {
+                if let Some(output) = output {
+                    if detailed_tools {
+                        detail_lines.extend(full_output_lines(output, "    │ "));
+                    } else if *kind != ToolCallKind::Execute && !*location_is_command {
+                        detail_lines.extend(preview_output_lines(output, "    │ "));
+                    }
+                }
+            }
+            let rendered_details = !detail_lines.is_empty();
+            for line in detail_lines {
+                lines.push(Line::from(Span::styled(line, theme::DIM)));
+            }
+            if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
             }
             if let Some(note) = policy_note {
@@ -1147,6 +1327,8 @@ mod tests {
                     cwd: None,
                     output: None,
                     exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 }],
             ),
             (
@@ -1162,6 +1344,8 @@ mod tests {
                     cwd: None,
                     output: None,
                     exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 }],
             ),
             (
@@ -1177,6 +1361,8 @@ mod tests {
                     cwd: None,
                     output: None,
                     exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 }],
             ),
             ("disclaimer", vec![ChatMessage::Disclaimer]),
@@ -1216,6 +1402,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -1245,6 +1433,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -1278,6 +1468,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1319,6 +1511,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1360,6 +1554,8 @@ mod tests {
                 truncated: false,
             }),
             exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
@@ -1374,7 +1570,7 @@ mod tests {
     }
 
     #[test]
-    fn non_execute_tool_call_keeps_reported_content_compact() {
+    fn completed_non_execute_tool_call_shows_bounded_output_preview() {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
@@ -1386,16 +1582,54 @@ mod tests {
             policy_note: None,
             cwd: None,
             output: Some(ToolCallOutput {
-                text: "the entire file contents".into(),
+                text: ["line 1", "line 2", "line 3", "line 4"].join("\n"),
                 truncated: false,
             }),
             exit_code: Some(200),
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 120);
+        let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(lines.len(), 1);
-        assert!(!line_text(&lines[0]).contains("entire file contents"));
-        assert!(!line_text(&lines[0]).contains("exit 200"));
+        assert_eq!(rendered[1], "    │ …");
+        assert_eq!(rendered[2], "    │ line 3");
+        assert_eq!(rendered[3], "    │ line 4");
+        assert!(!rendered.iter().any(|line| line.contains("line 1")));
+        assert!(!rendered[0].contains("exit 200"));
+        assert!(rendered[4].is_empty());
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn expanded_tool_output_is_bounded_for_large_file_lists() {
+        let output = ToolCallOutput {
+            text: (0..200)
+                .map(|index| format!("debug/incremental/object-{index:03}.o"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            truncated: false,
+        };
+        let lines = tool_detail_lines(&[ToolCallContent::Text(output)], &[], true);
+
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
+        assert_eq!(lines[0], "    │ …");
+        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+    }
+
+    #[test]
+    fn tool_detail_lines_strictly_caps_locations_including_ellipsis() {
+        let locations: Vec<ToolCallLocation> = (0..=MAX_TOOL_DETAIL_LINES)
+            .map(|index| ToolCallLocation {
+                path: format!("file-{index}.rs"),
+                line: None,
+            })
+            .collect();
+
+        let lines = tool_detail_lines(&[], &locations, true);
+
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
+        assert_eq!(lines.last().map(String::as_str), Some("    …"));
     }
 
     #[test]
@@ -1543,6 +1777,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let other = ChatMessage::ToolCall {
             id: "tool-1".into(),
@@ -1555,6 +1791,8 @@ mod tests {
             cwd: None,
             output: None,
             exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
 
         let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
@@ -1578,6 +1816,8 @@ mod tests {
                 cwd: None,
                 output: None,
                 exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
             };
             let lines = build_message_lines(&message, false, false, None, 9, 80);
             assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");
