@@ -71,7 +71,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                 let mut spans =
                     vec![Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT)];
                 if let Some(scope) = command_scope_label(spec) {
-                    spans.push(Span::styled(format!("{scope} · "), theme::NOTICE_INFO));
+                    spans.push(Span::styled(format!("{scope} · "), theme::DIM));
                 }
                 spans.push(Span::styled(spec.summary(), theme::DIM));
                 // The `/model` row shows the pane's current model so the user can
@@ -157,7 +157,7 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
             theme::INPUT_TEXT,
         )];
         if let Some(scope) = command_scope_label(spec) {
-            spans.push(Span::styled(format!("{scope} · "), theme::NOTICE_INFO));
+            spans.push(Span::styled(format!("{scope} · "), theme::DIM));
         }
         spans.push(Span::styled(spec.summary(), theme::DIM));
         Line::from(spans)
