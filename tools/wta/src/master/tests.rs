@@ -12,6 +12,11 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 struct PendingNewSessionAgent;
 
 #[derive(Clone)]
+struct PendingLoadSessionAgent {
+    arrivals: mpsc::UnboundedSender<usize>,
+}
+
+#[derive(Clone)]
 struct ControlledNewSessionAgent {
     next: Arc<std::sync::atomic::AtomicUsize>,
     arrivals: mpsc::UnboundedSender<(usize, tokio::sync::oneshot::Sender<()>)>,
@@ -38,6 +43,18 @@ impl ControlledNewSessionAgent {
         Ok(acp::schema::v1::NewSessionResponse::new(SessionId::new(
             session_id,
         )))
+    }
+}
+
+impl PendingLoadSessionAgent {
+    async fn load_session(
+        &self,
+        args: acp::schema::v1::LoadSessionRequest,
+    ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        self.arrivals
+            .send(args.mcp_servers.len())
+            .map_err(|_| acp::Error::internal_error().data("test arrival receiver dropped"))?;
+        futures::future::pending().await
     }
 }
 
@@ -668,6 +685,55 @@ fn agent_link_to_noop_client() -> conn::AgentLink {
     agent_link
 }
 
+fn client_connection_to_pending_load_session_agent(
+    arrivals: mpsc::UnboundedSender<usize>,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+
+    let mock = PendingLoadSessionAgent { arrivals };
+    let agent_builder = acp::Agent
+        .builder()
+        .name("pending-load-session-agent")
+        .on_receive_request(
+            {
+                let mock = mock.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let mock = mock.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
+                        match req {
+                            Q::LoadSessionRequest(args) => conn::respond_enum(
+                                responder,
+                                mock.load_session(args).await.map(R::LoadSessionResponse),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("pending-load-session-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+
+    client_conn
+}
+
 fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
     let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
     let (client_read, client_write) = tokio::io::split(client_pipe);
@@ -982,6 +1048,92 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(2);
+            let agent_instance = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let agent_side_slot = Arc::new(OnceLock::new());
+            agent_side_slot
+                .set(agent_link_to_noop_client())
+                .expect("agent-side forwarder should be set once");
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp.agent_capabilities.mcp_capabilities.http = true;
+            let (load_arrivals_tx, mut load_arrivals_rx) = mpsc::unbounded_channel();
+            let agent = Arc::new(OnceLock::new());
+            assert!(agent
+                .set(Arc::new(AgentCli {
+                    instance_id: agent_instance,
+                    conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
+                    cached_init_resp,
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: "pending-load-session-agent".to_string(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                }))
+                .is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx,
+                agent_side_slot,
+            };
+            let timed_out_session = SessionId::new("timed-out-session");
+            let mut request = acp::schema::v1::LoadSessionRequest::new(
+                timed_out_session.clone(),
+                PathBuf::from("C:\\repo-a"),
+            );
+            crate::session_registry::inject_wta_meta(
+                &mut request.meta,
+                &crate::session_registry::WtaMeta {
+                    proposal_mcp: Some("http-v1".to_string()),
+                    ..Default::default()
+                },
+            );
+
+            let error = handler
+                .load_session_with_timeout(request, std::time::Duration::from_millis(10))
+                .await
+                .expect_err("master should time out a hung agent session/load");
+
+            assert_eq!(
+                load_arrivals_rx.recv().await,
+                Some(1),
+                "load request must carry the pending session MCP capability"
+            );
+            assert_eq!(error.code, acp::ErrorCode::InternalError);
+            assert!(format!("{error}").contains("agent CLI session/load timed out"));
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&timed_out_session));
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(agent_instance)
+                    .await,
+                0,
+                "timed-out load must cancel its pending MCP capability"
+            );
+
+            let _replacement_guard = tokio::time::timeout(
+                std::time::Duration::from_millis(50),
+                handler.replacement_gate.lock(),
+            )
+            .await
+            .expect("replacement gate must be released for fallback session/new");
+        })
+        .await;
+}
+
 #[test]
 fn cloned_helper_handlers_share_the_lazy_agent_binding() {
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
@@ -1059,7 +1211,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                 .registry
                 .upsert(crate::session_registry::SessionInfo::new(
                     initial_session.clone(),
-                    PathBuf::from(r"C:\repo-a"),
+                    PathBuf::from("C:\\repo-a"),
                 ))
                 .await;
             state.helper_meta.lock().await.insert(
@@ -1075,7 +1227,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                 async move {
                     handler
                         .new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
-                            r"C:\repo-b",
+                            "C:\\repo-b",
                         )))
                         .await
                 }
@@ -1093,7 +1245,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                     let _ = second_started_tx.send(());
                     handler
                         .new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
-                            r"C:\repo-c",
+                            "C:\\repo-c",
                         )))
                         .await
                 }
