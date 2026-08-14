@@ -262,6 +262,7 @@ impl App {
                 for replaced_session_id in replaced_session_ids {
                     self.session_to_tab.remove(&replaced_session_id);
                     self.session_model_configs.remove(&replaced_session_id);
+                    self.session_config_options.remove(&replaced_session_id);
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
@@ -354,6 +355,107 @@ impl App {
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
                 }
+            }
+            AppEvent::SessionConfigUpdated {
+                session_id,
+                options,
+            } => {
+                self.session_config_options
+                    .insert(session_id.clone(), options);
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                let options = self
+                    .session_config_options
+                    .get(&session_id)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                let mut picker = self
+                    .tab_sessions
+                    .get(&target_tab)
+                    .map(|tab| tab.config_picker.clone())
+                    .unwrap_or_default();
+                picker.reconcile(options);
+                self.tab_mut(&target_tab).config_picker = picker;
+            }
+            AppEvent::SessionConfigSetCompleted {
+                session_id,
+                config_id,
+                value,
+                model_compat,
+            } => {
+                let (option_name, value_name) = self
+                    .session_config_options
+                    .get_mut(&session_id)
+                    .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
+                    .map(|option| {
+                        option.current_value = value.clone();
+                        (
+                            option.name.clone(),
+                            option.current_value_name().to_string(),
+                        )
+                    })
+                    .unwrap_or_else(|| (config_id.clone(), value.clone()));
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                {
+                    let tab = self.tab_mut(&target_tab);
+                    if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                        tab.config_pending_id = None;
+                    }
+                    let message = if model_compat {
+                        tab.model_override = Some(value.clone());
+                        t!("system.model_set", model = value_name.as_str()).into_owned()
+                    } else {
+                        format!("{option_name}: {value_name}")
+                    };
+                    tab.messages.push(ChatMessage::success(message));
+                    tab.scroll_to_bottom();
+                }
+                if model_compat {
+                    if let Some((_, current_model_id)) =
+                        self.session_model_configs.get_mut(&session_id)
+                    {
+                        *current_model_id = Some(value.clone());
+                    }
+                    if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                        self.agent_current_model_id = Some(value);
+                        self.rebuild_model_catalog_from_agent_state();
+                        self.publish_agent_status();
+                    }
+                }
+            }
+            AppEvent::SessionConfigSetFailed {
+                session_id,
+                config_id,
+                message,
+            } => {
+                let option_name = self
+                    .session_config_options
+                    .get(&session_id)
+                    .and_then(|options| options.iter().find(|option| option.id == config_id))
+                    .map(|option| option.name.clone())
+                    .unwrap_or(config_id.clone());
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                let tab = self.tab_mut(&target_tab);
+                if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                    tab.config_pending_id = None;
+                }
+                tab.messages.push(ChatMessage::error(
+                    t!(
+                        "system.config_update_failed",
+                        option = option_name.as_str(),
+                        error = message.as_str()
+                    )
+                    .into_owned(),
+                ));
+                tab.scroll_to_bottom();
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global

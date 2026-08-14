@@ -312,6 +312,74 @@ pub(crate) struct PendingTerminalActionProposal {
     pub recommendations: super::RecommendationSet,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum ConfigPickerState {
+    #[default]
+    Closed,
+    Options {
+        selected: usize,
+    },
+    Values {
+        option_id: String,
+        selected: usize,
+        parent_selected: Option<usize>,
+    },
+}
+
+impl ConfigPickerState {
+    pub fn is_open(&self) -> bool {
+        !matches!(self, Self::Closed)
+    }
+
+    pub fn selected(&self) -> usize {
+        match self {
+            Self::Closed => 0,
+            Self::Options { selected } | Self::Values { selected, .. } => *selected,
+        }
+    }
+
+    pub fn option_id(&self) -> Option<&str> {
+        match self {
+            Self::Values { option_id, .. } => Some(option_id),
+            _ => None,
+        }
+    }
+
+    pub fn reconcile(&mut self, options: &[crate::app_contracts::AcpSessionConfigOption]) {
+        let next = match std::mem::take(self) {
+            Self::Closed => Self::Closed,
+            Self::Options { selected } if !options.is_empty() => Self::Options {
+                selected: selected.min(options.len() - 1),
+            },
+            Self::Values {
+                option_id,
+                selected,
+                parent_selected,
+            } => {
+                let value_count = options
+                    .iter()
+                    .find(|option| option.id == option_id)
+                    .map(|option| option.values.len());
+                match value_count {
+                    Some(value_count) if value_count > 0 => Self::Values {
+                        option_id,
+                        selected: selected.min(value_count - 1),
+                        parent_selected,
+                    },
+                    _ => parent_selected
+                        .filter(|_| !options.is_empty())
+                        .map(|selected| Self::Options {
+                            selected: selected.min(options.len() - 1),
+                        })
+                        .unwrap_or(Self::Closed),
+                }
+            }
+            Self::Options { .. } => Self::Closed,
+        };
+        *self = next;
+    }
+}
+
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -422,6 +490,10 @@ pub struct TabSession {
     pub model_picker_open: bool,
     /// Highlighted row in the open model picker.
     pub model_picker_selected: usize,
+    /// Navigation state for the ACP session configuration picker.
+    pub config_picker: ConfigPickerState,
+    /// Config option currently awaiting a `session/set_config_option` response.
+    pub config_pending_id: Option<String>,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
@@ -474,6 +546,7 @@ impl TabSession {
             && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
+            && !self.config_picker.is_open()
             && !self.agent_picker_open
     }
 

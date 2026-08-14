@@ -815,7 +815,7 @@ fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
     );
 }
 
-fn test_app_with_master_rx() -> (
+pub(super) fn test_app_with_master_rx() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>,
 ) {
@@ -6397,6 +6397,33 @@ fn render_model_picker_lists_models() {
         !text.contains('●'),
         "the model picker must not prefix the current model with a circle; rendered:\n{text}"
     );
+}
+
+#[test]
+fn render_config_picker_lists_options_and_current_values() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-config".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-config".into(),
+        options: vec![crate::app_contracts::AcpSessionConfigOption {
+            id: "reasoning".into(),
+            name: "ReasoningXYZ".into(),
+            description: Some("Controls depth".into()),
+            category: Some("thought_level".into()),
+            current_value: "high".into(),
+            values: vec![crate::app_contracts::AcpSessionConfigValue {
+                id: "high".into(),
+                name: "HighXYZ".into(),
+                description: Some("Think longer".into()),
+            }],
+        }],
+    });
+    app.current_tab_mut().config_picker = ConfigPickerState::Options { selected: 0 };
+
+    let text = render_to_text(&mut app, 120, 24);
+    assert!(text.contains("ReasoningXYZ"), "rendered:\n{text}");
+    assert!(text.contains("HighXYZ"), "rendered:\n{text}");
 }
 
 #[test]

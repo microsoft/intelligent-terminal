@@ -6,6 +6,7 @@ pub(crate) mod card;
 pub(crate) mod chat;
 pub(crate) mod command_format;
 mod command_popup;
+mod config_popup;
 mod debug_panel;
 mod input;
 mod layout;
@@ -19,6 +20,7 @@ mod user_input;
 
 pub use agent_popup::AgentPopupState;
 pub use command_popup::{PopupCandidates, PopupState};
+pub use config_popup::ConfigPopupState;
 #[cfg(test)]
 pub(crate) use input::input_height;
 pub use layout::render;

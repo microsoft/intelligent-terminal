@@ -519,6 +519,17 @@ impl App {
             return;
         }
 
+        if self.config_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.config_picker_up(),
+                KeyCode::Down => self.config_picker_down(),
+                KeyCode::Enter => self.config_picker_enter(),
+                KeyCode::Esc => self.config_picker_escape(),
+                _ => {}
+            }
+            return;
+        }
+
         if self.current_tab().paste_pending {
             tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
             return;

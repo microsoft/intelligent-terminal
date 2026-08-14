@@ -214,8 +214,17 @@ system.agent_switch_unavailable: "Chan eil atharrachadh àidhent ri fhaighinn b�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
+commands.config.summary: "Rèitich an seisean àidhent seo"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Gluais panail àidseant an taba seo (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
 system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Rèiteachadh seisein (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Cha do chuir an t-àidhent ceangailte roghainn seisein sam bith a ghabhas rèiteachadh an cèill."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Dh’fhàillig ùrachadh %{option}: %{error}"
 system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}

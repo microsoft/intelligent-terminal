@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "ونڈوز ٹرمینل ٹیب سے باہر �
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "اس ایجنٹ سیشن کو ترتيب دیں"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "اس ٹیب کے ایجنٹ پین کو منتقل کریں (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ماڈل منتخب کریں (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "منسلک ایجنٹ نے کوئی قابلِ انتخاب ماڈل ظاہر نہیں کیا۔"
 system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر دیا گیا۔"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "سیشن کنفیگریشن (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "منسلک ایجنٹ نے کسی بھی قابل کنفیگر سیشن کے اختیارات کی تشہیر نہیں کی۔"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} کو اپ ڈیٹ کرنے میں ناکام: %{error}"
 system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}

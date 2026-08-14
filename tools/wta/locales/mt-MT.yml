@@ -214,8 +214,17 @@ system.agent_switch_unavailable: "L-iswiċċjar tal-aġent mhuwiex disponibbli b
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
+commands.config.summary: "Ikkonfigura din is-sessjoni tal-aġent"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mexxi l-pannell tal-aġent ta' dan it-tab (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfigurazzjoni tas-sessjoni (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ sessjoni konfigurabbli."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

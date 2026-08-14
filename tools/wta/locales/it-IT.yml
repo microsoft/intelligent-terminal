@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "La commutazione dell'agente non è disponibile
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Scegli il modello per questo riquadro (/model <id> per cambiare direttamente)"  # {Locked="/model","<id>"}
+commands.config.summary: "Configura questa sessione dell’agente"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Sposta il riquadro agente di questa scheda (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
 system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Configurazione sessione (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "L’agente connesso non ha annunciato alcuna opzione di sessione configurabile."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Aggiornamento di %{option} non riuscito: %{error}"
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
