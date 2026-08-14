@@ -4340,7 +4340,7 @@ impl App {
         // When the transport to master is lost, only /restart can run — so the
         // popup simply doesn't show the other commands (rather than greying
         // them). Collapse the candidate list to /restart if it's among the
-        // prefix matches; otherwise show nothing (the typed prefix excludes
+        // search matches; otherwise show nothing (the typed query excludes
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
@@ -4372,6 +4372,11 @@ impl App {
             candidates,
             selected: tab.command_popup_selected,
             pane_focused: self.pane_focused,
+            command_query: tab
+                .input
+                .trim_start()
+                .strip_prefix('/')
+                .unwrap_or_default(),
             current_model: self.current_model_display(),
         })
     }

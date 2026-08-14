@@ -3,7 +3,7 @@
 //! The user types `/foo` in the input box; on Enter, [`parse`] resolves the
 //! input to a [`ParsedCommand`] (or returns `None`, in which case the line is
 //! sent as a normal prompt). The autocomplete popup uses [`matches`] for
-//! prefix-filtered suggestions.
+//! substring-filtered suggestions, with prefix matches ranked first.
 //!
 //! See `tools/wta/src/app.rs` `App::handle_slash_command` for dispatch and
 //! `tools/wta/src/ui/command_popup.rs` for rendering.
@@ -290,15 +290,16 @@ pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
         .find(|spec| spec.name.eq_ignore_ascii_case(name))
 }
 
-/// Prefix-match against the registry (case-insensitive). An empty prefix
-/// returns the full registry in declaration order. Used by the autocomplete
-/// popup.
-pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
-    let needle = prefix.trim().to_ascii_lowercase();
-    REGISTRY
+/// Substring-match against the registry (case-insensitive), ranking prefix
+/// matches before other contains matches. An empty query returns the full
+/// registry in declaration order. Used by the autocomplete popup.
+pub fn matches(query: &str) -> Vec<&'static CommandSpec> {
+    let needle = query.trim().to_ascii_lowercase();
+    let (prefix_matches, contains_matches): (Vec<_>, Vec<_>) = REGISTRY
         .iter()
-        .filter(|spec| spec.name.starts_with(&needle))
-        .collect()
+        .filter(|spec| spec.name.contains(&needle))
+        .partition(|spec| spec.name.starts_with(&needle));
+    prefix_matches.into_iter().chain(contains_matches).collect()
 }
 
 /// Resolve a `/move` argument from either its full name or one-letter alias.
@@ -513,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_filters_by_prefix() {
+    fn matches_filters_by_substring_and_ranks_prefixes_first() {
         let all = matches("");
         assert_eq!(all.len(), REGISTRY.len());
 
@@ -521,15 +522,22 @@ mod tests {
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].name, "help");
 
+        let middle = matches("lear");
+        assert_eq!(middle.len(), 1);
+        assert_eq!(middle[0].name, "clear");
+
+        let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(ranked, vec!["stop", "restart", "list-dirs"]);
+
         let none = matches("zzz");
         assert!(none.is_empty());
     }
 
     #[test]
     fn matches_case_insensitive() {
-        let h = matches("HE");
-        assert_eq!(h.len(), 1);
-        assert_eq!(h[0].name, "help");
+        let sessions = matches("IONS");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].name, "sessions");
     }
 
     #[test]

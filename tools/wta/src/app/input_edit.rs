@@ -246,7 +246,7 @@ impl TabSession {
             self.move_position_candidates = commands::match_move_positions(prefix);
         } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
-            // partial name. `is_command_prefix` already guarantees the
+            // name query. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
