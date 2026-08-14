@@ -4,13 +4,10 @@ use super::prompt_context::{self, ContextRequest};
 use super::turn_metrics::prompt_timing_log;
 use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
-/// Which prompt template was last shipped on a given ACP session.
-/// Used by [`TemplateMemo`] to decide whether the next turn needs to
-/// re-include the (~10k char) template body or can ride on the
-/// persona already installed in the session's conversation history.
+/// Which prompt template applies to the current turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TemplateKind {
     Planner,
@@ -26,30 +23,30 @@ impl std::fmt::Display for TemplateKind {
     }
 }
 
-/// Per-session memo of the last shipped template kind.
+/// Per-session memo of whether the planner template has been installed.
 ///
 /// Each ACP session has its own conversation history with the agent.
 /// We pay the ~10k-char template body once on the first turn of a
 /// session; subsequent turns only carry runtime context + the user
-/// request, because the terminal template is already in history. When
-/// the kind changes (planner ↔ autofix) we re-ship so the model's
-/// most-recent system instructions match the turn's intent.
+/// request, because the terminal template is already in history.
+/// Autofix uses a dedicated per-turn instruction template and does not
+/// invalidate the installed planner template.
 ///
 /// Cleanup is driven by the session lifecycle: `forget()` runs
 /// whenever a SessionId is dropped (via `/new` or `drop_session_rx`),
 /// keeping the map bounded.
 #[derive(Clone, Default)]
-pub(crate) struct TemplateMemo(Arc<tokio::sync::Mutex<HashMap<String, TemplateKind>>>);
+pub(crate) struct TemplateMemo(Arc<tokio::sync::Mutex<HashSet<String>>>);
 
 impl TemplateMemo {
-    /// Records `kind` as the latest template for this session and
-    /// returns whether the caller must ship the template body on this
-    /// turn. Autofix always ships (its template *is* the prompt body);
-    /// planner ships on the first turn or when the previous turn used
-    /// the other kind.
+    /// Returns whether the caller must ship the selected template body.
+    /// Autofix always ships its bounded per-turn instructions. Planner ships
+    /// once per session, regardless of intervening autofix turns.
     pub(crate) async fn should_ship(&self, session_id: &str, kind: TemplateKind) -> bool {
-        let prev = self.0.lock().await.insert(session_id.to_string(), kind);
-        kind == TemplateKind::Autofix || prev != Some(kind)
+        match kind {
+            TemplateKind::Autofix => true,
+            TemplateKind::Planner => self.0.lock().await.insert(session_id.to_string()),
+        }
     }
 
     /// Drops the memo entry for a session that's going away.
@@ -150,20 +147,29 @@ pub(crate) async fn build_prompt_text(
     }
 
     let assemble_started = std::time::Instant::now();
-    // First turn of a session (or kind change): ship the full template
-    // body. Subsequent same-kind turns drop the template — the agent
-    // already has the persona in its conversation history. Autofix
-    // turns always carry the template because the template *is* the
-    // prompt body (no user_text alongside it).
+    // The first planner turn ships the full base template. Later planner turns
+    // rely on conversation history. Autofix always carries its bounded
+    // per-turn instructions but does not invalidate the planner template.
     let prompt_body = if include_template {
         prompt::merge_runtime_sections(&planner_template.content, &runtime_sections)
     } else {
-        runtime_sections
+        let runtime_context = runtime_sections
             .iter()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
-            .join("\n\n")
+            .join("\n\n");
+        if is_autofix {
+            runtime_context
+        } else if runtime_context.is_empty() {
+            "## Turn Mode\nHandle this as a normal terminal-assistant request, not as an auto-fix turn."
+                .to_string()
+        } else {
+            format!(
+                "## Turn Mode\nHandle this as a normal terminal-assistant request, not as an auto-fix turn.\n\n{}",
+                runtime_context
+            )
+        }
     };
     let prompt = if let Some(autofix_text_kind) = autofix_text_kind {
         if user_text.trim().is_empty() {
@@ -330,6 +336,18 @@ mod tests {
     fn template_kind_display_matches_label() {
         assert_eq!(TemplateKind::Planner.to_string(), "planner");
         assert_eq!(TemplateKind::Autofix.to_string(), "autofix");
+    }
+
+    #[tokio::test]
+    async fn autofix_does_not_force_planner_template_to_ship_again() {
+        let memo = TemplateMemo::default();
+
+        assert!(memo.should_ship("session", TemplateKind::Planner).await);
+        assert!(memo.should_ship("session", TemplateKind::Autofix).await);
+        assert!(
+            !memo.should_ship("session", TemplateKind::Planner).await,
+            "autofix must not invalidate the planner template already in session history"
+        );
     }
 
     /// Minimal [`crate::shell::wt_channel::WtChannel`] that answers
@@ -627,6 +645,9 @@ mod tests {
             !built_prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
         );
+        assert!(built_prompt.contains(
+            "Handle this as a normal terminal-assistant request, not as an auto-fix turn."
+        ));
         let user_request = format!("## User Request\n{}", "hi");
         assert!(built_prompt.contains(&user_request));
     }
