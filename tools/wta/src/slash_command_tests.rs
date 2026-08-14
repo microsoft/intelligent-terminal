@@ -879,3 +879,14 @@ fn connected_popup_visible_for_any_prefix() {
         "a healthy connection must keep the normal popup behavior"
     );
 }
+
+#[test]
+fn connected_popup_matches_command_name_substrings() {
+    let mut app = test_app();
+    type_input(&mut app, "/lear");
+
+    assert!(
+        app.command_popup_visible(),
+        "typing a substring of /clear must show the command popup"
+    );
+}

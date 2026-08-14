@@ -28,6 +28,10 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
+pub const SEARCH_MATCH: Style = Style::new()
+    .fg(Color::Yellow)
+    .add_modifier(Modifier::BOLD)
+    .add_modifier(Modifier::UNDERLINED);
 // Match the /sessions cursor: cyan foreground with no full-row background.
 pub const SELECTED: Style = Style::new().fg(Color::Cyan);
 // Preserve the selection when the pane loses focus without presenting it as
