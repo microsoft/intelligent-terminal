@@ -473,6 +473,8 @@ fn config_picker_select_sends_session_scoped_option_request() {
         "code"
     );
     assert!(app.current_tab().config_pending_id.is_none());
+    assert_eq!(last_notice(&app).0, NoticeKind::Success);
+    assert!(last_notice(&app).1.contains("Mode: Code"));
 }
 
 #[test]

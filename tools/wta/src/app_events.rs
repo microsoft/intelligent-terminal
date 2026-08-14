@@ -385,15 +385,18 @@ impl App {
                 value,
                 model_compat,
             } => {
-                let value_name = self
+                let (option_name, value_name) = self
                     .session_config_options
                     .get_mut(&session_id)
                     .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
                     .map(|option| {
                         option.current_value = value.clone();
-                        option.current_value_name().to_string()
+                        (
+                            option.name.clone(),
+                            option.current_value_name().to_string(),
+                        )
                     })
-                    .unwrap_or_else(|| value.clone());
+                    .unwrap_or_else(|| (config_id.clone(), value.clone()));
                 let target_tab = self.bound_tab_for_session(&session_id);
                 let Some(target_tab) = target_tab else {
                     return;
@@ -403,13 +406,14 @@ impl App {
                     if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                         tab.config_pending_id = None;
                     }
-                    if model_compat {
+                    let message = if model_compat {
                         tab.model_override = Some(value.clone());
-                        tab.messages.push(ChatMessage::success(
-                            t!("system.model_set", model = value_name.as_str()).into_owned(),
-                        ));
-                        tab.scroll_to_bottom();
-                    }
+                        t!("system.model_set", model = value_name.as_str()).into_owned()
+                    } else {
+                        format!("{option_name}: {value_name}")
+                    };
+                    tab.messages.push(ChatMessage::success(message));
+                    tab.scroll_to_bottom();
                 }
                 if model_compat {
                     if let Some((_, current_model_id)) =
