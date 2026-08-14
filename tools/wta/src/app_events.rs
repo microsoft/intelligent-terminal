@@ -363,8 +363,8 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
-                tab.pending_agent_response.clear();
-                tab.pending_user_replay.clear();
+                tab.replay_agent_buffer.clear();
+                tab.replay_user_buffer.clear();
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
@@ -373,7 +373,7 @@ impl App {
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
-                tab.messages.push(ChatMessage::System(message));
+                tab.messages.push(ChatMessage::info(message));
                 tab.scroll_to_bottom();
             }
             AppEvent::PromptTemplateLoaded { name } => {
@@ -389,7 +389,7 @@ impl App {
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
-                    .push(ChatMessage::System(t!("system.agent_busy").into_owned()));
+                    .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
@@ -664,7 +664,7 @@ impl App {
                     SoftStopReason::Refusal => t!("system.stopped_refusal"),
                 };
                 let tab = self.session_tab_mut(&session_id);
-                tab.messages.push(ChatMessage::System(msg.into_owned()));
+                tab.messages.push(ChatMessage::warning(msg.into_owned()));
                 tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
@@ -691,14 +691,17 @@ impl App {
                 // means the previous user turn is complete — flush it
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
-                if tab.loading_session && !tab.pending_user_replay.is_empty() {
-                    let text = std::mem::take(&mut tab.pending_user_replay);
-                    tab.messages.push(ChatMessage::User(text));
+                if tab.loading_session {
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
+                        tab.messages.push(ChatMessage::User(text));
+                    }
+                    tab.replay_agent_buffer.push_str(&text);
+                    return;
                 }
-                tab.pending_agent_response.push_str(&text);
 
-                // Append to the streaming buffer. The state machine drops
-                // late chunks and handles the stale-autofix generation check.
+                // Append directly to the ordered active transcript. The state
+                // machine drops late chunks and stale autofix generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
@@ -711,11 +714,11 @@ impl App {
                 if !tab.loading_session {
                     return;
                 }
-                if !tab.pending_agent_response.is_empty() {
-                    let prev = std::mem::take(&mut tab.pending_agent_response);
+                if !tab.replay_agent_buffer.is_empty() {
+                    let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
                 }
-                tab.pending_user_replay.push_str(&text);
+                tab.replay_user_buffer.push_str(&text);
             }
             AppEvent::AgentMessageEnd { session_id } => {
                 if let Some(summary) = self.session_completion_latency_summary(&session_id) {
@@ -732,75 +735,174 @@ impl App {
                 id,
                 title,
                 status,
+                kind,
                 location,
                 location_is_command,
+                cwd,
+                output,
+                exit_code,
+                content,
+                locations,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
-                // Turn boundary during replay (see AgentMessageChunk).
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
+                // Commit streamed prose before the tool so the transcript
+                // follows ACP event order instead of drawing the streaming
+                // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
                 }
-                tab.tool_calls
-                    .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages.push(ChatMessage::ToolCall {
                     id,
                     title,
                     status,
+                    kind,
                     location,
                     location_is_command,
+                    cwd,
+                    output,
+                    exit_code,
+                    content,
+                    locations,
                 });
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
                 id,
+                title,
                 status,
+                kind,
                 location,
                 location_is_command,
+                output,
+                content,
+                locations,
+                cwd,
+                exit_code,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
                 }
-                if let Some(entry) = tab.tool_calls.get_mut(&id) {
-                    entry.1 = status.clone();
-                }
                 // Update in-place in messages
                 for msg in &mut tab.messages {
                     if let ChatMessage::ToolCall {
                         id: ref mid,
+                        title: ref mut current_title,
                         status: ref mut s,
+                        kind: ref mut current_kind,
                         location: ref mut loc,
                         location_is_command: ref mut loc_is_cmd,
+                        cwd: ref mut current_cwd,
+                        output: ref mut current_output,
+                        exit_code: ref mut current_exit_code,
+                        content: ref mut current_content,
+                        locations: ref mut current_locations,
                         ..
                     } = msg
                     {
                         if mid == &id {
-                            *s = status.clone();
+                            if let Some(title) = &title {
+                                *current_title = title.clone();
+                            }
+                            if let Some(status) = &status {
+                                *s = status.clone();
+                            }
+                            if let Some(kind) = kind {
+                                *current_kind = kind;
+                            }
                             // Only overwrite when the update actually carried
                             // a fresh location — `None` means "unchanged",
                             // not "clear it" (see `AppEvent::ToolCallUpdate`).
-                            if location.is_some() {
+                            if location.is_some() || locations.is_some() {
                                 *loc = location.clone();
                                 *loc_is_cmd = location_is_command;
+                            }
+                            if let Some(output) = &output {
+                                *current_output = (!output.text.is_empty()).then(|| output.clone());
+                            }
+                            if let Some(content) = &content {
+                                *current_content = content.clone();
+                            }
+                            if let Some(locations) = &locations {
+                                *current_locations = locations.clone();
+                            }
+                            if let Some(cwd) = &cwd {
+                                *current_cwd = (!cwd.is_empty()).then(|| cwd.clone());
+                            }
+                            if let Some(exit_code) = exit_code {
+                                *current_exit_code = Some(exit_code);
                             }
                         }
                     }
                 }
             }
+            AppEvent::ToolTerminalOutput {
+                session_id,
+                terminal_id,
+                output,
+                exit_code,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                let update_content = |message: &mut ChatMessage| {
+                    let ChatMessage::ToolCall {
+                        output: card_output,
+                        exit_code: card_exit_code,
+                        content,
+                        ..
+                    } = message
+                    else {
+                        return;
+                    };
+                    let mut contains_terminal = false;
+                    for item in content {
+                        if let crate::app::ToolCallContent::Terminal {
+                            id,
+                            output: current_output,
+                            exit_code: current_exit_code,
+                        } = item
+                        {
+                            if id == &terminal_id {
+                                contains_terminal = true;
+                                *current_output = Some(output.clone());
+                                if exit_code.is_some() {
+                                    *current_exit_code = exit_code;
+                                }
+                            }
+                        }
+                    }
+                    if contains_terminal {
+                        *card_output = Some(output.clone());
+                        if exit_code.is_some() {
+                            *card_exit_code = exit_code;
+                        }
+                    }
+                };
+                for message in &mut tab.messages {
+                    update_content(message);
+                }
+                for turn in &mut tab.completed_turns {
+                    for message in &mut turn.details {
+                        update_content(message);
+                    }
+                }
+            }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
-                tab.tool_calls.remove(&id);
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
                 );
@@ -809,17 +911,21 @@ impl App {
                 session_id,
                 entries,
             } => {
-                let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
+                let loading_session = self.session_tab(&session_id).loading_session;
+                if !self.session_tab(&session_id).turn.is_in_flight() && !loading_session {
                     return;
                 }
+                if !loading_session {
+                    self.turn_observe_chunk(&session_id, ChunkKind::Thought, "");
+                }
+                let tab = self.session_tab_mut(&session_id);
                 if tab.loading_session {
-                    if !tab.pending_user_replay.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_user_replay);
+                    if !tab.replay_user_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_user_buffer);
                         tab.messages.push(ChatMessage::User(text));
                     }
-                    if !tab.pending_agent_response.is_empty() {
-                        let text = std::mem::take(&mut tab.pending_agent_response);
+                    if !tab.replay_agent_buffer.is_empty() {
+                        let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
                 }
@@ -860,10 +966,41 @@ impl App {
                     responder: Some(responder),
                 });
             }
+            AppEvent::UserInputRequest {
+                request_id,
+                session_id,
+                request,
+                responder,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if !tab.turn.is_in_flight() {
+                    return;
+                }
+                tab.user_input.push_back(UserInputState {
+                    request_id,
+                    request,
+                    selected: 0,
+                    input: String::new(),
+                    responder: Some(responder),
+                });
+            }
+            AppEvent::CancelUserInputRequest {
+                request_id,
+                session_id,
+            } => {
+                let tab = self.session_tab_mut(&session_id);
+                if let Some(index) = tab
+                    .user_input
+                    .iter()
+                    .position(|pending| pending.request_id == request_id)
+                {
+                    tab.user_input.remove(index);
+                }
+            }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()
                     .messages
-                    .push(ChatMessage::System(message));
+                    .push(ChatMessage::error(message));
                 self.scroll_to_bottom();
             }
             AppEvent::DebugPipeMessage(msg) => {
@@ -936,7 +1073,7 @@ impl App {
                     if self.mode == AppMode::Chat {
                         self.current_tab_mut()
                             .messages
-                            .push(ChatMessage::System(t!("system.no_agents").into_owned()));
+                            .push(ChatMessage::warning(t!("system.no_agents").into_owned()));
                         self.scroll_to_bottom();
                     }
                 } else {

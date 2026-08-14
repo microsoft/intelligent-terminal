@@ -332,7 +332,7 @@ fn connect_with(
         proposal_channels: Arc::new(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
-        hidden_tool_calls: Mutex::new(HashSet::new()),
+        hidden_tool_calls: Mutex::new(HashMap::new()),
     });
     let wta = WtaClient { state };
 
@@ -678,7 +678,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
-        hidden_tool_calls: Mutex::new(HashSet::new()),
+        hidden_tool_calls: Mutex::new(HashMap::new()),
     });
     let wta = WtaClient { state };
 
@@ -1772,7 +1772,7 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         proposal_channels: Arc::new(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
-        hidden_tool_calls: Mutex::new(HashSet::new()),
+        hidden_tool_calls: Mutex::new(HashMap::new()),
     });
     (WtaClient { state }, event_rx)
 }
@@ -2144,7 +2144,7 @@ async fn session_notification_hides_proposal_mcp_tool_call() {
     ));
     assert!(
         rx.try_recv().is_err(),
-        "proposal MCP ToolCall must not reach the chat UI"
+        "session MCP ToolCall must not reach the chat UI"
     );
 }
 
@@ -2206,6 +2206,71 @@ async fn session_notification_tool_call_surfaces_location_from_locations() {
             assert_eq!(location.as_deref(), Some(r"C:\src\rust-app"));
         }
         _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_preserves_standard_tool_content_and_location_lines() {
+    let (client, mut rx) = bare_client();
+    let content = vec![
+        acp::schema::v1::Diff::new(r"C:\src\main.rs", "new line")
+            .old_text("old line")
+            .into(),
+        acp::schema::v1::ToolCallContent::Terminal(acp::schema::v1::Terminal::new("term-1")),
+        acp::schema::v1::ToolCallContent::Content(acp::schema::v1::Content::new(
+            acp::schema::v1::ContentBlock::Image(acp::schema::v1::ImageContent::new(
+                "base64",
+                "image/png",
+            )),
+        )),
+    ];
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-typed"),
+                    "Edit source",
+                )
+                .content(content)
+                .locations(vec![
+                    acp::schema::v1::ToolCallLocation::new(r"C:\src\main.rs").line(42),
+                ]),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            location,
+            content,
+            locations,
+            ..
+        }) => {
+            assert_eq!(location.as_deref(), Some(r"C:\src\main.rs:42"));
+            assert_eq!(locations[0].line, Some(42));
+            assert!(matches!(
+                &content[0],
+                crate::app::ToolCallContent::Diff {
+                    path,
+                    old_text: Some(old_text),
+                    new_text,
+                } if path == r"C:\src\main.rs"
+                    && old_text.text == "old line"
+                    && new_text.text == "new line"
+            ));
+            assert!(matches!(
+                &content[1],
+                crate::app::ToolCallContent::Terminal { id, .. } if id == "term-1"
+            ));
+            assert!(matches!(
+                &content[2],
+                crate::app::ToolCallContent::Attachment { label, .. }
+                    if label == "image/png"
+            ));
+        }
+        _ => panic!("expected typed ToolCall"),
     }
 }
 
@@ -2349,9 +2414,147 @@ async fn session_notification_routes_tool_call_update_status_only() {
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
-            assert_eq!(status, "Completed");
+            assert_eq!(status.as_deref(), Some("Completed"));
         }
         _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_tool_call_content_without_status() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .content(vec!["step 1 of 3".into()]),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate { status, output, .. }) => {
+            assert_eq!(status, None);
+            assert_eq!(output.expect("expected text content").text, "step 1 of 3");
+        }
+        _ => panic!("expected content-only ToolCallUpdate"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_preserves_empty_tool_content_replacement() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new().content(Vec::new()),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            content: Some(content),
+            output: Some(output),
+            ..
+        }) => {
+            assert!(content.is_empty());
+            assert!(output.text.is_empty());
+        }
+        _ => panic!("expected empty content replacement"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_bounds_tool_call_output_to_latest_text() {
+    let (client, mut rx) = bare_client();
+    let reported = format!("{}TAIL", "x".repeat(5000));
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .content(vec![reported.into()]),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            output: Some(output),
+            ..
+        }) => {
+            assert!(output.truncated);
+            assert_eq!(output.text.chars().count(), 4000);
+            assert!(output.text.ends_with("TAIL"));
+        }
+        _ => panic!("expected bounded ToolCallUpdate output"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_surfaces_execute_metadata_and_raw_output() {
+    let (client, mut rx) = bare_client();
+    let expected_cwd = concat!("C:", "\\", "repo");
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "bash",
+                )
+                .kind(acp::schema::v1::ToolKind::Execute)
+                .status(acp::schema::v1::ToolCallStatus::Completed)
+                .raw_input(Some(serde_json::json!({
+                    "command": "cargo test",
+                    "cwd": expected_cwd
+                })))
+                .raw_output(Some(serde_json::json!({
+                    "stdout": "12 tests passed",
+                    "stderr": "one warning",
+                    "exitCode": 0
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            kind,
+            location,
+            location_is_command,
+            cwd,
+            output,
+            exit_code,
+            ..
+        }) => {
+            assert_eq!(kind, crate::app::ToolCallKind::Execute);
+            assert_eq!(location.as_deref(), Some("cargo test"));
+            assert!(location_is_command);
+            assert_eq!(cwd.as_deref(), Some(expected_cwd));
+            assert_eq!(
+                output.expect("expected reported output").text,
+                "12 tests passed\none warning"
+            );
+            assert_eq!(exit_code, Some(0));
+        }
+        _ => panic!("expected execute ToolCall"),
     }
 }
 
@@ -2377,6 +2580,7 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
         .unwrap();
     match rx.try_recv() {
         Ok(AppEvent::ToolCallUpdate { status, .. }) => {
+            let status = status.as_deref().expect("expected status update");
             assert!(status.contains("Failed"), "got: {status}");
             assert!(
                 status.contains("The user rejected this tool call."),
@@ -2387,7 +2591,7 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
     }
 }
 
-/// A `ToolCallUpdate` with no status is dropped (nothing actionable to show).
+/// A `ToolCallUpdate` with no supported fields is dropped.
 #[tokio::test]
 async fn session_notification_tool_call_update_without_status_is_dropped() {
     let (client, mut rx) = bare_client();

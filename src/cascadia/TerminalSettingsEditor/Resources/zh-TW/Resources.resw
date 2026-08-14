@@ -2836,6 +2836,8 @@
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>選擇要在命令選擇區中用於快速動作的代理。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>啟用時,AI 代理會自動分析失敗的命令並提出修正建議。停用時,失敗的命令會在狀態列中顯示可點擊的提示 — 按 Ctrl+Alt+. 或點擊提示以要求修正。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>顯示內容視窗使用量和工作階段成本</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>如果有相關資料，請在終端機底部列中顯示內容視窗使用量和工作階段成本。</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>窗格位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>指定代理窗格相對於終端機的開啟位置。</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
@@ -2905,12 +2907,12 @@
     <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Hook 移除失敗。請查看 %LOCALAPPDATA%\IntelligentTerminal\logs\ 以取得詳細資料。</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+    <value>Hook 移除失敗。請查看 {0} 以取得詳細資料。</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
   </data>
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Hooks 安裝失敗。請查看 %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log 以取得詳細資料。</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+    <value>Hooks 安裝失敗。請查看 {0} 以取得詳細資料。</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>自動錯誤偵測</value>

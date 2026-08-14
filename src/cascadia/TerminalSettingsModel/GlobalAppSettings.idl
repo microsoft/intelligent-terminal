@@ -51,6 +51,15 @@ namespace Microsoft.Terminal.Settings.Model
         AfterCurrentTab,
     };
 
+    // Spec A §1: horizontal renders the classic MUX TabView across the top;
+    // vertical renders a custom TabStrip down the left edge and silently
+    // overrides showTabsInTitlebar to false.
+    enum TabLayout
+    {
+        Horizontal,
+        Vertical,
+    };
+
     enum ConfirmOnClose
     {
         Never = 0,
@@ -136,6 +145,12 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, AiConfirmationReadOps);
         INHERITABLE_SETTING(String, AiConfirmationCreateOps);
         INHERITABLE_SETTING(String, AiConfirmationInputOps);
+
+        // Appended at the end of the interface (rather than grouped with
+        // TabWidthMode) to keep the ABI stable — inserting in the middle
+        // shifts every subsequent method's vtable slot.
+        INHERITABLE_SETTING(Int32, TabLayoutVerticalWidth);
+        INHERITABLE_SETTING(TabLayout, TabLayout);
 
         // Policy-aware effective getters — return the setting value after
         // applying GPO overrides. Consumers should prefer these over the

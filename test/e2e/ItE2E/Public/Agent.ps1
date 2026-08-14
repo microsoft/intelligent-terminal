@@ -206,13 +206,11 @@ function Get-RecommendationCardRegex {
 function Wait-TerminalActionProposal {
     <#
     .SYNOPSIS
-        Wait until the Helper arms a canonical proposal and its WTA CLI remains alive awaiting
-        the user's Run/Insert/Cancel decision.
+        Wait until the Helper presents a canonical proposal for a Run/Insert/Cancel decision.
     .DESCRIPTION
-        `wtcli capture-pane` omits the active Ratatui card, including its buttons and summary.
-        The canonical proposal process blocks until the card receives a final decision, so an
-        armed Helper plus the same live process across two polls is the deterministic readiness
-        signal. The returned Win32_Process.CommandLine contains the typed proposal payload.
+        Supports both proposal transports. The legacy CLI blocks in
+        `propose-terminal-actions`; the session-bound MCP path logs its approved internal
+        permission and then renders the recommendation card without a child CLI process.
     #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,
@@ -221,12 +219,18 @@ function Wait-TerminalActionProposal {
     process {
         Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'a pending terminal-action proposal' -Condition {
             $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
-            if ($log -notmatch 'proposal_permission:.*armed=true') { return $null }
-            $candidate = Get-PendingTerminalActionProposal
-            if (-not $candidate) { return $null }
-            Start-Sleep -Milliseconds 500
-            Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction SilentlyContinue |
-                Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' }
+            if ($log -match 'proposal_permission:.*armed=true') {
+                $candidate = Get-PendingTerminalActionProposal
+                if (-not $candidate) { return $null }
+                Start-Sleep -Milliseconds 500
+                return Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' }
+            }
+            if ($log -match 'proposal_permission: silently resolving proposal MCP permission.*approved=true' -and
+                (Get-AgentPaneText -App $App -MaxLines 60) -match (Get-RecommendationCardRegex)) {
+                return [pscustomobject]@{ Mode = 'Mcp'; Ready = $true }
+            }
+            $null
         }
     }
 }
@@ -251,7 +255,7 @@ function Get-AgentCliStatus {
         installed-unauthenticated, or authed using its non-interactive print mode.
     #>
     [CmdletBinding()] param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini')][string]$Agent,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini', 'opencode')][string]$Agent,
         [int]$TimeoutSec = 50
     )
     if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) { return 'not-installed' }
@@ -262,6 +266,7 @@ function Get-AgentCliStatus {
             'claude' { claude -p 'Reply with only the token AUTHOK' 2>&1 }
             'codex'  { $null | codex exec 'Reply with only the token AUTHOK' 2>&1 }
             'gemini' { gemini -p 'Reply with only the token AUTHOK' 2>&1 }
+            'opencode' { opencode run 'Reply with only the token AUTHOK' 2>&1 }
         }
     }
     $out = ''

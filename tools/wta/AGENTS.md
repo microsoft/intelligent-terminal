@@ -23,9 +23,9 @@ bare `wta` with neither a role flag nor a subcommand exits with an error.
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
-- **Proposal MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
+- **Session MCP endpoint** (one ephemeral Windows-loopback Streamable HTTP
   listener owned by `wta-master`, plus an on-demand loopback relay per WSL
-  distro) -- exposes only `request_terminal_actions`. Each session receives an
+  distro) -- exposes `request_terminal_actions` and `request_user_input`. Each session receives an
   independent public server name plus a bearer capability, preventing
   name-keyed Agent caches from overwriting another session's header. The
   capability resolves to ACP SessionId, then `session_to_helper` routes the
@@ -107,6 +107,13 @@ Key ACP message types handled:
 - `create_terminal` / `terminal_output` / `wait_for_terminal_exit` -- agent-managed shells
 - `release_terminal` / `kill_terminal` -- cleanup
 
+Agent-owned tool calls and ACP Client Terminals are distinct. For ordinary
+`tool_call` / `tool_call_update` notifications, WTA displays only the command,
+cwd, status, output, and exit information the Agent reports; it does not own
+the process or provide process controls. The `terminal/*` callbacks remain the
+separate v1 path where WTA owns execution. `request_terminal_actions` remains
+the user-owned, confirmation-gated pane mutation path.
+
 ### WT COM Protocol
 
 All WT operations flow through `wtcli.exe` to WT's out-of-process COM server.
@@ -138,8 +145,8 @@ relay. Other Windows Terminal operations remain available through the `wta` /
 Claude and Codex are launched through ACP adapters:
 
 ```
-wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
-wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.4"
+wta --agent "npx -y @agentclientprotocol/claude-agent-acp@0.65.0"
+wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.13"
 ```
 
 The Terminal settings layer resolves the built-in agent IDs to these adapter commands.
@@ -206,7 +213,7 @@ subfolder keyed by the package version:
 Per-process logs in the helper+master architecture:
 
 - `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
-  per-helper routing, `session_to_helper` updates, proposal MCP call
+  per-helper routing, `session_to_helper` updates, session MCP call
   receipt/routing/validation results, agent CLI exit detection
 - `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
   connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle

@@ -29,6 +29,13 @@ fn custom_model(selection_id: &str, model_id: &str) -> CustomModelCatalogEntry {
     }
 }
 
+fn last_notice(app: &App) -> (NoticeKind, &str) {
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::Notice { kind, text }) => (*kind, text),
+        other => panic!("expected an inline notice, got {other:?}"),
+    }
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -114,10 +121,7 @@ fn slash_stop_when_idle_notes_nothing_to_stop() {
     run_slash(&mut app, "stop");
 
     assert_eq!(app.current_tab().messages.len(), 1);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
 #[test]
@@ -226,10 +230,7 @@ fn slash_fix_while_busy_does_not_resubmit() {
         gen_after_first,
         "/fix while a turn is in flight must not bump generation / resubmit"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
 }
 
 #[test]
@@ -243,10 +244,7 @@ fn slash_model_without_models_notes_none() {
         !app.current_tab().model_picker_open,
         "/model must not open the picker when no models are available"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
 #[test]
@@ -499,10 +497,7 @@ fn slash_model_only_shows_cloud_choices_while_cloud_is_active() {
     run_slash_args(&mut app, "model", "custom:provider:local");
     assert_eq!(app.current_tab().model_override, None);
     assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 }
 
 #[test]
@@ -524,7 +519,6 @@ fn slash_model_only_shows_selected_byok_while_byok_is_active() {
 
     app.open_model_picker();
     let state = app.model_popup_state().expect("picker state");
-    assert_eq!(state.current_id, Some(selected));
     assert_eq!(state.models.len(), 1);
     assert_eq!(state.models[0].id, selected);
     assert_eq!(state.disabled, vec![false]);
@@ -533,18 +527,12 @@ fn slash_model_only_shows_selected_byok_while_byok_is_active() {
     run_slash_args(&mut app, "model", "custom:provider:other");
     assert_eq!(app.current_tab().model_override, None);
     assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 
     run_slash_args(&mut app, "model", "cloud");
     assert_eq!(app.current_tab().model_override, None);
     assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 }
 
 #[test]
@@ -782,13 +770,12 @@ fn degraded_blocks_non_restart_command() {
     );
     // ...and the user is steered to /restart (the locked token is present in
     // every locale, so this holds regardless of the active language).
-    match app.current_tab().messages.last() {
-        Some(ChatMessage::System(msg)) => assert!(
-            msg.contains("/restart"),
-            "the degraded hint must point the user at /restart, got: {msg}"
-        ),
-        other => panic!("expected a System hint, got {other:?}"),
-    }
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Warning);
+    assert!(
+        message.contains("/restart"),
+        "the degraded hint must point the user at /restart, got: {message}"
+    );
 }
 
 #[test]
@@ -807,10 +794,7 @@ fn degraded_blocks_model_command_too() {
         !app.current_tab().model_picker_open,
         "/model must be refused while the transport is lost"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
 }
 
 #[test]
@@ -893,5 +877,16 @@ fn connected_popup_visible_for_any_prefix() {
     assert!(
         app.command_popup_visible(),
         "a healthy connection must keep the normal popup behavior"
+    );
+}
+
+#[test]
+fn connected_popup_matches_command_name_substrings() {
+    let mut app = test_app();
+    type_input(&mut app, "/lear");
+
+    assert!(
+        app.command_popup_visible(),
+        "typing a substring of /clear must show the command popup"
     );
 }

@@ -48,7 +48,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let text_width = area
         .width
         .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
-    let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
+    let viewport = input_viewport_with_max_rows(
+        &tab.input,
+        tab.cursor_pos,
+        text_width,
+        area.height.saturating_sub(2) as usize,
+    );
     let attachment_ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
     let ghost_suffix = app.command_ghost_suffix();
 
@@ -256,12 +261,27 @@ fn push_styled_input(
 }
 
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {
+    input_viewport_with_max_rows(
+        input,
+        cursor_pos,
+        total_width,
+        INPUT_MAX_INNER_ROWS,
+    )
+}
+
+fn input_viewport_with_max_rows(
+    input: &str,
+    cursor_pos: usize,
+    total_width: u16,
+    max_visible_rows: usize,
+) -> InputViewport {
     let inner_width = total_width.max(1) as usize;
     let wrapped = wrap_input(input, cursor_pos, inner_width);
+    let max_visible_rows = max_visible_rows.clamp(INPUT_MIN_INNER_ROWS, INPUT_MAX_INNER_ROWS);
     let visible_rows = wrapped
         .lines
         .len()
-        .clamp(INPUT_MIN_INNER_ROWS, INPUT_MAX_INNER_ROWS);
+        .clamp(INPUT_MIN_INNER_ROWS, max_visible_rows);
     let scroll_row = if wrapped.cursor_row + 1 > visible_rows {
         wrapped.cursor_row + 1 - visible_rows
     } else {

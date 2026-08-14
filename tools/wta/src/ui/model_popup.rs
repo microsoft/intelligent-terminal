@@ -17,18 +17,12 @@ use crate::app::AcpModelInfo;
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 8;
-/// Marker drawn next to the model the pane is currently on.
-const CURRENT_MARKER: &str = "● ";
-const CURRENT_PAD: &str = "  ";
 
 /// Per-frame state captured from the [`App`](crate::app::App).
 pub struct ModelPopupState<'a> {
     pub models: &'a [AcpModelInfo],
     pub selected: usize,
     pub pane_focused: bool,
-    /// Id of the model the pane is currently effectively on, if any — drawn
-    /// with a leading marker so the user can see "where we are".
-    pub current_id: Option<&'a str>,
     /// Rows that require an agent restart and can only be changed in Settings.
     pub disabled: Vec<bool>,
 }
@@ -50,15 +44,9 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         .iter()
         .enumerate()
         .map(|(index, m)| {
-            let is_current = state.current_id == Some(m.id.as_str());
             let disabled = state.disabled.get(index).copied().unwrap_or(false);
-            let marker = if is_current {
-                CURRENT_MARKER
-            } else {
-                CURRENT_PAD
-            };
             let spans = vec![Span::styled(
-                format!(" {marker}{}", m.name),
+                m.name.as_str(),
                 if disabled {
                     theme::DIM
                 } else {
