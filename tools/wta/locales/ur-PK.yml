@@ -226,7 +226,7 @@ system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر د
 # {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
 config_picker.title: "سیشن کنفیگریشن (↑ ↓ • Enter • Esc)"
 # Shown when /config is used but the AI agent exposed no ACP select options.
-system.no_config_options: "منسلک ایجنٹ نے کسی بھی قابل کنفیگر سیشن کے اختیارات ਦੀ تشہیر نہیں کی۔"
+system.no_config_options: "منسلک ایجنٹ نے کسی بھی قابل کنفیگر سیشن کے اختیارات کی تشہیر نہیں کی۔"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} کو اپ ڈیٹ کرنے میں ناکام: %{error}"
 system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}
