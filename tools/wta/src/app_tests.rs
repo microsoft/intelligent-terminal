@@ -9168,7 +9168,13 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
     }
     assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
 
+    crate::ui::chat::reset_completed_turn_line_build_count();
     let after = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        app.current_tab().completed_turns.len() * 2,
+        "selection-follow rendering must not add a third completed-turn layout pass",
+    );
     assert!(
         after.contains("SELECT_SCROLL_TURN_00"),
         "the viewport must follow keyboard selection to the oldest completed turn; rendered:\n{after}",
