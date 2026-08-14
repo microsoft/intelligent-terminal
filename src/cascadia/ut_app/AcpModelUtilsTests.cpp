@@ -33,8 +33,8 @@ namespace TerminalAppUnitTests
     void AcpModelUtilsTests::MapsAgentIdsToAcpCommands()
     {
         VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio" }, BuildAgentCommandLine(L"copilot"));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp@0.64.2" }, BuildAgentCommandLine(L"claude"));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.9" }, BuildAgentCommandLine(L"codex"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp@0.65.0" }, BuildAgentCommandLine(L"claude"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.13" }, BuildAgentCommandLine(L"codex"));
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --experimental-acp" }, BuildAgentCommandLine(L"gemini"));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode"));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent"));
@@ -45,8 +45,8 @@ namespace TerminalAppUnitTests
         constexpr std::wstring_view model{ L"gpt-5" };
         VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio --model gpt-5" }, BuildAgentCommandLine(L"copilot", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --experimental-acp --model gpt-5" }, BuildAgentCommandLine(L"gemini", model));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp@0.64.2" }, BuildAgentCommandLine(L"claude", model));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.9" }, BuildAgentCommandLine(L"codex", model));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp@0.65.0" }, BuildAgentCommandLine(L"claude", model));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.13" }, BuildAgentCommandLine(L"codex", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent", model));
     }

@@ -334,7 +334,7 @@ fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
     // Adapter agent (claude via npx) ignores the model here — it's
     // applied later via setSessionModel — so the command is stable.
     let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
-    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp@0.64.2");
+    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp@0.65.0");
     assert_eq!(id.as_deref(), Some("claude"));
 }
 
