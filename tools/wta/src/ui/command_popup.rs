@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_query_keeps_command_name_unhighlighted() {
+    fn empty_query_keeps_command_name_plain() {
         let spans = command_name_spans("clear", "");
 
         assert_eq!(spans.len(), 1);

@@ -464,6 +464,9 @@ mod tests {
         assert_eq!(middle.len(), 1);
         assert_eq!(middle[0].name, "clear");
 
+        let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(ranked, vec!["stop", "restart"]);
+
         let none = matches("zzz");
         assert!(none.is_empty());
     }
