@@ -2973,8 +2973,8 @@
     <value>Разрешите Интеллектуальному Терминалу отправлять ошибки агенту для автоматического предложения исправлений.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Поставщики BYOM</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>Поставщики BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Используйте конечную точку API Chat Completions, совместимую с OpenAI. Поддерживает GitHub Copilot и OpenCode.</value>
@@ -3013,8 +3013,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Совместимость с OpenAI</value>

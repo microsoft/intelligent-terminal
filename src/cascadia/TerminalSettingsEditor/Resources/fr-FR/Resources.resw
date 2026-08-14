@@ -2931,8 +2931,8 @@
     <value>Autorisez Terminal Intelligent à envoyer les erreurs à votre agent pour suggérer automatiquement des correctifs.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Fournisseurs BYOM</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>Fournisseurs BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Utilisez un point de terminaison d’API Chat Completions compatible avec OpenAI. Prend en charge GitHub Copilot et OpenCode.</value>
@@ -2971,8 +2971,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Compatible avec OpenAI</value>

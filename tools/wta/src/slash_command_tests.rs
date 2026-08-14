@@ -280,7 +280,7 @@ fn slash_model_shows_cloud_models() {
 }
 
 #[test]
-fn custom_provider_models_replace_agent_duplicates_and_use_byom_labels() {
+fn custom_provider_models_replace_agent_duplicates_and_use_byok_labels() {
     let mut app = test_app();
     app.set_custom_model_config(
         vec![
@@ -309,11 +309,11 @@ fn custom_provider_models_replace_agent_duplicates_and_use_byom_labels() {
     assert_eq!(merged.len(), 3);
     assert!(merged.iter().any(|model| model.id == "native"));
     assert!(merged.iter().any(|model| {
-        model.id == "custom:provider-one:qwen/qwen3.5-9b" && model.name == "qwen/qwen3.5-9b (BYOM)"
+        model.id == "custom:provider-one:qwen/qwen3.5-9b" && model.name == "qwen/qwen3.5-9b (BYOK)"
     }));
     assert!(merged.iter().any(|model| {
         model.id == "custom:provider-two:deepseek/deepseek-v4-flash"
-            && model.name == "deepseek/deepseek-v4-flash (BYOM)"
+            && model.name == "deepseek/deepseek-v4-flash (BYOK)"
     }));
     assert_eq!(
         app.current_model_id.as_deref(),
@@ -339,7 +339,7 @@ fn custom_provider_models_normalize_metadata_and_drop_empty_entries() {
     );
     assert_eq!(app.available_models.len(), 1);
     assert_eq!(app.available_models[0].id, "custom:provider:model");
-    assert_eq!(app.available_models[0].name, "provider/model (BYOM)");
+    assert_eq!(app.available_models[0].name, "provider/model (BYOK)");
     assert_eq!(
         app.current_model_id.as_deref(),
         Some("custom:provider:model")
@@ -389,7 +389,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         .available_models
         .iter()
         .any(|model| model.id == "custom:provider-one:shared-model"
-            && model.name == "shared-model (BYOM)"));
+            && model.name == "shared-model (BYOK)"));
     assert_eq!(app.model_picker_models.len(), 2);
     assert!(app
         .model_picker_models

@@ -2990,8 +2990,8 @@
     <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM 提供商</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>BYOK 提供商</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>使用兼容 OpenAI 的 Chat Completions API 终结点。支持 GitHub Copilot 和 OpenCode。</value>
@@ -3030,8 +3030,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 兼容</value>

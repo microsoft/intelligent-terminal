@@ -2990,8 +2990,8 @@
     <value>지능형 터미널이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM 공급자</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>BYOK 공급자</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용합니다. GitHub Copilot 및 OpenCode를 지원합니다.</value>
@@ -3030,8 +3030,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 호환</value>

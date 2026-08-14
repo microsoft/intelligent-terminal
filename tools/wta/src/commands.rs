@@ -47,7 +47,7 @@ pub enum CommandKind {
     Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
-    /// Bare `/model` opens an interactive picker listing configured BYOM
+    /// Bare `/model` opens an interactive picker listing configured BYOK
     /// models. Cloud/native models are intentionally omitted; model changes
     /// are made through Settings because they require an agent restart.
     Model,

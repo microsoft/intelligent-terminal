@@ -2988,8 +2988,8 @@
     <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Добављачи BYOM</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>Добављачи BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Користите крајњу тачку API-ја Chat Completions компатибилну са OpenAI-јем. Подржава GitHub Copilot и OpenCode.</value>
@@ -3028,8 +3028,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Компатибилно са OpenAI</value>

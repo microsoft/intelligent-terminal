@@ -907,7 +907,7 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
-    /// BYOM-only projection used by the `/model` command. Cloud/native models
+    /// BYOK-only projection used by the `/model` command. Cloud/native models
     /// remain in `available_models` for Settings but are not shown in-pane.
     model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
@@ -1680,7 +1680,7 @@ impl App {
             });
             merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
-                name: format!("{} (BYOM)", custom.model_id),
+                name: format!("{} (BYOK)", custom.model_id),
                 description: None,
             });
         }
@@ -2065,7 +2065,7 @@ impl App {
     }
 
     /// `/model [id]` — show models from the mode selected in Settings. Cloud
-    /// mode shows only agent/cloud models; local mode shows only BYOM models.
+    /// mode shows only agent/cloud models; custom-provider mode shows only BYOK models.
     /// Crossing modes requires changing Settings and restarting the agent.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();

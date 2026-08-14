@@ -194,7 +194,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             });
         // A Settings page must not depend on an agent pane having connected
         // first. Always refresh the native catalog in a clean environment so
-        // BYOM entries supplement cloud models instead of replacing them.
+        // BYOK entries supplement cloud models instead of replacing them.
         _TriggerAcpModelProbe();
 
         // Delegate agents — same GPO-filtered + install-filter rule.
@@ -308,7 +308,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.CustomModelProviders(providers);
         _originalCustomModelProviders = std::move(mergedProviders);
 
-        // The clean cloud catalog is independent of configured BYOM providers.
+        // The clean cloud catalog is independent of configured BYOK providers.
         // Rebuild the combined list without launching another agent process.
         _RebuildAcpModelListFromCache();
         _NotifyChanges(L"CustomModelProviders");

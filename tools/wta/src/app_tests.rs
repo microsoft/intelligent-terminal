@@ -2574,7 +2574,7 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
         .all(|model| model.id != "custom:old:model-b"));
     assert!(app.available_models.iter().any(|model| {
         model.id == "custom:new:model-c"
-            && model.name == "model-c (BYOM)"
+            && model.name == "model-c (BYOK)"
             && model.description.is_none()
     }));
     let new_provider = app
@@ -6354,7 +6354,7 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: cloud mode lists cloud models and omits BYOM rows. Lifts
+/// Render: cloud mode lists cloud models and omits BYOK rows. Lifts
 /// `ui/model_popup.rs`; local-mode filtering is covered by slash-command tests.
 #[test]
 fn render_model_picker_lists_models() {
@@ -6390,8 +6390,8 @@ fn render_model_picker_lists_models() {
         "the cloud-mode model picker must show cloud models; rendered:\n{text}"
     );
     assert!(
-        !text.contains("shared-model (BYOM)"),
-        "the cloud-mode model picker must omit BYOM rows; rendered:\n{text}"
+        !text.contains("shared-model (BYOK)"),
+        "the cloud-mode model picker must omit BYOK rows; rendered:\n{text}"
     );
     assert!(
         !text.contains('●'),
