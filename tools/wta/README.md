@@ -64,7 +64,7 @@ wta list-windows --json                   # raw JSON output
 ```
 
 Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
-`killp`, and `setenv`.
+`killp`, `setenv`, and `mon`.
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 

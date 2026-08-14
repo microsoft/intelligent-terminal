@@ -26,8 +26,8 @@ pattern or dependency.
 
 - Return `Result` for recoverable failures and add context at I/O, process,
   parsing, and protocol boundaries.
-- Use the crate's existing error type and conventions; do not introduce
-  `anyhow`, `thiserror`, or another error crate solely for a local change.
+- Use the crate's existing error type and conventions; do not introduce a new
+  error-handling dependency solely for a local change.
 - Avoid `unwrap`, `expect`, and panics in production paths unless an invariant
   is both local and demonstrably impossible to violate.
 - Do not silently discard errors. Log, propagate, or explicitly document why
