@@ -1,6 +1,7 @@
 //! Custom model provider isolation and Credential Manager resolution.
 
 use anyhow::{bail, Context, Result};
+use std::sync::atomic::{compiler_fence, Ordering};
 use tokio::process::Command;
 
 use crate::agent_registry::ByokMode;
@@ -62,6 +63,25 @@ pub(crate) struct Config {
     pub(crate) credential_resource: &'static str,
 }
 
+struct SensitiveString(String);
+
+impl SensitiveString {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Drop for SensitiveString {
+    fn drop(&mut self) {
+        // Replacing UTF-8 bytes with zeroes preserves String's validity.
+        clear_sensitive_bytes(unsafe { self.0.as_bytes_mut() });
+    }
+}
+
 impl Config {
     fn shared_from_env() -> Self {
         Self {
@@ -77,7 +97,7 @@ impl Config {
         !self.base_url.is_empty() && !self.model.is_empty()
     }
 
-    fn resolve_api_key(&self) -> Result<Option<String>> {
+    fn resolve_api_key(&self) -> Result<Option<SensitiveString>> {
         let api_key = match self.credential_id.as_deref() {
             Some(id) => read_api_key(self.credential_resource, id),
             None => Ok(None),
@@ -85,7 +105,10 @@ impl Config {
         self.validate_resolved_api_key(api_key)
     }
 
-    fn validate_resolved_api_key(&self, api_key: Option<String>) -> Result<Option<String>> {
+    fn validate_resolved_api_key(
+        &self,
+        api_key: Option<SensitiveString>,
+    ) -> Result<Option<SensitiveString>> {
         if self.api_key_required && api_key.is_none() {
             bail!(
                 "API key credential for the selected BYOK provider is missing. Re-enter the API key in Settings, then restart the agent."
@@ -177,7 +200,7 @@ fn configure_copilot(cmd: &mut Command, config: &Config) -> Result<()> {
         .env(COPILOT_OFFLINE, "true")
         .env_remove(COPILOT_API_KEY);
     if let Some(api_key) = config.resolve_api_key()? {
-        cmd.env(COPILOT_API_KEY, api_key);
+        cmd.env(COPILOT_API_KEY, api_key.as_str());
     }
     Ok(())
 }
@@ -189,7 +212,7 @@ fn configure_opencode(cmd: &mut Command, config: &Config) -> Result<()> {
         render_opencode_config(config, api_key.is_some())?,
     );
     if let Some(api_key) = api_key {
-        cmd.env(PROVIDER_API_KEY, api_key);
+        cmd.env(PROVIDER_API_KEY, api_key.as_str());
     }
     Ok(())
 }
@@ -239,7 +262,16 @@ fn bool_env(key: &str) -> bool {
     trimmed_env(key).is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
 }
 
-fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option<String>> {
+fn clear_sensitive_bytes(bytes: &mut [u8]) {
+    for byte in bytes {
+        // Volatile writes prevent the compiler from eliding this best-effort
+        // cleanup before the allocation is released.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
+}
+
+fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option<SensitiveString>> {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
     use windows_sys::Win32::Security::Credentials::{
         CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
@@ -268,10 +300,12 @@ fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option
         bail!("model provider credential is empty");
     }
     let mut bytes = unsafe { std::slice::from_raw_parts(blob, blob_size).to_vec() };
+    clear_sensitive_bytes(unsafe { std::slice::from_raw_parts_mut(blob, blob_size) });
     unsafe { CredFree(credential.cast()) };
 
-    let api_key = std::str::from_utf8(&bytes).map(|value| value.trim().to_string());
-    bytes.fill(0);
+    let api_key =
+        std::str::from_utf8(&bytes).map(|value| SensitiveString(value.trim().to_string()));
+    clear_sensitive_bytes(&mut bytes);
     let api_key = api_key.context("model provider credential is not valid UTF-8")?;
     if api_key.is_empty() {
         bail!("model provider credential is empty");
@@ -282,6 +316,15 @@ fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sensitive_bytes_are_overwritten() {
+        let mut bytes = b"provider-secret".to_vec();
+
+        clear_sensitive_bytes(&mut bytes);
+
+        assert!(bytes.iter().all(|byte| *byte == 0));
+    }
 
     #[test]
     fn opencode_config_uses_shared_provider_without_persisting_secret() {
@@ -514,7 +557,8 @@ mod tests {
 
         let error = config
             .resolve_api_key()
-            .expect_err("a configured cloud BYOK key must not silently become keyless");
+            .err()
+            .expect("a configured cloud BYOK key must not silently become keyless");
         assert!(error.to_string().contains("API key credential"));
     }
 
@@ -528,11 +572,9 @@ mod tests {
             credential_resource: "test",
         };
 
-        assert_eq!(
-            config
-                .validate_resolved_api_key(None)
-                .expect("a keyless local provider should remain supported"),
-            None
-        );
+        assert!(config
+            .validate_resolved_api_key(None)
+            .expect("a keyless local provider should remain supported")
+            .is_none());
     }
 }
