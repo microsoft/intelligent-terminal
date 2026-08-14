@@ -6,8 +6,6 @@
 #include <windows.h>
 
 #include <array>
-#include <fstream>
-#include <limits>
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
@@ -23,33 +21,6 @@ namespace Microsoft::Terminal::RichTab::Provider
             BuiltInProvider{ LR"(RichTabProviders\GitStatus)", "com.microsoft.intelligent-terminal.git-status" },
         };
 
-        std::optional<std::string> _ReadManifest(
-            const std::filesystem::path& path,
-            std::string& error)
-        {
-            std::error_code sizeError;
-            const auto size = std::filesystem::file_size(path, sizeError);
-            if (sizeError || size == 0 || size > MaximumManifestSize ||
-                size > static_cast<uint64_t>((std::numeric_limits<std::streamsize>::max)()))
-            {
-                error = "Built-in provider manifest is missing or exceeds its size limit";
-                return std::nullopt;
-            }
-
-            std::ifstream stream{ path, std::ios::binary };
-            if (!stream)
-            {
-                error = "Could not open built-in provider manifest";
-                return std::nullopt;
-            }
-            std::string contents(static_cast<size_t>(size), '\0');
-            if (!stream.read(contents.data(), static_cast<std::streamsize>(contents.size())))
-            {
-                error = "Could not read built-in provider manifest";
-                return std::nullopt;
-            }
-            return contents;
-        }
     }
 
     std::filesystem::path BuiltInProviderCatalog::PackageRoot()
@@ -105,15 +76,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         for (const auto& builtIn : builtInProviders)
         {
             const auto root = packageRoot / builtIn.relativeRoot;
-            std::string readError;
-            const auto contents = _ReadManifest(root / L"provider.json", readError);
+            const auto contents = ReadManifestFile(root / L"provider.json");
             if (!contents)
             {
-                result.errors.emplace_back(std::move(readError));
+                result.errors.insert(result.errors.end(), contents.errors.begin(), contents.errors.end());
                 continue;
             }
 
-            auto manifest = ParseManifest(*contents, root);
+            auto manifest = ParseManifest(*contents.value, root);
             if (!manifest)
             {
                 result.errors.insert(result.errors.end(), manifest.errors.begin(), manifest.errors.end());
@@ -131,6 +101,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             registration.root = root;
             registration.enabled = true;
             registration.integrityValid = true;
+            registration.sourceIdentity = BuiltInSourceIdentity(registration.manifest.id);
             result.value->emplace_back(std::move(registration));
         }
         return result;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ProviderContracts.h"
+#include "ProviderSourcePolicy.h"
 
 #include <filesystem>
 #include <optional>
@@ -26,6 +27,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string payloadHash;
         bool enabled{ false };
         bool integrityValid{ false };
+        ProviderSourceIdentity sourceIdentity;
     };
 
     template<typename T>
@@ -55,6 +57,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         RegistryResult<Registration> RegisterDevelopment(const std::filesystem::path& manifestPath);
         RegistryResult<std::vector<Registration>> List();
         RegistryResult<Registration> SetEnabled(std::string_view id, bool enabled);
+        RegistryResult<bool> AppExtensionConsentEnabled(
+            const ProviderSourceIdentity& identity);
+        RegistryResult<bool> SetAppExtensionConsentEnabled(
+            const ProviderSourceIdentity& identity,
+            bool enabled);
         RegistryResult<bool> Remove(std::string_view id);
 
     private:
@@ -64,6 +71,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             RegistrationKind kind{ RegistrationKind::Managed };
             std::filesystem::path root;
             std::string payloadHash;
+            std::optional<std::string> consentKey;
             bool enabled{ false };
         };
 

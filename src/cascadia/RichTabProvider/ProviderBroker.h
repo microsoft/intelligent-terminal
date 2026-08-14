@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "AppExtensionProviderCatalog.h"
 #include "CommandRunner.h"
 #include "ProviderRegistry.h"
 
@@ -18,13 +19,6 @@
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
-    enum class ProviderSourceKind
-    {
-        BuiltIn,
-        Managed,
-        Development,
-    };
-
     struct ProviderPreference
     {
         std::string id;
@@ -38,12 +32,13 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         std::string id;
         std::string displayName;
-        ProviderSourceKind source{ ProviderSourceKind::Managed };
+        ProviderSourceKind source{ ProviderSourceKind::LegacyManaged };
         bool consentEnabled{ false };
         bool integrityValid{ false };
         bool eligible{ false };
         bool effectiveEnabled{ false };
         bool shadowed{ false };
+        std::string consentKey;
         std::vector<FieldDeclaration> fields;
     };
 
@@ -73,6 +68,12 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::string> diagnostics;
     };
 
+    struct ProviderCatalogSnapshot
+    {
+        std::vector<Registration> available;
+        std::vector<ProviderDescriptor> descriptors;
+    };
+
     class ProviderBroker
     {
     public:
@@ -93,6 +94,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         void ReloadProviders();
         void ApplyPreferences(std::vector<ProviderPreference> preferences);
         std::vector<ProviderDescriptor> Catalog();
+        RegistryResult<bool> SetProviderConsent(
+            std::string_view id,
+            std::string_view consentKey,
+            bool enabled);
 
         uint64_t ProcessEpoch() const noexcept;
 
@@ -100,6 +105,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             const std::vector<Registration>& providers,
             const std::unordered_map<std::string, Snapshot>& snapshots,
             const std::vector<ProviderPreference>& preferences = {});
+        static ProviderCatalogSnapshot BuildCatalog(
+            std::vector<Registration> candidates);
 
     private:
         struct PendingRequest
@@ -145,6 +152,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::vector<std::string> diagnostics = {}) const;
         void _Enqueue(std::function<void()> work);
         void _ReloadProvidersIfChanged();
+        void _ReloadProvidersFromSources();
+        void _ScheduleAppExtensionDiscovery();
         void _PruneDetachedSessionsLocked();
         uint64_t _RegistryStamp() const noexcept;
         std::vector<Registration> _EffectiveProvidersLocked() const;
@@ -161,6 +170,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<Registration> _availableProviders;
         std::vector<Registration> _providers;
         std::vector<ProviderPreference> _preferences;
+        AppExtensionDiscoveryResult _appExtensionDiscovery;
+        bool _appExtensionDiscoveryScheduled{ false };
+        bool _appExtensionDiscoveryPending{ false };
+        std::shared_ptr<void> _appExtensionWatcher;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         uint64_t _processEpoch{ 0 };

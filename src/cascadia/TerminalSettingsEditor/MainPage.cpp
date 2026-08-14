@@ -696,6 +696,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                         self->RichTabPreferencesChanged.raise(*self, globalSettings);
                     }
                 });
+                viewModel.ConsentRequested([weak = get_weak()](auto&&, const auto& request) {
+                    if (const auto self = weak.get())
+                    {
+                        self->RichTabConsentRequested.raise(*self, request);
+                    }
+                });
                 contentFrame().Navigate(xaml_typename<Editor::RichTabs>(), winrt::make<NavigateToPageArgs>(viewModel, *this, elementToFocus));
                 _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_RichTabs/Content"), BreadcrumbSubPage::None));
             }

@@ -17,7 +17,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void MoveProviderDown_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void MoveFieldUp_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void MoveFieldDown_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
-        void ProviderEnabled_Toggled(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
+        safe_void_coroutine ProviderEnabled_Toggled(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void FieldVisibility_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
 
         til::property_changed_event PropertyChanged;

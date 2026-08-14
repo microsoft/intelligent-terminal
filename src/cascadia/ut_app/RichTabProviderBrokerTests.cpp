@@ -17,6 +17,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ComposesConfiguredFieldsInOrder);
         TEST_METHOD(ExplicitlyEmptyFieldsHideProviderMetadata);
         TEST_METHOD(EmptySnapshotsClearPresentation);
+        TEST_METHOD(CatalogEnforcesSourcePrecedenceAndConsent);
     };
 
     void RichTabProviderBrokerTests::ComposesDeclaredVisibleFields()
@@ -124,5 +125,81 @@ namespace TerminalAppUnitTests
             { { provider.manifest.id, snapshot } });
 
         VERIFY_IS_FALSE(presentation.has_value());
+    }
+
+    void RichTabProviderBrokerTests::CatalogEnforcesSourcePrecedenceAndConsent()
+    {
+        const auto makeProvider = [](const std::string& id,
+                                     ProviderSourceIdentity identity,
+                                     const bool enabled) {
+            Registration registration;
+            registration.manifest.id = id;
+            registration.manifest.displayName = id;
+            registration.enabled = enabled;
+            registration.integrityValid = true;
+            registration.sourceIdentity = std::move(identity);
+            return registration;
+        };
+
+        auto development = makeProvider(
+            "tests.shadowed",
+            DevelopmentSourceIdentity("tests.shadowed", LR"(C:\dev)"),
+            true);
+        auto appExtension = makeProvider(
+            "tests.shadowed",
+            AppExtensionSourceIdentity(
+                "tests.shadowed",
+                L"rich-tabs",
+                L"Tests.Provider_123",
+                L"Tests.Provider_1.0.0.0_x64__123",
+                L"publisher123",
+                L"1.0.0.0"),
+            false);
+        auto legacy = makeProvider(
+            "tests.legacy",
+            LegacyManagedSourceIdentity("tests.legacy", LR"(C:\managed)"),
+            true);
+
+        const auto catalog = ProviderBroker::BuildCatalog(
+            { std::move(development), std::move(appExtension), std::move(legacy) });
+
+        VERIFY_IS_TRUE(catalog.available.empty());
+        VERIFY_ARE_EQUAL(static_cast<size_t>(3), catalog.descriptors.size());
+        const auto app = std::find_if(
+            catalog.descriptors.begin(),
+            catalog.descriptors.end(),
+            [](const auto& descriptor) {
+                return descriptor.source == ProviderSourceKind::AppExtension;
+            });
+        const auto dev = std::find_if(
+            catalog.descriptors.begin(),
+            catalog.descriptors.end(),
+            [](const auto& descriptor) {
+                return descriptor.source == ProviderSourceKind::Development;
+            });
+        const auto managed = std::find_if(
+            catalog.descriptors.begin(),
+            catalog.descriptors.end(),
+            [](const auto& descriptor) {
+                return descriptor.source == ProviderSourceKind::LegacyManaged;
+            });
+        VERIFY_IS_TRUE(app != catalog.descriptors.end());
+        VERIFY_IS_TRUE(dev != catalog.descriptors.end());
+        VERIFY_IS_TRUE(managed != catalog.descriptors.end());
+        VERIFY_IS_FALSE(app->consentEnabled);
+        VERIFY_IS_FALSE(app->shadowed);
+        VERIFY_ARE_EQUAL(
+            ProviderConsentKey(AppExtensionSourceIdentity(
+                "tests.shadowed",
+                L"rich-tabs",
+                L"Tests.Provider_123",
+                L"Tests.Provider_1.0.0.0_x64__123",
+                L"publisher123",
+                L"1.0.0.0"))
+                .value(),
+            app->consentKey);
+        VERIFY_IS_TRUE(dev->shadowed);
+        VERIFY_IS_FALSE(managed->eligible);
+        VERIFY_IS_TRUE(managed->consentKey.empty());
     }
 }

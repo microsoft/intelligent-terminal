@@ -5,6 +5,7 @@
 #include <winrt/Windows.Foundation.h>
 
 #include "Formatting.h"
+#include "AppExtensionProviderCatalog.h"
 #include "CommandRunner.h"
 #include "ProviderContracts.h"
 #include "ProviderRegistry.h"
@@ -21,6 +22,7 @@
 
 #include <wil/resource.h>
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -28,6 +30,7 @@
 #include <functional>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -337,15 +340,31 @@ static std::optional<std::filesystem::path> AbsoluteUtf8Path(
 static Json::Value RegistrationJson(
     const Microsoft::Terminal::RichTab::Provider::Registration& registration)
 {
+    namespace Provider = Microsoft::Terminal::RichTab::Provider;
     Json::Value value;
     value["id"] = registration.manifest.id;
     value["display_name"] = registration.manifest.displayName;
     value["publisher"] = registration.manifest.publisher;
     value["version"] = registration.manifest.version;
-    value["kind"] =
-        registration.kind == Microsoft::Terminal::RichTab::Provider::RegistrationKind::Managed ?
-            "managed" :
-            "development";
+    switch (registration.sourceIdentity.kind)
+    {
+    case Provider::ProviderSourceKind::BuiltIn:
+        value["source"] = "built-in";
+        break;
+    case Provider::ProviderSourceKind::AppExtension:
+        value["source"] = "app-extension";
+        value["package_family_name"] = winrt::to_string(
+            winrt::hstring{ registration.sourceIdentity.packageFamilyName });
+        value["extension_id"] = winrt::to_string(
+            winrt::hstring{ registration.sourceIdentity.extensionId });
+        break;
+    case Provider::ProviderSourceKind::Development:
+        value["source"] = "development";
+        break;
+    default:
+        value["source"] = "legacy-managed";
+        break;
+    }
     value["enabled"] = registration.enabled;
     value["integrity_valid"] = registration.integrityValid;
     value["payload_hash"] = registration.payloadHash;
@@ -356,14 +375,63 @@ static Json::Value RegistrationJson(
 static void PrintRegistration(
     const Microsoft::Terminal::RichTab::Provider::Registration& registration)
 {
+    namespace Provider = Microsoft::Terminal::RichTab::Provider;
+    const auto source =
+        registration.sourceIdentity.kind == Provider::ProviderSourceKind::BuiltIn ? "built-in    " :
+        registration.sourceIdentity.kind == Provider::ProviderSourceKind::AppExtension ? "app-extension" :
+        registration.sourceIdentity.kind == Provider::ProviderSourceKind::Development ? "development " :
+                                                                                         "legacy-managed";
     printf(
         "%s  %s  %s  %s\n",
         registration.enabled ? "enabled " : "disabled",
-        registration.kind == Microsoft::Terminal::RichTab::Provider::RegistrationKind::Managed ?
-            "managed    " :
-            "development",
+        source,
         registration.integrityValid ? "verified" : "CHANGED ",
         registration.manifest.id.c_str());
+}
+
+static std::vector<Microsoft::Terminal::RichTab::Provider::Registration>
+DiscoverAppExtensionRegistrations(
+    Microsoft::Terminal::RichTab::Provider::ProviderRegistry& registry,
+    std::vector<std::string>& diagnostics,
+    bool& catalogAvailable)
+{
+    namespace Provider = Microsoft::Terminal::RichTab::Provider;
+    auto discovery = Provider::AppExtensionProviderCatalog::DiscoverAsync().get();
+    catalogAvailable = discovery.diagnostics.empty();
+    diagnostics.insert(
+        diagnostics.end(),
+        discovery.diagnostics.begin(),
+        discovery.diagnostics.end());
+
+    std::vector<Provider::Registration> registrations;
+    for (auto& discovered : discovery.providers)
+    {
+        if (discovered.status != Provider::AppExtensionDiscoveryStatus::Discovered ||
+            !discovered.manifest)
+        {
+            diagnostics.insert(
+                diagnostics.end(),
+                discovered.diagnostics.begin(),
+                discovered.diagnostics.end());
+            continue;
+        }
+        const auto consent = registry.AppExtensionConsentEnabled(
+            discovered.identity);
+        diagnostics.insert(
+            diagnostics.end(),
+            consent.errors.begin(),
+            consent.errors.end());
+
+        Provider::Registration registration;
+        registration.manifest = std::move(*discovered.manifest);
+        registration.kind = Provider::RegistrationKind::Managed;
+        registration.root = std::move(discovered.publicPath);
+        registration.enabled = consent.value.value_or(false);
+        registration.integrityValid = true;
+        registration.sourceIdentity = std::move(discovered.identity);
+        registrations.emplace_back(std::move(registration));
+    }
+    return registrations;
 }
 
 // ── Main ──
@@ -523,9 +591,11 @@ int main()
         }
     });
 
-    auto* providerListCmd = providerCmd->add_subcommand("list", "List registered providers");
+    auto* providerListCmd = providerCmd->add_subcommand("list", "List discovered and registered providers");
     providerListCmd->callback([&]() {
-        const auto registrations = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.List();
+        namespace Provider = Microsoft::Terminal::RichTab::Provider;
+        Provider::ProviderRegistry registry;
+        auto registrations = registry.List();
         if (!registrations)
         {
             for (const auto& error : registrations.errors)
@@ -533,6 +603,15 @@ int main()
             exitCode = 1;
             return;
         }
+        bool catalogAvailable = false;
+        auto appExtensions = DiscoverAppExtensionRegistrations(
+            registry,
+            registrations.errors,
+            catalogAvailable);
+        registrations.value->insert(
+            registrations.value->end(),
+            std::make_move_iterator(appExtensions.begin()),
+            std::make_move_iterator(appExtensions.end()));
         if (jsonMode)
         {
             Json::Value output;
@@ -568,6 +647,7 @@ int main()
         providerAcceptCodeExecution,
         "Confirm that enabling the provider executes code as the current user");
     providerEnableCmd->callback([&]() {
+        namespace Provider = Microsoft::Terminal::RichTab::Provider;
         if (!providerAcceptCodeExecution)
         {
             fprintf(
@@ -577,9 +657,51 @@ int main()
             exitCode = 1;
             return;
         }
-        const auto enabled = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.SetEnabled(providerEnableId, true);
+        Provider::ProviderRegistry registry;
+        std::vector<std::string> discoveryDiagnostics;
+        bool catalogAvailable = false;
+        auto appExtensions = DiscoverAppExtensionRegistrations(
+            registry,
+            discoveryDiagnostics,
+            catalogAvailable);
+        const auto appExtension = std::find_if(
+            appExtensions.begin(),
+            appExtensions.end(),
+            [&](const auto& registration) {
+                return registration.manifest.id == providerEnableId;
+            });
+        if (appExtension != appExtensions.end())
+        {
+            const auto consent = registry.SetAppExtensionConsentEnabled(
+                appExtension->sourceIdentity,
+                true);
+            if (!consent)
+            {
+                for (const auto& error : consent.errors)
+                    fprintf(stderr, "[wtcli] %s\n", error.c_str());
+                exitCode = 1;
+                return;
+            }
+            appExtension->enabled = true;
+            if (jsonMode)
+                PrintJson(RegistrationJson(*appExtension));
+            else
+                PrintRegistration(*appExtension);
+            return;
+        }
+        if (!catalogAvailable)
+        {
+            for (const auto& error : discoveryDiagnostics)
+                fprintf(stderr, "[wtcli] App Extension discovery failed: %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        const auto enabled = registry.SetEnabled(providerEnableId, true);
         if (!enabled)
         {
+            for (const auto& error : discoveryDiagnostics)
+                fprintf(stderr, "[wtcli] App Extension warning: %s\n", error.c_str());
             for (const auto& error : enabled.errors)
                 fprintf(stderr, "[wtcli] %s\n", error.c_str());
             exitCode = 1;
@@ -595,9 +717,52 @@ int main()
     auto* providerDisableCmd = providerCmd->add_subcommand("disable", "Disable a provider");
     providerDisableCmd->add_option("id", providerDisableId, "Provider id")->required();
     providerDisableCmd->callback([&]() {
-        const auto disabled = Microsoft::Terminal::RichTab::Provider::ProviderRegistry{}.SetEnabled(providerDisableId, false);
+        namespace Provider = Microsoft::Terminal::RichTab::Provider;
+        Provider::ProviderRegistry registry;
+        std::vector<std::string> discoveryDiagnostics;
+        bool catalogAvailable = false;
+        auto appExtensions = DiscoverAppExtensionRegistrations(
+            registry,
+            discoveryDiagnostics,
+            catalogAvailable);
+        const auto appExtension = std::find_if(
+            appExtensions.begin(),
+            appExtensions.end(),
+            [&](const auto& registration) {
+                return registration.manifest.id == providerDisableId;
+            });
+        if (appExtension != appExtensions.end())
+        {
+            const auto consent = registry.SetAppExtensionConsentEnabled(
+                appExtension->sourceIdentity,
+                false);
+            if (!consent)
+            {
+                for (const auto& error : consent.errors)
+                    fprintf(stderr, "[wtcli] %s\n", error.c_str());
+                exitCode = 1;
+                return;
+            }
+            appExtension->enabled = false;
+            if (jsonMode)
+                PrintJson(RegistrationJson(*appExtension));
+            else
+                PrintRegistration(*appExtension);
+            return;
+        }
+        if (!catalogAvailable)
+        {
+            for (const auto& error : discoveryDiagnostics)
+                fprintf(stderr, "[wtcli] App Extension discovery failed: %s\n", error.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        const auto disabled = registry.SetEnabled(providerDisableId, false);
         if (!disabled)
         {
+            for (const auto& error : discoveryDiagnostics)
+                fprintf(stderr, "[wtcli] App Extension warning: %s\n", error.c_str());
             for (const auto& error : disabled.errors)
                 fprintf(stderr, "[wtcli] %s\n", error.c_str());
             exitCode = 1;

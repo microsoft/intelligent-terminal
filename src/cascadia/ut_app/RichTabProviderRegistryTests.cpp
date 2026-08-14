@@ -21,6 +21,10 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ManagedProviderLifecycleAndIntegrity);
         TEST_METHOD(ChangedManagedUpdateIsDisabled);
         TEST_METHOD(DevelopmentRegistrationRemainsMutable);
+        TEST_METHOD(DevelopmentConsentDoesNotFollowAChangedRoot);
+        TEST_METHOD(DevelopmentConsentDoesNotFollowRecreatedDirectory);
+        TEST_METHOD(AppExtensionConsentBindsStablePackageIdentity);
+        TEST_METHOD(ReservedBuiltInIdCannotBeRegistered);
         TEST_METHOD(InterruptedManagedUpdateRollsBack);
         TEST_METHOD(PayloadHashFramingIsUnambiguous);
         TEST_METHOD(RecoveryReadFailurePreservesBothPayloads);
@@ -198,10 +202,16 @@ namespace TerminalAppUnitTests
         const auto registered = registry.RegisterDevelopment(directories.source / L"provider.json");
         VERIFY_IS_TRUE(registered.value.has_value());
         VERIFY_ARE_EQUAL(RegistrationKind::Development, registered.value->kind);
-        VERIFY_ARE_EQUAL(directories.source.native(), registered.value->root.native());
+        VERIFY_IS_TRUE(std::filesystem::equivalent(
+            directories.source,
+            registered.value->root));
         VERIFY_IS_TRUE(registry.SetEnabled(id, true).value.has_value());
 
         WriteProvider(directories.source, id, "Write-Output 'v2'\n");
+        const auto reregistered = registry.RegisterDevelopment(
+            directories.source / L"provider.json");
+        VERIFY_IS_TRUE(reregistered.value.has_value());
+        VERIFY_IS_TRUE(reregistered.value->enabled);
         const auto listed = registry.List();
         VERIFY_IS_TRUE(listed.value.has_value());
         VERIFY_ARE_EQUAL(static_cast<size_t>(1), listed.value->size());
@@ -210,6 +220,100 @@ namespace TerminalAppUnitTests
 
         VERIFY_IS_TRUE(registry.Remove(id).value.has_value());
         VERIFY_IS_TRUE(std::filesystem::exists(directories.source / L"provider.ps1"));
+    }
+
+    void RichTabProviderRegistryTests::DevelopmentConsentDoesNotFollowAChangedRoot()
+    {
+        TestDirectories directories;
+        static constexpr std::string_view id{ "tests.dev-source-identity" };
+        const auto secondSource = directories.root / L"second-source";
+        WriteProvider(directories.source, id, "Write-Output 'same'\n");
+        WriteProvider(secondSource, id, "Write-Output 'same'\n");
+
+        ProviderRegistry registry{ directories.registry };
+        VERIFY_IS_TRUE(
+            registry.RegisterDevelopment(directories.source / L"provider.json")
+                .value.has_value());
+        VERIFY_IS_TRUE(registry.SetEnabled(id, true).value.has_value());
+
+        const auto moved = registry.RegisterDevelopment(
+            secondSource / L"provider.json");
+        VERIFY_IS_TRUE(moved.value.has_value());
+        VERIFY_IS_FALSE(moved.value->enabled);
+        VERIFY_ARE_EQUAL(
+            std::filesystem::weakly_canonical(secondSource).native(),
+            moved.value->sourceIdentity.developmentRoot.native());
+    }
+
+    void RichTabProviderRegistryTests::DevelopmentConsentDoesNotFollowRecreatedDirectory()
+    {
+        TestDirectories directories;
+        static constexpr std::string_view id{ "tests.dev-recreated-source" };
+        WriteProvider(directories.source, id, "Write-Output 'first'\n");
+
+        ProviderRegistry registry{ directories.registry };
+        VERIFY_IS_TRUE(
+            registry.RegisterDevelopment(directories.source / L"provider.json")
+                .value.has_value());
+        VERIFY_IS_TRUE(registry.SetEnabled(id, true).value.has_value());
+
+        std::filesystem::remove_all(directories.source);
+        WriteProvider(directories.source, id, "Write-Output 'replacement'\n");
+
+        const auto listed = registry.List();
+        VERIFY_IS_TRUE(listed.value.has_value());
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), listed.value->size());
+        VERIFY_IS_FALSE(listed.value->front().enabled);
+        VERIFY_IS_FALSE(listed.errors.empty());
+    }
+
+    void RichTabProviderRegistryTests::AppExtensionConsentBindsStablePackageIdentity()
+    {
+        TestDirectories directories;
+        ProviderRegistry registry{ directories.registry };
+        const auto first = AppExtensionSourceIdentity(
+            "tests.msix-provider",
+            L"rich-tabs",
+            L"Tests.Provider_123",
+            L"Tests.Provider_1.0.0.0_x64__123",
+            L"publisher123",
+            L"1.0.0.0");
+        const auto updated = AppExtensionSourceIdentity(
+            "tests.msix-provider",
+            L"rich-tabs",
+            L"Tests.Provider_123",
+            L"Tests.Provider_2.0.0.0_x64__123",
+            L"publisher123",
+            L"2.0.0.0");
+        const auto replaced = AppExtensionSourceIdentity(
+            "tests.msix-provider",
+            L"replacement",
+            L"Tests.Provider_123",
+            L"Tests.Provider_2.0.0.0_x64__123",
+            L"publisher123",
+            L"2.0.0.0");
+
+        VERIFY_IS_FALSE(*registry.AppExtensionConsentEnabled(first).value);
+        VERIFY_IS_TRUE(*registry.SetAppExtensionConsentEnabled(first, true).value);
+        VERIFY_IS_TRUE(*registry.AppExtensionConsentEnabled(updated).value);
+        VERIFY_IS_FALSE(*registry.AppExtensionConsentEnabled(replaced).value);
+        VERIFY_IS_FALSE(*registry.SetAppExtensionConsentEnabled(replaced, false).value);
+        VERIFY_IS_FALSE(*registry.AppExtensionConsentEnabled(first).value);
+    }
+
+    void RichTabProviderRegistryTests::ReservedBuiltInIdCannotBeRegistered()
+    {
+        TestDirectories directories;
+        WriteProvider(
+            directories.source,
+            "com.microsoft.intelligent-terminal.git-status",
+            "Write-Output '{}'\n");
+
+        ProviderRegistry registry{ directories.registry };
+        const auto registered = registry.RegisterDevelopment(
+            directories.source / L"provider.json");
+        VERIFY_IS_FALSE(registered.value.has_value());
+        VERIFY_IS_FALSE(registered.errors.empty());
     }
 
     void RichTabProviderRegistryTests::InterruptedManagedUpdateRollsBack()

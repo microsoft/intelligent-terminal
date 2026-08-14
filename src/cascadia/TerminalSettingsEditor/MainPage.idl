@@ -54,6 +54,7 @@ namespace Microsoft.Terminal.Settings.Editor
         event Windows.Foundation.TypedEventHandler<Object, Windows.Foundation.Collections.IVectorView<Microsoft.Terminal.Settings.Model.SettingsLoadWarnings> > ShowLoadWarningsDialog;
         event Windows.Foundation.TypedEventHandler<Object, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
         event Windows.Foundation.TypedEventHandler<Object, Microsoft.Terminal.Settings.Model.GlobalAppSettings> RichTabPreferencesChanged;
+        event Windows.Foundation.TypedEventHandler<Object, RichTabConsentRequest> RichTabConsentRequested;
 
         // Due to the aforementioned bug, we can't use IInitializeWithWindow _here_ either.
         // Let's just smuggle the HWND in as a UInt64 :|

@@ -6,12 +6,38 @@
 #include "RichTabFieldDescriptor.g.h"
 #include "RichTabProviderDescriptor.g.h"
 #include "RichTabFieldViewModel.g.h"
+#include "RichTabConsentRequest.g.h"
 #include "RichTabProviderViewModel.g.h"
 #include "RichTabsViewModel.g.h"
 #include "ViewModelHelpers.h"
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
+    struct RichTabConsentRequest : RichTabConsentRequestT<RichTabConsentRequest>
+    {
+        RichTabConsentRequest(winrt::hstring providerId, winrt::hstring consentKey, bool enabled) :
+            _providerId{ std::move(providerId) },
+            _consentKey{ std::move(consentKey) },
+            _enabled{ enabled }
+        {
+        }
+
+        winrt::hstring ProviderId() const noexcept { return _providerId; }
+        winrt::hstring ConsentKey() const noexcept { return _consentKey; }
+        bool Enabled() const noexcept { return _enabled; }
+        bool Approved() const noexcept { return _approved; }
+        void Approved(bool value) noexcept { _approved = value; }
+        winrt::hstring Error() const noexcept { return _error; }
+        void Error(winrt::hstring value) noexcept { _error = std::move(value); }
+
+    private:
+        winrt::hstring _providerId;
+        winrt::hstring _consentKey;
+        winrt::hstring _error;
+        bool _enabled{ false };
+        bool _approved{ false };
+    };
+
     struct RichTabFieldDescriptor : RichTabFieldDescriptorT<RichTabFieldDescriptor>
     {
         RichTabFieldDescriptor(winrt::hstring id, winrt::hstring displayName, bool defaultVisible) :
@@ -42,6 +68,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             bool eligible,
             bool effectiveEnabled,
             bool shadowed,
+            winrt::hstring consentKey,
             Windows::Foundation::Collections::IVectorView<Editor::RichTabFieldDescriptor> fields);
 
         winrt::hstring Id() const noexcept { return _id; }
@@ -52,17 +79,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool Eligible() const noexcept { return _eligible; }
         bool EffectiveEnabled() const noexcept { return _effectiveEnabled; }
         bool Shadowed() const noexcept { return _shadowed; }
+        winrt::hstring ConsentKey() const noexcept { return _consentKey; }
         Windows::Foundation::Collections::IVectorView<Editor::RichTabFieldDescriptor> Fields() const noexcept { return _fields; }
 
     private:
         winrt::hstring _id;
         winrt::hstring _displayName;
-        Editor::RichTabProviderSourceKind _source{ Editor::RichTabProviderSourceKind::Managed };
+        Editor::RichTabProviderSourceKind _source{ Editor::RichTabProviderSourceKind::LegacyManaged };
         bool _consentEnabled{ false };
         bool _integrityValid{ false };
         bool _eligible{ false };
         bool _effectiveEnabled{ false };
         bool _shadowed{ false };
+        winrt::hstring _consentKey;
         Windows::Foundation::Collections::IVectorView<Editor::RichTabFieldDescriptor> _fields{ nullptr };
     };
 
@@ -89,6 +118,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool CanMoveDown() const noexcept { return _canMoveDown; }
         void MoveUp();
         void MoveDown();
+        void SetCanEdit(bool canEdit);
         void SetMoveState(bool canMoveUp, bool canMoveDown);
 
     private:
@@ -110,7 +140,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             Model::GlobalAppSettings globalSettings,
             Editor::RichTabProviderDescriptor descriptor,
             std::function<void()> ensurePreference,
-            std::function<void()> preferencesChanged);
+            std::function<void()> preferencesChanged,
+            std::function<bool(const winrt::hstring&, bool, winrt::hstring&)> requestConsent);
 
         using ViewModelHelper<RichTabProviderViewModel>::PropertyChanged;
 
@@ -119,9 +150,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring DisplayName() const noexcept { return _descriptor.DisplayName(); }
         winrt::hstring SourceLabel() const;
         winrt::hstring StatusLabel() const;
+        winrt::hstring ConsentKey() const noexcept { return _descriptor.ConsentKey(); }
         bool IsEnabled() const noexcept { return _isEnabled; }
         void IsEnabled(bool value);
-        bool CanToggle() const noexcept { return _descriptor.Eligible(); }
+        bool NeedsConsent() const noexcept { return !_consentEnabled; }
+        bool CanToggle() const noexcept;
+        winrt::hstring RequestConsent(bool enabled);
         bool CanMoveUp() const noexcept { return _canMoveUp; }
         bool CanMoveDown() const noexcept { return _canMoveDown; }
         Windows::Foundation::Collections::IObservableVector<Editor::RichTabFieldViewModel> Fields() const noexcept { return _fields; }
@@ -131,6 +165,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::RichTabProviderPreference _Preference();
+        bool _CanEditFields() const noexcept;
         void _WriteFields();
         void _UpdateFieldMoveState();
 
@@ -140,7 +175,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::vector<winrt::hstring> _serializedFieldOrder;
         std::function<void()> _ensurePreference;
         std::function<void()> _preferencesChanged;
+        std::function<bool(const winrt::hstring&, bool, winrt::hstring&)> _requestConsent;
         bool _isEnabled{ false };
+        bool _consentEnabled{ false };
         bool _canMoveUp{ false };
         bool _canMoveDown{ false };
     };
@@ -160,6 +197,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void MoveProviderDown(const Editor::RichTabProviderViewModel& provider);
 
         til::typed_event<Editor::RichTabsViewModel, Model::GlobalAppSettings> PreferencesChanged;
+        til::typed_event<Editor::RichTabsViewModel, Editor::RichTabConsentRequest> ConsentRequested;
 
     private:
         void _WriteProviderOrder();
@@ -174,5 +212,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::factory_implementation
 {
     BASIC_FACTORY(RichTabFieldDescriptor);
     BASIC_FACTORY(RichTabProviderDescriptor);
+    BASIC_FACTORY(RichTabConsentRequest);
     BASIC_FACTORY(RichTabsViewModel);
 }

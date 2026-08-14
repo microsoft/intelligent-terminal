@@ -6,6 +6,7 @@
 #include "RichTabFieldDescriptor.g.cpp"
 #include "RichTabProviderDescriptor.g.cpp"
 #include "RichTabFieldViewModel.g.cpp"
+#include "RichTabConsentRequest.g.cpp"
 #include "RichTabProviderViewModel.g.cpp"
 #include "RichTabsViewModel.g.cpp"
 #include "Utils.h"
@@ -134,6 +135,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const bool eligible,
         const bool effectiveEnabled,
         const bool shadowed,
+        winrt::hstring consentKey,
         Windows::Foundation::Collections::IVectorView<Editor::RichTabFieldDescriptor> fields) :
         _id{ std::move(id) },
         _displayName{ std::move(displayName) },
@@ -143,6 +145,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _eligible{ eligible },
         _effectiveEnabled{ effectiveEnabled },
         _shadowed{ shadowed },
+        _consentKey{ std::move(consentKey) },
         _fields{ std::move(fields) }
     {
     }
@@ -189,6 +192,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void RichTabFieldViewModel::SetCanEdit(const bool canEdit)
+    {
+        if (_canEdit != canEdit)
+        {
+            _canEdit = canEdit;
+            _NotifyChanges(L"CanEdit");
+        }
+    }
+
     void RichTabFieldViewModel::SetMoveState(const bool canMoveUp, const bool canMoveDown)
     {
         if (_canMoveUp != canMoveUp || _canMoveDown != canMoveDown)
@@ -203,17 +215,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Model::GlobalAppSettings globalSettings,
         Editor::RichTabProviderDescriptor descriptor,
         std::function<void()> ensurePreference,
-        std::function<void()> preferencesChanged) :
+        std::function<void()> preferencesChanged,
+        std::function<bool(const winrt::hstring&, bool, winrt::hstring&)> requestConsent) :
         _globalSettings{ std::move(globalSettings) },
         _descriptor{ std::move(descriptor) },
         _fields{ single_threaded_observable_vector<Editor::RichTabFieldViewModel>() },
         _ensurePreference{ std::move(ensurePreference) },
-        _preferencesChanged{ std::move(preferencesChanged) }
+        _preferencesChanged{ std::move(preferencesChanged) },
+        _requestConsent{ std::move(requestConsent) },
+        _consentEnabled{ _descriptor.ConsentEnabled() }
     {
         const auto preference = _FindPreference(_globalSettings, _descriptor.Id());
-        _isEnabled = preference && preference.Enabled() ?
-                         preference.Enabled().Value() :
-                         _descriptor.EffectiveEnabled();
+        _isEnabled = _descriptor.EffectiveEnabled();
         const auto descriptorFields = _descriptor.Fields();
         std::unordered_set<std::wstring> added;
         if (preference && preference.Fields())
@@ -228,7 +241,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 {
                     if (added.emplace(std::wstring{ fieldId }).second)
                     {
-                        _fields.Append(winrt::make<RichTabFieldViewModel>(*found, true, _descriptor.Eligible(), [] {}, [] {}, [] {}));
+                        _fields.Append(winrt::make<RichTabFieldViewModel>(*found, true, _CanEditFields(), [] {}, [] {}, [] {}));
                     }
                 }
             }
@@ -238,7 +251,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             if (added.emplace(std::wstring{ field.Id() }).second)
             {
                 const auto visible = !preference || !preference.Fields() ? field.DefaultVisible() : false;
-                _fields.Append(winrt::make<RichTabFieldViewModel>(field, visible, _descriptor.Eligible(), [] {}, [] {}, [] {}));
+                _fields.Append(winrt::make<RichTabFieldViewModel>(field, visible, _CanEditFields(), [] {}, [] {}, [] {}));
             }
         }
     }
@@ -263,7 +276,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             auto implementation = winrt::make_self<RichTabFieldViewModel>(
                 descriptor,
                 visible,
-                _descriptor.Eligible(),
+                _CanEditFields(),
                 [weak]() {
                     if (const auto self = weak.get())
                     {
@@ -308,10 +321,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
         case Editor::RichTabProviderSourceKind::BuiltIn:
             return RS_(L"RichTabs_SourceBuiltIn");
+        case Editor::RichTabProviderSourceKind::AppExtension:
+            return RS_(L"RichTabs_SourceAppExtension");
         case Editor::RichTabProviderSourceKind::Development:
             return RS_(L"RichTabs_SourceDevelopment");
         default:
-            return RS_(L"RichTabs_SourceManaged");
+            return RS_(L"RichTabs_SourceLegacyManaged");
         }
     }
 
@@ -325,7 +340,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return RS_(L"RichTabs_StatusIntegrityInvalid");
         }
-        if (!_descriptor.ConsentEnabled())
+        if (!_consentEnabled)
         {
             return RS_(L"RichTabs_StatusConsentRequired");
         }
@@ -353,6 +368,60 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _NotifyChanges(L"IsEnabled", L"StatusLabel");
             _preferencesChanged();
         }
+    }
+
+    bool RichTabProviderViewModel::CanToggle() const noexcept
+    {
+        if (_descriptor.Shadowed() || !_descriptor.IntegrityValid())
+        {
+            return false;
+        }
+        if (_descriptor.Eligible() ||
+            (_consentEnabled &&
+             _descriptor.Source() == Editor::RichTabProviderSourceKind::AppExtension &&
+             !_descriptor.ConsentKey().empty()))
+        {
+            return true;
+        }
+        return !_consentEnabled &&
+               _descriptor.Source() == Editor::RichTabProviderSourceKind::AppExtension &&
+               !_descriptor.ConsentKey().empty();
+    }
+
+    winrt::hstring RichTabProviderViewModel::RequestConsent(const bool enabled)
+    {
+        if (!_requestConsent || !CanToggle() || !NeedsConsent())
+        {
+            return L"Provider consent cannot be changed";
+        }
+
+        winrt::hstring error;
+        if (!_requestConsent(Id(), enabled, error))
+        {
+            return error.empty() ? winrt::hstring{ L"Provider consent could not be saved" } : error;
+        }
+
+        _consentEnabled = enabled;
+        _isEnabled = enabled;
+        _Preference().Enabled(winrt::box_value(enabled).as<Windows::Foundation::IReference<bool>>());
+        for (const auto& field : _fields)
+        {
+            get_self<RichTabFieldViewModel>(field)->SetCanEdit(_CanEditFields());
+        }
+        _UpdateFieldMoveState();
+        _NotifyChanges(L"NeedsConsent", L"CanToggle", L"IsEnabled", L"StatusLabel");
+        _preferencesChanged();
+        return {};
+    }
+
+    bool RichTabProviderViewModel::_CanEditFields() const noexcept
+    {
+        return _descriptor.Eligible() ||
+               (_consentEnabled &&
+                _descriptor.Source() == Editor::RichTabProviderSourceKind::AppExtension &&
+                !_descriptor.Shadowed() &&
+                _descriptor.IntegrityValid() &&
+                !_descriptor.ConsentKey().empty());
     }
 
     void RichTabProviderViewModel::_WriteFields()
@@ -426,7 +495,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto size = _fields.Size();
         for (uint32_t index = 0; index < size; ++index)
         {
-            get_self<RichTabFieldViewModel>(_fields.GetAt(index))->SetMoveState(_descriptor.Eligible() && index > 0, _descriptor.Eligible() && index + 1 < size);
+            get_self<RichTabFieldViewModel>(_fields.GetAt(index))->SetMoveState(_CanEditFields() && index > 0, _CanEditFields() && index + 1 < size);
         }
     }
 
@@ -486,6 +555,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     {
                         self->PreferencesChanged.raise(*self, settings);
                     }
+                },
+                [weak = get_weak()](const winrt::hstring& id, const bool enabled, winrt::hstring& error) {
+                    if (const auto self = weak.get())
+                    {
+                        const auto provider = std::find_if(
+                            self->_providers.begin(),
+                            self->_providers.end(),
+                            [&](const auto& current) {
+                                return current.Id() == id;
+                            });
+                        if (provider == self->_providers.end())
+                        {
+                            error = L"Provider is no longer in the Rich Tab catalog";
+                            return false;
+                        }
+                        const auto request = winrt::make<RichTabConsentRequest>(
+                            id,
+                            get_self<RichTabProviderViewModel>(*provider)->ConsentKey(),
+                            enabled);
+                        self->ConsentRequested.raise(*self, request);
+                        error = request.Error();
+                        return request.Approved();
+                    }
+                    error = L"Rich Tab settings are no longer available";
+                    return false;
                 });
             provider->InitializeFieldCallbacks();
             _providers.Append(*provider);

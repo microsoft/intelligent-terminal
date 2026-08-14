@@ -21,6 +21,35 @@ namespace winrt::TerminalApp::implementation
         _sui.RichTabPreferencesChanged([](auto&&, const auto& globalSettings) {
             _ApplyRichTabPreferences(globalSettings);
         });
+        _sui.RichTabConsentRequested([weak = get_weak()](auto&&, const auto& request) {
+            const auto self = weak.get();
+            if (!self)
+            {
+                request.Error(L"Settings are no longer available");
+                return;
+            }
+            namespace Provider = ::Microsoft::Terminal::RichTab::Provider;
+            const auto result = Provider::ProviderBroker::Instance().SetProviderConsent(
+                winrt::to_string(request.ProviderId()),
+                winrt::to_string(request.ConsentKey()),
+                request.Enabled());
+            request.Approved(static_cast<bool>(result));
+            if (!result)
+            {
+                std::string error;
+                for (const auto& message : result.errors)
+                {
+                    if (!error.empty())
+                    {
+                        error.append("\n");
+                    }
+                    error.append(message);
+                }
+                request.Error(winrt::to_hstring(error));
+                return;
+            }
+            self->_UpdateRichTabProviderCatalog();
+        });
 
         // Stash away the current requested theme of the app. We'll need that in
         // _BackgroundBrush() to do a theme-aware resource lookup
@@ -84,9 +113,11 @@ namespace winrt::TerminalApp::implementation
 
             const auto source = descriptor.source == Provider::ProviderSourceKind::BuiltIn ?
                                     EditorSource::BuiltIn :
+                                descriptor.source == Provider::ProviderSourceKind::AppExtension ?
+                                    EditorSource::AppExtension :
                                 descriptor.source == Provider::ProviderSourceKind::Development ?
                                     EditorSource::Development :
-                                    EditorSource::Managed;
+                                    EditorSource::LegacyManaged;
             descriptors.Append(winrt::Microsoft::Terminal::Settings::Editor::RichTabProviderDescriptor{
                 winrt::to_hstring(descriptor.id),
                 winrt::to_hstring(descriptor.displayName),
@@ -96,6 +127,7 @@ namespace winrt::TerminalApp::implementation
                 descriptor.eligible,
                 descriptor.effectiveEnabled,
                 descriptor.shadowed,
+                winrt::to_hstring(descriptor.consentKey),
                 fields.GetView() });
         }
         _sui.UpdateRichTabProviderCatalog(descriptors.GetView());

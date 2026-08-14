@@ -122,6 +122,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string_view json,
         const std::filesystem::path& extensionRoot);
 
+    ParseResult<std::string> ReadManifestFile(
+        const std::filesystem::path& path);
+
     ParseResult<Snapshot> ParseSnapshot(
         std::string_view json,
         const Manifest& manifest,

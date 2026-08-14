@@ -753,9 +753,13 @@
     <value>Built in</value>
     <comment>Source label for a provider distributed with Intelligent Terminal.</comment>
   </data>
-  <data name="RichTabs_SourceManaged" xml:space="preserve">
-    <value>Installed extension</value>
-    <comment>Source label for a managed third-party provider.</comment>
+  <data name="RichTabs_SourceAppExtension" xml:space="preserve">
+    <value>MSIX extension</value>
+    <comment>Source label for a provider discovered from an installed MSIX App Extension.</comment>
+  </data>
+  <data name="RichTabs_SourceLegacyManaged" xml:space="preserve">
+    <value>Legacy installed extension</value>
+    <comment>Source label for a provider installed through the legacy managed-copy registry.</comment>
   </data>
   <data name="RichTabs_SourceDevelopment" xml:space="preserve">
     <value>Development extension</value>
@@ -770,8 +774,28 @@
     <comment>Status label for a disabled Rich Tab provider.</comment>
   </data>
   <data name="RichTabs_StatusConsentRequired" xml:space="preserve">
-    <value>Enable this provider from wtcli before it can run</value>
-    <comment>Status for a third-party provider that has not received code execution consent. wtcli is a locked product command name. {Locked="wtcli"}</comment>
+    <value>Consent required before this provider can run</value>
+    <comment>Status for a third-party provider that has not received code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogTitle" xml:space="preserve">
+    <value>Allow this provider to run?</value>
+    <comment>Title for the Rich Tab provider code execution consent dialog.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogMessage" xml:space="preserve">
+    <value>This provider will run code with your user permissions. Only continue if you trust its publisher and installation source.</value>
+    <comment>Security warning shown before granting a Rich Tab provider code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogAccept" xml:space="preserve">
+    <value>Allow and enable</value>
+    <comment>Primary button that grants Rich Tab provider code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogCancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>Button that dismisses a Rich Tab provider consent dialog without granting consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogFailureTitle" xml:space="preserve">
+    <value>Could not enable provider</value>
+    <comment>Title shown when Rich Tab provider consent could not be persisted.</comment>
   </data>
   <data name="RichTabs_StatusIntegrityInvalid" xml:space="preserve">
     <value>Provider files failed integrity validation</value>

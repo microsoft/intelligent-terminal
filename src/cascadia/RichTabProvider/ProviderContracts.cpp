@@ -6,6 +6,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -278,6 +279,35 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
         return true;
+    }
+
+    ParseResult<std::string> ReadManifestFile(const std::filesystem::path& path)
+    {
+        ParseResult<std::string> result;
+        std::error_code sizeError;
+        const auto size = std::filesystem::file_size(path, sizeError);
+        if (sizeError || size == 0 || size > MaximumManifestSize ||
+            size > static_cast<uint64_t>((std::numeric_limits<std::streamsize>::max)()))
+        {
+            result.errors.emplace_back("Provider manifest is missing or exceeds its size limit");
+            return result;
+        }
+
+        std::ifstream stream{ path, std::ios::binary };
+        if (!stream)
+        {
+            result.errors.emplace_back("Could not open provider manifest");
+            return result;
+        }
+
+        std::string contents(static_cast<size_t>(size), '\0');
+        if (!stream.read(contents.data(), static_cast<std::streamsize>(contents.size())))
+        {
+            result.errors.emplace_back("Could not read provider manifest");
+            return result;
+        }
+        result.value = std::move(contents);
+        return result;
     }
 
     ParseResult<Manifest> ParseManifest(

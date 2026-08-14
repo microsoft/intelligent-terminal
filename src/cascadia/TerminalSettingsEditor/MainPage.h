@@ -78,6 +78,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         til::typed_event<Windows::Foundation::IInspectable, Windows::Foundation::Collections::IVectorView<Model::SettingsLoadWarnings>> ShowLoadWarningsDialog;
         til::typed_event<Windows::Foundation::IInspectable, Model::ShellIntegrationTarget> InitShellIntegrationRequested;
         til::typed_event<Windows::Foundation::IInspectable, Model::GlobalAppSettings> RichTabPreferencesChanged;
+        til::typed_event<Windows::Foundation::IInspectable, Editor::RichTabConsentRequest> RichTabConsentRequested;
 
     private:
         Windows::Foundation::Collections::IObservableVector<IInspectable> _breadcrumbs;

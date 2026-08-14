@@ -98,11 +98,12 @@ namespace Microsoft::Terminal::RichTab::Provider
                 const std::filesystem::path& root,
                 std::string& error)
             {
-                static constexpr std::array<std::wstring_view, 4> children{
+                static constexpr std::array<std::wstring_view, 5> children{
                     L"installed",
                     L"staging",
                     L"registrations",
                     L"removals",
+                    L"consents",
                 };
                 std::error_code directoryError;
                 std::filesystem::create_directories(root, directoryError);
@@ -698,6 +699,14 @@ namespace Microsoft::Terminal::RichTab::Provider
                    (std::wstring{ id.begin(), id.end() } + L".json");
         }
 
+        std::filesystem::path _ConsentPath(
+            const std::filesystem::path& root,
+            const std::string_view id)
+        {
+            return root / L"consents" /
+                   (std::wstring{ id.begin(), id.end() } + L".json");
+        }
+
         std::filesystem::path _ManagedRoot(
             const std::filesystem::path& root,
             const std::string_view id)
@@ -865,6 +874,11 @@ namespace Microsoft::Terminal::RichTab::Provider
             result.errors = sourceManifest.errors;
             return result;
         }
+        if (IsReservedBuiltInProviderId(sourceManifest.value->id))
+        {
+            result.errors.emplace_back("Provider id is reserved for a built-in provider");
+            return result;
+        }
 
         PayloadTree sourcePayload;
         if (!_EnumeratePayload(absoluteManifest.parent_path(), sourcePayload, validationError))
@@ -922,10 +936,36 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         if (kind == RegistrationKind::Development)
         {
-            stored.root = absoluteManifest.parent_path();
+            stored.root = std::filesystem::weakly_canonical(
+                absoluteManifest.parent_path(),
+                pathError);
+            if (pathError)
+            {
+                result.errors.emplace_back(
+                    "Development provider root is invalid: " +
+                    std::to_string(pathError.value()));
+                return result;
+            }
             stored.payloadHash = std::move(sourceHash);
+            stored.consentKey = ProviderConsentKey(
+                DevelopmentSourceIdentity(stored.id, stored.root));
+            if (!stored.consentKey)
+            {
+                result.errors.emplace_back(
+                    "Development provider source identity is unavailable");
+                return result;
+            }
+            std::error_code identityError;
+            const auto sameSource =
+                previous &&
+                std::filesystem::equivalent(
+                    previous->root,
+                    stored.root,
+                    identityError) &&
+                !identityError;
             stored.enabled = previous &&
-                             previous->payloadHash == stored.payloadHash &&
+                             sameSource &&
+                             previous->consentKey == stored.consentKey &&
                              previous->enabled;
             auto materialized = _Materialize(stored);
             if (!materialized)
@@ -1157,6 +1197,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             "kind",
             "root",
             "payloadHash",
+            "consentKey",
             "enabled",
         };
         for (const auto& member : root.getMemberNames())
@@ -1211,6 +1252,17 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
         stored.payloadHash = payloadHash;
+        if (root.isMember("consentKey"))
+        {
+            if (!root["consentKey"].isString() ||
+                root["consentKey"].asString().empty() ||
+                root["consentKey"].asString().size() > 512)
+            {
+                result.errors.emplace_back("Registration consent identity is invalid");
+                return result;
+            }
+            stored.consentKey = root["consentKey"].asString();
+        }
         stored.enabled = root["enabled"].asBool();
         result.value = std::move(stored);
         return result;
@@ -1246,10 +1298,25 @@ namespace Microsoft::Terminal::RichTab::Provider
         registration.kind = stored.kind;
         registration.root = stored.root;
         registration.payloadHash = std::move(hash);
-        registration.enabled = stored.enabled;
+        registration.sourceIdentity =
+            stored.kind == RegistrationKind::Development ?
+                DevelopmentSourceIdentity(stored.id, stored.root) :
+                LegacyManagedSourceIdentity(stored.id, stored.root);
+        const auto currentConsentKey = ProviderConsentKey(registration.sourceIdentity);
+        registration.enabled =
+            stored.enabled &&
+            (stored.kind != RegistrationKind::Development ||
+             (currentConsentKey && stored.consentKey == currentConsentKey));
         registration.integrityValid =
             stored.kind == RegistrationKind::Development ||
             registration.payloadHash == stored.payloadHash;
+        if (stored.kind == RegistrationKind::Development &&
+            stored.enabled &&
+            !registration.enabled)
+        {
+            result.errors.emplace_back(
+                "Development provider source identity changed; consent is required again");
+        }
         if (!registration.integrityValid)
         {
             result.errors.emplace_back("Managed provider payload hash does not match its registration");
@@ -1273,6 +1340,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         root["kind"] = stored.kind == RegistrationKind::Managed ? "managed" : "development";
         root["root"] = *rootUtf8;
         root["payloadHash"] = stored.payloadHash;
+        if (stored.consentKey)
+        {
+            root["consentKey"] = *stored.consentKey;
+        }
         root["enabled"] = stored.enabled;
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "";
@@ -1499,6 +1570,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 registration.payloadHash = stored.value->payloadHash;
                 registration.enabled = false;
                 registration.integrityValid = false;
+                registration.sourceIdentity =
+                    stored.value->kind == RegistrationKind::Development ?
+                        DevelopmentSourceIdentity(stored.value->id, stored.value->root) :
+                        LegacyManagedSourceIdentity(stored.value->id, stored.value->root);
                 result.value = std::move(registration);
                 result.errors = std::move(materialized.errors);
             }
@@ -1523,6 +1598,17 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
 
         stored.value->enabled = enabled;
+        if (enabled && stored.value->kind == RegistrationKind::Development)
+        {
+            stored.value->consentKey = ProviderConsentKey(
+                materialized.value->sourceIdentity);
+            if (!stored.value->consentKey)
+            {
+                result.errors.emplace_back(
+                    "Development provider source identity is unavailable");
+                return result;
+            }
+        }
         std::string writeError;
         if (!_WriteStored(*stored.value, writeError))
         {
@@ -1531,6 +1617,127 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         materialized.value->enabled = enabled;
         result.value = std::move(*materialized.value);
+        return result;
+    }
+
+    RegistryResult<bool> ProviderRegistry::AppExtensionConsentEnabled(
+        const ProviderSourceIdentity& identity)
+    {
+        RegistryResult<bool> result;
+        const auto consentKey = ProviderConsentKey(identity);
+        if (identity.kind != ProviderSourceKind::AppExtension ||
+            !IsCanonicalProviderId(identity.providerId) ||
+            !consentKey)
+        {
+            result.errors.emplace_back("App Extension consent identity is invalid");
+            return result;
+        }
+
+        std::string lockError;
+        auto lock = RegistryLock::Acquire(_root, lockError);
+        if (!lock)
+        {
+            result.errors.emplace_back(std::move(lockError));
+            return result;
+        }
+        auto guards = RegistryDirectoryGuards::Acquire(_root, lockError);
+        if (!guards)
+        {
+            result.errors.emplace_back(std::move(lockError));
+            return result;
+        }
+
+        const auto path = _ConsentPath(_root, identity.providerId);
+        std::error_code existsError;
+        if (!std::filesystem::exists(path, existsError))
+        {
+            if (existsError)
+            {
+                result.errors.emplace_back(
+                    "Could not inspect App Extension consent: " +
+                    std::to_string(existsError.value()));
+                return result;
+            }
+            result.value = false;
+            return result;
+        }
+
+        Json::Value root;
+        std::string readError;
+        if (!_ReadRegistrationJson(path, root, readError) ||
+            !root.isObject() ||
+            root.getMemberNames().size() != 4 ||
+            !root.isMember("schemaVersion") ||
+            !root["schemaVersion"].isInt() ||
+            root["schemaVersion"].asInt() != 1 ||
+            !root.isMember("providerId") ||
+            !root["providerId"].isString() ||
+            !root.isMember("consentKey") ||
+            !root["consentKey"].isString() ||
+            !root.isMember("enabled") ||
+            !root["enabled"].isBool())
+        {
+            result.errors.emplace_back(
+                "App Extension consent is invalid" +
+                (readError.empty() ? std::string{} : ": " + readError));
+            return result;
+        }
+        if (root["providerId"].asString() != identity.providerId ||
+            root["consentKey"].asString() != *consentKey)
+        {
+            result.value = false;
+            return result;
+        }
+        result.value = root["enabled"].asBool();
+        return result;
+    }
+
+    RegistryResult<bool> ProviderRegistry::SetAppExtensionConsentEnabled(
+        const ProviderSourceIdentity& identity,
+        const bool enabled)
+    {
+        RegistryResult<bool> result;
+        const auto consentKey = ProviderConsentKey(identity);
+        if (identity.kind != ProviderSourceKind::AppExtension ||
+            !IsCanonicalProviderId(identity.providerId) ||
+            IsReservedBuiltInProviderId(identity.providerId) ||
+            !consentKey)
+        {
+            result.errors.emplace_back("App Extension consent identity is invalid");
+            return result;
+        }
+
+        std::string lockError;
+        auto lock = RegistryLock::Acquire(_root, lockError);
+        if (!lock)
+        {
+            result.errors.emplace_back(std::move(lockError));
+            return result;
+        }
+        auto guards = RegistryDirectoryGuards::Acquire(_root, lockError);
+        if (!guards)
+        {
+            result.errors.emplace_back(std::move(lockError));
+            return result;
+        }
+
+        Json::Value root;
+        root["schemaVersion"] = 1;
+        root["providerId"] = identity.providerId;
+        root["consentKey"] = *consentKey;
+        root["enabled"] = enabled;
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        std::string writeError;
+        if (!_WriteAtomic(
+                _ConsentPath(_root, identity.providerId),
+                Json::writeString(writer, root),
+                writeError))
+        {
+            result.errors.emplace_back(std::move(writeError));
+            return result;
+        }
+        result.value = enabled;
         return result;
     }
 

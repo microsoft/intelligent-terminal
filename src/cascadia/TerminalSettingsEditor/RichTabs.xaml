@@ -27,7 +27,7 @@
                 <DataTemplate x:DataType="local:RichTabProviderViewModel">
                     <muxc:Expander Margin="0,4,0,0"
                                    HorizontalAlignment="Stretch"
-                                   IsExpanded="True">
+                                   IsExpanded="False">
                         <muxc:Expander.Header>
                             <Grid MinHeight="56"
                                   ColumnSpacing="12">

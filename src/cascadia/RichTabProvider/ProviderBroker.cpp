@@ -6,11 +6,13 @@
 
 #include <windows.h>
 #include <bcrypt.h>
+#include <winrt/base.h>
 
 #include <algorithm>
 #include <charconv>
 #include <thread>
 #include <unordered_set>
+#include <utility>
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
@@ -125,7 +127,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                    first.root == second.root &&
                    first.payloadHash == second.payloadHash &&
                    first.enabled == second.enabled &&
-                   first.integrityValid == second.integrityValid;
+                   first.integrityValid == second.integrityValid &&
+                   first.sourceIdentity == second.sourceIdentity;
         }
 
         bool _SameProviders(
@@ -224,6 +227,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         for (size_t index = 0; index < WorkerCount; ++index)
         {
             std::thread{ [this]() {
+                winrt::init_apartment(winrt::apartment_type::multi_threaded);
                 for (;;)
                 {
                     std::function<void()> work;
@@ -256,10 +260,18 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     uint64_t ProviderBroker::_RegistryStamp() const noexcept
     {
-        std::error_code error;
-        const auto path = _registry.Root() / L"registrations";
-        const auto stamp = std::filesystem::last_write_time(path, error);
-        return error ? 0 : static_cast<uint64_t>(stamp.time_since_epoch().count());
+        const auto stamp = [&](const std::filesystem::path& path) {
+            std::error_code error;
+            const auto value = std::filesystem::last_write_time(path, error);
+            return error ? uint64_t{ 0 } :
+                           static_cast<uint64_t>(value.time_since_epoch().count());
+        };
+        const auto registrations = stamp(_registry.Root() / L"registrations");
+        const auto consents = stamp(_registry.Root() / L"consents");
+        return registrations ^
+               (consents + 0x9e3779b97f4a7c15ull +
+                (registrations << 6) +
+                (registrations >> 2));
     }
 
     void ProviderBroker::_ReloadProvidersIfChanged()
@@ -273,64 +285,115 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     void ProviderBroker::ReloadProviders()
     {
+        _ReloadProvidersFromSources();
+        _ScheduleAppExtensionDiscovery();
+    }
+
+    ProviderCatalogSnapshot ProviderBroker::BuildCatalog(
+        std::vector<Registration> candidates)
+    {
+        ProviderCatalogSnapshot result;
+        std::unordered_map<std::string, int> winningPrecedence;
+        for (const auto& provider : candidates)
+        {
+            const auto precedence =
+                ProviderSourcePrecedence(provider.sourceIdentity.kind);
+            const auto [entry, inserted] =
+                winningPrecedence.try_emplace(provider.manifest.id, precedence);
+            if (!inserted)
+            {
+                entry->second = (std::max)(entry->second, precedence);
+            }
+        }
+
+        std::stable_sort(candidates.begin(), candidates.end(), [](const auto& first, const auto& second) {
+            return ProviderSourcePrecedence(first.sourceIdentity.kind) >
+                   ProviderSourcePrecedence(second.sourceIdentity.kind);
+        });
+        std::unordered_set<std::string> selected;
+        for (auto& provider : candidates)
+        {
+            const auto precedence =
+                ProviderSourcePrecedence(provider.sourceIdentity.kind);
+            const auto shadowed =
+                precedence < winningPrecedence[provider.manifest.id] ||
+                !selected.emplace(provider.manifest.id).second;
+            const auto sourceAllowed =
+                ConsentRequirementFor(provider.sourceIdentity.kind) !=
+                ProviderConsentRequirement::SourceNotAllowed;
+            const auto consentEnabled =
+                provider.sourceIdentity.kind == ProviderSourceKind::BuiltIn ||
+                (sourceAllowed && provider.enabled);
+            const auto eligible =
+                consentEnabled &&
+                provider.integrityValid &&
+                !shadowed;
+            result.descriptors.emplace_back(ProviderDescriptor{
+                provider.manifest.id,
+                provider.manifest.displayName,
+                provider.sourceIdentity.kind,
+                consentEnabled,
+                provider.integrityValid,
+                eligible,
+                eligible,
+                shadowed,
+                ProviderConsentKey(provider.sourceIdentity).value_or(""),
+                provider.manifest.fields });
+            if (eligible)
+            {
+                result.available.emplace_back(std::move(provider));
+            }
+        }
+        std::sort(result.available.begin(), result.available.end(), [](const auto& first, const auto& second) {
+            return first.manifest.id < second.manifest.id;
+        });
+        std::sort(result.descriptors.begin(), result.descriptors.end(), [](const auto& first, const auto& second) {
+            if (first.id != second.id)
+            {
+                return first.id < second.id;
+            }
+            return ProviderSourcePrecedence(first.source) >
+                   ProviderSourcePrecedence(second.source);
+        });
+        return result;
+    }
+
+    void ProviderBroker::_ReloadProvidersFromSources()
+    {
         std::lock_guard reloadLock{ _reloadMutex };
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
         auto listed = _registry.List();
-        std::vector<Registration> available;
-        std::vector<ProviderDescriptor> catalog;
-        std::unordered_set<std::string> builtInIds;
+        std::vector<Registration> candidates;
         if (builtIns.value)
         {
-            available = std::move(*builtIns.value);
-            for (const auto& provider : available)
+            candidates = std::move(*builtIns.value);
+        }
+        for (const auto& discovered : _appExtensionDiscovery.providers)
+        {
+            if (discovered.status != AppExtensionDiscoveryStatus::Discovered ||
+                !discovered.manifest)
             {
-                builtInIds.emplace(provider.manifest.id);
-                catalog.emplace_back(ProviderDescriptor{
-                    provider.manifest.id,
-                    provider.manifest.displayName,
-                    ProviderSourceKind::BuiltIn,
-                    true,
-                    true,
-                    true,
-                    true,
-                    false,
-                    provider.manifest.fields });
+                continue;
             }
+            auto consent = _registry.AppExtensionConsentEnabled(
+                discovered.identity);
+            Registration registration;
+            registration.manifest = *discovered.manifest;
+            registration.kind = RegistrationKind::Managed;
+            registration.root = discovered.publicPath;
+            registration.enabled = consent.value.value_or(false);
+            registration.integrityValid = true;
+            registration.sourceIdentity = discovered.identity;
+            candidates.emplace_back(std::move(registration));
         }
         if (listed.value)
         {
             for (auto& provider : *listed.value)
             {
-                const auto shadowed = builtInIds.contains(provider.manifest.id);
-                const auto eligible = provider.enabled && provider.integrityValid && !shadowed;
-                catalog.emplace_back(ProviderDescriptor{
-                    provider.manifest.id,
-                    provider.manifest.displayName,
-                    provider.kind == RegistrationKind::Development ?
-                        ProviderSourceKind::Development :
-                        ProviderSourceKind::Managed,
-                    provider.enabled,
-                    provider.integrityValid,
-                    eligible,
-                    eligible,
-                    shadowed,
-                    provider.manifest.fields });
-                if (eligible)
-                {
-                    available.emplace_back(std::move(provider));
-                }
+                candidates.emplace_back(std::move(provider));
             }
         }
-        std::sort(available.begin(), available.end(), [](const auto& first, const auto& second) {
-            return first.manifest.id < second.manifest.id;
-        });
-        std::sort(catalog.begin(), catalog.end(), [](const auto& first, const auto& second) {
-            if (first.id != second.id)
-            {
-                return first.id < second.id;
-            }
-            return first.source < second.source;
-        });
+        auto merged = BuildCatalog(std::move(candidates));
 
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::vector<std::string> sessionsToRefresh;
@@ -338,8 +401,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             std::lock_guard lock{ _mutex };
             const auto previous = _providers;
-            _catalog = std::move(catalog);
-            _availableProviders = std::move(available);
+            _catalog = std::move(merged.descriptors);
+            _availableProviders = std::move(merged.available);
             _providers = _EffectiveProvidersLocked();
             _UpdateCatalogEffectiveStateLocked();
             refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
@@ -383,6 +446,43 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             _Refresh(sessionId, ActivationEvent::ManualRefresh, true, refreshProviders);
         }
+    }
+
+    void ProviderBroker::_ScheduleAppExtensionDiscovery()
+    {
+        {
+            std::lock_guard lock{ _reloadMutex };
+            if (_appExtensionDiscoveryScheduled)
+            {
+                _appExtensionDiscoveryPending = true;
+                return;
+            }
+            _appExtensionDiscoveryScheduled = true;
+        }
+        _Enqueue([this]() {
+            auto watcher = AppExtensionProviderCatalog::WatchForChanges([this]() {
+                _ScheduleAppExtensionDiscovery();
+            });
+            auto discovery = AppExtensionProviderCatalog::DiscoverAsync().get();
+            bool rediscover = false;
+            {
+                std::lock_guard lock{ _reloadMutex };
+                _appExtensionDiscovery = std::move(discovery);
+                if (!_appExtensionWatcher)
+                {
+                    _appExtensionWatcher = std::move(watcher);
+                }
+                _appExtensionDiscoveryScheduled = false;
+                rediscover = std::exchange(
+                    _appExtensionDiscoveryPending,
+                    false);
+            }
+            _ReloadProvidersFromSources();
+            if (rediscover)
+            {
+                _ScheduleAppExtensionDiscovery();
+            }
+        });
     }
 
     std::vector<Registration> ProviderBroker::_EffectiveProvidersLocked() const
@@ -483,6 +583,70 @@ namespace Microsoft::Terminal::RichTab::Provider
         _ReloadProvidersIfChanged();
         std::lock_guard lock{ _mutex };
         return _catalog;
+    }
+
+    RegistryResult<bool> ProviderBroker::SetProviderConsent(
+        const std::string_view id,
+        const std::string_view consentKey,
+        const bool enabled)
+    {
+        {
+            std::lock_guard lock{ _mutex };
+            const auto descriptor = std::find_if(
+                _catalog.begin(),
+                _catalog.end(),
+                [&](const auto& current) {
+                    return current.id == id &&
+                           current.consentKey == consentKey;
+                });
+            if (descriptor == _catalog.end() ||
+                descriptor->source != ProviderSourceKind::AppExtension ||
+                descriptor->shadowed ||
+                !descriptor->integrityValid ||
+                descriptor->consentKey.empty())
+            {
+                RegistryResult<bool> result;
+                result.errors.emplace_back(
+                    "The confirmed App Extension identity is no longer eligible");
+                return result;
+            }
+        }
+
+        ProviderSourceIdentity appExtensionIdentity;
+        {
+            std::lock_guard lock{ _reloadMutex };
+            const auto found = std::find_if(
+                _appExtensionDiscovery.providers.begin(),
+                _appExtensionDiscovery.providers.end(),
+                [&](const auto& provider) {
+                    return provider.status == AppExtensionDiscoveryStatus::Discovered &&
+                           provider.manifest &&
+                           provider.manifest->id == id &&
+                           ProviderConsentKey(provider.identity).value_or("") == consentKey;
+                });
+            if (found != _appExtensionDiscovery.providers.end())
+            {
+                appExtensionIdentity = found->identity;
+            }
+        }
+
+        RegistryResult<bool> result;
+        if (appExtensionIdentity.kind == ProviderSourceKind::AppExtension)
+        {
+            result = _registry.SetAppExtensionConsentEnabled(
+                appExtensionIdentity,
+                enabled);
+        }
+        else
+        {
+            result.errors.emplace_back(
+                "The confirmed App Extension identity is no longer installed");
+        }
+        if (result)
+        {
+            ReloadProviders();
+        }
+        return result;
     }
 
     ProviderBroker::AttachmentId ProviderBroker::Attach(SessionContext context, Callback callback)

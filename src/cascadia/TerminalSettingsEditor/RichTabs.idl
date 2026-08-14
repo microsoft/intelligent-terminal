@@ -8,8 +8,9 @@ namespace Microsoft.Terminal.Settings.Editor
     enum RichTabProviderSourceKind
     {
         BuiltIn = 0,
-        Managed = 1,
-        Development = 2
+        AppExtension = 1,
+        Development = 2,
+        LegacyManaged = 3
     };
 
     runtimeclass RichTabFieldDescriptor
@@ -31,6 +32,7 @@ namespace Microsoft.Terminal.Settings.Editor
             Boolean eligible,
             Boolean effectiveEnabled,
             Boolean shadowed,
+            String consentKey,
             Windows.Foundation.Collections.IVectorView<RichTabFieldDescriptor> fields);
 
         String Id { get; };
@@ -41,6 +43,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean Eligible { get; };
         Boolean EffectiveEnabled { get; };
         Boolean Shadowed { get; };
+        String ConsentKey { get; };
         Windows.Foundation.Collections.IVectorView<RichTabFieldDescriptor> Fields { get; };
     }
 
@@ -56,6 +59,16 @@ namespace Microsoft.Terminal.Settings.Editor
         void MoveDown();
     }
 
+    runtimeclass RichTabConsentRequest
+    {
+        RichTabConsentRequest(String providerId, String consentKey, Boolean enabled);
+        String ProviderId { get; };
+        String ConsentKey { get; };
+        Boolean Enabled { get; };
+        Boolean Approved;
+        String Error;
+    }
+
     runtimeclass RichTabProviderViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         String Id { get; };
@@ -63,12 +76,14 @@ namespace Microsoft.Terminal.Settings.Editor
         String SourceLabel { get; };
         String StatusLabel { get; };
         Boolean IsEnabled;
+        Boolean NeedsConsent { get; };
         Boolean CanToggle { get; };
         Boolean CanMoveUp { get; };
         Boolean CanMoveDown { get; };
         Windows.Foundation.Collections.IObservableVector<RichTabFieldViewModel> Fields { get; };
         void MoveFieldUp(RichTabFieldViewModel field);
         void MoveFieldDown(RichTabFieldViewModel field);
+        String RequestConsent(Boolean enabled);
     }
 
     runtimeclass RichTabsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
@@ -81,6 +96,7 @@ namespace Microsoft.Terminal.Settings.Editor
         void MoveProviderUp(RichTabProviderViewModel provider);
         void MoveProviderDown(RichTabProviderViewModel provider);
         event Windows.Foundation.TypedEventHandler<RichTabsViewModel, Microsoft.Terminal.Settings.Model.GlobalAppSettings> PreferencesChanged;
+        event Windows.Foundation.TypedEventHandler<RichTabsViewModel, RichTabConsentRequest> ConsentRequested;
     }
 
     [default_interface] runtimeclass RichTabs : Windows.UI.Xaml.Controls.Page

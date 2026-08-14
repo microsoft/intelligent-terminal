@@ -43,12 +43,44 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         sender.as<Button>().Tag().as<Editor::RichTabFieldViewModel>().MoveDown();
     }
 
-    void RichTabs::ProviderEnabled_Toggled(const IInspectable& sender, const RoutedEventArgs&)
+    safe_void_coroutine RichTabs::ProviderEnabled_Toggled(const IInspectable& sender, const RoutedEventArgs&)
     {
+        const auto lifetime = get_strong();
         const auto toggle = sender.as<ToggleSwitch>();
         if (const auto viewModel = toggle.Tag().try_as<Editor::RichTabProviderViewModel>())
         {
-            viewModel.IsEnabled(toggle.IsOn());
+            if (!toggle.IsOn() || !viewModel.NeedsConsent())
+            {
+                viewModel.IsEnabled(toggle.IsOn());
+                co_return;
+            }
+
+            toggle.IsOn(false);
+            ContentDialog confirmation;
+            confirmation.XamlRoot(XamlRoot());
+            confirmation.Title(box_value(RS_(L"RichTabs_ConsentDialogTitle")));
+            confirmation.Content(box_value(RS_(L"RichTabs_ConsentDialogMessage")));
+            confirmation.PrimaryButtonText(RS_(L"RichTabs_ConsentDialogAccept"));
+            confirmation.CloseButtonText(RS_(L"RichTabs_ConsentDialogCancel"));
+            confirmation.DefaultButton(ContentDialogButton::Close);
+            if (co_await confirmation.ShowAsync() != ContentDialogResult::Primary)
+            {
+                co_return;
+            }
+
+            const auto error = viewModel.RequestConsent(true);
+            if (error.empty())
+            {
+                toggle.IsOn(true);
+                co_return;
+            }
+
+            ContentDialog failure;
+            failure.XamlRoot(XamlRoot());
+            failure.Title(box_value(RS_(L"RichTabs_ConsentDialogFailureTitle")));
+            failure.Content(box_value(error));
+            failure.CloseButtonText(RS_(L"RichTabs_ConsentDialogCancel"));
+            co_await failure.ShowAsync();
         }
     }
 
