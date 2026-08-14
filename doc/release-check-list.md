@@ -428,4 +428,4 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - Slash commands: `tools\wta\src\commands.rs`.
 - Session state model: `tools\wta\src\agent_sessions.rs`, `tools\wta\AGENTS.md`.
 - Multi-window agent pane architecture: `doc\specs\Multi-window-agent-pane.md`.
-- Autofix flow and logging/runtime layout: `AGENTS.md`.
+- Autofix flow, logging, and runtime layout: `AGENTS.md`.

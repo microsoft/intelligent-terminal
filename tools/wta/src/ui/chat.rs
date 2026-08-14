@@ -1097,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn completed_turn_build_counter_is_isolated_per_test_thread() {
+    fn completed_turn_build_counter_does_not_leak_across_threads() {
         reset_completed_turn_line_build_count();
         std::thread::spawn(|| {
             reset_completed_turn_line_build_count();
