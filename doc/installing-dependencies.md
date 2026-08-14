@@ -132,7 +132,7 @@ the other four are **bring-your-own** — install the CLI yourself
 (sub-sections below) before selecting it in the FRE.
 
 Intelligent Terminal talks to all five through the
-[**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
+[**Agent Client Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
 **Copilot**, **Gemini**, and **OpenCode** speak ACP natively, so no extra layer is
 required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
 — Intelligent Terminal launches them through an `npx` wrapper that is
@@ -213,7 +213,7 @@ claude --version
 
 #### Step 3.2.3 — ACP wrapper (no install action required)
 
-Claude Code does not speak the Agent Control Protocol (ACP) directly, so
+Claude Code does not speak the Agent Client Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
 [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp)
 wrapper. The wrapper is fetched on demand at run time with:
@@ -260,7 +260,7 @@ codex --version
 
 #### Step 3.3.3 — ACP wrapper (no install action required)
 
-Codex does not speak the Agent Control Protocol (ACP) directly, so
+Codex does not speak the Agent Client Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
 [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp)
 wrapper. The wrapper is fetched on demand at run time with:
@@ -283,7 +283,7 @@ The first launch may take a few seconds while `npx` downloads the wrapper.
 
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install Google's Gemini CLI yourself before selecting Gemini in the
-FRE. Gemini speaks the Agent Control Protocol (ACP) natively, so no
+FRE. Gemini speaks the Agent Client Protocol (ACP) natively, so no
 wrapper is required at runtime, but the CLI itself is still distributed as
 an npm package.
 

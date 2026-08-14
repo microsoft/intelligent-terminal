@@ -10,11 +10,13 @@ Customization:
 ### Build
 
 ```bash
-cd tools/wta
-cargo build
+cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
 
-The binary is output to `tools/wta/target/debug/wta.exe`.
+The binary is output to
+`tools/wta/target/x86_64-pc-windows-msvc/debug/wta.exe`. Always use the explicit
+target in this repo: the package project prefers that output over the host-target
+fallback.
 
 ### How WTA runs
 
@@ -61,7 +63,8 @@ wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-spec
 wta list-windows --json                   # raw JSON output
 ```
 
-Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `send`, `capturep`, `killp`, `setenv`.
+Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
+`killp`, and `setenv`.
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 
@@ -103,7 +106,7 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WT_COM_CLSID` | Yes* | Stringified GUID of WT's `TerminalProtocolComServer` COM class |
-| `WTA_DEBUG_LOG` | No | Set to `0` to disable `wta-pipe-debug.log` |
+| `WTA_LOG` | No | Rust tracing filter, such as `debug` or `trace` |
 
 \* Set automatically by WT when it spawns a conpty child. If you launch `wta` from outside WT, run `eval "$(wta set-env)"` to copy the value over (only useful when you've previously captured it from a WT shell).
 
@@ -205,19 +208,17 @@ tools/wta/src/
 ### Build and run
 
 ```bash
-cd tools/wta
+# A live process may lock the output. Stop only a PID whose executable path
+# matches this target; do not kill every wta.exe by name.
+cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 
-# Kill any live wta.exe first (a running shared-host locks target/debug/wta.exe):
-#   Get-Process wta -ErrorAction SilentlyContinue | Stop-Process -Force
-cargo build
-
-# Run the test suite (cargo build does NOT compile #[cfg(test)] code):
-cargo test
+# cargo build does not compile #[cfg(test)] code.
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
 
 The TUI (master + helper) is launched by Windows Terminal as an agent pane — see
 the C++ F5 / `bcz` flow in the repo `AGENTS.md`. From a WT pane you can exercise
-the CLI helpers directly: `target/debug/wta.exe list-windows`, `… capture-pane`, etc.
+the CLI helpers directly with the packaged `wta` app execution alias.
 
 ### Development workflow
 
@@ -244,4 +245,3 @@ the CLI helpers directly: `target/debug/wta.exe list-windows`, `… capture-pane
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
-- **Graceful degradation**: if the WT protocol is unavailable, WTA falls back to local-only mode (no WT tools, just local shell operations)

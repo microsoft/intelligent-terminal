@@ -1,114 +1,52 @@
 ---
-description: 'Rust programming language coding conventions and best practices'
+description: 'Concise Rust coding conventions for this repository'
 applyTo: '**/*.rs'
 ---
 
-# Rust Coding Conventions and Best Practices
+# Rust conventions
 
-Follow idiomatic Rust practices and community standards when writing Rust code. 
+Follow the existing crate's architecture and style before introducing a new
+pattern or dependency.
 
-These instructions are based on [The Rust Book](https://doc.rust-lang.org/book/), [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/), [RFC 430 naming conventions](https://github.com/rust-lang/rfcs/blob/master/text/0430-finalizing-naming-conventions.md), and the broader Rust community at [users.rust-lang.org](https://users.rust-lang.org).
+## Implementation
 
-## General Instructions
+- Prefer clear ownership and borrowing over cloning or unnecessary allocation.
+- Use domain types and enums to make invalid states difficult to represent.
+- Accept `&str` or borrowed values when ownership is not required.
+- Keep iterators lazy when that improves clarity; use direct loops when they
+  are easier to read.
+- Keep async work non-blocking. Move blocking filesystem or process work to the
+  crate's established blocking boundary.
+- Avoid `unsafe`. When it is required, minimize its scope and document the
+  safety invariant.
+- Do not add abstraction, traits, builders, or dependencies without a concrete
+  need in the changed code.
 
-- Always prioritize readability, safety, and maintainability.
-- Use strong typing and leverage Rust's ownership system for memory safety.
-- Break down complex functions into smaller, more manageable functions.
-- For algorithm-related code, include explanations of the approach used.
-- Write code with good maintainability practices, including comments on why certain design decisions were made.
-- Handle errors gracefully using `Result<T, E>` and provide meaningful error messages.
-- For external dependencies, mention their usage and purpose in documentation.
-- Use consistent naming conventions following [RFC 430](https://github.com/rust-lang/rfcs/blob/master/text/0430-finalizing-naming-conventions.md).
-- Write idiomatic, safe, and efficient Rust code that follows the borrow checker's rules.
-- Ensure code compiles without warnings.
+## Errors
 
-## Patterns to Follow
+- Return `Result` for recoverable failures and add context at I/O, process,
+  parsing, and protocol boundaries.
+- Use the crate's existing error type and conventions; do not introduce
+  `anyhow`, `thiserror`, or another error crate solely for a local change.
+- Avoid `unwrap`, `expect`, and panics in production paths unless an invariant
+  is both local and demonstrably impossible to violate.
+- Do not silently discard errors. Log, propagate, or explicitly document why
+  an error is intentionally ignored.
 
-- Use modules (`mod`) and public interfaces (`pub`) to encapsulate logic.
-- Handle errors properly using `?`, `match`, or `if let`.
-- Use `serde` for serialization and `anyhow` for application errors.
-- Implement traits to abstract services or external dependencies.
-- Structure async code using `async/await` and `tokio`.
-- Prefer enums over flags and states for type safety.
-- Use builders for complex object creation.
-- Use iterators instead of index-based loops as they're often faster and safer.
-- Use `&str` instead of `String` for function parameters when you don't need ownership.
-- Prefer borrowing and zero-copy operations to avoid unnecessary allocations.
+## Documentation and tests
 
-### Ownership, Borrowing, and Lifetimes
+- Comment invariants, non-obvious concurrency, and compatibility constraints;
+  do not narrate straightforward code.
+- Add focused tests for behavior changes and regressions. Keep unit tests near
+  the code unless the crate already uses an integration-test boundary.
+- Do not require every private item to have documentation or every change to
+  introduce a new abstraction.
 
-- Prefer borrowing (`&T`) over cloning unless ownership transfer is necessary.
-- Use `&mut T` when you need to modify borrowed data.
-- Explicitly annotate lifetimes when the compiler cannot infer them.
-- Use `Rc<T>` for single-threaded reference counting and `Arc<T>` for thread-safe reference counting.
-- Use `RefCell<T>` for interior mutability in single-threaded contexts and `Mutex<T>` or `RwLock<T>` for multi-threaded contexts.
+## Validation
 
-## Patterns to Avoid
-
-- Don't use `unwrap()` or `expect()` unless absolutely necessary—prefer proper error handling.
-- Avoid panics in library code—return `Result` instead.
-- Don't rely on global mutable state—use dependency injection or thread-safe containers.
-- Avoid deeply nested logic—refactor with functions or combinators.
-- Don't ignore warnings—treat them as errors during CI.
-- Avoid `unsafe` unless required and fully documented.
-- Don't overuse `clone()`, use borrowing instead of cloning unless ownership transfer is needed.
-- Avoid premature `collect()`, keep iterators lazy until you actually need the collection.
-- Avoid unnecessary allocations—prefer borrowing and zero-copy operations.
-
-## Code Style and Formatting
-
-- Follow the Rust Style Guide and use `rustfmt` for automatic formatting.
-- Keep lines under 100 characters when possible.
-- Place function and struct documentation immediately before the item using `///`.
-- Use `cargo clippy` to catch common mistakes and enforce best practices.
-
-## Error Handling
-
-- Use `Result<T, E>` for recoverable errors and `panic!` only for unrecoverable errors.
-- Prefer `?` operator over `unwrap()` or `expect()` for error propagation.
-- Use `anyhow::Result<T>` with `.context(...)` for application-level errors.
-- Use `Option<T>` for values that may or may not exist.
-- Provide meaningful error messages and context.
-- Validate function arguments and return appropriate errors for invalid input.
-
-## API Design Guidelines
-
-### Common Traits Implementation
-Eagerly implement common traits where appropriate:
-- `Copy`, `Clone`, `Eq`, `PartialEq`, `Ord`, `PartialOrd`, `Hash`, `Debug`, `Display`, `Default`
-- Use standard conversion traits: `From`, `AsRef`, `AsMut`
-- Note: `Send` and `Sync` are auto-implemented by the compiler when safe; avoid manual implementation unless using `unsafe` code
-
-### Type Safety and Predictability
-- Use newtypes to provide static distinctions
-- Arguments should convey meaning through types; prefer specific types over generic `bool` parameters
-- Use `Option<T>` appropriately for truly optional values
-- Functions with a clear receiver should be methods
-- Only smart pointers should implement `Deref` and `DerefMut`
-
-## Testing and Documentation
-
-- Write comprehensive unit tests using `#[cfg(test)]` modules and `#[test]` annotations.
-- Use test modules alongside the code they test (`mod tests { ... }`).
-- Write integration tests in `tests/` directory with descriptive filenames.
-- Write clear and concise comments for each function, struct, enum, and complex logic.
-- Ensure functions have descriptive names and include comprehensive documentation.
-- Use module-level `//!` docs and inline `//` comments for non-obvious logic.
-- Document error conditions, panic scenarios, and safety considerations.
-- Examples should use `?` operator, not `unwrap()` or deprecated `try!` macro.
-
-## Quality Checklist
-
-Before reviewing Rust code, ensure:
-
-### Core Requirements
-- [ ] **Naming**: Follows RFC 430 naming conventions
-- [ ] **Traits**: Implements `Debug`, `Clone`, `PartialEq` where appropriate
-- [ ] **Error Handling**: Uses `Result<T, E>` / `anyhow::Result<T>` and provides meaningful error context
-- [ ] **Testing**: Comprehensive test coverage including edge cases
-
-### Safety and Quality
-- [ ] **Safety**: No unnecessary `unsafe` code, proper error handling
-- [ ] **Performance**: Efficient use of iterators, minimal allocations
-- [ ] **API Design**: Functions are predictable, flexible, and type-safe
-- [ ] **Tooling**: Code passes `cargo fmt`, `cargo clippy`, and `cargo test`
+- Run `cargo fmt` for changed Rust code.
+- Run the smallest relevant tests while iterating, then the crate's required
+  test command.
+- Run Clippy only when the crate already uses it or the task requires it; do
+  not perform unrelated cleanup.
+- Keep builds warning-free under the repository's configured toolchain.
