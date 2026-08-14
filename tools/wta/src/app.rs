@@ -960,6 +960,8 @@ pub struct App {
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
     pub(crate) text_selection: crate::text_selection::TextSelection,
+    pub(crate) completed_turn_triangle_hits: Vec<CompletedTurnTriangleHit>,
+    pub(crate) pressed_completed_turn_triangle: Option<PressedCompletedTurnTriangle>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1255,6 +1257,8 @@ impl App {
             show_debug_panel: false,
             debug_scroll: 0,
             text_selection: crate::text_selection::TextSelection::default(),
+            completed_turn_triangle_hits: Vec::new(),
+            pressed_completed_turn_triangle: None,
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -4105,6 +4109,19 @@ impl App {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletedTurnTriangleHit {
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PressedCompletedTurnTriangle {
+    pub(crate) tab_id: String,
+    pub(crate) hit: CompletedTurnTriangleHit,
+}
+
 #[path = "app_events.rs"]
 mod app_events;
 
@@ -4964,6 +4981,7 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
+        self.pressed_completed_turn_triangle = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(

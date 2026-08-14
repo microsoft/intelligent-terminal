@@ -7418,6 +7418,316 @@ fn render_chat_completed_turn_expanded_with_marker() {
     }
 }
 
+#[test]
+fn clicking_completed_turn_triangle_toggles_details() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MOUSE_TOGGLE_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_TOGGLE_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+    let before = render_to_text(&mut app, 80, 16);
+    let (row, column) = before
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.contains("MOUSE_TOGGLE_PROMPT").then(|| {
+                let column = line
+                    .chars()
+                    .position(|character| character == '▼')
+                    .expect("expanded turn header must paint its triangle");
+                (row as u16, column as u16)
+            })
+        })
+        .expect("completed turn must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    assert!(
+        !app.current_tab().completed_turns[0].expanded,
+        "clicking the rendered triangle must collapse the completed turn",
+    );
+    let collapsed = render_to_text(&mut app, 80, 16);
+    assert!(collapsed.contains("MOUSE_TOGGLE_PROMPT"));
+    assert!(!collapsed.contains("MOUSE_TOGGLE_DETAIL"));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+}
+
+#[test]
+fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MOUSE_GUARD_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_GUARD_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, triangle_column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.contains("MOUSE_GUARD_PROMPT").then(|| {
+                let column = line
+                    .chars()
+                    .position(|character| character == '▼')
+                    .expect("expanded turn header must paint its triangle");
+                (row as u16, column as u16)
+            })
+        })
+        .expect("completed turn must be visible");
+    let prompt_column = triangle_column + 4;
+
+    let send_mouse = |app: &mut App, kind, column| {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    };
+
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        prompt_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        prompt_column,
+    );
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        prompt_column,
+    );
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        prompt_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    app.current_tab_mut().current_view = View::Agents;
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "a stale chat coordinate must not toggle a turn when chat is hidden",
+    );
+
+    app.current_tab_mut().current_view = View::Chat;
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.help_overlay_visible = true;
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "an overlay must prevent clicks from reaching a triangle beneath it",
+    );
+    app.help_overlay_visible = false;
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.handle_event(AppEvent::Resize(100, 20));
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "resize must cancel an in-progress triangle click",
+    );
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(&mut app, MouseEventKind::ScrollUp, triangle_column);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "scrolling must cancel an in-progress triangle click",
+    );
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.switch_tab_session("other-tab".into());
+    app.switch_tab_session(DEFAULT_TAB_ID.into());
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "switching away and back must cancel an in-progress triangle click",
+    );
+}
+
+#[test]
+fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..12 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("MOUSE_VISIBLE_TURN_{index:02}"),
+            details: vec![ChatMessage::Agent(format!("MOUSE_VISIBLE_DETAIL_{index:02}"))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    let before = render_to_text(&mut app, 80, 10);
+    let initial_hits = app.completed_turn_triangle_hits.clone();
+    assert!(!initial_hits.is_empty());
+    assert!(initial_hits.len() < app.current_tab().completed_turns.len());
+    for hit in &initial_hits {
+        assert!(before.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
+        assert!(hit.row < 10);
+    }
+
+    let target = initial_hits[0];
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: target.column,
+            row: target.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    for (index, turn) in app.current_tab().completed_turns.iter().enumerate() {
+        assert_eq!(turn.expanded, index == target.turn_index);
+    }
+
+    app.current_tab_mut().chat_scroll.by(3);
+    let after_scroll = render_to_text(&mut app, 80, 10);
+    let scrolled_hits = &app.completed_turn_triangle_hits;
+    assert_ne!(scrolled_hits, &initial_hits);
+    for hit in scrolled_hits {
+        assert!(after_scroll.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
+        assert!(hit.row < 10);
+    }
+}
+
+#[test]
+fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "▼ ▶ MOUSE_GLYPH_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_GLYPH_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let hit = app.completed_turn_triangle_hits[0];
+    let header = rendered
+        .lines()
+        .nth(hit.row as usize)
+        .expect("hit row must exist");
+    let triangle_columns: Vec<u16> = header
+        .chars()
+        .enumerate()
+        .filter_map(|(column, character)| (character == '▼').then_some(column as u16))
+        .collect();
+    assert!(triangle_columns.len() >= 2);
+    assert_eq!(hit.column, triangle_columns[0]);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: hit.column,
+            row: hit.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert!(!app.current_tab().completed_turns[0].expanded);
+}
+
 /// Render: while the helper is still connecting, the fixed activity row must
 /// paint the animated "Connecting…" label.
 #[test]

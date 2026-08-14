@@ -366,6 +366,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .saturating_add(32);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
+    let mut triangle_offsets = Vec::new();
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
@@ -399,17 +400,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let selected_idx = app.current_tab().selected_completed_turn_idx;
         let pane_focused = app.pane_focused;
         let mut selection_reached = selection_target_idx.is_none();
+        let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
             let mut turn_lines =
                 build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let turn_height = rendered_lines_height(&turn_lines, wrap_width);
+            triangle_offsets.push((idx, rendered_rows_below, turn_height, turn.expanded));
             if selection_target_idx == Some(idx) {
-                let rows_below = rendered_lines_height(&reversed_lines, wrap_width);
-                let selected_height = rendered_lines_height(&turn_lines, wrap_width);
-                let selected_end = rows_below.saturating_add(selected_height);
+                let selected_end = rendered_rows_below.saturating_add(turn_height);
                 let viewport_height = visible_height.max(1);
-                effective_offset = if rows_below < effective_offset {
-                    rows_below
+                effective_offset = if rendered_rows_below < effective_offset {
+                    rendered_rows_below
                 } else if selected_end > effective_offset.saturating_add(viewport_height) {
                     selected_end.saturating_sub(viewport_height)
                 } else {
@@ -421,6 +423,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                 selection_reached = true;
             }
             reversed_lines.extend(turn_lines.drain(..).rev());
+            rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
             if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
                 break;
@@ -456,6 +459,30 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .scroll((scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(paragraph, area);
+
+    let mut triangle_hits = Vec::new();
+    let buffer = frame.buffer_mut();
+    for (turn_index, rows_below, turn_height, expanded) in triangle_offsets {
+        let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
+        let Some(header_row) = header_from_top.checked_sub(scroll) else {
+            continue;
+        };
+        if header_row >= visible_height {
+            continue;
+        }
+        let row = inner_area.y.saturating_add(header_row as u16);
+        let symbol = if expanded { "▼" } else { "▶" };
+        if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
+            .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+        {
+            triangle_hits.push(crate::app::CompletedTurnTriangleHit {
+                column,
+                row,
+                turn_index,
+            });
+        }
+    }
+    app.completed_turn_triangle_hits = triangle_hits;
 
     if selection_pending {
         let tab = app.current_tab_mut();

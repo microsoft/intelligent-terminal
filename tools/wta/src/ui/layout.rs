@@ -8,6 +8,7 @@ use super::{
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    app.completed_turn_triangle_hits.clear();
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {

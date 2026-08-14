@@ -117,3 +117,133 @@ Describe 'Feature: agent pane mouse interactions' -Tag 'Feature' -Skip:(-not $sc
             Should -Not -Match ('(?m)^\s*[│║|]\s*>\s*' + [regex]::Escape($marker)) -Because 'the next Ctrl+C must resume the normal nonempty-draft clear behavior'
     }
 }
+
+BeforeDiscovery {
+    $script:TriangleClickReady = [bool](
+        (Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq 'IntelligentTerminal_rd9vj3e6a2mbr' }) -and
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and
+        (Get-Command winapp -ErrorAction SilentlyContinue)
+    )
+}
+
+Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse' -Skip:(-not $script:TriangleClickReady) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $fixtureSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $script:fixtureDir = Join-Path $env:TEMP "ItE2E mouse triangle $([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $script:fixtureDir | Out-Null
+        $fixture = Join-Path $script:fixtureDir 'Mock ACP Chat Agent.ps1'
+        Copy-Item -LiteralPath $fixtureSource -Destination $fixture
+        $script:fixtureLog = Join-Path $script:fixtureDir 'fixture output.log'
+        $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
+        $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
+        $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
+        $evidencePhase = if ($env:ITE2E_MOUSE_EVIDENCE_PHASE -in @('red', 'green')) {
+            $env:ITE2E_MOUSE_EVIDENCE_PHASE
+        }
+        else {
+            'current'
+        }
+        $script:evidenceDir = Join-Path $PSScriptRoot "..\artifacts\mouse-interactions\$evidencePhase"
+        New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
+
+        $script:app = Start-Terminal -Package 'Dev' -PassFre $true -Settings @{
+            acpAgent = 'custom:chat-fixture'
+            acpCustomCommand = $command
+        }
+        $shell = Get-ActivePane -App $script:app
+        Open-AgentPane -App $script:app | Out-Null
+        $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30).PaneSessionId
+        Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 60 |
+            Should -BeTrue -Because 'the deterministic ACP fixture must connect before triangle hit-testing'
+    }
+
+    AfterAll {
+        if ($script:app) {
+            Stop-Terminal -App $script:app
+        }
+        if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
+            Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
+        }
+        if ($script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
+            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+        }
+    }
+
+    It 'Clicking the triangle collapses and re-expands a completed turn' {
+        $id = [guid]::NewGuid().ToString('N')
+        $prompt = "SCROLL_TURN_00_$id"
+        $reply = "ACK_$prompt"
+        $replyPattern = [regex]::Escape($reply)
+        $readyPattern = Get-WtaLocalizedTextRegex -Key 'input.placeholder.connected'
+        if (-not $readyPattern) {
+            $readyPattern = '(?i)Ask anything.*for commands'
+        }
+
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $prompt | Out-Null
+        $turnCompleted = Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            $text -match $replyPattern -and $text -match $readyPattern
+        }
+        $turnCompleted | Should -BeTrue -Because 'the deterministic turn must complete before its collapsed triangle is clicked'
+
+        $fixturePrompts = @(Get-Content -LiteralPath $script:fixtureLog | Where-Object { $_ -match ('\|prompt\|' + [regex]::Escape($prompt)) })
+        $fixturePrompts.Count | Should -Be 1 -Because 'the fixture must receive the setup prompt exactly once'
+
+        $before = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'setup-capture.txt') -Value $before -Encoding utf8NoBOM
+        $lines = $before -split "`r?`n"
+        $completedRowPattern = '>\s*' + [regex]::Escape($prompt)
+        $promptRows = @(
+            for ($row = 0; $row -lt $lines.Count; $row++) {
+                if ($lines[$row] -match $completedRowPattern) {
+                    [pscustomobject]@{ Row = $row; Text = $lines[$row] }
+                }
+            }
+        )
+        $promptRows.Count | Should -Be 1 -Because 'the completed-turn header must map to one visible row'
+        $triangleColumn = $promptRows[0].Text.Length - $promptRows[0].Text.TrimStart().Length
+        $triangleColumn | Should -BeGreaterOrEqual 0 -Because 'the first non-space cell of a completed-turn header is its triangle'
+        $before | Should -Match $replyPattern -Because 'expanded turn details must start visible'
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'before-click.txt') -Value $before -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'before-click.png') | Out-Null
+
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
+
+        $collapsed = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            $text -notmatch $replyPattern -and $text -match ('>\s*' + [regex]::Escape($prompt))
+        }
+        $after = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-click.txt') -Value $after -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-click.png') | Out-Null
+        $collapsed | Should -BeTrue -Because 'clicking only the visible triangle must collapse the completed turn'
+
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
+        $reexpanded = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            $text -match $replyPattern -and $text -match ('>\s*' + [regex]::Escape($prompt))
+        }
+        $reexpanded | Should -BeTrue -Because 'clicking the collapsed triangle must re-expand the same turn'
+        $afterReexpand = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-reexpand.txt') -Value $afterReexpand -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-reexpand.png') | Out-Null
+
+        $promptColumn = $triangleColumn + 4
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column $promptColumn -Row $promptRows[0].Row | Out-Null
+        (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
+            Should -Match $replyPattern -Because 'clicking prompt text must not collapse the turn'
+
+        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane `
+            -Kind Down -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
+        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane `
+            -Kind Drag -Column $promptColumn -Row $promptRows[0].Row | Out-Null
+        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane `
+            -Kind Up -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
+        (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
+            Should -Match $replyPattern -Because 'dragging from the triangle must remain text selection and not collapse the turn'
+    }
+}

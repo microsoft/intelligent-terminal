@@ -656,12 +656,19 @@ impl TabSession {
         self.completed_turn_selection_visible_pending = false;
     }
 
+    pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        turn.expanded = !turn.expanded;
+        true
+    }
+
     pub fn toggle_selected_completed_turn(&mut self) {
         let Some(index) = self.selected_completed_turn_idx else {
             return;
         };
-        if let Some(turn) = self.completed_turns.get_mut(index) {
-            turn.expanded = !turn.expanded;
+        if self.toggle_completed_turn(index) {
             self.completed_turn_selection_visible_pending = true;
         }
     }

@@ -8,9 +8,37 @@
 use super::*;
 
 impl App {
+    fn completed_turn_triangle_at(
+        &self,
+        column: u16,
+        row: u16,
+    ) -> Option<CompletedTurnTriangleHit> {
+        let tab = self.current_tab();
+        if self.mode != AppMode::Chat
+            || tab.current_view != View::Chat
+            || self.help_overlay_visible
+            || tab.model_picker_open
+            || tab.agent_picker_open
+            || self.command_popup_visible()
+        {
+            return None;
+        }
+        self.completed_turn_triangle_hits
+            .iter()
+            .copied()
+            .find(|hit| hit.column == column && hit.row == row)
+    }
+
+    fn active_mouse_tab_id(&self) -> String {
+        self.tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
+                self.pressed_completed_turn_triangle = None;
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy {
@@ -43,6 +71,7 @@ impl App {
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
                 {
+                    self.pressed_completed_turn_triangle = None;
                     self.text_selection.clear();
                     let code = if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
                         KeyCode::Up
@@ -56,6 +85,7 @@ impl App {
                     if self.mode == AppMode::Chat
                         && self.current_tab().current_view == View::Chat =>
                 {
+                    self.pressed_completed_turn_triangle = None;
                     self.text_selection.clear();
                     let lines = if mouse.modifiers.contains(KeyModifiers::ALT) {
                         1
@@ -70,6 +100,31 @@ impl App {
                             self.current_tab_mut().chat_scroll.by(-lines);
                         }
                         _ => {}
+                    }
+                }
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    self.pressed_completed_turn_triangle = self
+                        .completed_turn_triangle_at(mouse.column, mouse.row)
+                        .map(|hit| PressedCompletedTurnTriangle {
+                            tab_id: self.active_mouse_tab_id(),
+                            hit,
+                        });
+                    self.text_selection.handle_mouse(mouse);
+                }
+                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
+                    self.pressed_completed_turn_triangle = None;
+                    self.text_selection.handle_mouse(mouse);
+                }
+                crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                    let pressed = self.pressed_completed_turn_triangle.take();
+                    let released = self.completed_turn_triangle_at(mouse.column, mouse.row);
+                    let active_tab_id = self.active_mouse_tab_id();
+                    self.text_selection.handle_mouse(mouse);
+                    if let Some(pressed) = pressed.filter(|pressed| {
+                        pressed.tab_id == active_tab_id && Some(pressed.hit) == released
+                    }) {
+                        self.current_tab_mut()
+                            .toggle_completed_turn(pressed.hit.turn_index);
                     }
                 }
                 _ => {
@@ -138,6 +193,7 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
+                self.pressed_completed_turn_triangle = None;
                 self.text_selection.clear();
                 self.terminal_cols = w;
                 self.terminal_rows = h;
@@ -146,6 +202,7 @@ impl App {
                 self.advance_reveal();
             }
             AppEvent::FocusChanged(focused) => {
+                self.pressed_completed_turn_triangle = None;
                 self.pane_focused = focused;
             }
             AppEvent::ConnectionStage(stage) => {
