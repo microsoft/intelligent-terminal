@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -26,16 +26,23 @@ const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
 
 #[cfg(test)]
-static COMPLETED_TURN_LINE_BUILD_COUNT: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+}
 
 #[cfg(test)]
 pub(crate) fn reset_completed_turn_line_build_count() {
-    COMPLETED_TURN_LINE_BUILD_COUNT.store(0, Ordering::Relaxed);
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(0));
 }
 
 #[cfg(test)]
 pub(crate) fn completed_turn_line_build_count() -> usize {
-    COMPLETED_TURN_LINE_BUILD_COUNT.load(Ordering::Relaxed)
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_line_build() {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -489,7 +496,7 @@ fn build_completed_turn_lines<'a>(
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
     #[cfg(test)]
-    COMPLETED_TURN_LINE_BUILD_COUNT.fetch_add(1, Ordering::Relaxed);
+    record_completed_turn_line_build();
 
     let chevron = if turn.expanded { "▼ " } else { "▶ " };
     // Selected row highlights the current Tab target. When the pane is focused
@@ -1087,6 +1094,20 @@ mod tests {
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn completed_turn_build_counter_is_isolated_per_test_thread() {
+        reset_completed_turn_line_build_count();
+        std::thread::spawn(|| {
+            reset_completed_turn_line_build_count();
+            record_completed_turn_line_build();
+            assert_eq!(completed_turn_line_build_count(), 1);
+        })
+        .join()
+        .expect("counter thread must finish");
+
+        assert_eq!(completed_turn_line_build_count(), 0);
     }
 
     #[test]

@@ -13,9 +13,15 @@ BeforeDiscovery {
 Describe 'Feature: completed-turn keyboard selection' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
-        $script:fixtureLog = Join-Path $env:TEMP "ite2e-completed-turn-scroll-$([guid]::NewGuid().ToString('N')).log"
-        $command = "pwsh -NoProfile -File $fixture -LogPath $script:fixtureLog"
+        $fixtureSource = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $script:fixtureDir = Join-Path $env:TEMP "ItE2E completed turn scroll $([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $script:fixtureDir | Out-Null
+        $fixture = Join-Path $script:fixtureDir 'Mock ACP Chat Agent.ps1'
+        Copy-Item -LiteralPath $fixtureSource -Destination $fixture
+        $script:fixtureLog = Join-Path $script:fixtureDir 'fixture output.log'
+        $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
+        $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
+        $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
         $script:evidenceDir = Join-Path $PSScriptRoot '..\artifacts\completed-turn-selection-scroll'
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
 
@@ -36,7 +42,9 @@ Describe 'Feature: completed-turn keyboard selection' -Tag 'Feature' -Skip:(-not
         }
         if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
             Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
-            Remove-Item -LiteralPath $script:fixtureLog -Force
+        }
+        if ($script:fixtureDir -and (Test-Path -LiteralPath $script:fixtureDir)) {
+            Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
         }
     }
 
