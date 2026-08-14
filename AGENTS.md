@@ -10,7 +10,7 @@ fork-specific context.
 ```
 WindowsTerminal.exe
   |-- TerminalProtocolComServer (COM, discovered through WT_COM_CLSID)
-  |-- SharedWta --> wta-master --> agent CLI (ACP over stdio)
+  |-- SharedWta --> wta-master --> agent CLI pool (ACP over stdio)
   +-- one wta-helper pane per tab
                        |
                        +-- helper/master ACP over a named pipe
@@ -20,8 +20,9 @@ Agent or human CLI --> wta/wtcli --> COM IProtocolServer --> Windows Terminal
 ```
 
 - **WTA** (`tools/wta/`) is the Rust orchestrator.
-- **ACP** means Agent Client Protocol. `wta-master` owns the single agent CLI
-  process; per-tab helpers multiplex sessions through it.
+- **ACP** means Agent Client Protocol. `wta-master` lazily owns a pool of agent
+  CLI processes keyed by agent identity, execution source, and command; helpers
+  using the same key share one process and multiplex sessions through it.
 - **WT Protocol** is the terminal-control boundary. `wtcli.exe` activates
   `IProtocolServer` through the package COM registration.
 - **Session MCP** exposes `request_terminal_actions` and `request_user_input`.
@@ -122,9 +123,9 @@ cargo test --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 
 Output: `tools/wta/target/x86_64-pc-windows-msvc/debug/wta.exe`.
 
-A live WTA process may lock the output. Stop only the exact process whose
-executable path matches the binary being rebuilt; never terminate every
-`wta.exe` or `WindowsTerminal.exe` by name.
+A live WTA process may lock the output. Stop only processes whose executable
+path exactly matches the binary being rebuilt; never terminate every `wta.exe`
+or `WindowsTerminal.exe` by name.
 
 ### Terminal
 
@@ -163,6 +164,7 @@ Primary logs are:
 - `wta-main_helper-{pid}.log`
 - `wta-cli.log`
 - `wta-delegate.log`
+- `wta-probe.log`
 - `wta-install-hooks.log`
 - `wta-ensure-host.log`
 - `wta-acp-debug.log`

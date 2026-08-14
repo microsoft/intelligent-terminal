@@ -9,6 +9,8 @@ Customization:
 
 ### Build
 
+From the repository root:
+
 ```bash
 cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
@@ -21,10 +23,12 @@ fallback.
 ### How WTA runs
 
 WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
-`wta-master` singleton (owns the agent CLI) and one `wta-helper` per agent pane
-(renders this TUI and speaks ACP to master over a named pipe). Bare `wta` with no
-subcommand and neither `--master` nor `--connect-master` exits with an error —
-there is no standalone agent / TUI mode.
+`wta-master` singleton (owns a lazily populated agent CLI pool) and one
+`wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
+named pipe). Helpers selecting the same agent identity, source, and command
+share one agent process. Bare `wta` with no subcommand and neither `--master`
+nor `--connect-master` exits with an error — there is no standalone agent / TUI
+mode.
 
 The default agent is Copilot; the agent and model come from Windows Terminal
 settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent`
@@ -154,13 +158,16 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 
 | File | Contents |
 |------|----------|
-| `wta-main_master.log` | `wta-master`: agent CLI spawn, pipe accept loop, per-helper routing |
+| `wta-main_master.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
 | `wta-main_helper-{pid}.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
 | `wta-cli.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
 | `wta-delegate.log` | `?<prompt>` delegation flow |
+| `wta-probe.log` | Agent/model/session capability probes |
+| `wta-install-hooks.log` | Hook installation and upgrade diagnostics |
+| `hook-trace.log` | Shell-hook event diagnostics |
 
 Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
@@ -171,7 +178,7 @@ tailing log files.
 ```
 tools/wta/src/
 +-- main.rs                    Entry point, role/CLI dispatch, protocol discovery
-+-- master/mod.rs             wta-master: owns the agent CLI, multiplexes helpers
++-- master/mod.rs             wta-master: owns the agent CLI pool, multiplexes helpers
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
 |   +-- app/autofix.rs         Autofix detection + suggestion
@@ -206,6 +213,11 @@ tools/wta/src/
 - An ACP-compatible agent CLI (Copilot, Claude ACP adapter, etc.)
 
 ### Build and run
+
+Run these commands from the repository root. CI resolves the
+`tools/wta/rust-toolchain.toml` `ms-prod-1.93` pin through MSRustup; local
+repo-root commands use your installed active toolchain, so changes must remain
+compatible with Rust 1.93.
 
 ```bash
 # A live process may lock the output. Stop only a PID whose executable path

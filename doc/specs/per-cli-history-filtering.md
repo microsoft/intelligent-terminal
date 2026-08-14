@@ -80,8 +80,9 @@ seeds selection on arrival.
 Filtering the history scan only drops **historical** (on-disk, dead) rows of
 other CLIs. Live rows do not come from `load_all`:
 
-- Sessions created through master are all the current CLI (master spawns a
-  single agent CLI).
+- Sessions created through master may span multiple CLIs because master owns
+  a per-agent pool. The helper's **view filter** narrows master's snapshot to
+  that helper's current CLI.
 - The hookless **watcher** discovers Class B shell sessions **machine-wide /
   cross-CLI** (`master/mod.rs` "the file watcher sees session files
   machine-wide"). Those are narrowed to the current CLI by the **view filter**

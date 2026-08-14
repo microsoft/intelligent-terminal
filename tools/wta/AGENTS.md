@@ -8,9 +8,10 @@ Do not duplicate those facts here.
 
 WTA is a Rust binary with three launch modes:
 
-- **Master** (`--master <pipe>`): owns the single agent CLI subprocess and its
-  ACP stdio connection, accepts helper named-pipe connections, and routes each
-  ACP SessionId to its owning helper. Implementation: `src/master/mod.rs`.
+- **Master** (`--master <pipe>`): lazily owns a pool of agent CLI subprocesses
+  and their ACP stdio connections, accepts helper named-pipe connections, and
+  routes each ACP SessionId to its owning helper. Helpers with the same
+  master-derived agent key share a process. Implementation: `src/master/mod.rs`.
 - **Helper** (`--connect-master <pipe>`): one ratatui UI per agent pane. It is
   an ACP client of master and owns pane-local UI state and `ShellManager`.
   Implementation: `src/helper/mod.rs` and `src/app.rs`.
@@ -37,8 +38,9 @@ WTA does not own those processes or invent process controls for them.
 
 ### Session MCP
 
-Master creates a session-scoped loopback Streamable HTTP endpoint, with an
-on-demand relay for WSL sessions. It exposes:
+Master owns one loopback Streamable HTTP listener and publishes an independent
+server name and bearer capability for each eligible ACP session. WSL sessions
+use an on-demand distro-local relay to that listener. The endpoint exposes:
 
 - `request_terminal_actions`
 - `request_user_input`
@@ -107,9 +109,10 @@ Detailed tracking and resume behavior belongs in:
 
 ## Build and test
 
-Use the explicit-target commands in the repo-level `AGENTS.md`. Do not alternate
-between host-target and explicit-target Cargo outputs in one worktree because
-the package project prefers the explicit-target binary.
+Run the explicit-target commands in the repo-level `AGENTS.md` from the
+repository root. Do not alternate between host-target and explicit-target Cargo
+outputs in one worktree because the package project prefers the explicit-target
+binary.
 
 Run the WTA test suite for every behavior change covered by, or deserving,
 unit tests. A successful Cargo build or C++ build does not compile
@@ -121,14 +124,15 @@ Use the smallest relevant test while iterating, then run:
 cargo test --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
 
-If a live process locks the output, stop only the PID whose executable path is
-the target being rebuilt. Do not kill all WTA processes by name.
+If live processes lock the output, stop only PIDs whose executable paths exactly
+match the target being rebuilt. Do not kill all WTA processes by name.
 
 ## Dependencies and generated notices
 
-WTA uses the pinned toolchain in `rust-toolchain.toml` and the repo's static-CRT
-Windows target configuration. Avoid dependencies that do not support static
-CRT.
+CI resolves the `ms-prod-1.93` pin in `rust-toolchain.toml` through MSRustup.
+The documented repo-root local commands use the installed active Rust toolchain
+while still loading the repo's static-CRT target configuration. Keep code
+compatible with Rust 1.93 and avoid dependencies that do not support static CRT.
 
 When `Cargo.toml`, Cargo features, or `Cargo.lock` changes the shipped
 dependency graph, regenerate and commit both `tools/wta/cgmanifest.json` and the
