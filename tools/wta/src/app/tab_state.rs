@@ -626,6 +626,7 @@ impl TabSession {
         let len = self.completed_turns.len();
         if len == 0 {
             self.selected_completed_turn_idx = None;
+            self.completed_turn_selection_visible_pending = false;
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -640,6 +641,7 @@ impl TabSession {
         let len = self.completed_turns.len();
         if len == 0 {
             self.selected_completed_turn_idx = None;
+            self.completed_turn_selection_visible_pending = false;
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {

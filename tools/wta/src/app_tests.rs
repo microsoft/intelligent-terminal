@@ -9115,6 +9115,27 @@ fn message_list_focus_routes_arrows_to_completed_turn_selection() {
 }
 
 #[test]
+fn empty_completed_turn_navigation_clears_pending_visibility() {
+    let mut app = test_app();
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_older_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_newer_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+}
+
+#[test]
 fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
