@@ -1,10 +1,10 @@
-//! Wire schema for the direct WTA CLI terminal-action proposal flow
-//! (`wta propose-terminal-actions`). See
-//! `doc/specs/WTA-CLI-terminal-action-proposals.md`.
+//! Wire schemas for the session MCP and fallback WTA CLI terminal-action
+//! proposal flows. See
+//! `doc/specs/WTA-terminal-action-proposals.md`.
 //!
-//! An agent session that can execute tools directly (rather than relying on
-//! the ACP `create_terminal`/helper-proxy path) submits a proposal as one
-//! compact JSON object matching [`ProposalWire`]. This module owns:
+//! The preferred MCP tool accepts [`McpProposalWire`], which omits origin,
+//! schema, choice numbering, and all routing fields. The retained CLI accepts
+//! the versioned [`ProposalWire`]. This module owns:
 //!
 //! * the strict (`deny_unknown_fields`) wire types — deliberately narrower
 //!   than [`crate::coordinator::RecommendationSet`]: they never accept a
@@ -160,6 +160,36 @@ pub struct ProposalChoiceWire {
     pub actions: Vec<ProposalActionWire>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpProposalWire {
+    #[serde(rename = "type")]
+    pub action_type: McpActionType,
+    pub title: String,
+    #[serde(default)]
+    pub rationale: String,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub target: Option<ProposalOpenTargetWire>,
+    #[serde(default)]
+    pub delegate: Option<bool>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpActionType {
+    Send,
+    Open,
+    OpenAndSend,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalOpenTargetWire {
@@ -235,6 +265,130 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
         return Err(ProposalError::UnsupportedSchemaVersion(wire.schema_version));
     }
     Ok(wire)
+}
+
+pub fn parse_mcp_proposal_payload(
+    bytes: &[u8],
+    is_autofix_turn: bool,
+) -> Result<ProposalWire, ProposalError> {
+    if bytes.len() > MAX_PAYLOAD_BYTES {
+        return Err(ProposalError::TooLarge { size: bytes.len() });
+    }
+    let proposal: McpProposalWire =
+        serde_json::from_slice(bytes).map_err(|e| ProposalError::Malformed(e.to_string()))?;
+    let action = match proposal.action_type {
+        McpActionType::Send => {
+            reject_mcp_fields(&[
+                ("target", proposal.target.is_some()),
+                ("delegate", proposal.delegate.is_some()),
+                ("cwd", proposal.cwd.is_some()),
+                ("direction", proposal.direction.is_some()),
+                ("profile", proposal.profile.is_some()),
+            ])?;
+            ProposalActionWire::Send {
+                input: required_mcp_field(proposal.input, "input", "send")?,
+            }
+        }
+        McpActionType::Open => {
+            reject_mcp_fields(&[
+                ("input", proposal.input.is_some()),
+                ("delegate", proposal.delegate.is_some()),
+            ])?;
+            ProposalActionWire::Open {
+                target: required_mcp_field(proposal.target, "target", "open")?,
+                cwd: proposal.cwd,
+                title: Some(proposal.title.clone()),
+                direction: proposal.direction,
+                profile: proposal.profile,
+            }
+        }
+        McpActionType::OpenAndSend => ProposalActionWire::OpenAndSend {
+            target: required_mcp_field(proposal.target, "target", "open_and_send")?,
+            input: required_mcp_field(proposal.input, "input", "open_and_send")?,
+            delegate: proposal.delegate.unwrap_or(false),
+            cwd: proposal.cwd,
+            title: Some(proposal.title.clone()),
+            direction: proposal.direction,
+            profile: proposal.profile,
+        },
+    };
+    Ok(ProposalWire {
+        schema_version: SCHEMA_VERSION,
+        origin: if is_autofix_turn {
+            ProposalOrigin::Autofix
+        } else {
+            ProposalOrigin::TerminalAgent
+        },
+        recommended_choice: Some(1),
+        choices: vec![ProposalChoiceWire {
+            choice: 1,
+            title: proposal.title,
+            rationale: proposal.rationale,
+            actions: vec![action],
+        }],
+    })
+}
+
+fn required_mcp_field<T>(
+    value: Option<T>,
+    field: &str,
+    action_type: &str,
+) -> Result<T, ProposalError> {
+    value.ok_or_else(|| {
+        ProposalError::Malformed(format!("field `{field}` is required for `{action_type}`"))
+    })
+}
+
+fn reject_mcp_fields(fields: &[(&str, bool)]) -> Result<(), ProposalError> {
+    if let Some((field, _)) = fields.iter().find(|(_, present)| *present) {
+        return Err(ProposalError::Malformed(format!(
+            "field `{field}` is not valid for this action type"
+        )));
+    }
+    Ok(())
+}
+
+pub fn mcp_input_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "type": {
+                "type": "string",
+                "enum": ["send", "open", "open_and_send"],
+                "description": "send uses the current pane; open creates an empty target; open_and_send creates a target and submits input"
+            },
+            "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TITLE_CHARS,
+                "description": "Short user-facing title for the proposed action"
+            },
+            "rationale": {
+                "type": "string",
+                "maxLength": MAX_RATIONALE_CHARS
+            },
+            "input": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_INPUT_CHARS,
+                "description": "Required for send and open_and_send"
+            },
+            "target": {
+                "type": "string",
+                "enum": ["tab", "panel"],
+                "description": "Required for open and open_and_send"
+            },
+            "delegate": {
+                "type": "boolean",
+                "description": "For open_and_send, use the configured delegate agent"
+            },
+            "cwd": { "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS },
+            "direction": { "type": "string", "enum": ["right", "left", "up", "down", "auto"] },
+            "profile": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS }
+        },
+        "required": ["type", "title"]
+    })
 }
 
 /// Convert a decoded [`ProposalWire`] into a [`RecommendationSet`], applying
@@ -503,6 +657,110 @@ mod tests {
         let parsed = parse_proposal_payload(json.as_bytes()).unwrap();
         assert_eq!(parsed.schema_version, SCHEMA_VERSION);
         assert_eq!(parsed.choices.len(), 1);
+    }
+
+    #[test]
+    fn flat_mcp_send_converts_to_one_recommended_action() {
+        let payload = br#"{
+            "type": "send",
+            "title": "Run tests",
+            "rationale": "Verify the fix",
+            "input": "cargo test"
+        }"#;
+        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        assert_eq!(wire.origin, ProposalOrigin::TerminalAgent);
+        assert_eq!(wire.recommended_choice, Some(1));
+        assert_eq!(wire.choices.len(), 1);
+        assert_eq!(wire.choices[0].choice, 1);
+        assert_eq!(wire.choices[0].title, "Run tests");
+        assert_eq!(wire.choices[0].actions.len(), 1);
+        assert!(matches!(
+            &wire.choices[0].actions[0],
+            ProposalActionWire::Send { input } if input == "cargo test"
+        ));
+    }
+
+    #[test]
+    fn flat_mcp_open_and_send_converts_to_one_action() {
+        let payload = br#"{
+            "type": "open_and_send",
+            "title": "Run tests",
+            "input": "cargo test",
+            "target": "panel",
+            "direction": "right",
+            "delegate": true
+        }"#;
+        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        assert!(matches!(
+            &wire.choices[0].actions[0],
+            ProposalActionWire::OpenAndSend {
+                target: ProposalOpenTargetWire::Panel,
+                input,
+                delegate: true,
+                direction: Some(direction),
+                title: Some(title),
+                ..
+            } if input == "cargo test" && direction == "right" && title == "Run tests"
+        ));
+    }
+
+    #[test]
+    fn flat_mcp_open_and_send_tab_accepts_direction() {
+        let payload = br#"{
+            "type": "open_and_send",
+            "title": "Project walkthrough",
+            "input": "Walk through this project",
+            "target": "tab",
+            "direction": "auto"
+        }"#;
+        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        let set = build_recommendation_set(&wire, false, None, None, None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::OpenAndSend {
+                target: OpenTarget::Tab,
+                direction: Some(direction),
+                ..
+            } if direction == "auto"
+        ));
+    }
+
+    #[test]
+    fn flat_mcp_rejects_nested_legacy_payload() {
+        let payload = br#"{
+            "recommended_choice": 1,
+            "choices": [{
+                "title": "Run tests",
+                "actions": [{"type": "send", "input": "cargo test"}]
+            }]
+        }"#;
+        let err = parse_mcp_proposal_payload(payload, false).unwrap_err();
+        assert!(matches!(err, ProposalError::Malformed(_)));
+    }
+
+    #[test]
+    fn flat_mcp_schema_has_no_nested_arrays_or_unions() {
+        let schema = mcp_input_schema();
+        assert!(schema.pointer("/properties/type").is_some());
+        assert!(schema.pointer("/properties/title").is_some());
+        assert!(schema.pointer("/properties/input").is_some());
+        assert!(schema.pointer("/properties/choices").is_none());
+        assert!(schema.pointer("/properties/actions").is_none());
+        assert!(!schema.to_string().contains("\"oneOf\""));
+    }
+
+    #[test]
+    fn flat_mcp_requires_action_specific_fields() {
+        let err = parse_mcp_proposal_payload(br#"{"type":"send","title":"Run tests"}"#, false)
+            .unwrap_err();
+        assert!(matches!(err, ProposalError::Malformed(_)));
+
+        let err = parse_mcp_proposal_payload(
+            br#"{"type":"open","title":"New tab","target":"tab","input":"echo hi"}"#,
+            false,
+        )
+        .unwrap_err();
+        assert!(matches!(err, ProposalError::Malformed(_)));
     }
 
     #[test]

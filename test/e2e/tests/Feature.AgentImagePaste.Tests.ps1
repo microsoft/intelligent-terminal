@@ -44,7 +44,7 @@ Describe 'Feature: agent pane image paste (Alt+V)' -Tag 'Feature' -Skip:(-not $s
         #    (📎 title / "Image attached") or — if copilot doesn't advertise the image prompt
         #    capability — reports it UNSUPPORTED. Either proves Alt+V arrived as a KeyEvent
         #    with the ALT modifier. It must NOT report an empty clipboard (we set one).
-        Assert-AgentPaneText -App $script:app -Pattern '📎|Image attached|support image input' -TimeoutSec 15
+        Assert-AgentPaneText -App $script:app -Pattern '📎|Image attached|support image input|\[image:\s+image-\d+\.png\]' -TimeoutSec 15
 
         $after = Get-AgentPaneText -App $script:app -MaxLines 80
         $after | Should -Not -Match 'No image on the clipboard'

@@ -2908,12 +2908,12 @@
     <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Échec de la suppression Hook. Consultez %LOCALAPPDATA%\IntelligentTerminal\logs\ pour plus de détails.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+    <value>Échec de la suppression Hook. Consultez {0} pour plus de détails.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
   </data>
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Échec de l’installation Hooks. Consultez %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log pour plus de détails.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+    <value>Échec de l’installation Hooks. Consultez {0} pour plus de détails.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Détection automatique des erreurs</value>

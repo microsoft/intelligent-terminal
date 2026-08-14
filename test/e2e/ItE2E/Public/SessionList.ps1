@@ -59,11 +59,26 @@ function Open-SessionList {
 }
 
 function Close-SessionList {
-    <# Exit the session view (Esc) back to chat. #>
+    <#
+    .SYNOPSIS
+        Exit the session view (Esc) back to chat.
+    .DESCRIPTION
+        Esc first clears an active session search/query before it closes the view. Pin the pane
+        session and keep sending Esc while that exact pane still renders the session footer.
+    #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process {
-        Send-AgentKey -App $App -Key Escape | Out-Null
-        Start-Sleep -Milliseconds 400
+        $sess = Get-AgentPaneSession -App $App
+        if (-not $sess) { return $App }
+        $renderRe = Get-SessionViewRenderRegex
+        $shown = {
+            (Get-AgentPaneText -App $App -PaneSessionId $sess.PaneSessionId -MaxLines 50) -match $renderRe
+        }
+        for ($i = 0; $i -lt 4 -and (& $shown); $i++) {
+            Send-AgentKey -App $App -Key Escape -PaneSessionId $sess.PaneSessionId | Out-Null
+            Start-Sleep -Milliseconds 400
+        }
+        if (& $shown) { throw 'Close-SessionList: Esc did not restore the chat view.' }
         $App
     }
 }

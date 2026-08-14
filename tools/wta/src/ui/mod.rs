@@ -1,4 +1,5 @@
 mod agent_popup;
+pub(crate) mod action_panel;
 pub mod agents_view;
 mod auth;
 pub(crate) mod card;
@@ -14,6 +15,7 @@ mod popup;
 mod recommendations;
 pub mod setup;
 pub mod shimmer;
+mod user_input;
 
 pub use agent_popup::AgentPopupState;
 pub use command_popup::{PopupCandidates, PopupState};

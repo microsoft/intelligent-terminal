@@ -23,6 +23,84 @@ namespace winrt::TerminalApp::implementation
     TabRowControl::TabRowControl()
     {
         InitializeComponent();
+        _applyLayoutVisibility();
+    }
+
+    void TabRowControl::IsVerticalLayout(bool value)
+    {
+        if (_isVerticalLayout == value)
+        {
+            return;
+        }
+        _isVerticalLayout = value;
+        _applyLayoutVisibility();
+        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IsVerticalLayout" });
+    }
+
+    void TabRowControl::_applyLayoutVisibility()
+    {
+        // PROTOTYPE — the horizontal TabView and vertical TabStrip both live
+        // in the XAML tree; only one is visible at a time. Full layout
+        // reshaping (moving the strip to a left column) is Spec A.
+        TabView().Visibility(_isVerticalLayout ? WUX::Visibility::Collapsed : WUX::Visibility::Visible);
+        TabStrip().Visibility(_isVerticalLayout ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
+        if (_isVerticalLayout)
+        {
+            _reparentChromeToVertical();
+        }
+    }
+
+    // Spec A §5.1: move the three chrome elements out of TabView's header /
+    // footer slots. Shield + workspaces go into a horizontal StackPanel that
+    // TerminalPage hands to the titlebar (same bar as min/max/close); the
+    // new-tab split button anchors right-aligned inside TabStrip's trailing
+    // slot at the bottom of the rail. XAML forbids a UIElement having two
+    // logical parents at once, so we clear both host panels first.
+    void TabRowControl::_reparentChromeToVertical()
+    {
+        if (_chromeReparentedToVertical)
+        {
+            return;
+        }
+        _chromeReparentedToVertical = true;
+
+        auto shield = ElevationShieldIcon();
+        auto workspaces = WorkspaceDropdown();
+        auto newTab = NewTabButton();
+
+        if (const auto headerPanel = TabView().TabStripHeader().try_as<WUX::Controls::StackPanel>())
+        {
+            headerPanel.Children().Clear();
+        }
+        TabView().TabStripHeader(nullptr);
+
+        if (const auto footerGrid = TabView().TabStripFooter().try_as<WUX::Controls::Grid>())
+        {
+            footerGrid.Children().Clear();
+        }
+        TabView().TabStripFooter(nullptr);
+
+        WUX::Controls::StackPanel titlebarPanel;
+        titlebarPanel.Orientation(WUX::Controls::Orientation::Horizontal);
+        titlebarPanel.VerticalAlignment(WUX::VerticalAlignment::Center);
+        titlebarPanel.Children().Append(shield);
+        titlebarPanel.Children().Append(workspaces);
+        _verticalTitleBarContent = titlebarPanel;
+
+        // Put the right-alignment on an outer Grid instead of the SplitButton
+        // itself — setting HorizontalAlignment=Right on the SplitButton
+        // fights its own template layout and collapses the dropdown chevron.
+        // A right-aligned outer Grid with a Stretch SplitButton lets MUX
+        // render both primary and secondary parts at their intrinsic size.
+        newTab.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
+        newTab.Height(31);
+        newTab.MinWidth(64);
+        newTab.Margin(WUX::Thickness{ 0, 4, 0, 4 });
+        WUX::Controls::Grid trailingContainer;
+        trailingContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
+        trailingContainer.Margin(WUX::Thickness{ 0, 0, 8, 0 });
+        trailingContainer.Children().Append(newTab);
+        TabStrip().TrailingContent(trailingContainer);
     }
 
     // Method Description:

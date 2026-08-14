@@ -67,6 +67,9 @@ using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
 using namespace std::chrono_literals;
 
+static constexpr double railMin = 180.0;
+static constexpr double railMax = 480.0;
+
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
 namespace winrt
@@ -318,6 +321,22 @@ namespace winrt::TerminalApp::implementation
             // Create this only on the first time we load the settings.
             _terminalSettingsCache = std::make_shared<TerminalSettingsCache>(settings);
         }
+        // Spec A: TabLayout can't be applied live in v1 (would require
+        // tearing down and rebuilding the rail + chrome reparenting).
+        // Detect the mismatch before we swap _settings and surface a
+        // restart-required hint. Skipped on first load, and only when the
+        // new setting actually diverges from the live layout.
+        if (!firstLoad)
+        {
+            const bool wantVertical = settings.GlobalSettings().TabLayout() == TabLayout::Vertical;
+            if (wantVertical != _isVerticalLayout)
+            {
+                if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
+                {
+                    infoBar.IsOpen(true);
+                }
+            }
+        }
         _settings = settings;
 
         if constexpr (Feature_RichTabProviders::IsEnabled())
@@ -410,15 +429,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Hot-reload of runtime agent config (autofix gate, acp-model,
-        // delegate agent/model). When any of these change between settings
+        // Hot-reload of runtime agent config (autofix gate and delegate
+        // agent/model). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
         // event to the running wta-helper(s) so they update in place,
         // WITHOUT tearing down and restarting the agent pane. This is the
         // unified dispatch for every hot-updatable agent setting — adding a
         // new one means adding a field to AgentRuntimeConfigSnapshot, not a
-        // bespoke diff/emit block here. (Agent *identity* changes still go
-        // through _RebuildAgentStack in _RefreshUIForSettingsReload.)
+        // bespoke diff/emit block here. Agent identity and model changes go
+        // through _RebuildAgentStack in _RefreshUIForSettingsReload.
         _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
@@ -469,7 +488,19 @@ namespace winrt::TerminalApp::implementation
         _tabContent = this->TabContent();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
+        _tabStrip = _tabRow.TabStrip();
         _rearranging = false;
+
+        // Spec A §1: layout is driven by the tabLayout global setting.
+        if (_settings.GlobalSettings().TabLayout() == TabLayout::Vertical)
+        {
+            _tabRow.IsVerticalLayout(true);
+        }
+        // Cache the layout mode so the routing helpers (_tabItems /
+        // _selectedTabItem) don't have to reach into _tabRow on every call.
+        _isVerticalLayout = _tabRow.IsVerticalLayout();
+
+        _ApplyVerticalLayoutReshape();
 
         const auto canDragDrop = CanDragDrop();
 
@@ -496,7 +527,11 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        if (_settings.GlobalSettings().ShowTabsInTitlebar())
+        // Spec A §1: vertical layout silently overrides showTabsInTitlebar to
+        // false — the rail lives inside the page, not stapled to the titlebar.
+        // Phase 7 formalizes this via the settings model; for now the check
+        // just short-circuits on _isVerticalLayout.
+        if (_settings.GlobalSettings().ShowTabsInTitlebar() && !_isVerticalLayout)
         {
             // Remove the TabView from the page. We'll hang on to it, we need to
             // put it in the titlebar.
@@ -526,6 +561,36 @@ namespace winrt::TerminalApp::implementation
             const auto transparent = Media::SolidColorBrush();
             transparent.Color(Windows::UI::Colors::Transparent());
             _tabRow.Background(transparent);
+        }
+        else if (_isVerticalLayout)
+        {
+            // Vertical mode: TabRow stays in the page. TabRowControl already
+            // extracted shield + workspaces into VerticalTitleBarContent
+            // during IsVerticalLayout(true). Where the chrome lands depends
+            // on whether we have a non-client-area titlebar to host it:
+            //   - showTabsInTitlebar=true  -> hand it to the extended titlebar
+            //     (sits next to min/max/close, matches Spec A mock).
+            //   - showTabsInTitlebar=false -> no titlebar to host it, so dock
+            //     it at the top of the rail and flip to vertical orientation.
+            // Spec A §1 nominally says "silently force showTabsInTitlebar to
+            // false in vertical", but that removes the titlebar entirely and
+            // leaves nowhere for the workspaces button. Respecting the user's
+            // choice + graceful fallback matches the reviewed UX.
+            if (const auto content = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent())
+            {
+                if (_settings.GlobalSettings().ShowTabsInTitlebar())
+                {
+                    SetTitleBarContent.raise(*this, content);
+                }
+                else
+                {
+                    if (const auto panel = content.try_as<WUX::Controls::StackPanel>())
+                    {
+                        panel.Orientation(WUX::Controls::Orientation::Vertical);
+                    }
+                    _tabStrip.LeadingContent(content);
+                }
+            }
         }
         _updateThemeColors();
 
@@ -578,6 +643,25 @@ namespace winrt::TerminalApp::implementation
         _tabView.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
         _tabView.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
         _tabView.TabDroppedOutside({ this, &TerminalPage::_onTabDroppedOutside });
+
+        // Vertical strip: hook the TabStrip's equivalent events. The generic
+        // ones (TabItemsChanged, TabDragCompleted, drag-over/drop) reuse the
+        // same handlers as TabView; the ones with MUX-typed args have thin
+        // TabStrip-typed wrappers that call a shared *Core method.
+        if (_isVerticalLayout)
+        {
+            _tabStrip.CanReorderTabs(canDragDrop);
+            _tabStrip.CanDragTabs(canDragDrop);
+            _tabStrip.TabDragStarting({ get_weak(), &TerminalPage::_TabDragStarted });
+            _tabStrip.TabDragCompleted({ get_weak(), &TerminalPage::_TabDragCompleted });
+            _tabStrip.SelectionChanged({ this, &TerminalPage::_OnTabStripSelectionChanged });
+            _tabStrip.TabCloseRequested({ this, &TerminalPage::_OnTabStripCloseRequested });
+            _tabStrip.TabItemsChanged({ this, &TerminalPage::_OnTabItemsChanged });
+            _tabStrip.TabDragStarting({ this, &TerminalPage::_OnTabStripDragStarting });
+            _tabStrip.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
+            _tabStrip.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
+            _tabStrip.TabDroppedOutside({ this, &TerminalPage::_OnTabStripDroppedOutside });
+        }
 
         _CreateNewTabFlyout();
 
@@ -965,6 +1049,11 @@ namespace winrt::TerminalApp::implementation
         return SplitDirection::Right;
     }
 
+    winrt::hstring TerminalPage::_AgentPanePositionToContentPosition(const winrt::hstring& position)
+    {
+        return position == L"up" ? winrt::hstring{ L"top" } : position;
+    }
+
     // ── First-run experience ──────────────────────────────────────────────
 
     bool TerminalPage::_IsFreRequired() const
@@ -1075,24 +1164,24 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Repositions agent panes (one per tab) to match the current
-    // AgentPanePosition setting. Walks every tab in this window.
+    // Repositions agent panes (one per tab) to match each tab's runtime
+    // override or the global AgentPanePosition fallback.
     void TerminalPage::_RepositionAgentPanes()
     {
-        const auto splitDirection = _AgentPanePositionToSplitDirection(
-            _settings.GlobalSettings().AgentPanePosition());
-        const auto position = _settings.GlobalSettings().AgentPanePosition();
+        const auto globalPosition = _settings.GlobalSettings().AgentPanePosition();
         for (const auto& tab : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(tab))
             {
+                const auto position = tabImpl->EffectiveAgentPanePosition(globalPosition);
+                const auto splitDirection = _AgentPanePositionToSplitDirection(position);
                 if (const auto rootPane = tabImpl->GetRootPane())
                 {
                     rootPane->RepositionAgentPane(splitDirection);
                 }
                 if (const auto agentContent = tabImpl->FindAgentPaneContent())
                 {
-                    agentContent.SetAgentPanePosition(position);
+                    agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(position));
                 }
             }
         }
@@ -1612,6 +1701,9 @@ namespace winrt::TerminalApp::implementation
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
             std::wstring{ globals.AcpCustomCommand() },
+            _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
+                std::wstring{} :
+                std::wstring{ globals.AcpModel() },
             _CaptureCustomModelLaunchConfiguration(globals),
         };
         for (const auto& profile : _settings.AllProfiles())
@@ -1628,15 +1720,14 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
-        // Agent identity changes rebuild helpers. acp-model and delegate-*
-        // fields are hot-updated over the protocol and must not trigger a
-        // teardown. A profile backend is part of identity because it changes
-        // both the agent id and the execution source for that profile. Only
-        // selected-provider fields consumed by the master launch environment
-        // participate in identity. The helper-safe full catalog is hot-updated
-        // separately.
+        // Agent identity and effective model changes rebuild helpers. A profile
+        // backend is part of identity because it changes both the agent id and
+        // the execution source for that profile. Only selected-provider fields
+        // consumed by the master launch environment participate in identity.
+        // The helper-safe full catalog is hot-updated separately.
         return a.acpAgent != b.acpAgent ||
                a.acpCustomCommand != b.acpCustomCommand ||
+               a.acpModel != b.acpModel ||
                a.customModelLaunch != b.customModelLaunch ||
                a.profileBackends != b.profileBackends;
     }
@@ -1644,10 +1735,8 @@ namespace winrt::TerminalApp::implementation
     TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
     {
         const auto& globals = _settings.GlobalSettings();
-        const bool providerConfigured = _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals);
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
         return AgentRuntimeConfigSnapshot{
-            providerConfigured ? std::wstring{} : std::wstring{ globals.AcpModel() },
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
@@ -1656,13 +1745,12 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
-    // Hot-propagate runtime agent config to the running wta-helper(s) over
-    // the protocol event channel. Unlike agent *identity* changes (which
+    // Hot-propagate runtime agent config to the running wta-helper(s) over the
+    // protocol event channel. Unlike agent identity/model changes (which
     // require a master respawn via _RebuildAgentStack), these take effect
     // without tearing down the agent pane. A single consolidated
     // `agent_config_changed` event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
-    //   - acp_model + target_agent_id : the global ACP agent's scoped model
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
@@ -1683,14 +1771,13 @@ namespace winrt::TerminalApp::implementation
 
         const auto& last = _lastAgentRuntimeConfig;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
-        const bool acpModelChanged = last.acpModel != current.acpModel;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
 
-        if (!autofixChanged && !acpModelChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged)
         {
             return;
         }
@@ -1699,12 +1786,6 @@ namespace winrt::TerminalApp::implementation
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
-        }
-        if (acpModelChanged)
-        {
-            params["acp_model"] = winrt::to_string(current.acpModel);
-            params["target_agent_id"] =
-                winrt::to_string(_settings.GlobalSettings().EffectiveAcpAgent());
         }
         if (delegateChanged)
         {
@@ -2502,6 +2583,7 @@ namespace winrt::TerminalApp::implementation
         }
         auto newPane = _WrapInAgentPaneContent(rawPane);
         newPane->IsAgentPane(true);
+        const auto panePosition = tab->EffectiveAgentPanePosition(globals.AgentPanePosition());
 
         // Wire the AgentPaneContent's bottom-bar click events to the page
         // so toolbar buttons drive the per-tab logic. We need the tab
@@ -2509,7 +2591,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
-            agentContent.SetAgentPanePosition(globals.AgentPanePosition());
+            agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
         }
 
         {
@@ -2527,7 +2609,7 @@ namespace winrt::TerminalApp::implementation
         // scope_exit so a successful return doesn't double-release.
         sharedAcquired.release();
 
-        const auto splitDirection = _AgentPanePositionToSplitDirection(globals.AgentPanePosition());
+        const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
         tab->SplitPaneAtRoot(splitDirection, newPane);
 
         if (autoStash)
@@ -2915,7 +2997,10 @@ namespace winrt::TerminalApp::implementation
 
         // Swap the toggle icon to match the current pane position.
         {
-            const auto position = _settings ? _settings.GlobalSettings().AgentPanePosition() : winrt::hstring{ L"bottom" };
+            const auto globalPosition = _settings ? _settings.GlobalSettings().AgentPanePosition() : winrt::hstring{ L"bottom" };
+            const auto position = focusedTabImpl ?
+                                      focusedTabImpl->EffectiveAgentPanePosition(globalPosition) :
+                                      globalPosition;
             const bool isVertical = (position == L"right" || position == L"left");
             if (auto iconBottom = AgentToggleIconBottom())
                 iconBottom.Visibility(isVertical ? Visibility::Collapsed : Visibility::Visible);
@@ -3174,8 +3259,11 @@ namespace winrt::TerminalApp::implementation
              _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
         const bool customModelLaunchChanged =
             _lastAgentSettings.customModelLaunch != current.customModelLaunch;
+        const bool cloudModelChanged =
+            _lastAgentSettings.acpModel != current.acpModel;
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
+            cloudModelChanged ||
             customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
@@ -3304,7 +3392,7 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // Built-in agent changes do not restart the master. It is now a
+        // Built-in agent identity changes do not restart the master. It is now a
         // multi-agent broker — it spawns/reuses one agent CLI per distinct
         // agent command line, driven by each helper's `initialize`
         // handshake (which carries the tab's agent). The master's own
@@ -3314,10 +3402,10 @@ namespace winrt::TerminalApp::implementation
         // affected (non-override) tabs' helpers is enough: each fresh
         // helper declares the new global agent and the master lazily
         // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched. Custom commands and selected provider
-        // launch fields are the exceptions: both are supplied only on the
-        // master's trusted launch configuration, so refresh it after affected
-        // helpers are down.
+        // (and other windows) untouched. Custom commands and model selections
+        // are exceptions: model/provider launch state is supplied on the
+        // master's trusted launch configuration, and a model change requires a
+        // fresh agent CLI rather than mutating the existing ACP session.
         if (masterConfigurationChanged)
         {
             const auto wtaPath = _DetectWtaPath();
@@ -3462,7 +3550,8 @@ namespace winrt::TerminalApp::implementation
             if (existingPane->IsHidden())
             {
                 _agentPaneLog("found stashed agent pane on focused tab — unstashing locally + notifying wta");
-                const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                const auto splitDir = _AgentPanePositionToSplitDirection(
+                    focusedTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                 focusedTab->RestoreStashedAgentPane(splitDir);
                 // ALWAYS specify view on unstash. If we left it `nullopt`,
                 // wta would echo back its stored view (which is whatever
@@ -3641,6 +3730,182 @@ namespace winrt::TerminalApp::implementation
 
             _CompleteInitialization();
         }
+    }
+
+    // Spec A §5.1: give the vertical rail its column width and re-anchor
+    // TabRow + the primary content children so the strip owns column 0 (full
+    // height, including under the bottom bar) and everything else stacks in
+    // column 1. BottomBarRoot drops its ColumnSpan so the bar only sits under
+    // the terminal content, per the spec mock.
+    void TerminalPage::_ApplyVerticalLayoutReshape()
+    {
+        if (!_isVerticalLayout)
+        {
+            return;
+        }
+
+        // Spec A §5.2: rail width comes from settings (default 220, clamped
+        // 180..480). Persisted on drag-end via _OnRailSplitterPointerReleased.
+        const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
+        const double railWidth = std::clamp(persistedWidth, railMin, railMax);
+        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(railWidth, GridUnitType::Pixel));
+
+        Grid::SetRow(_tabRow, 0);
+        Grid::SetRowSpan(_tabRow, 4);
+        Grid::SetColumn(_tabRow, 0);
+        Grid::SetColumnSpan(_tabRow, 1);
+
+        Grid::SetColumn(InfoBarsPanel(), 1);
+        Grid::SetColumnSpan(InfoBarsPanel(), 1);
+
+        Grid::SetColumn(TabContentFiller(), 1);
+        Grid::SetColumnSpan(TabContentFiller(), 1);
+
+        Grid::SetColumn(_tabContent, 1);
+        Grid::SetColumnSpan(_tabContent, 1);
+
+        Grid::SetColumn(BottomBarRoot(), 1);
+        Grid::SetColumnSpan(BottomBarRoot(), 1);
+
+        _InstallVerticalRailSplitter();
+    }
+
+    // Spec A §5.2: hand-rolled splitter mirroring the Pane splitter idiom
+    // (Pane.cpp:3704). Lives in column 1 of Root, HorizontalAlignment=Left
+    // with a negative left margin so the hit strip (8px total) straddles the
+    // column boundary. Transparent Background so it visually disappears but
+    // still receives pointer hit-tests.
+    void TerminalPage::_InstallVerticalRailSplitter()
+    {
+        if (_verticalRailSplitter)
+        {
+            return;
+        }
+
+        constexpr double splitterHitThickness = 8.0;
+        constexpr double half = splitterHitThickness / 2.0;
+
+        _verticalRailSplitter = Controls::Border{};
+        _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _verticalRailSplitter.IsHitTestVisible(true);
+        _verticalRailSplitter.Width(splitterHitThickness);
+        _verticalRailSplitter.HorizontalAlignment(HorizontalAlignment::Left);
+        _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
+        _verticalRailSplitter.Margin(Thickness{ -half, 0, 0, 0 });
+
+        Grid::SetColumn(_verticalRailSplitter, 1);
+        Grid::SetRow(_verticalRailSplitter, 0);
+        Grid::SetRowSpan(_verticalRailSplitter, 4);
+
+        _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
+        _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
+        _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
+        _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
+        _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
+        _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+        _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+
+        Root().Children().Append(_verticalRailSplitter);
+    }
+
+    void TerminalPage::_SetRailSplitterCursor()
+    {
+        const auto cw = CoreWindow::GetForCurrentThread();
+        if (!cw)
+        {
+            return;
+        }
+        if (!_railSplitterPriorCursor)
+        {
+            _railSplitterPriorCursor = cw.PointerCursor();
+        }
+        cw.PointerCursor(CoreCursor{ CoreCursorType::SizeWestEast, 0 });
+    }
+
+    void TerminalPage::_RestoreRailSplitterCursor()
+    {
+        if (!_railSplitterPriorCursor)
+        {
+            return;
+        }
+        if (const auto cw = CoreWindow::GetForCurrentThread())
+        {
+            cw.PointerCursor(_railSplitterPriorCursor);
+        }
+        _railSplitterPriorCursor = nullptr;
+    }
+
+    void TerminalPage::_OnRailSplitterPointerEntered(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        _SetRailSplitterCursor();
+    }
+
+    void TerminalPage::_OnRailSplitterPointerExited(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        if (!_railSplitterDragging)
+        {
+            _RestoreRailSplitterCursor();
+        }
+    }
+
+    void TerminalPage::_OnRailSplitterPointerPressed(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (!_verticalRailSplitter)
+        {
+            return;
+        }
+        const auto point = e.GetCurrentPoint(Root());
+        if (point.Properties().IsRightButtonPressed() || point.Properties().IsMiddleButtonPressed())
+        {
+            return;
+        }
+        _railSplitterDragging = _verticalRailSplitter.CapturePointer(e.Pointer());
+        if (!_railSplitterDragging)
+        {
+            return;
+        }
+        _railSplitterStartWidth = VerticalRailColumn().ActualWidth();
+        _railSplitterStartPointer = point.Position();
+        _SetRailSplitterCursor();
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerMoved(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (!_railSplitterDragging)
+        {
+            return;
+        }
+        const auto point = e.GetCurrentPoint(Root()).Position();
+        const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);
+        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(requested, GridUnitType::Pixel));
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerReleased(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (_railSplitterDragging && _verticalRailSplitter)
+        {
+            _verticalRailSplitter.ReleasePointerCapture(e.Pointer());
+        }
+        _railSplitterDragging = false;
+        _RestoreRailSplitterCursor();
+
+        // Persist. Read back the ActualWidth to catch any layout snapping.
+        const auto finalWidth = static_cast<int32_t>(std::lround(VerticalRailColumn().ActualWidth()));
+        if (finalWidth != _settings.GlobalSettings().TabLayoutVerticalWidth())
+        {
+            _settings.GlobalSettings().TabLayoutVerticalWidth(finalWidth);
+            _settings.WriteSettingsToDisk();
+        }
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerCaptureLost(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        _railSplitterDragging = false;
+        _RestoreRailSplitterCursor();
     }
 
     // Method Description:
@@ -5100,7 +5365,8 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
-        std::optional<winrt::hstring> panePosition;
+        bool panePositionSpecified = false;
+        std::optional<winrt::hstring> panePositionOverride;
         if (params.isMember("pane_position"))
         {
             if (params["pane_position"].isString())
@@ -5109,14 +5375,14 @@ namespace winrt::TerminalApp::implementation
                 if (requested == L"left" || requested == L"right" ||
                     requested == L"up" || requested == L"bottom")
                 {
-                    panePosition = requested;
+                    panePositionSpecified = true;
+                    panePositionOverride = requested;
                     logSuffix += " pane_position=" + winrt::to_string(requested);
                 }
             }
             else if (params["pane_position"].isNull())
             {
-                panePosition = _settings.GlobalSettings().AgentPanePosition();
-                logSuffix += " pane_position=global";
+                logSuffix += " pane_position=unchanged";
             }
         }
         std::optional<Json::Value> usage;
@@ -5129,6 +5395,14 @@ namespace winrt::TerminalApp::implementation
                                             " usage=invalid";
         }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
+
+        // Cache the WTA-owned runtime override on the Tab before applying
+        // pane_open. Creation and restoration below must use the position
+        // carried by this same snapshot, not the global fallback.
+        if (panePositionSpecified)
+        {
+            targetTab->AgentPanePositionOverride(panePositionOverride);
+        }
 
         // Apply view to the existing AgentPaneContent if any.
         if (view.has_value())
@@ -5155,7 +5429,8 @@ namespace winrt::TerminalApp::implementation
             {
                 if (targetTab->HasStashedAgentPane())
                 {
-                    const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                    const auto splitDir = _AgentPanePositionToSplitDirection(
+                        targetTab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                     targetTab->RestoreStashedAgentPane(splitDir);
                 }
                 else if (!targetTab->FindAgentPane())
@@ -5198,11 +5473,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Apply the per-tab `/move` override, or reset this tab to the global
-        // position when WTA explicitly sends null. Never mutate GlobalSettings
-        // or walk the other tabs.
-        if (panePosition.has_value())
+        // Apply a per-tab `/move` override. A null projection means WTA has no
+        // override to contribute; it must not erase the Tab's runtime mirror
+        // after a helper restart. Never mutate GlobalSettings or other tabs.
+        if (panePositionSpecified)
         {
+            const auto panePosition = targetTab->EffectiveAgentPanePosition(
+                _settings.GlobalSettings().AgentPanePosition());
             const auto agentPane = targetTab->FindAgentPane();
             const auto focusedTab = _GetFocusedTabImpl();
             const bool restoreAgentFocus = agentPane &&
@@ -5213,15 +5490,11 @@ namespace winrt::TerminalApp::implementation
             bool repositioned = false;
             if (const auto rootPane = targetTab->GetRootPane())
             {
-                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(panePosition));
             }
             if (const auto agentContent = targetTab->FindAgentPaneContent())
             {
-                // AgentPaneContent uses the settings spelling "top" for Up.
-                const auto contentPosition = *panePosition == L"up" ?
-                                                 winrt::hstring{ L"top" } :
-                                                 *panePosition;
-                agentContent.SetAgentPanePosition(contentPosition);
+                agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
 
                 // RepositionAgentPane rebuilds the split's XAML visual tree,
                 // which clears focus. `/move` originates in this TermControl,
@@ -8348,7 +8621,18 @@ namespace winrt::TerminalApp::implementation
     // - eventArgs: the event's constituent arguments
     void TerminalPage::_OnTabCloseRequested(const IInspectable& /*sender*/, const MUX::Controls::TabViewTabCloseRequestedEventArgs& eventArgs)
     {
-        const auto tabViewItem = eventArgs.Tab();
+        _HandleTabCloseRequestedCore(eventArgs.Tab());
+    }
+
+    // Spec A §4.2: TabStrip's TabCloseRequested uses custom args (TabStripCloseRequestedEventArgs).
+    // Both wrappers unpack the TabViewItem and dispatch to the shared core.
+    void TerminalPage::_OnTabStripCloseRequested(const IInspectable& /*sender*/, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs)
+    {
+        _HandleTabCloseRequestedCore(eventArgs.Tab());
+    }
+
+    void TerminalPage::_HandleTabCloseRequestedCore(const MUX::Controls::TabViewItem& tabViewItem)
+    {
         if (auto tab{ _GetTabByTabViewItem(tabViewItem) })
         {
             _HandleCloseTabRequested(tab);
@@ -10899,8 +11183,25 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView&,
                                           const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e)
     {
+        _OnTabDragStartingCore(e.Tab(), e.Data());
+    }
+
+    // Spec A §4.2: TabStrip's TabDragStarting uses custom args
+    // (TabStripDragStartingEventArgs). Both wrappers unpack the TabViewItem +
+    // DataPackage and dispatch to the shared core.
+    void TerminalPage::_OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable&,
+                                                const TerminalApp::TabStripDragStartingEventArgs& e)
+    {
+        if (const auto tab = e.Tab())
+        {
+            _OnTabDragStartingCore(tab, e.Data());
+        }
+    }
+
+    void TerminalPage::_OnTabDragStartingCore(const MUX::Controls::TabViewItem& eventTab,
+                                              const winrt::Windows::ApplicationModel::DataTransfer::DataPackage& data)
+    {
         // Get the tab impl from this event.
-        const auto eventTab = e.Tab();
         const auto tabBase = _GetTabByTabViewItem(eventTab);
         winrt::com_ptr<Tab> tabImpl;
         tabImpl.copy_from(winrt::get_self<Tab>(tabBase));
@@ -10926,9 +11227,9 @@ namespace winrt::TerminalApp::implementation
             // Get our PID
             const auto pid{ GetCurrentProcessId() };
 
-            e.Data().Properties().Insert(L"windowId", winrt::box_value(id));
-            e.Data().Properties().Insert(L"pid", winrt::box_value<uint32_t>(pid));
-            e.Data().RequestedOperation(DataPackageOperation::Move);
+            data.Properties().Insert(L"windowId", winrt::box_value(id));
+            data.Properties().Insert(L"pid", winrt::box_value<uint32_t>(pid));
+            data.RequestedOperation(DataPackageOperation::Move);
 
             // The next thing that will happen:
             //  * Another TerminalPage will get a TabStripDragOver, then get a
@@ -10996,18 +11297,26 @@ namespace winrt::TerminalApp::implementation
         // index to the request. This is largely taken from the WinUI sample
         // app.
 
-        // First we need to get the position in the List to drop to
+        // First we need to get the position in the List to drop to.
+        // Route the iteration + container lookup through the layout-aware
+        // helpers so vertical strips (Spec A) compute drop indices correctly
+        // on the Y axis. The container-cast is FrameworkElement so it works
+        // for TabView (returns TabViewItem) and TabStrip (returns ListViewItem
+        // wrapping the TabViewItem) alike.
         auto index = -1;
-
-        // Determine which items in the list our pointer is between.
-        for (auto i = 0u; i < _tabView.TabItems().Size(); i++)
+        const auto count = _tabItems().Size();
+        for (uint32_t i = 0; i < count; ++i)
         {
-            if (const auto& item{ _tabView.ContainerFromIndex(i).try_as<winrt::MUX::Controls::TabViewItem>() })
+            const auto container = _isVerticalLayout
+                                       ? _tabStrip.ContainerFromIndex(i)
+                                       : _tabView.ContainerFromIndex(i);
+            if (const auto& element{ container.try_as<winrt::Windows::UI::Xaml::FrameworkElement>() })
             {
-                const auto posX{ e.GetPosition(item).X }; // The point of the drop, relative to the tab
-                const auto itemWidth{ item.ActualWidth() }; // The right of the tab
-                // If the drag point is on the left half of the tab, then insert here.
-                if (posX < itemWidth / 2)
+                const auto pos = e.GetPosition(element);
+                const auto axisPos = _isVerticalLayout ? pos.Y : pos.X;
+                const auto axisDim = _isVerticalLayout ? element.ActualHeight() : element.ActualWidth();
+                // If the drag point is on the near half of the item, insert here.
+                if (axisPos < axisDim / 2)
                 {
                     index = i;
                     break;
@@ -11048,6 +11357,19 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_onTabDroppedOutside(winrt::IInspectable /*sender*/,
                                             winrt::MUX::Controls::TabViewTabDroppedOutsideEventArgs /*e*/)
+    {
+        _OnTabDroppedOutsideCore();
+    }
+
+    // Spec A §4.2: TabStrip's TabDroppedOutside uses custom args
+    // (TabStripDroppedOutsideEventArgs); the body doesn't use them either.
+    void TerminalPage::_OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                                  const TerminalApp::TabStripDroppedOutsideEventArgs& /*e*/)
+    {
+        _OnTabDroppedOutsideCore();
+    }
+
+    void TerminalPage::_OnTabDroppedOutsideCore()
     {
         // Get the current pointer point from the CoreWindow
         const auto& pointerPoint{ CoreWindow::GetForCurrentThread().PointerPosition() };

@@ -798,7 +798,8 @@ namespace winrt::TerminalApp::implementation
             // actually receives focus.
             if (foundPane->IsHidden())
             {
-                const auto splitDir = _AgentPanePositionToSplitDirection(_settings.GlobalSettings().AgentPanePosition());
+                const auto splitDir = _AgentPanePositionToSplitDirection(
+                    tabImpl->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
                 if (tabImpl->RestoreStashedAgentPane(splitDir))
                 {
                     // Mirror the unstash to wta so wta's tab.pane_open

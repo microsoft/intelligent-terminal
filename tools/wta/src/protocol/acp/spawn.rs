@@ -344,7 +344,7 @@ pub(crate) fn spawn_agent_process(
     })
 }
 
-fn wta_cli_directory() -> Result<PathBuf> {
+pub(crate) fn wta_cli_directory() -> Result<PathBuf> {
     let package_family = crate::runtime_paths::current_package_family_name();
     let local_app_data = std::env::var_os("LOCALAPPDATA");
     let current_exe =

@@ -314,6 +314,18 @@ namespace winrt::TerminalApp::implementation
         // (which is a root when the tabs are in the titlebar.)
         Microsoft::UI::Xaml::Controls::TabView _tabView{ nullptr };
         TerminalApp::TabRowControl _tabRow{ nullptr };
+        // Spec A §4.1: the alternate strip used when tabLayout == vertical.
+        // Populated with real TabViewItems via the routed _tabItems() helper.
+        TerminalApp::TabStrip _tabStrip{ nullptr };
+        bool _isVerticalLayout{ false };
+        // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
+        // Lives in column 1 of the Root Grid, hugging its left edge, so the
+        // hit strip straddles the column boundary.
+        Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
+        Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
+        bool _railSplitterDragging{ false };
+        double _railSplitterStartWidth{ 0.0 };
+        Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
@@ -433,14 +445,16 @@ namespace winrt::TerminalApp::implementation
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
         //
-        // Agent identity changes (global acpAgent/acpCustomCommand or an
-        // effective per-profile backend) rebuild affected helpers. A custom
-        // global command or selected provider launch configuration forces a
-        // master respawn; unselected provider catalog changes are hot-updated.
+        // Agent identity changes (global acpAgent/acpCustomCommand, the
+        // effective model selection, or an effective per-profile backend)
+        // rebuild affected helpers. Model changes force a master respawn so
+        // the agent CLI starts with a clean model-provider environment;
+        // unselected provider catalog changes are hot-updated.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
             std::wstring acpCustomCommand;
+            std::wstring acpModel;
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
         };
@@ -450,13 +464,12 @@ namespace winrt::TerminalApp::implementation
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (autofix gate, scoped
-        // acp-model, delegate agent/model, credential-free model catalogs).
+        // agent setting that can be hot-reloaded (autofix gate, delegate
+        // agent/model, credential-free model catalogs).
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
-            std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
             std::wstring customModelSelection;
@@ -739,6 +752,14 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
+        // Spec A §4.1: routing indirection so TabManagement.cpp doesn't have to
+        // branch on the tab-layout mode at every call site. Phase 2 forwards
+        // unconditionally to _tabView; Phase 3 flips the vertical branch to
+        // _tabStrip once real Tab objects are wired.
+        Windows::Foundation::Collections::IVector<Windows::Foundation::IInspectable> _tabItems() const;
+        Windows::Foundation::IInspectable _selectedTabItem() const;
+        void _selectedTabItem(const Windows::Foundation::IInspectable& item);
+
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
         void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane);
         bool _ShouldWarnOnClose() const;
@@ -801,9 +822,23 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender);
 
         void _OnTabSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::Controls::SelectionChangedEventArgs& eventArgs);
+        void _OnTabStripSelectionChanged(const IInspectable& sender, const TerminalApp::TabStripSelectionChangedEventArgs& eventArgs);
+        void _OnSelectionChangedCore();
         void _OnTabItemsChanged(const IInspectable& sender, const Windows::Foundation::Collections::IVectorChangedEventArgs& eventArgs);
         void _OnTabCloseRequested(const IInspectable& sender, const Microsoft::UI::Xaml::Controls::TabViewTabCloseRequestedEventArgs& eventArgs);
+        void _OnTabStripCloseRequested(const IInspectable& sender, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs);
+        void _HandleTabCloseRequestedCore(const Microsoft::UI::Xaml::Controls::TabViewItem& tabViewItem);
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
+        void _ApplyVerticalLayoutReshape();
+        void _InstallVerticalRailSplitter();
+        void _SetRailSplitterCursor();
+        void _RestoreRailSplitterCursor();
+        void _OnRailSplitterPointerEntered(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerExited(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerMoved(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerReleased(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerCaptureLost(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
         void _UpdatedSelectedTab(const winrt::TerminalApp::Tab& tab);
         void _UpdateBackground(const winrt::Microsoft::Terminal::Settings::Model::Profile& profile);
 
@@ -830,6 +865,7 @@ namespace winrt::TerminalApp::implementation
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
+        static winrt::hstring _AgentPanePositionToContentPosition(const winrt::hstring& position);
 
         // First-run experience
         bool _IsFreRequired() const;
@@ -919,9 +955,13 @@ namespace winrt::TerminalApp::implementation
         void _windowPropertyChanged(const IInspectable& sender, const winrt::Windows::UI::Xaml::Data::PropertyChangedEventArgs& args);
 
         void _onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView& sender, const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e);
+        void _OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDragStartingEventArgs& e);
+        void _OnTabDragStartingCore(const winrt::Microsoft::UI::Xaml::Controls::TabViewItem& tab, const winrt::Windows::ApplicationModel::DataTransfer::DataPackage& data);
         void _onTabStripDragOver(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
         void _onTabStripDrop(winrt::Windows::Foundation::IInspectable sender, winrt::Windows::UI::Xaml::DragEventArgs e);
         void _onTabDroppedOutside(winrt::Windows::Foundation::IInspectable sender, winrt::Microsoft::UI::Xaml::Controls::TabViewTabDroppedOutsideEventArgs e);
+        void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
+        void _OnTabDroppedOutsideCore();
 
         void _DetachPaneFromWindow(std::shared_ptr<Pane> pane);
         void _DetachTabFromWindow(const winrt::com_ptr<Tab>& tabImpl);

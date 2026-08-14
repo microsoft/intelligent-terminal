@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
 /// streaming during a single agent turn; well above what a healthy
@@ -50,6 +50,8 @@ use std::sync::{Arc, OnceLock};
 /// helper sharing this master.
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
+const SESSION_LOAD_TIMEOUT_SECS: u64 = 55;
+const SESSION_ROLLBACK_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use agent_client_protocol as acp;
@@ -65,6 +67,7 @@ use crate::protocol::acp::spawn::{
 };
 
 pub(crate) mod config;
+mod session_mcp;
 
 use config::MasterConfig;
 
@@ -72,6 +75,10 @@ use config::MasterConfig;
 /// routing keys off `acp::schema::v1::SessionId`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct HelperId(u64);
+
+type AgentCmdKey = String;
+type AgentInstanceId = uuid::Uuid;
+type AgentCell = Arc<tokio::sync::OnceCell<Arc<AgentCli>>>;
 
 /// Per-session routing entry. Owned by `session_to_helper` and
 /// keyed by `acp::schema::v1::SessionId`.
@@ -93,6 +100,7 @@ pub(crate) struct HelperId(u64);
 #[derive(Clone)]
 struct HelperRoute {
     helper_id: HelperId,
+    agent_instance_id: AgentInstanceId,
     notif_tx: mpsc::Sender<acp::schema::v1::SessionNotification>,
     forwarder: Option<conn::AgentLink>,
     /// Per-route counter for back-pressure log rate-limiting.
@@ -121,6 +129,11 @@ struct HelperRoute {
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
 struct MasterStateInner {
+    /// Weak cache of per-SessionId lifecycle gates. Route mutations take the
+    /// corresponding gate before `session_to_helper`; physical close holds it
+    /// across the ACP round-trip without blocking unrelated SessionIds.
+    session_lifecycle_gates:
+        Mutex<HashMap<acp::schema::v1::SessionId, Weak<tokio::sync::Mutex<()>>>>,
     /// Routes inbound traffic from the agent CLI back to the helper
     /// that owns the session. Inserted by the helper's `new_session`
     /// / `load_session` handlers atomically (before responding to
@@ -144,6 +157,8 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    session_mcp_endpoints: session_mcp::Endpoints,
+    session_mcp_capabilities: session_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
     /// SessionId while an omitted optional cost is retained from an
     /// undelivered prior update.
@@ -159,13 +174,9 @@ struct MasterStateInner {
     /// title/updated_at — has a typed home that isn't intertwined
     /// with notification-channel plumbing.
     ///
-    /// Lock ordering: always take `session_to_helper` *before*
-    /// touching `registry` to keep the helper-disconnect cleanup
-    /// path single-threaded (it walks `session_to_helper` for ids
-    /// and then issues `registry.remove`). Holding `session_to_helper`
-    /// while awaiting on `registry` is safe — the registry's interior
-    /// lock is sub-µs sync HashMap work that does not re-enter
-    /// `session_to_helper`.
+    /// Route-mutation lock ordering is per-session lifecycle gate, then
+    /// `session_to_helper`, then subordinate state such as `registry`.
+    /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
@@ -220,7 +231,7 @@ struct MasterStateInner {
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
-    pub(crate) agents: Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -341,11 +352,27 @@ struct MasterStateInner {
     wsl_seed_in_flight: std::sync::atomic::AtomicBool,
 }
 
+async fn session_lifecycle_gate(
+    state: &MasterStateInner,
+    session_id: &acp::schema::v1::SessionId,
+) -> Arc<tokio::sync::Mutex<()>> {
+    let mut gates = state.session_lifecycle_gates.lock().await;
+    gates.retain(|_, gate| gate.strong_count() > 0);
+    if let Some(gate) = gates.get(session_id).and_then(Weak::upgrade) {
+        return gate;
+    }
+    let gate = Arc::new(tokio::sync::Mutex::new(()));
+    gates.insert(session_id.clone(), Arc::downgrade(&gate));
+    gate
+}
+
 async fn bind_session_route(
     state: &MasterStateInner,
     session_id: acp::schema::v1::SessionId,
     route: HelperRoute,
 ) -> usize {
+    let gate = session_lifecycle_gate(state, &session_id).await;
+    let _guard = gate.lock().await;
     let mut routes = state.session_to_helper.lock().await;
     let mut pending_usage = state.pending_usage.lock().await;
     pending_usage.remove(&session_id);
@@ -353,13 +380,252 @@ async fn bind_session_route(
     routes.len()
 }
 
+async fn swap_session_route(
+    state: &MasterStateInner,
+    session_id: acp::schema::v1::SessionId,
+    route: HelperRoute,
+) -> Option<HelperRoute> {
+    let gate = session_lifecycle_gate(state, &session_id).await;
+    let _guard = gate.lock().await;
+    let mut routes = state.session_to_helper.lock().await;
+    state.pending_usage.lock().await.remove(&session_id);
+    routes.insert(session_id, route)
+}
+
+async fn rollback_swapped_session_route(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    session_id: &acp::schema::v1::SessionId,
+    previous: Option<HelperRoute>,
+) -> SwappedSessionRouteRollback {
+    let gate = session_lifecycle_gate(state, session_id).await;
+    let _guard = gate.lock().await;
+    let mut routes = state.session_to_helper.lock().await;
+    rollback_swapped_session_route_locked(&mut routes, helper_id, session_id, previous)
+}
+
+async fn rollback_orphan_rebind(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    agent_key: &AgentCmdKey,
+    session_id: &acp::schema::v1::SessionId,
+    previous: Option<HelperRoute>,
+) -> SwappedSessionRouteRollback {
+    let gate = session_lifecycle_gate(state, session_id).await;
+    let _guard = gate.lock().await;
+    let (rollback, route_absent) = {
+        let mut routes = state.session_to_helper.lock().await;
+        let rollback =
+            rollback_swapped_session_route_locked(&mut routes, helper_id, session_id, previous);
+        (rollback, !routes.contains_key(session_id))
+    };
+    if rollback == SwappedSessionRouteRollback::Restored && route_absent {
+        state
+            .orphaned_sessions
+            .lock()
+            .await
+            .entry(agent_key.clone())
+            .or_default()
+            .insert(session_id.clone());
+    }
+    rollback
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SwappedSessionRouteRollback {
+    Restored,
+    OwnershipChanged {
+        current_agent_instance_id: Option<AgentInstanceId>,
+    },
+}
+
+fn rollback_swapped_session_route_locked(
+    routes: &mut HashMap<acp::schema::v1::SessionId, HelperRoute>,
+    helper_id: HelperId,
+    session_id: &acp::schema::v1::SessionId,
+    previous: Option<HelperRoute>,
+) -> SwappedSessionRouteRollback {
+    if !routes
+        .get(session_id)
+        .is_some_and(|route| route.helper_id == helper_id)
+    {
+        return SwappedSessionRouteRollback::OwnershipChanged {
+            current_agent_instance_id: routes.get(session_id).map(|route| route.agent_instance_id),
+        };
+    }
+    if let Some(previous) = previous {
+        routes.insert(session_id.clone(), previous);
+    } else {
+        routes.remove(session_id);
+    }
+    SwappedSessionRouteRollback::Restored
+}
+
+const SESSION_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReplacedSessionCleanup {
+    NotOwned,
+    PhysicallyClosed,
+    LogicalFallback,
+}
+
+/// Close and retire one session deliberately replaced by its owning helper.
+///
+/// The per-SessionId lifecycle gate stays held across ownership validation,
+/// the bounded `session/close` RPC (or unsupported-agent cancel fallback), all
+/// WTA cleanup, and removal broadcasts. The global route lock is held only for
+/// short map operations, so agent callbacks can still perform route lookups
+/// while the close response is pending.
+async fn close_and_retire_replaced_session(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    agent: &AgentCli,
+    session_id: &acp::schema::v1::SessionId,
+    timeout: std::time::Duration,
+) -> acp::Result<ReplacedSessionCleanup> {
+    let gate = session_lifecycle_gate(state, session_id).await;
+    let _guard = gate.lock().await;
+    {
+        let routes = state.session_to_helper.lock().await;
+        if !routes
+            .get(session_id)
+            .is_some_and(|route| route.helper_id == helper_id)
+        {
+            return Ok(ReplacedSessionCleanup::NotOwned);
+        }
+    }
+
+    let cleanup = if !agent_supports_session_close(agent) {
+        tracing::warn!(
+            target: "master",
+            step = "helper→agent",
+            op = "close_replaced_session",
+            helper_id = ?helper_id,
+            old_session_id = %session_id,
+            outcome = "unsupported_logical_fallback",
+            "agent does not advertise session/close; cancelling best-effort and retiring only WTA state"
+        );
+        if let Err(error) = agent
+            .conn
+            .cancel(acp::schema::v1::CancelNotification::new(session_id.clone()))
+            .await
+        {
+            tracing::warn!(
+                target: "master",
+                step = "helper→agent",
+                op = "cancel_replaced_session",
+                helper_id = ?helper_id,
+                old_session_id = %session_id,
+                error = %error,
+                "legacy session/cancel fallback failed"
+            );
+        }
+        ReplacedSessionCleanup::LogicalFallback
+    } else {
+        let started = std::time::Instant::now();
+        match tokio::time::timeout(
+            timeout,
+            agent
+                .conn
+                .close_session(acp::schema::v1::CloseSessionRequest::new(
+                    session_id.clone(),
+                )),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {
+                tracing::info!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "close_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    outcome = "closed",
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "physically closed replaced ACP session"
+                );
+                ReplacedSessionCleanup::PhysicallyClosed
+            }
+            Ok(Err(error)) => {
+                tracing::error!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "close_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    outcome = "acp_error",
+                    error = %error,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "failed to physically close replaced ACP session"
+                );
+                return Err(error);
+            }
+            Err(_) => {
+                let message =
+                    format!("agent CLI session/close timed out for replaced session {session_id}");
+                tracing::error!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "close_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    outcome = "timeout",
+                    timeout_ms = timeout.as_millis() as u64,
+                    "timed out physically closing replaced ACP session"
+                );
+                return Err(
+                    acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                        "message": message
+                    })),
+                );
+            }
+        }
+    };
+
+    {
+        let mut routes = state.session_to_helper.lock().await;
+        if !routes
+            .get(session_id)
+            .is_some_and(|route| route.helper_id == helper_id)
+        {
+            unreachable!("session route cannot change while its lifecycle gate is held");
+        }
+        routes.remove(session_id);
+    }
+
+    state.pending_usage.lock().await.remove(session_id);
+    state
+        .session_mcp_capabilities
+        .remove_session(session_id)
+        .await;
+    state.registry.remove(session_id).await;
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_session_removed_notification(session_id),
+    )
+    .await;
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_sessions_changed_notification(),
+    )
+    .await;
+    Ok(cleanup)
+}
+
+fn agent_supports_session_close(agent: &AgentCli) -> bool {
+    agent
+        .cached_init_resp
+        .agent_capabilities
+        .session_capabilities
+        .close
+        .is_some()
+}
+
 /// Canonical key for the agent-CLI pool: authoritative agent identity,
 /// execution source, and full command line. Two tabs with the same identity,
 /// source, and command share one CLI; custom and built-in agents never share
 /// merely because their commands happen to match.
-/// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
-type AgentCmdKey = String;
-
 fn agent_cmd_key(
     command: &str,
     agent_id: Option<&str>,
@@ -372,6 +638,7 @@ fn agent_cmd_key(
 /// talk to it. Shared (`Arc`) across every helper currently bound to
 /// this agent.
 struct AgentCli {
+    instance_id: AgentInstanceId,
     /// Master is the ACP *client* of this CLI. Every helper request for
     /// a session owned by this agent forwards onto this connection.
     conn: conn::ClientLink,
@@ -507,9 +774,19 @@ async fn inject_ready_cloud_catalog(
 
 async fn initialize_response_for_agent(
     agent: &AgentCli,
+    session_mcp_available: bool,
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
     inject_ready_cloud_catalog(agent, &mut response.meta).await?;
+    if session_mcp_available {
+        crate::session_registry::inject_wta_meta(
+            &mut response.meta,
+            &crate::session_registry::WtaMeta {
+                proposal_mcp: Some("http-v1".to_string()),
+                ..Default::default()
+            },
+        );
+    }
     Ok(response)
 }
 
@@ -858,18 +1135,20 @@ impl MasterClient {
                         // that runs.
                         //
                         // CRITICAL: only remove if the entry STILL
-                        // belongs to the helper we snapshotted. A
+                        // is the exact route we snapshotted. A
                         // freshly-issued `load_session` can have
-                        // rebound the same SessionId to a different
-                        // helper between our snapshot and now —
+                        // rebound the same SessionId to a new channel,
+                        // even for the same helper, between our snapshot and now —
                         // clobbering that new entry would silently
-                        // break notification delivery for the new
-                        // helper. `helper_id` is unique per master
-                        // lifetime (monotonic counter), so equality is
-                        // a sufficient identity check.
+                        // break notification delivery for the new route.
+                        let gate = session_lifecycle_gate(&self.state, &sid).await;
+                        let _guard = gate.lock().await;
                         let mut map = self.state.session_to_helper.lock().await;
                         match map.get(&sid) {
-                            Some(current) if current.helper_id == snap_helper_id => {
+                            Some(current)
+                                if current.helper_id == snap_helper_id
+                                    && current.notif_tx.same_channel(&tx) =>
+                            {
                                 map.remove(&sid);
                                 tracing::warn!(
                                     target: "master",
@@ -886,7 +1165,7 @@ impl MasterClient {
                                     kind = %kind,
                                     stale_helper_id = ?snap_helper_id,
                                     current_helper_id = ?current.helper_id,
-                                    "helper notification channel closed but SessionId has been rebound to a different helper — dropping update, leaving new route intact"
+                                    "helper notification channel closed but SessionId has been rebound — dropping update, leaving new route intact"
                                 );
                             }
                             None => {
@@ -1077,6 +1356,10 @@ struct HelperHandler {
     /// `resolved_agent()` always finds it populated for those.
     agent: Arc<OnceLock<Arc<AgentCli>>>,
     state: Arc<MasterStateInner>,
+    /// Serializes complete session replacement transactions for this helper.
+    /// Shared by every cloned request handler, while unrelated helpers retain
+    /// their own independent gate. This is always acquired before state locks.
+    replacement_gate: Arc<Mutex<()>>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
     /// `state.session_to_helper` so future agent-CLI notifications
@@ -1197,9 +1480,171 @@ impl HelperHandler {
             }))
         })?
     }
+
+    fn load_session_timeout_error(
+        &self,
+        timeout: std::time::Duration,
+        phase: &'static str,
+    ) -> acp::Error {
+        let timeout_secs = timeout.as_secs();
+        let message = format!("agent CLI session/load timed out after {timeout_secs}s");
+        tracing::error!(
+            target: "master",
+            step = "helper→agent",
+            op = "load_session",
+            helper_id = ?self.helper_id,
+            phase,
+            timeout_secs,
+            "agent CLI session/load timed out"
+        );
+        acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+            "message": message
+        }))
+    }
+
+    /// Forward `session/load` to this helper's bound agent CLI under the
+    /// master's deadline. This deadline must expire before the helper's
+    /// outer 60-second timeout so the replacement transaction can roll back
+    /// routing and MCP state before the helper falls back to `session/new`.
+    async fn forward_load_session_to_agent(
+        &self,
+        args: acp::schema::v1::LoadSessionRequest,
+        rpc_timeout: std::time::Duration,
+        total_timeout: std::time::Duration,
+    ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        let agent = self.resolved_agent("load_session")?;
+        tokio::time::timeout(rpc_timeout, agent.conn.load_session(args))
+            .await
+            .map_err(|_| self.load_session_timeout_error(total_timeout, "agent_rpc"))?
+    }
+
+    async fn rollback_and_maybe_close_loaded_target(
+        &self,
+        agent: &AgentCli,
+        session_id: &acp::schema::v1::SessionId,
+        previous: Option<HelperRoute>,
+        previous_used_same_agent: bool,
+        timeout: std::time::Duration,
+    ) -> SwappedSessionRouteRollback {
+        let gate = session_lifecycle_gate(&self.state, session_id).await;
+        let _guard = gate.lock().await;
+        let rollback = {
+            let mut routes = self.state.session_to_helper.lock().await;
+            rollback_swapped_session_route_locked(&mut routes, self.helper_id, session_id, previous)
+        };
+        let should_close = match rollback {
+            SwappedSessionRouteRollback::Restored => !previous_used_same_agent,
+            SwappedSessionRouteRollback::OwnershipChanged {
+                current_agent_instance_id,
+            } => current_agent_instance_id != Some(agent.instance_id),
+        };
+        if should_close {
+            // Keep the SessionId lifecycle gate held through the send so a
+            // same-agent rebind cannot start after the safety check.
+            self.best_effort_close_loaded_target(agent, session_id, timeout)
+                .await;
+        }
+        rollback
+    }
+
+    async fn best_effort_close_loaded_target(
+        &self,
+        agent: &AgentCli,
+        session_id: &acp::schema::v1::SessionId,
+        timeout: std::time::Duration,
+    ) {
+        if !agent_supports_session_close(agent) || timeout.is_zero() {
+            return;
+        }
+        match tokio::time::timeout(
+            timeout,
+            agent
+                .conn
+                .close_session(acp::schema::v1::CloseSessionRequest::new(
+                    session_id.clone(),
+                )),
+        )
+        .await
+        {
+            Ok(Ok(_)) => tracing::info!(
+                target: "master",
+                step = "helper→agent",
+                op = "rollback_close_loaded_target",
+                helper_id = ?self.helper_id,
+                session_id = %session_id,
+                outcome = "closed",
+                "closed newly loaded target after predecessor close failed"
+            ),
+            Ok(Err(error)) => tracing::warn!(
+                target: "master",
+                step = "helper→agent",
+                op = "rollback_close_loaded_target",
+                helper_id = ?self.helper_id,
+                session_id = %session_id,
+                outcome = "acp_error",
+                error = %error,
+                "failed to close newly loaded target during rollback"
+            ),
+            Err(_) => tracing::warn!(
+                target: "master",
+                step = "helper→agent",
+                op = "rollback_close_loaded_target",
+                helper_id = ?self.helper_id,
+                session_id = %session_id,
+                outcome = "timeout",
+                timeout_ms = timeout.as_millis() as u64,
+                "timed out closing newly loaded target during rollback"
+            ),
+        }
+    }
 }
 
 impl HelperHandler {
+    async fn session_mcp_endpoint_for_session(
+        &self,
+        agent: &AgentCli,
+        wta_meta: &crate::session_registry::WtaMeta,
+        operation: &str,
+    ) -> acp::Result<Option<String>> {
+        if wta_meta.proposal_mcp.as_deref() != Some("http-v1") {
+            return Ok(None);
+        }
+        if !agent
+            .cached_init_resp
+            .agent_capabilities
+            .mcp_capabilities
+            .http
+        {
+            tracing::error!(
+                target: "session_mcp",
+                helper_id = ?self.helper_id,
+                op = operation,
+                source = %agent.source,
+                "helper requested session MCP after agent HTTP support disappeared"
+            );
+            return Err(acp::Error::internal_error().data(serde_json::json!(
+                "session MCP is unavailable because the agent does not support HTTP MCP"
+            )));
+        }
+        session_mcp::endpoint_for(&self.state, &agent.source)
+            .await
+            .map(Some)
+            .map_err(|error| {
+                let error_chain = format!("{error:#}");
+                tracing::error!(
+                    target: "session_mcp",
+                    helper_id = ?self.helper_id,
+                    op = operation,
+                    source = %agent.source,
+                    error = %error_chain,
+                    "session MCP endpoint became unavailable after initialize"
+                );
+                acp::Error::internal_error().data(serde_json::json!(format!(
+                    "session MCP endpoint unavailable: {error_chain}"
+                )))
+            })
+    }
+
     async fn initialize(
         &self,
         mut args: acp::schema::v1::InitializeRequest,
@@ -1296,12 +1741,34 @@ impl HelperHandler {
             .get()
             .expect("helper agent binding is set before initialize response");
         agent.bound_helpers.lock().await.insert(self.helper_id);
+        let session_mcp_available = if agent
+            .cached_init_resp
+            .agent_capabilities
+            .mcp_capabilities
+            .http
+        {
+            match session_mcp::endpoint_for(&self.state, &agent.source).await {
+                Ok(_) => true,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "session_mcp",
+                        helper_id = ?self.helper_id,
+                        source = %agent.source,
+                        error = %format!("{error:#}"),
+                        "session MCP is unavailable for helper source"
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent).await {
+        match initialize_response_for_agent(agent, session_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -1310,8 +1777,8 @@ impl HelperHandler {
                     %error,
                     "failed to serialize private cloud model catalog metadata"
                 );
-        Ok(agent.cached_init_resp.clone())
-    }
+                Ok(agent.cached_init_resp.clone())
+            }
         }
     }
 
@@ -1336,6 +1803,7 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::NewSessionRequest,
     ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+        let _replacement_guard = self.replacement_gate.lock().await;
         // Pull our `_meta.wta` payload off the request before forwarding
         // to the agent CLI. Two reasons we strip here and not after the
         // RPC: (1) the spec lets third-party agents reject unknown
@@ -1346,7 +1814,57 @@ impl HelperHandler {
         // in the same place as the routing entry.
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let previous_session_id = self
+            .state
+            .helper_meta
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .and_then(|meta| meta.last_session_id.clone());
         let cwd_for_registry = args.cwd.clone();
+        let agent = self.resolved_agent("new_session")?;
+        if let Some(previous_session_id) = previous_session_id.as_ref() {
+            let cleanup = close_and_retire_replaced_session(
+                &self.state,
+                self.helper_id,
+                &agent,
+                previous_session_id,
+                SESSION_CLOSE_TIMEOUT,
+            )
+            .await?;
+            {
+                let mut meta = self.state.helper_meta.lock().await;
+                if meta
+                    .get(&self.helper_id)
+                    .and_then(|meta| meta.last_session_id.as_ref())
+                    == Some(previous_session_id)
+                {
+                    meta.entry(self.helper_id).or_default().last_session_id = None;
+                }
+            }
+            tracing::info!(
+                target: "master",
+                helper_id = ?self.helper_id,
+                old_session_id = %previous_session_id,
+                cleanup = ?cleanup,
+                "finished predecessor cleanup before session/new"
+            );
+        }
+        let session_mcp_endpoint = self
+            .session_mcp_endpoint_for_session(&agent, &wta_meta, "new_session")
+            .await?;
+        let session_mcp = if let Some(endpoint) = session_mcp_endpoint {
+            let pending = self
+                .state
+                .session_mcp_capabilities
+                .prepare(agent.instance_id, None)
+                .await;
+            args.mcp_servers
+                .push(session_mcp::server_config(&endpoint, &pending));
+            Some(pending)
+        } else {
+            None
+        };
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1356,13 +1874,35 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let agent = self.resolved_agent("new_session")?;
-        let resp = self
+        let resp = match self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(pending) = session_mcp.as_ref() {
+                    self.state.session_mcp_capabilities.cancel(pending).await;
+                }
+                return Err(error);
+            }
+        };
+        if let Some(pending) = session_mcp.as_ref() {
+            if !self
+                .state
+                .session_mcp_capabilities
+                .bind(pending, resp.session_id.clone())
+                .await
+            {
+                tracing::warn!(
+                    target: "session_mcp",
+                    session_id = %resp.session_id,
+                    "session MCP capability disappeared before session binding"
+                );
+            }
+        }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&resp);
         let forwarder = self.forwarder_for_route("new_session")?;
@@ -1373,6 +1913,7 @@ impl HelperHandler {
             resp.session_id.clone(),
             HelperRoute {
                 helper_id: self.helper_id,
+                agent_instance_id: agent.instance_id,
                 notif_tx: self.notif_tx.clone(),
                 forwarder: Some(forwarder),
                 consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1456,9 +1997,37 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::LoadSessionRequest,
     ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        self.load_session_with_timeout(
+            args,
+            std::time::Duration::from_secs(SESSION_LOAD_TIMEOUT_SECS),
+        )
+        .await
+    }
+
+    async fn load_session_with_timeout(
+        &self,
+        args: acp::schema::v1::LoadSessionRequest,
+        timeout: std::time::Duration,
+    ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let _replacement_guard = tokio::time::timeout_at(deadline, self.replacement_gate.lock())
+            .await
+            .map_err(|_| self.load_session_timeout_error(timeout, "replacement_gate"))?;
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
+        let previous_session_id = self
+            .state
+            .helper_meta
+            .lock()
+            .await
+            .get(&self.helper_id)
+            .and_then(|meta| meta.last_session_id.clone());
+        let rollback_reserve = previous_session_id
+            .as_ref()
+            .is_some_and(|sid| sid != &session_id)
+            .then(|| SESSION_ROLLBACK_CLOSE_TIMEOUT.min(timeout / 2))
+            .unwrap_or_default();
         let cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
@@ -1488,17 +2057,21 @@ impl HelperHandler {
         // any peer-visible flicker.
         let agent = self.resolved_agent("load_session")?;
         let forwarder = self.forwarder_for_route("load_session")?;
-        bind_session_route(
+        let previous_target_route = swap_session_route(
             &self.state,
             session_id.clone(),
             HelperRoute {
                 helper_id: self.helper_id,
+                agent_instance_id: agent.instance_id,
                 notif_tx: self.notif_tx.clone(),
                 forwarder: Some(forwarder),
                 consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             },
         )
         .await;
+        let previous_target_used_same_agent = previous_target_route
+            .as_ref()
+            .is_some_and(|route| route.agent_instance_id == agent.instance_id);
         // Orphan re-bind fast path: this session's previous helper
         // disconnected but the shared CLI still has it loaded (tracked in
         // `orphaned_sessions` under this agent's key). Re-attach onto the
@@ -1519,6 +2092,8 @@ impl HelperHandler {
         // Both a re-bind and a real `session/load` resume the session; only a
         // genuine load failure rolls back. Resolve the response, then register
         // the resumed row once for either success path.
+        let mut session_mcp = None;
+        let mut loaded_target_physically = false;
         let resp = if is_orphan_rebind {
             tracing::info!(
                 target: "master",
@@ -1530,12 +2105,54 @@ impl HelperHandler {
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
-            match agent.conn.load_session(args).await {
-                Ok(resp) => resp,
+            let session_mcp_endpoint = match self
+                .session_mcp_endpoint_for_session(&agent, &wta_meta, "load_session")
+                .await
+            {
+                Ok(endpoint) => endpoint,
+                Err(error) => {
+                    rollback_swapped_session_route(
+                        &self.state,
+                        self.helper_id,
+                        &session_id,
+                        previous_target_route,
+                    )
+                    .await;
+                    return Err(error);
+                }
+            };
+            session_mcp = if let Some(endpoint) = session_mcp_endpoint {
+                let pending = self
+                    .state
+                    .session_mcp_capabilities
+                    .prepare(agent.instance_id, Some(session_id.clone()))
+                    .await;
+                args.mcp_servers
+                    .push(session_mcp::server_config(&endpoint, &pending));
+                Some(pending)
+            } else {
+                None
+            };
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let load_rpc_timeout = remaining.saturating_sub(rollback_reserve);
+            let load_result = if load_rpc_timeout.is_zero() {
+                Err(self.load_session_timeout_error(timeout, "agent_rpc"))
+            } else {
+                self.forward_load_session_to_agent(args, load_rpc_timeout, timeout)
+                    .await
+            };
+            match load_result {
+                Ok(resp) => {
+                    loaded_target_physically = true;
+                    resp
+                }
                 // Fallback for an orphan we didn't track (e.g. it predates
                 // this master): the CLI reports "already loaded", so re-bind
                 // onto the pre-registered routing just like the fast path.
                 Err(err) if is_already_loaded_error(&err) => {
+                    if let Some(pending) = session_mcp.take() {
+                        self.state.session_mcp_capabilities.cancel(&pending).await;
+                    }
                     tracing::info!(
                         target: "master",
                         step = "helper→agent",
@@ -1547,18 +2164,29 @@ impl HelperHandler {
                     acp::schema::v1::LoadSessionResponse::new()
                 }
                 Err(err) => {
+                    if let Some(pending) = session_mcp.as_ref() {
+                        self.state.session_mcp_capabilities.cancel(pending).await;
+                    }
                     // Roll back the pre-registration. Only `session_to_helper`
                     // needs touching — we never wrote to `registry` and we
                     // never broadcast `session_added`, so peers never saw
                     // this row.
-                    {
-                        let mut map = self.state.session_to_helper.lock().await;
-                        map.remove(&session_id);
-                    }
+                    let route_rollback = self
+                        .rollback_and_maybe_close_loaded_target(
+                            &agent,
+                            &session_id,
+                            previous_target_route,
+                            previous_target_used_same_agent,
+                            deadline
+                                .saturating_duration_since(tokio::time::Instant::now())
+                                .min(rollback_reserve),
+                        )
+                        .await;
                     tracing::warn!(
                         target: "master",
                         helper_id = ?self.helper_id,
                         session_id = ?session_id,
+                        route_rollback = ?route_rollback,
                         error = %err,
                         "load_session failed; rolled back routing entry"
                     );
@@ -1566,6 +2194,97 @@ impl HelperHandler {
                 }
             }
         };
+
+        if let Some(previous_session_id) = previous_session_id
+            .as_ref()
+            .filter(|sid| *sid != &session_id)
+        {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let close_timeout = remaining
+                .saturating_sub(rollback_reserve)
+                .min(SESSION_CLOSE_TIMEOUT);
+            let close_result = if close_timeout.is_zero() {
+                Err(self.load_session_timeout_error(timeout, "predecessor_close"))
+            } else {
+                close_and_retire_replaced_session(
+                    &self.state,
+                    self.helper_id,
+                    &agent,
+                    previous_session_id,
+                    close_timeout,
+                )
+                .await
+            };
+            let cleanup = match close_result {
+                Ok(cleanup) => cleanup,
+                Err(error) => {
+                    if let Some(pending) = session_mcp.as_ref() {
+                        self.state.session_mcp_capabilities.cancel(pending).await;
+                    }
+                    let route_rollback = if loaded_target_physically {
+                        self.rollback_and_maybe_close_loaded_target(
+                            &agent,
+                            &session_id,
+                            previous_target_route,
+                            previous_target_used_same_agent,
+                            deadline
+                                .saturating_duration_since(tokio::time::Instant::now())
+                                .min(rollback_reserve),
+                        )
+                        .await
+                    } else if is_orphan_rebind {
+                        rollback_orphan_rebind(
+                            &self.state,
+                            self.helper_id,
+                            &agent.cmd_key,
+                            &session_id,
+                            previous_target_route,
+                        )
+                        .await
+                    } else {
+                        rollback_swapped_session_route(
+                            &self.state,
+                            self.helper_id,
+                            &session_id,
+                            previous_target_route,
+                        )
+                        .await
+                    };
+                    tracing::error!(
+                        target: "master",
+                        helper_id = ?self.helper_id,
+                        old_session_id = %previous_session_id,
+                        target_session_id = %session_id,
+                        route_rollback = ?route_rollback,
+                        "predecessor close failed after session/load; target transaction rolled back"
+                    );
+                    return Err(error);
+                }
+            };
+            tracing::info!(
+                target: "master",
+                helper_id = ?self.helper_id,
+                old_session_id = %previous_session_id,
+                new_session_id = %session_id,
+                cleanup = ?cleanup,
+                "finished predecessor cleanup after successful session/load"
+            );
+        }
+
+        if let Some(pending) = session_mcp.as_ref() {
+            if !self
+                .state
+                .session_mcp_capabilities
+                .bind(pending, session_id.clone())
+                .await
+            {
+                tracing::warn!(
+                    target: "session_mcp",
+                    session_id = %session_id,
+                    "session MCP capability disappeared before load binding"
+                );
+            }
+        }
 
         let (available_models, current_model_id) =
             update_model_switch_channel_from_load(&session_id, &resp);
@@ -2213,8 +2932,20 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "agent allowlist resolved"
     );
 
+    let session_mcp_listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .context("bind master session MCP HTTP endpoint")?;
+    let session_mcp_endpoint = format!(
+        "http://{}/mcp",
+        session_mcp_listener
+            .local_addr()
+            .context("read master session MCP HTTP endpoint")?
+    );
     let inner = Arc::new(MasterStateInner {
+        session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
+        session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
+        session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -2240,6 +2971,18 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
+    {
+        let session_mcp_state = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            if let Err(error) = session_mcp::run(session_mcp_listener, session_mcp_state).await {
+                tracing::error!(
+                    target: "session_mcp",
+                    error = %format!("{error:#}"),
+                    "master session MCP HTTP endpoint stopped"
+                );
+            }
+        });
+    }
 
     // ── Hookless Class-B session watcher ──────────────────────────────
     // A blocking `notify` watcher runs on its own OS thread; a bridge thread
@@ -2543,6 +3286,7 @@ async fn get_or_spawn_agent(
         .get_or_try_init(|| async {
             spawn_one_agent(
                 state,
+                &cell,
                 &key,
                 agent_cmd,
                 agent_id,
@@ -2562,12 +3306,14 @@ async fn get_or_spawn_agent(
 /// other tabs' agents keep running.
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
+    cell: &AgentCell,
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
+    let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
         .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
@@ -2578,7 +3324,7 @@ async fn spawn_one_agent(
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
     )
-        .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
+    .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
         program = %spawn_result.resolved_program,
@@ -2717,6 +3463,7 @@ async fn spawn_one_agent(
     // the next helper retries cleanly instead of reusing a dead slot.
     {
         let state = Arc::clone(state);
+        let cell = Arc::clone(cell);
         let key = key.clone();
         tokio::task::spawn_local(async move {
             match handle_io.await {
@@ -2732,7 +3479,7 @@ async fn spawn_one_agent(
                     "agent CLI ACP I/O loop ended with error — removing from pool"
                 ),
             }
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
 
@@ -2789,6 +3536,7 @@ async fn spawn_one_agent(
     // the next helper respawns it; the master stays up for other agents.
     {
         let state = Arc::clone(state);
+        let cell = Arc::clone(cell);
         let key = key.clone();
         tokio::task::spawn_local(async move {
             let status = child.wait().await;
@@ -2798,7 +3546,7 @@ async fn spawn_one_agent(
                 ?status,
                 "agent CLI exited — removing from pool (master stays up for other agents)"
             );
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
 
@@ -2834,6 +3582,7 @@ async fn spawn_one_agent(
     let (cloud_catalog, start_clean_probe) =
         prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
     let agent = Arc::new(AgentCli {
+        instance_id,
         conn,
         cached_init_resp: init_resp,
         cli_source,
@@ -2860,20 +3609,42 @@ async fn spawn_one_agent(
 /// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
 /// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
 /// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
-async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
-    let removed = { state.agents.lock().await.remove(key).is_some() };
+async fn reap_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    cell: &AgentCell,
+    instance_id: AgentInstanceId,
+) {
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        if agents
+            .get(key)
+            .is_some_and(|current| Arc::ptr_eq(current, cell))
+        {
+            agents.remove(key);
+            true
+        } else {
+            false
+        }
+    };
     if removed {
         // Every session THIS CLI held died with it, so drop only this
         // agent's orphan set — a post-respawn resume then forwards a real
         // `session/load` (reloading from disk) instead of re-binding to a
         // session the new CLI never had. Other agents' orphans are untouched.
         state.orphaned_sessions.lock().await.remove(key);
-        tracing::info!(
-            target: "master",
-            agent = %key,
-            "dead agent removed from pool; next pane for this agent will respawn it"
-        );
     }
+    let capabilities_removed = state
+        .session_mcp_capabilities
+        .remove_owner(instance_id)
+        .await;
+    tracing::info!(
+        target: "master",
+        agent = %key,
+        pool_entry_removed = removed,
+        capabilities_removed,
+        "dead agent reaped; replacement pool entry preserved when present"
+    );
 }
 
 /// Per-helper-connection task. Wraps the named pipe in an
@@ -2920,6 +3691,7 @@ async fn serve_helper(
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
         state: Arc::clone(&state),
+        replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
     };
@@ -2955,7 +3727,7 @@ async fn serve_helper(
                     let h = h.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-            match req {
+                        match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 h.initialize(a).await.map(R::InitializeResponse),
@@ -2986,13 +3758,13 @@ async fn serve_helper(
                                 responder,
                                 h.list_sessions(a).await.map(R::ListSessionsResponse),
                             ),
-                Q::PromptRequest(a) => h.prompt(a, responder).await,
+                            Q::PromptRequest(a) => h.prompt(a, responder).await,
                             Q::ExtMethodRequest(a) => conn::respond_enum(
                                 responder,
                                 h.ext_method(a).await.map(R::ExtMethodResponse),
                             ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
                     }
                 }
             },
@@ -3007,7 +3779,7 @@ async fn serve_helper(
                         if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
                             let _ = h.cancel(n).await;
                         }
-            Ok(())
+                        Ok(())
                     }
                 }
             },
@@ -3224,28 +3996,33 @@ async fn drop_sessions_for_helper(
     state: &MasterStateInner,
     helper_id: HelperId,
 ) -> Vec<acp::schema::v1::SessionId> {
-    // Collect the owned SessionIds first so we can drop them from the
-    // live registry too. Single pass through `session_to_helper` while
-    // we already hold its lock; the corresponding `registry.remove`
-    // calls happen after we release `session_to_helper` to keep with
-    // the lock ordering doc'd on `MasterStateInner::registry`.
-    let victims: Vec<acp::schema::v1::SessionId> = {
-        let mut map = state.session_to_helper.lock().await;
-        let victims = map
-            .iter()
+    let candidates = {
+        let map = state.session_to_helper.lock().await;
+        map.iter()
             .filter_map(|(sid, route)| (route.helper_id == helper_id).then(|| sid.clone()))
-            .collect::<Vec<_>>();
-        map.retain(|_, route| route.helper_id != helper_id);
-        victims
+            .collect::<Vec<_>>()
     };
-    {
-        let mut pending_usage = state.pending_usage.lock().await;
-        for session_id in &victims {
-            pending_usage.remove(session_id);
+    let mut victims = Vec::with_capacity(candidates.len());
+    for session_id in candidates {
+        let gate = session_lifecycle_gate(state, &session_id).await;
+        let _guard = gate.lock().await;
+        let removed = {
+            let mut map = state.session_to_helper.lock().await;
+            if map
+                .get(&session_id)
+                .is_some_and(|route| route.helper_id == helper_id)
+            {
+                map.remove(&session_id);
+                true
+            } else {
+                false
+            }
+        };
+        if !removed {
+            continue;
         }
-    }
-    for sid in &victims {
-        state.registry.remove(sid).await;
+        state.pending_usage.lock().await.remove(&session_id);
+        state.registry.remove(&session_id).await;
         // Broadcast removal so every still-attached helper drops the
         // row from its mirror. The disconnecting helper itself has
         // (almost always) already been removed from
@@ -3254,7 +4031,7 @@ async fn drop_sessions_for_helper(
         // peers it should reach.
         broadcast_ext_to_helpers(
             state,
-            crate::session_registry::build_session_removed_notification(sid),
+            crate::session_registry::build_session_removed_notification(&session_id),
         )
         .await;
         broadcast_ext_to_helpers(
@@ -3262,6 +4039,7 @@ async fn drop_sessions_for_helper(
             crate::session_registry::build_sessions_changed_notification(),
         )
         .await;
+        victims.push(session_id);
     }
     victims
 }

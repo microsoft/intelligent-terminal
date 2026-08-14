@@ -12,6 +12,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/IntelligentTerminalPaths.h"
 #include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::Foundation;
@@ -1348,8 +1349,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const std::wstring locateWtaFailedSummary{ RS_(L"AIAgents_HooksLocateWtaFailedSummary") };
         const std::wstring hooksRemovedSummary{ RS_(L"AIAgents_HooksRemovedSummary") };
         const std::wstring hooksInstalledSummary{ RS_(L"AIAgents_HooksInstalledSummary") };
-        const std::wstring hooksRemovalFailedSummary{ RS_(L"AIAgents_HooksRemovalFailedSummary") };
-        const std::wstring hooksInstallationFailedSummary{ RS_(L"AIAgents_HooksInstallationFailedSummary") };
+        const auto hooksLogDir = ::IntelligentTerminal::LogDirVersioned();
+        const std::wstring hooksRemovalFailedSummary{ RS_fmt(L"AIAgents_HooksRemovalFailedSummary", hooksLogDir.wstring()) };
+        const std::wstring hooksInstallationFailedSummary{
+            RS_fmt(L"AIAgents_HooksInstallationFailedSummary", (hooksLogDir / L"wta-install-hooks.log").wstring())
+        };
         std::wstring summary;
         bool ok = false;
 

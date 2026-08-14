@@ -10,7 +10,17 @@ $script:ItAgentOpenSelector = 'AgentLabelText'
 function Test-AgentPaneOpen {
     <# Is the agent pane currently shown? (UI detection — not a protocol pane.) #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 2)
-    process { Test-UiElementExists -App $App -Selector $script:ItAgentOpenSelector -TimeoutSec $TimeoutSec }
+    process {
+        if (Test-UiElementExists -App $App -Selector $script:ItAgentOpenSelector -TimeoutSec $TimeoutSec) {
+            return $true
+        }
+
+        # UIA can lag behind the XAML pane state under full-suite load. Use the latest
+        # product-owned state transition so a retry does not toggle a pane that is already open.
+        $log = Get-ItLogText -App $App -Name 'terminal-agent-pane.log' -SinceStart
+        $states = [regex]::Matches($log, 'OnAgentStateChanged:.*\bpane_open=(true|false)\b')
+        $states.Count -gt 0 -and $states[$states.Count - 1].Groups[1].Value -eq 'true'
+    }
 }
 
 function Open-AgentPane {
@@ -172,19 +182,57 @@ function Get-WtaLocalizedTextRegex {
     $result
 }
 
-function Get-RecommendationCardRegex {
+function Get-PendingTerminalActionProposal {
     <#
     .SYNOPSIS
-        Regex matching EITHER recommendation/autofix-card button label ("[ Run command ]" /
-        "Insert in Terminal"), localized across ALL bundled wta locales (en-US fallback). Used to
-        detect that a card is shown, so card-presence checks work on non-en-US machines.
+        Return the newest WTA CLI process waiting for a terminal-action proposal decision.
     #>
+    [CmdletBinding()] param()
+    Get-CimInstance Win32_Process -Filter "Name = 'wta.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' } |
+        Sort-Object CreationDate -Descending |
+        Select-Object -First 1
+}
+
+function Get-RecommendationCardRegex {
     [CmdletBinding()] param()
     $parts = @(
         (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command'),
         (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
     ) | Where-Object { $_ }
     if ($parts.Count) { ($parts -join '|') } else { 'Run command|Insert in Terminal' }
+}
+
+function Wait-TerminalActionProposal {
+    <#
+    .SYNOPSIS
+        Wait until the Helper presents a canonical proposal for a Run/Insert/Cancel decision.
+    .DESCRIPTION
+        Supports both proposal transports. The legacy CLI blocks in
+        `propose-terminal-actions`; the session-bound MCP path logs its approved internal
+        permission and then renders the recommendation card without a child CLI process.
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [int]$TimeoutSec = 45
+    )
+    process {
+        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'a pending terminal-action proposal' -Condition {
+            $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
+            if ($log -match 'proposal_permission:.*armed=true') {
+                $candidate = Get-PendingTerminalActionProposal
+                if (-not $candidate) { return $null }
+                Start-Sleep -Milliseconds 500
+                return Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' }
+            }
+            if ($log -match 'proposal_permission: silently resolving proposal MCP permission.*approved=true' -and
+                (Get-AgentPaneText -App $App -MaxLines 60) -match (Get-RecommendationCardRegex)) {
+                return [pscustomobject]@{ Mode = 'Mcp'; Ready = $true }
+            }
+            $null
+        }
+    }
 }
 
 function Get-AgentConnectedPlaceholderRegex {
@@ -207,7 +255,7 @@ function Get-AgentCliStatus {
         installed-unauthenticated, or authed using its non-interactive print mode.
     #>
     [CmdletBinding()] param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini')][string]$Agent,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini', 'opencode')][string]$Agent,
         [int]$TimeoutSec = 50
     )
     if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) { return 'not-installed' }
@@ -218,6 +266,7 @@ function Get-AgentCliStatus {
             'claude' { claude -p 'Reply with only the token AUTHOK' 2>&1 }
             'codex'  { $null | codex exec 'Reply with only the token AUTHOK' 2>&1 }
             'gemini' { gemini -p 'Reply with only the token AUTHOK' 2>&1 }
+            'opencode' { opencode run 'Reply with only the token AUTHOK' 2>&1 }
         }
     }
     $out = ''

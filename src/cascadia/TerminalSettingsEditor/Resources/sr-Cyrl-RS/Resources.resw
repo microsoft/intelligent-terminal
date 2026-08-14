@@ -752,15 +752,15 @@
   </data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
     <value>Када је омогућено, ВИ агент аутоматски анализира неуспеле команде и предлаже исправку. Када је онемогућено, неуспеле команде приказују наговештај на који је могуће кликнути у статусној траци — притисните Ctrl+Alt+. или кликните на наговештај да бисте затражили исправку.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
-  </data><data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Прикажи коришћење контекста и цену сесије</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Када је доступно, прикажите употребу контекстног прозора и цену сесије на доњој траци терминала.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="AIAgents_PanePosition.Header" xml:space="preserve">
+  </data><data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Позиција панела</value>
     <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>
   </data><data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
     <value>Где се панел агента отвара у односу на ваш терминал.</value>
     <comment>Supplementary description for the pane position setting.</comment>
   </data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Прикажи коришћење контекста и цену сесије</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Када је доступно, прикажите употребу контекстног прозора и цену сесије на доњој траци терминала.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
     <value>Доле</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionBottom string used in the first-run experience.</comment>
@@ -2965,12 +2965,12 @@
     <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Уклањање Hook није успело. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+    <value>Уклањање Hook није успело. Детаље потражите у {0}.</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
   </data>
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Инсталација Hooks није успела. Детаље потражите у %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+    <value>Инсталација Hooks није успела. Детаље потражите у {0}.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Аутоматско откривање грешака</value>

@@ -28,9 +28,9 @@ use std::future::Future;
 
 use agent_client_protocol as acp;
 use acp::schema::v1::{
-    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CreateTerminalRequest,
-    CreateTerminalResponse, ExtNotification, ExtRequest, ExtResponse, InitializeRequest,
-    InitializeResponse,
+    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
+    CloseSessionResponse, CreateTerminalRequest, CreateTerminalResponse, ExtNotification,
+    ExtRequest, ExtResponse, InitializeRequest, InitializeResponse,
     KillTerminalRequest, KillTerminalResponse, ListSessionsRequest, ListSessionsResponse,
     LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
     PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
@@ -127,6 +127,13 @@ impl ClientLink {
     }
 
     pub async fn load_session(&self, req: LoadSessionRequest) -> acp::Result<LoadSessionResponse> {
+        self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn close_session(
+        &self,
+        req: CloseSessionRequest,
+    ) -> acp::Result<CloseSessionResponse> {
         self.cx().await?.send_request(req).block_task().await
     }
 
@@ -260,6 +267,17 @@ impl AgentLink {
 
     pub async fn kill_terminal(&self, req: KillTerminalRequest) -> acp::Result<KillTerminalResponse> {
         self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
+        let value = self
+            .cx()
+            .await?
+            .send_request(v1::AgentRequest::ExtMethodRequest(req))
+            .block_task()
+            .await?;
+        serde_json::from_value(value)
+            .map_err(|e| acp::Error::internal_error().data(format!("ext response decode: {e}")))
     }
 
     pub async fn session_notification(&self, notif: SessionNotification) -> acp::Result<()> {

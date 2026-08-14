@@ -311,17 +311,21 @@ async fn run_acp_app(
                         crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Validate {
                             context,
                             payload,
+                            source,
                             responder,
                         } => app::AppEvent::DirectTerminalActionProposal {
                             context,
                             payload,
+                            source,
                             responder,
                         },
                         crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Commit {
                             proposal_id,
-                        } => {
-                            app::AppEvent::DirectTerminalActionProposalCommit { proposal_id }
-                        }
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposalCommit {
+                            proposal_id,
+                            responder,
+                        },
                         crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Invalidate {
                             proposal_id,
                             session_id,

@@ -1,6 +1,7 @@
 aci
 adbea
 affordance
+agente
 agentic
 aiagents
 alacritty
@@ -244,6 +245,7 @@ sxn
 synthesises
 sysnative
 Tencent
+TOCTOU
 THH
 tokio
 tombstoned

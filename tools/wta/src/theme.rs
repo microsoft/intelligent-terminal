@@ -11,6 +11,10 @@ pub const ATTACHMENT_TOKEN: Style = Style::new().fg(Color::Cyan);
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
+pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
+pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);
+pub const NOTICE_WARNING: Style = Style::new().fg(Color::Yellow);
+pub const NOTICE_ERROR: Style = Style::new().fg(Color::Red);
 pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
@@ -24,6 +28,10 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
+pub const SEARCH_MATCH: Style = Style::new()
+    .fg(Color::Yellow)
+    .add_modifier(Modifier::BOLD)
+    .add_modifier(Modifier::UNDERLINED);
 // Match the /sessions cursor: cyan foreground with no full-row background.
 pub const SELECTED: Style = Style::new().fg(Color::Cyan);
 // Preserve the selection when the pane loses focus without presenting it as

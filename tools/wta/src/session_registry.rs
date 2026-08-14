@@ -74,6 +74,9 @@ pub struct WtaMeta {
     pub cloud_models: Option<String>,
     /// Provenance for `cloud_models` (`helper` or `clean_probe`).
     pub cloud_models_source: Option<String>,
+    /// Requests the master-owned session MCP endpoint. The value is a
+    /// versioned contract marker, currently `http-v1`.
+    pub proposal_mcp: Option<String>,
 }
 
 impl WtaMeta {
@@ -98,6 +101,7 @@ impl WtaMeta {
             && blank(&self.owner_tab_id)
             && blank(&self.cloud_models)
             && blank(&self.cloud_models_source)
+            && blank(&self.proposal_mcp)
     }
 }
 
@@ -146,6 +150,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         owner_tab_id: str_field("owner_tab_id"),
         cloud_models: str_field("cloud_models"),
         cloud_models_source: str_field("cloud_models_source"),
+        proposal_mcp: str_field("proposal_mcp"),
     }
 }
 
@@ -184,6 +189,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("owner_tab_id", &wta.owner_tab_id);
     put("cloud_models", &wta.cloud_models);
     put("cloud_models_source", &wta.cloud_models_source);
+    put("proposal_mcp", &wta.proposal_mcp);
     // Every field was absent/whitespace-only after filtering — nothing
     // meaningful to attach, so don't litter the wire with an empty
     // `_meta.wta` object (a strict downstream implementer might reject it).
@@ -3754,6 +3760,7 @@ mod tests {
                 owner_tab_id: Some("\n".to_string()),
                 cloud_models: Some(" ".to_string()),
                 cloud_models_source: Some("\t".to_string()),
+                proposal_mcp: Some(" ".to_string()),
             },
         );
         assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
@@ -3793,6 +3800,7 @@ mod tests {
                 owner_tab_id: Some("\n".to_string()),
                 cloud_models: Some(" ".to_string()),
                 cloud_models_source: Some("\t".to_string()),
+                proposal_mcp: Some(" ".to_string()),
             }
             .is_empty(),
             "all-whitespace fields ⇒ empty"

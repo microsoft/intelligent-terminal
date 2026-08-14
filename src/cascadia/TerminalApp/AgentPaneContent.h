@@ -165,8 +165,9 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _suggestionTitle{};
         winrt::hstring _detectedSummary{};
         std::vector<::TerminalApp::AgentUsage::Item> _agentUsage;
-        // Current AgentPanePosition for icon orientation. Set by
-        // TerminalPage on creation + on settings change.
+        // Effective per-tab AgentPanePosition for icon orientation.
+        // TerminalPage updates it from the Tab runtime override or global
+        // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
 
         // Source-tab StableId stashed during a cross-window agent-pane drag

@@ -29,6 +29,13 @@ fn custom_model(selection_id: &str, model_id: &str) -> CustomModelCatalogEntry {
     }
 }
 
+fn last_notice(app: &App) -> (NoticeKind, &str) {
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::Notice { kind, text }) => (*kind, text),
+        other => panic!("expected an inline notice, got {other:?}"),
+    }
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -114,10 +121,7 @@ fn slash_stop_when_idle_notes_nothing_to_stop() {
     run_slash(&mut app, "stop");
 
     assert_eq!(app.current_tab().messages.len(), 1);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
 #[test]
@@ -226,10 +230,7 @@ fn slash_fix_while_busy_does_not_resubmit() {
         gen_after_first,
         "/fix while a turn is in flight must not bump generation / resubmit"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
 }
 
 #[test]
@@ -243,16 +244,17 @@ fn slash_model_without_models_notes_none() {
         !app.current_tab().model_picker_open,
         "/model must not open the picker when no models are available"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
 #[test]
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
-    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
+    let selected = "custom:provider:local";
+    app.set_custom_model_config(
+        vec![custom_model(selected, "local")],
+        Some(selected.into()),
+    );
 
     run_slash(&mut app, "model");
 
@@ -263,7 +265,7 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
-fn slash_model_hides_cloud_models() {
+fn slash_model_shows_cloud_models() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
         id: "cloud".into(),
@@ -273,11 +275,8 @@ fn slash_model_hides_cloud_models() {
 
     run_slash(&mut app, "model");
 
-    assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert!(app.current_tab().model_picker_open);
+    assert_eq!(app.model_picker_models[0].id, "cloud");
 }
 
 #[test]
@@ -391,11 +390,11 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         .iter()
         .any(|model| model.id == "custom:provider-one:shared-model"
             && model.name == "shared-model (BYOM)"));
-    assert_eq!(app.model_picker_models.len(), 1);
-    assert_eq!(
-        app.model_picker_models[0].id,
-        "custom:provider-one:shared-model"
-    );
+    assert_eq!(app.model_picker_models.len(), 2);
+    assert!(app
+        .model_picker_models
+        .iter()
+        .all(|model| !model.id.starts_with("custom:")));
 }
 
 #[test]
@@ -437,7 +436,11 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
 #[test]
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
-    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
+    let selected = "custom:provider:local";
+    app.set_custom_model_config(
+        vec![custom_model(selected, "local")],
+        Some(selected.into()),
+    );
 
     app.open_model_picker();
     assert!(app.current_tab().model_picker_open);
@@ -472,7 +475,7 @@ fn slash_model_direct_current_byok_is_a_noop() {
 }
 
 #[test]
-fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
+fn slash_model_only_shows_cloud_choices_while_cloud_is_active() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
         id: "cloud".into(),
@@ -487,16 +490,18 @@ fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
         app.model_popup_state().expect("picker state")
     };
     assert_eq!(state.models.len(), 1);
-    assert_eq!(state.models[0].id, "custom:provider:local");
-    assert_eq!(state.disabled, vec![true]);
+    assert_eq!(state.models[0].id, "cloud");
+    assert_eq!(state.disabled, vec![false]);
 
+    app.close_model_picker();
     run_slash_args(&mut app, "model", "custom:provider:local");
     assert_eq!(app.current_tab().model_override, None);
-    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().model_picker_open);
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 }
 
 #[test]
-fn slash_model_locks_non_current_choices_while_byok_is_active() {
+fn slash_model_only_shows_selected_byok_while_byok_is_active() {
     let mut app = test_app();
     let selected = "custom:provider:local";
     app.set_cloud_models(vec![AcpModelInfo {
@@ -514,18 +519,20 @@ fn slash_model_locks_non_current_choices_while_byok_is_active() {
 
     app.open_model_picker();
     let state = app.model_popup_state().expect("picker state");
-    assert_eq!(state.current_id, Some(selected));
-    assert_eq!(state.models.len(), 2);
-    assert_eq!(state.disabled, vec![false, true]);
+    assert_eq!(state.models.len(), 1);
+    assert_eq!(state.models[0].id, selected);
+    assert_eq!(state.disabled, vec![false]);
 
     app.close_model_picker();
+    run_slash_args(&mut app, "model", "custom:provider:other");
+    assert_eq!(app.current_tab().model_override, None);
+    assert!(!app.current_tab().model_picker_open);
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
+
     run_slash_args(&mut app, "model", "cloud");
     assert_eq!(app.current_tab().model_override, None);
     assert!(!app.current_tab().model_picker_open);
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 }
 
 #[test]
@@ -763,13 +770,12 @@ fn degraded_blocks_non_restart_command() {
     );
     // ...and the user is steered to /restart (the locked token is present in
     // every locale, so this holds regardless of the active language).
-    match app.current_tab().messages.last() {
-        Some(ChatMessage::System(msg)) => assert!(
-            msg.contains("/restart"),
-            "the degraded hint must point the user at /restart, got: {msg}"
-        ),
-        other => panic!("expected a System hint, got {other:?}"),
-    }
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Warning);
+    assert!(
+        message.contains("/restart"),
+        "the degraded hint must point the user at /restart, got: {message}"
+    );
 }
 
 #[test]
@@ -788,10 +794,7 @@ fn degraded_blocks_model_command_too() {
         !app.current_tab().model_picker_open,
         "/model must be refused while the transport is lost"
     );
-    assert!(matches!(
-        app.current_tab().messages.last(),
-        Some(ChatMessage::System(_))
-    ));
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
 }
 
 #[test]
@@ -874,5 +877,16 @@ fn connected_popup_visible_for_any_prefix() {
     assert!(
         app.command_popup_visible(),
         "a healthy connection must keep the normal popup behavior"
+    );
+}
+
+#[test]
+fn connected_popup_matches_command_name_substrings() {
+    let mut app = test_app();
+    type_input(&mut app, "/lear");
+
+    assert!(
+        app.command_popup_visible(),
+        "typing a substring of /clear must show the command popup"
     );
 }

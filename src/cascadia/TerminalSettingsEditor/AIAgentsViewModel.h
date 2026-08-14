@@ -228,7 +228,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
-        bool _isCustomModelProvidersExpanded{ true };
+        bool _isCustomModelProvidersExpanded{ false };
         bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;

@@ -124,6 +124,15 @@ namespace winrt::TerminalApp::implementation
         bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         bool HasStashedAgentPane() const;
 
+        // Runtime-only position selected by `/move`. A missing override means
+        // this tab follows the global AgentPanePosition setting.
+        void AgentPanePositionOverride(std::optional<winrt::hstring> value) { _agentPanePositionOverride = std::move(value); }
+        const std::optional<winrt::hstring>& AgentPanePositionOverride() const noexcept { return _agentPanePositionOverride; }
+        winrt::hstring EffectiveAgentPanePosition(const winrt::hstring& globalPosition) const
+        {
+            return _agentPanePositionOverride.value_or(globalPosition);
+        }
+
         // Override which pane in this tab shows the blue "Agent" chip. Pass
         // a session GUID to pin the chip onto that pane (e.g. while a Send
         // recommendation is selected). Pass std::nullopt to revert to the
@@ -250,6 +259,8 @@ namespace winrt::TerminalApp::implementation
         // a Send-card selected in the agent pane). When unset, the chip
         // falls back to following each pane's IsSourceOfAgentPane() flag.
         std::optional<winrt::guid> _agentChipOverride{};
+
+        std::optional<winrt::hstring> _agentPanePositionOverride{};
 
         // Per-tab agent override (runtime-only). Empty id = follow global.
         winrt::hstring _agentIdOverride{};
