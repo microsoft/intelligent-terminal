@@ -15,6 +15,6 @@ pub use agent::AvailableAgent;
 pub use diagnostics::{DebugDir, DebugMessage};
 pub use event::AppEvent;
 pub use model::AcpModelInfo;
-pub use permission::PermOption;
+pub use permission::{PermOption, SESSION_DIRECTORY_GRANT_KIND};
 pub use plan::{PlanEntry, PlanEntryStatus};
 pub use preflight::{CheckStatus, PreflightResult};

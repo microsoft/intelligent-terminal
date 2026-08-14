@@ -89,6 +89,10 @@ recommendations.open_new_empty: "አዲስ ባዶ %{kind}"
 permission.compact.default_description: "Permission requested"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
+permission.auto_approved: "በIntelligent Terminal የፈቃድ መመሪያ በራስ-ሰር ጸድቋል"
+permission.allow_directory_session: "ይህ ክፍለ ጊዜ"  # Button: allow this directory for the current session
+permission.allow_directory_global: "ሁልጊዜ"  # Button: always allow this directory globally
+permission.directory_to_store: "ማውጫ፦ %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "አልተገኙም"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "የኤጅንት መቀያየር ከWindows Ter
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ለዚህ ፓነል ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "የዚህን ትር ኤጅንት ገጽታ ያንቀሳቅሱ (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ለዚህ ACP ክፍለ ጊዜ ማውጫ ፍቀድ (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ለዚህ ACP ክፍለ ጊዜ የተፈቀዱ ማውጫዎችን ይዘርዝሩ"  # {Locked="ACP"}
+commands.remove_dir.summary: "የክፍለ-ጊዜ ማውጫ ስጦታን ያስወግዱ (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "የአለምአቀፍ ማውጫ እርዳታዎች በIntelligent Terminal Settings ውስጥ ነው የሚተዳደሩት።"
+path_grants.no_active_session: "ምንም ንቁ ACP ክፍለ ጊዜ የለም።"
+path_grants.added: "ለዚህ ክፍለ ጊዜ %{path} ተፈቅዷል። ብልህ ተርሚናል ለፈቃድ ውሳኔዎች አሁን ሊጠቀምበት ይችላል; ACP በሚቀጥለው ክፍለ ጊዜ የህይወት ኡደት ጥያቄ ላይ ያስተዋውቀዋል።"
+path_grants.already_present: "%{path} ለዚህ ክፍለ ጊዜ አስቀድሞ ተፈቅዷል።"
+path_grants.removed: "ለ%{path} የክፍለ-ጊዜ ማውጫ ስጦታ ተወግዷል።"
+path_grants.not_found: "%{path} የክፍለ ጊዜ ማውጫ ስጦታ አይደለም።"
+path_grants.failed: "የማውጫ ድጎማዎችን ማዘመን አልተቻለም፡ %{error}"
+path_grants.list_header: "የተፈቀዱ ማውጫዎች"
+path_grants.global_header: "ዓለም አቀፍ ስፋት:"
+path_grants.session_header: "የክፍለ-ጊዜው ወሰን:"
+path_grants.none: "  (ማውጫዎች የሉም)"
+path_grants.not_advertised: "ይህ Agent በACP በኩል ተጨማሪ ማውጫዎችን መቀበል አይችልም። Intelligent Terminal አሁንም እነዚህን ዱካዎች ለፈቃድ ማረጋገጫዎች ይጠቀማል።"  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "የዓለም አቀፍ ማውጫ ፈቃዶችን በማዘመን ላይ..."
+path_grants.global_host_only: "የዓለም አቀፍ ማውጫ ፈቃዶች በአሁኑ ጊዜ በWindows ላይ የሚስተናገዱ ወኪሎችን ብቻ ይደግፋሉ።"
+path_grants.absolute_required: "ፍጹም የማውጫ ዱካ ያስገቡ።"
+path_grants.global_added: "%{path} ወደ የዓለም አቀፍ ማውጫ ፈቃዶች ታክሏል።"
+path_grants.global_already_present: "%{path} አስቀድሞ የዓለም አቀፍ ማውጫ ፈቃድ ነው።"
+path_grants.global_removed: "%{path} ከዓለም አቀፍ ማውጫ ፈቃዶች ተወግዷል።"
+path_grants.global_not_found: "%{path} የዓለም አቀፍ ማውጫ ፈቃድ አይደለም።"
+path_grants.global_failed: "የዓለም አቀፍ ማውጫ ፈቃዶችን ማዘመን አልተቻለም፦ %{error}"
 model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}

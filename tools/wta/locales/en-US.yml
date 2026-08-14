@@ -92,6 +92,32 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Allow a directory for this ACP session (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "List allowed directories for this ACP session"  # {Locked="ACP"}
+commands.remove_dir.summary: "Remove a session directory grant (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── ACP path grants ─────────────────────────────────────────────────────────
+# {Locked="ACP","/add-dir","/remove-dir","additionalDirectories"} - protocol and command tokens
+path_grants.global_settings_only: "Global directory grants are managed in Intelligent Terminal Settings."
+path_grants.no_active_session: "There is no active ACP session."
+path_grants.added: "Allowed %{path} for this session. Intelligent Terminal can use it for permission decisions now; ACP advertises it on the next session lifecycle request."
+path_grants.already_present: "%{path} is already allowed for this session."
+path_grants.removed: "Removed the session directory grant for %{path}."
+path_grants.not_found: "%{path} is not a session directory grant."
+path_grants.failed: "Could not update directory grants: %{error}"
+path_grants.list_header: "Allowed directories"
+path_grants.global_header: "Global:"
+path_grants.session_header: "Session:"
+path_grants.none: "  (none)"
+path_grants.not_advertised: "This Agent can't receive additional directories through ACP. Intelligent Terminal still uses these paths for permission checks."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Updating global directory grants..."
+path_grants.global_host_only: "Global directory grants currently support Windows-hosted agents only."
+path_grants.absolute_required: "Enter an absolute directory path."
+path_grants.global_added: "Added %{path} to global directory grants."
+path_grants.global_already_present: "%{path} is already a global directory grant."
+path_grants.global_removed: "Removed %{path} from global directory grants."
+path_grants.global_not_found: "%{path} is not a global directory grant."
+path_grants.global_failed: "Could not update global directory grants: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
@@ -145,6 +171,10 @@ recommendations.open_new_empty: "New empty %{kind}"
 permission.compact.default_description: "Permission requested"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 # Status badge when agent CLI binary is not on PATH

@@ -11,10 +11,13 @@ use crate::app::{
 #[cfg(test)]
 use crate::app::CompletedTurn;
 use crate::theme;
+use crate::ui::card::{TranscriptCardRow, TRANSCRIPT_CARD};
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
+fn activity_label() -> String {
+    t!("chat.activity_thinking").into_owned()
+}
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
@@ -22,6 +25,60 @@ const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 const MAX_TOOL_PREVIEW_LINES: usize = 2;
 const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
+
+fn directory_card_lines(
+    global: &[String],
+    session: &[String],
+    additional_directories_supported: bool,
+    wrap_width: usize,
+) -> Vec<Line<'static>> {
+    let mut rows = vec![
+        TranscriptCardRow::new(
+            t!("path_grants.list_header").into_owned(),
+            theme::DIRECTORY_LIST_TITLE,
+        ),
+        TranscriptCardRow::blank(),
+    ];
+    let mut rendered_section = false;
+    for (heading, directories) in [
+        (t!("path_grants.global_header").into_owned(), global),
+        (t!("path_grants.session_header").into_owned(), session),
+    ] {
+        if directories.is_empty() {
+            continue;
+        }
+        if rendered_section {
+            rows.push(TranscriptCardRow::blank());
+        }
+        rendered_section = true;
+        rows.push(TranscriptCardRow::new(
+            heading,
+            theme::DIRECTORY_LIST_SECTION,
+        ));
+        for path in directories {
+            rows.push(TranscriptCardRow::indented(
+                path,
+                2,
+                theme::AGENT_TEXT,
+            ));
+        }
+    }
+    if !rendered_section {
+        rows.push(TranscriptCardRow::new(
+            t!("path_grants.none").trim(),
+            theme::DIM,
+        ));
+    }
+    if !additional_directories_supported {
+        rows.push(TranscriptCardRow::blank());
+        rows.push(TranscriptCardRow::new(
+            t!("path_grants.not_advertised").into_owned(),
+            theme::DIM,
+        ));
+    }
+
+    TRANSCRIPT_CARD.lines(rows, wrap_width)
+}
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
     let mut lines = output.text.lines().rev();
@@ -212,15 +269,15 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // it off the top of the visible chat block. Always a single row —
     // terminal min-width guarantees the localized title fits without
     // wrapping.
-    let welcome = if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
+    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
         1
     } else {
         0
     };
 
-    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    (messages + turns + pending + welcome)
+        .max(1)
+        .min(u16::MAX as usize) as u16
 }
 
 #[cfg(test)]
@@ -277,7 +334,8 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+    {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -372,7 +430,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let pane_focused = app.pane_focused;
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let mut turn_lines =
+                build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
             reversed_lines.extend(turn_lines.drain(..).rev());
             if reversed_lines.len() >= requested_lines {
                 truncated = true;
@@ -382,25 +441,25 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
+    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+        let mut welcome_lines = vec![Line::from(vec![
+            Span::styled(
+                "● ",
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
                 Span::styled(
                     t!("chat.welcome_title").into_owned(),
                     Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
                 ),
-            ]),
-        ];
+        ])];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = rendered_lines_height(&lines, wrap_width);
-    let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
+    let scroll = total_lines
+        .saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
@@ -563,10 +622,7 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(
-        &label,
-        tab.activity_frame,
-    ));
+    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -677,6 +733,19 @@ fn build_message_lines_with_details<'a>(
             push_prefixed_lines(&mut lines, marker, text, wrap_width, style);
             lines.push(Line::default());
         }
+        ChatMessage::DirectoryList {
+            global,
+            session,
+            additional_directories_supported,
+        } => {
+            lines.extend(directory_card_lines(
+                global,
+                session,
+                *additional_directories_supported,
+                wrap_width,
+            ));
+            lines.push(Line::default());
+        }
         ChatMessage::ToolCall {
             id,
             title,
@@ -684,6 +753,7 @@ fn build_message_lines_with_details<'a>(
             kind,
             location,
             location_is_command,
+            policy_note,
             cwd,
             output,
             exit_code,
@@ -799,9 +869,18 @@ fn build_message_lines_with_details<'a>(
             if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
             }
+            if let Some(note) = policy_note {
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", truncate_render_text(note)),
+                    theme::DIM,
+                )));
+            }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(
+                t!("chat.plan_header").into_owned(),
+                theme::PLAN_STYLE,
+            )));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -1035,6 +1114,8 @@ fn truncate_render_text(text: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::card::TRANSCRIPT_CARD_MAX_WIDTH;
+    use unicode_width::UnicodeWidthStr;
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
@@ -1074,6 +1155,64 @@ mod tests {
     }
 
     #[test]
+    fn directory_list_uses_hierarchy_and_hides_empty_sections() {
+        let message = ChatMessage::DirectoryList {
+            global: vec![r"C:\global".into()],
+            session: Vec::new(),
+            additional_directories_supported: false,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+
+        assert!(line_text(&lines[0]).starts_with('┌'));
+        assert_eq!(lines[0].spans[0].style, theme::CARD_BORDER);
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line).contains("Allowed directories")));
+        let global_line = lines
+            .iter()
+            .find(|line| line_text(line).contains("Global:"))
+            .expect("global heading");
+        assert_eq!(global_line.spans[1].style, theme::DIRECTORY_LIST_SECTION);
+        let path_line = lines
+            .iter()
+            .find(|line| line_text(line).contains(r"C:\global"))
+            .expect("global path");
+        assert_eq!(path_line.spans[1].style, theme::AGENT_TEXT);
+        assert!(line_text(path_line).contains(r"  C:\global"));
+        assert!(!lines
+            .iter()
+            .any(|line| line_text(line).contains("Session:")));
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line).contains("permission checks")));
+        assert!(line_text(&lines[lines.len() - 2]).starts_with('└'));
+        assert!(lines[..lines.len() - 1]
+            .iter()
+            .all(|line| line_text(line).width() == TRANSCRIPT_CARD_MAX_WIDTH));
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn directory_list_card_wraps_inside_borders_at_narrow_width() {
+        let message = ChatMessage::DirectoryList {
+            global: vec![],
+            session: vec![r"C:\a very long directory name\with nested content".to_string()],
+            additional_directories_supported: true,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 24);
+
+        assert!(lines.len() > 7);
+        assert!(lines[..lines.len() - 1]
+            .iter()
+            .all(|line| line_text(line).width() == 24));
+        assert!(lines[1..lines.len() - 2].iter().all(|line| {
+            let text = line_text(line);
+            text.starts_with("│ ") && text.ends_with(" │")
+        }));
+        assert_eq!(lines.len(), message_height(&message, 24));
+    }
+
+    #[test]
     fn message_height_uses_terminal_display_width_for_cjk() {
         let message = ChatMessage::Agent("你好".into());
         let lines = build_message_lines(&message, false, false, None, 0, 4);
@@ -1085,7 +1224,7 @@ mod tests {
     #[test]
     fn rendered_height_accounts_for_word_wrap_gaps() {
         let lines = vec![Line::from("aaa aaa aaa aaa")];
-
+        assert_eq!(rendered_lines_height(&lines, 5), 4);
         assert_eq!(rendered_lines_height(&lines, 5), 4);
     }
 
@@ -1107,6 +1246,7 @@ mod tests {
                     kind: ToolCallKind::Read,
                     location: Some(r"C:\src\main.rs".into()),
                     location_is_command: false,
+                    policy_note: None,
                     cwd: None,
                     output: None,
                     exit_code: None,
@@ -1123,6 +1263,24 @@ mod tests {
                     kind: ToolCallKind::Execute,
                     location: Some("cargo test --workspace".into()),
                     location_is_command: true,
+                    policy_note: None,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                }],
+            ),
+            (
+                "tool call with policy note",
+                vec![ChatMessage::ToolCall {
+                    id: "tool".into(),
+                    title: "Read source".into(),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(r"C:\src\main.rs".into()),
+                    location_is_command: false,
+                    policy_note: Some("Auto-approved by Intelligent Terminal policy".into()),
                     cwd: None,
                     output: None,
                     exit_code: None,
@@ -1190,6 +1348,7 @@ mod tests {
             kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1202,7 +1361,10 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+        assert_eq!(
+            line.spans.get(3).map(|span| span.style),
+            expected_detail_style
+        );
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1217,6 +1379,7 @@ mod tests {
             kind: ToolCallKind::Other,
             location: Some(r"C:\src\rust-app".into()),
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1251,6 +1414,7 @@ mod tests {
             kind: ToolCallKind::Execute,
             location: Some("cargo test --workspace".into()),
             location_is_command: true,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1293,6 +1457,7 @@ mod tests {
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
             ),
             location_is_command: true,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1332,6 +1497,7 @@ mod tests {
             kind: ToolCallKind::Execute,
             location: Some("cargo test".into()),
             location_is_command: true,
+            policy_note: None,
             cwd: Some(cwd.into()),
             output: Some(ToolCallOutput {
                 text: ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"),
@@ -1363,6 +1529,7 @@ mod tests {
             kind: ToolCallKind::Read,
             location: Some(location.into()),
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: Some(ToolCallOutput {
                 text: ["line 1", "line 2", "line 3", "line 4"].join("\n"),
@@ -1546,10 +1713,7 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(
-            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
-            "●"
-        );
+        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
     }
 
     #[test]
@@ -1561,6 +1725,7 @@ mod tests {
             kind: ToolCallKind::Read,
             location: None,
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1574,6 +1739,7 @@ mod tests {
             kind: ToolCallKind::Search,
             location: None,
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -1581,8 +1747,7 @@ mod tests {
             locations: Vec::new(),
         };
 
-        let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1599,6 +1764,7 @@ mod tests {
                 kind: ToolCallKind::Search,
                 location: None,
                 location_is_command: false,
+                policy_note: None,
                 cwd: None,
                 output: None,
                 exit_code: None,
@@ -1615,12 +1781,15 @@ mod tests {
         let mut tab = streaming_tab("", 0);
         for id in ["tool-1", "tool-2"] {
             tab.permission.push_back(crate::app::PermissionState {
+                session_id: "0".into(),
                 tool_call_id: id.into(),
                 description: "Allow access?".into(),
                 title: "Allow access?".into(),
                 kind_label: None,
                 target: None,
                 target_is_command: false,
+                grant_directory: None,
+                allow_once_id: None,
                 options: Vec::new(),
                 selected: 0,
                 responder: None,
@@ -1667,8 +1836,9 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String =
-            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let over: String = std::iter::repeat('é')
+            .take(MAX_RENDER_LINE_CHARS + 10)
+            .collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1679,7 +1849,13 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "\n\nHello",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1687,9 +1863,18 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "A\n\nB",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["● A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
@@ -1704,7 +1889,10 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[0]).starts_with("● "),
+            "first row gets the dot"
+        );
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
@@ -1723,7 +1911,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> line one".to_string(), "  line two".to_string()]
+        );
     }
 
     #[test]
@@ -1739,7 +1930,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]

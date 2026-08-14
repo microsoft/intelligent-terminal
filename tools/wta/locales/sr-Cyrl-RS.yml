@@ -97,6 +97,10 @@ recommendations.open_new_empty: "Нова празна %{kind}"
 permission.compact.default_description: "Затражена је дозвола"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N за одговор · промените величину за пуну картицу]"  # {Locked="Y/N"}
+permission.auto_approved: "Аутоматски одобрено политиком Intelligent Terminal"
+permission.allow_directory_session: "Ова сесија"
+permission.allow_directory_global: "Увек"
+permission.directory_to_store: "Директоријум: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Није пронађен"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Промена агента није дост�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Изаберите модел за ово окно (/model <id> за директно пребацивање)"  # {Locked="/model","<id>"}
 commands.move.summary: "Преместите панел агента за ову картицу (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Дозволи директоријум за ову ACP сесију (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Наведите дозвољене директоријуме за ову ACP сесију"  # {Locked="ACP"}
+commands.remove_dir.summary: "Уклоните одобрење директоријума сесије (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Глобалним именицима се управља у подешавањима интелигентног терминала."
+path_grants.no_active_session: "Нема активне ACP сесије."
+path_grants.added: "Дозвољено %{path} за ову сесију. Интелигентни Терминал сада може да га користи за одлуке о дозволама; ACP га оглашава на следећем захтеву животног циклуса сесије."
+path_grants.already_present: "%{path} је већ дозвољен за ову сесију."
+path_grants.removed: "Уклоњено је одобрење директоријума сесије за %{path}."
+path_grants.not_found: "%{path} није додела директоријума сесије."
+path_grants.failed: "Није могуће ажурирати доделе директоријума: %{error}"
+path_grants.list_header: "Дозвољени директоријуми"
+path_grants.global_header: "Глобални опсег:"
+path_grants.session_header: "Обим сесије:"
+path_grants.none: "  (нема именика)"
+path_grants.not_advertised: "Овај Agent не може да прима додатне директоријуме путем ACP-а. Intelligent Terminal и даље користи ове путање за провере дозвола."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Ажурирање глобалних дозвола за директоријуме..."
+path_grants.global_host_only: "Глобалне дозволе за директоријуме тренутно подржавају само агенте хостоване у оперативном систему Windows."
+path_grants.absolute_required: "Унесите апсолутну путању директоријума."
+path_grants.global_added: "%{path} је додат у глобалне дозволе за директоријуме."
+path_grants.global_already_present: "%{path} је већ глобална дозвола за директоријум."
+path_grants.global_removed: "%{path} је уклоњен из глобалних дозвола за директоријуме."
+path_grants.global_not_found: "%{path} није глобална дозвола за директоријум."
+path_grants.global_failed: "Није могуће ажурирати глобалне дозволе за директоријуме: %{error}"
 model_picker.title: "Изаберите модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Повезани агент није огласио ниједан модел који се може изабрати."
 system.model_set: "Модел за ово окно је подешен на %{model}."  # {Locked="%{model}"}

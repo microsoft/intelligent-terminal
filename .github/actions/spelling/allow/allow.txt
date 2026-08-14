@@ -154,6 +154,7 @@ ntwo
 ntx
 nullglob
 Nushell
+nvim
 obra
 Oids
 ollama

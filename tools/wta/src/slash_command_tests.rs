@@ -20,6 +20,15 @@ fn run_slash(app: &mut App, name: &str) {
     });
 }
 
+fn run_slash_with_args(app: &mut App, name: &str, rest: &str) {
+    let spec = commands::lookup(name).expect("name is a registered command");
+    app.handle_slash_command(ParsedCommand {
+        kind: spec.kind,
+        spec,
+        rest: rest.to_string(),
+    });
+}
+
 fn custom_model(selection_id: &str, model_id: &str) -> CustomModelCatalogEntry {
     CustomModelCatalogEntry {
         selection_id: selection_id.into(),
@@ -36,6 +45,14 @@ fn last_notice(app: &App) -> (NoticeKind, &str) {
     }
 }
 
+fn resolve_add_dir_ghost(app: &mut App, generation: u64, input: &str, cwd: Option<&str>) {
+    app.handle_event(AppEvent::AddDirGhostCwdResolved {
+        generation,
+        input: input.to_string(),
+        cwd: cwd.map(str::to_string),
+    });
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -44,6 +61,138 @@ fn classify_known_command() {
         ParseOutcome::Command(c) => assert_eq!(c.kind, CommandKind::Stop),
         other => panic!("expected Command, got {other:?}"),
     }
+}
+
+#[test]
+fn classify_directory_commands_preserves_paths() {
+    let ParseOutcome::Command(add) = commands::classify(r#"/add-dir "C:\work tree""#) else {
+        panic!("expected add-dir command");
+    };
+    assert_eq!(add.kind, CommandKind::AddDir);
+    assert_eq!(add.rest, r#""C:\work tree""#);
+
+    let ParseOutcome::Command(list) = commands::classify("/list-dirs") else {
+        panic!("expected list-dirs command");
+    };
+    assert_eq!(list.kind, CommandKind::ListDirs);
+
+    let ParseOutcome::Command(remove) = commands::classify(r"/remove-dir D:\old") else {
+        panic!("expected remove-dir command");
+    };
+    assert_eq!(remove.kind, CommandKind::RemoveDir);
+}
+
+fn app_with_path_grants(test_name: &str) -> (App, std::path::PathBuf) {
+    let mut app = test_app();
+    let path = std::env::temp_dir().join(format!(
+        "wta-slash-path-grants-{test_name}-{}.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    app.set_path_grants(Arc::new(crate::path_grants::SessionRoots::for_test(
+        "copilot".to_string(),
+        crate::agent_source::AgentSource::Host,
+        vec![std::path::PathBuf::from(r"C:\global")],
+        path.clone(),
+    )));
+    app.current_tab_mut().session_id = Some("session-1".to_string());
+    (app, path)
+}
+
+#[test]
+fn add_and_remove_directory_commands_persist_session_grants() {
+    let (mut app, store_path) = app_with_path_grants("mutate");
+
+    run_slash_with_args(&mut app, "add-dir", r#""D:\work tree""#);
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Success);
+    assert!(message.contains(r"D:\work tree"));
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\work tree")]
+    );
+
+    run_slash_with_args(&mut app, "remove-dir", r"D:\work tree");
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Success);
+    assert!(message.contains(r"D:\work tree"));
+    assert!(app.path_grants.session_directories("session-1").is_empty());
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn add_directory_requires_absolute_path_and_active_session() {
+    let (mut app, store_path) = app_with_path_grants("validation");
+
+    run_slash_with_args(&mut app, "add-dir", "relative");
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Warning);
+    assert!(message.contains("absolute"));
+
+    app.current_tab_mut().session_id = None;
+    run_slash_with_args(&mut app, "add-dir", r"C:\work");
+    let (kind, _) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Warning);
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn list_dirs_distinguishes_global_session_and_capability_state() {
+    let (mut app, store_path) = app_with_path_grants("list");
+    run_slash_with_args(&mut app, "add-dir", r"D:\session");
+
+    run_slash(&mut app, "list-dirs");
+
+    assert_eq!(
+        app.current_tab().messages.last(),
+        Some(&ChatMessage::DirectoryList {
+            global: vec![r"C:\global".to_string()],
+            session: vec![r"D:\session".to_string()],
+            additional_directories_supported: false,
+        })
+    );
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn global_flag_is_not_supported_by_session_directory_commands() {
+    let (mut app, store_path) = app_with_path_grants("global");
+
+    run_slash_with_args(&mut app, "add-dir", r"--global D:\shared");
+
+    let (kind, message) = last_notice(&app);
+    assert_eq!(kind, NoticeKind::Warning);
+    assert!(message.contains("absolute"));
+    assert_eq!(
+        app.path_grants.configured_directories(),
+        vec![std::path::PathBuf::from(r"C:\global")]
+    );
+    assert!(app.path_grants.session_directories("session-1").is_empty());
+    assert!(!store_path.exists());
+}
+
+#[test]
+fn settings_directory_update_replaces_authoritative_configured_roots() {
+    let (mut app, store_path) = app_with_path_grants("settings-update");
+    app.owner_tab_id = Some("tab-1".to_string());
+
+    app.handle_allowed_directories_changed(&serde_json::json!({
+        "tab_id": "tab-1",
+        "directories": [r"C:\global", r"D:\shared"],
+    }));
+
+    assert_eq!(
+        app.path_grants.configured_directories(),
+        vec![
+            std::path::PathBuf::from(r"C:\global"),
+            std::path::PathBuf::from(r"D:\shared"),
+        ]
+    );
+    assert!(!store_path.exists());
+}
+
+#[test]
+fn classify_known_command_with_arguments() {
     match commands::classify("/help me please") {
         ParseOutcome::Command(c) => {
             assert_eq!(c.kind, CommandKind::Help);
@@ -251,10 +400,7 @@ fn slash_model_without_models_notes_none() {
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
     let selected = "custom:provider:local";
-    app.set_custom_model_config(
-        vec![custom_model(selected, "local")],
-        Some(selected.into()),
-    );
+    app.set_custom_model_config(vec![custom_model(selected, "local")], Some(selected.into()));
 
     run_slash(&mut app, "model");
 
@@ -437,10 +583,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
     let selected = "custom:provider:local";
-    app.set_custom_model_config(
-        vec![custom_model(selected, "local")],
-        Some(selected.into()),
-    );
+    app.set_custom_model_config(vec![custom_model(selected, "local")], Some(selected.into()));
 
     app.open_model_picker();
     assert!(app.current_tab().model_picker_open);
@@ -597,6 +740,38 @@ fn move_position_popup_completes_alias_and_dispatches() {
 }
 
 #[test]
+fn remove_dir_popup_lists_filters_and_removes_session_grants() {
+    let (mut app, store_path) = app_with_path_grants("remove-popup");
+    run_slash_with_args(&mut app, "add-dir", r"D:\first path");
+    run_slash_with_args(&mut app, "add-dir", r"E:\second path");
+    type_input(&mut app, "/remove-dir ");
+
+    let state = app.command_popup_state().expect("directory candidates");
+    let crate::ui::PopupCandidates::DirectoryPaths(candidates) = state.candidates else {
+        panic!("expected directory path candidates");
+    };
+    assert_eq!(candidates, vec![r"D:\first path", r"E:\second path"]);
+
+    app.current_tab_mut().replace_input("/remove-dir E:".to_string());
+    let state = app.command_popup_state().expect("filtered directory candidate");
+    let crate::ui::PopupCandidates::DirectoryPaths(candidates) = state.candidates else {
+        panic!("expected directory path candidates");
+    };
+    assert_eq!(candidates, vec![r"E:\second path"]);
+
+    app.current_tab_mut()
+        .replace_input("/remove-dir ".to_string());
+    app.command_popup_down();
+    assert!(app.try_handle_slash_on_enter());
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\first path")]
+    );
+    assert!(app.current_tab().input.is_empty());
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
 fn explicit_empty_agent_allowlist_is_fail_closed() {
     let mut app = test_app();
     app.set_allowed_agent_ids(vec![String::new()]);
@@ -714,6 +889,123 @@ fn agent_ghost_requires_cursor_at_end() {
     type_input(&mut app, "/agent co");
     app.current_tab_mut().move_cursor_left();
 
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn add_dir_ghost_uses_resolved_active_cwd_until_user_types_a_path() {
+    let mut app = test_app();
+    type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"C:\work tree"));
+    assert_eq!(app.command_ghost_suffix(), Some(r"C:\work tree"));
+
+    app.current_tab_mut().insert_input_char('D');
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn add_dir_global_flag_does_not_offer_ghost_completion() {
+    let mut app = test_app();
+    app.source_cwd = Some(r"C:\active".into());
+
+    type_input(&mut app, "/ADD-DIR --GLOBAL ");
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn add_dir_enter_accepts_resolved_active_cwd_ghost() {
+    let (mut app, store_path) = app_with_path_grants("cwd-ghost");
+    type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\active pane")]
+    );
+    assert!(app.current_tab().input.is_empty());
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn add_dir_enter_waits_for_current_lookup_instead_of_using_source_cwd() {
+    let (mut app, store_path) = app_with_path_grants("cwd-pending");
+    app.source_cwd = Some(r"C:\stale source".into());
+    type_input(&mut app, "/add-dir ");
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert!(app.path_grants.session_directories("session-1").is_empty());
+    assert_eq!(app.current_tab().input, "/add-dir ");
+
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\current pane"));
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert_eq!(
+        app.path_grants.session_directories("session-1"),
+        vec![std::path::PathBuf::from(r"D:\current pane")]
+    );
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
+fn add_dir_ghost_requires_matching_generation_and_input() {
+    let mut app = test_app();
+    type_input(&mut app, "/add-dir ");
+    app.add_dir_ghost_generation = 2;
+
+    resolve_add_dir_ghost(&mut app, 1, "/add-dir ", Some(r"C:\old generation"));
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    resolve_add_dir_ghost(&mut app, 2, "/ADD-DIR ", Some(r"C:\other input"));
+    assert_eq!(app.command_ghost_suffix(), None);
+
+    resolve_add_dir_ghost(&mut app, 2, "/add-dir ", Some(r"D:\current"));
+    assert_eq!(app.command_ghost_suffix(), Some(r"D:\current"));
+}
+
+#[test]
+fn tab_accepts_add_dir_ghost_without_dispatching() {
+    let mut app = test_app();
+    type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    assert_eq!(app.current_tab().input, r"/add-dir D:\active pane");
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn right_click_accepts_add_dir_ghost_without_dispatching() {
+    let mut app = test_app();
+    type_input(&mut app, "/add-dir ");
+    resolve_add_dir_ghost(&mut app, 0, "/add-dir ", Some(r"D:\active pane"));
+
+    app.handle_event(AppEvent::Mouse(crossterm::event::MouseEvent {
+        kind: crossterm::event::MouseEventKind::Down(
+            crossterm::event::MouseButton::Right,
+        ),
+        column: 0,
+        row: 0,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    }));
+
+    assert_eq!(app.current_tab().input, r"/add-dir D:\active pane");
     assert_eq!(app.command_ghost_suffix(), None);
 }
 

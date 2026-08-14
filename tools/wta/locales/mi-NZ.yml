@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} hou kau"
 permission.compact.default_description: "Kua tonoa te whakaaetanga"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ki te whakautu · hurihia te rahi mo te kaari katoa]"  # {Locked="Y/N"}
+permission.auto_approved: "I whakaaetia aunoatia e te kaupapahere Intelligent Terminal"
+permission.allow_directory_session: "Tēnei wātū"
+permission.allow_directory_global: "I ngā wā katoa"
+permission.directory_to_store: "Whaiaronga: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Kaore i kitea"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "Kāore i te wātea te whakawhiti māngai i wah
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
 commands.move.summary: "Neke i te papa agent o tēnei ripa (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Whakaaetia he whaiaronga mo tenei huihuinga ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Whakarārangihia nga whaiaronga kua whakaaetia mo tenei ACP session"  # {Locked="ACP"}
+commands.remove_dir.summary: "Tango i te karaati whaiaronga wātū (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Ko nga tahua whaiaronga o te ao e whakahaerehia ana i roto i nga Tautuhinga Whakamutunga Maamaa."
+path_grants.no_active_session: "Karekau he ACP session."
+path_grants.added: "Whakaaetia %{path} mō tēnei wātū. Ka taea e Iho Atamai te whakamahi mo nga whakatau whakaaetanga inaianei; ACP ka panuitia i runga i te tono huringa ora o te huihuinga e whai ake nei."
+path_grants.already_present: "%{path} Kua whakaaetia kētia mō tēnei wātū."
+path_grants.removed: "I tangohia te karaati whaiaronga waahi mo %{path}."
+path_grants.not_found: "%{path} ehara i te tahua whaiaronga wahanga."
+path_grants.failed: "Kāore i taea te whakahōu i ngā karaati whaiaronga: %{error}"
+path_grants.list_header: "Whaiaronga kua whakaaetia"
+path_grants.global_header: "Te whānuitanga o te ao:"
+path_grants.session_header: "Wātū hōkai:"
+path_grants.none: "  (kahore he whaiaronga)"
+path_grants.not_advertised: "Kāore e taea e tēnei Agent te whiwhi whaiaronga tāpiri mā ACP. Ka whakamahi tonu a Intelligent Terminal i ēnei ara hei arowhai whakaaetanga."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "E whakahōu ana i ngā whakaaetanga whaiaronga ao..."
+path_grants.global_host_only: "I tēnei wā, ka tautoko ngā whakaaetanga whaiaronga ao i ngā āpiha e hautūhia ana ki Windows anake."
+path_grants.absolute_required: "Tāurua he ara whaiaronga pū."
+path_grants.global_added: "Kua tāpirihia a %{path} ki ngā whakaaetanga whaiaronga ao."
+path_grants.global_already_present: "He whakaaetanga whaiaronga ao kē a %{path}."
+path_grants.global_removed: "Kua tangohia a %{path} i ngā whakaaetanga whaiaronga ao."
+path_grants.global_not_found: "Ehara a %{path} i te whakaaetanga whaiaronga ao."
+path_grants.global_failed: "Kāore i taea te whakahōu i ngā whakaaetanga whaiaronga ao: %{error}"
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}

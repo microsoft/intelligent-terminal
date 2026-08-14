@@ -6,6 +6,7 @@
 #include "AIAgentsViewModel.g.h"
 #include "AcpModelEntry.g.h"
 #include "AgentEntry.g.h"
+#include "AllowedDirectoryEntry.g.h"
 #include "CustomModelProviderEntry.g.h"
 #include "ViewModelHelpers.h"
 #include "Utils.h"
@@ -72,6 +73,22 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::CustomModelProvider _provider;
+        std::function<void()> _remove;
+    };
+
+    struct AllowedDirectoryEntry : AllowedDirectoryEntryT<AllowedDirectoryEntry>
+    {
+        AllowedDirectoryEntry(winrt::hstring path, std::function<void()> remove) :
+            _path{ std::move(path) },
+            _remove{ std::move(remove) }
+        {
+        }
+
+        winrt::hstring Path() const { return _path; }
+        void Remove() { _remove(); }
+
+    private:
+        winrt::hstring _path;
         std::function<void()> _remove;
     };
 
@@ -148,6 +165,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool HasAutoFixEnabled() const;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         bool CanSuggestErrors() const;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::AllowedDirectoryEntry> AllowedHostDirectories() const { return _allowedHostDirectories; }
+        bool IsAllowedHostDirectoriesExpanded() const { return _isAllowedHostDirectoriesExpanded; }
+        void IsAllowedHostDirectoriesExpanded(bool value);
+        bool IsAddingAllowedHostDirectory() const { return _isAddingAllowedHostDirectory; }
+        winrt::hstring NewAllowedHostDirectory() const { return _newAllowedHostDirectory; }
+        void NewAllowedHostDirectory(const winrt::hstring& value);
+        bool CanAddAllowedHostDirectory() const;
+        void BeginAddAllowedHostDirectory();
+        void AddAllowedHostDirectory();
 
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
@@ -221,6 +247,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> _customModelProviders;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::AllowedDirectoryEntry> _allowedHostDirectories;
         std::vector<Model::CustomModelProvider> _originalCustomModelProviders;
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
@@ -230,16 +257,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _isAddingCustomDelegateAgent{ false };
         bool _isCustomModelProvidersExpanded{ false };
         bool _isAddingCustomModelProvider{ false };
+        bool _isAllowedHostDirectoriesExpanded{ false };
+        bool _isAddingAllowedHostDirectory{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
         winrt::hstring _newCustomModelProviderBaseUrl;
         winrt::hstring _newCustomModelId;
+        winrt::hstring _newAllowedHostDirectory;
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();
         void _LoadCustomModelProviders();
         void _CommitCustomModelProviders();
         void _RemoveCustomModelProvider(const winrt::hstring& id);
+        void _LoadAllowedHostDirectories();
+        void _CommitAllowedHostDirectories();
+        void _RemoveAllowedHostDirectory(const winrt::hstring& path);
+        bool _ContainsAllowedHostDirectory(std::wstring_view path) const;
+        static bool _IsAbsoluteHostPath(std::wstring_view path) noexcept;
+        static bool _HostPathsEqual(std::wstring_view left, std::wstring_view right) noexcept;
         static bool _HasNonWhitespace(std::wstring_view value) noexcept;
         static winrt::hstring _TrimWhitespace(std::wstring_view value);
 

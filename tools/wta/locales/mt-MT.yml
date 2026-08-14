@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} vojt ġdid"
 permission.compact.default_description: "Permess mitlub"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N biex twieġeb · irridimensjona għal karta sħiħa]"  # {Locked="Y/N"}
+permission.auto_approved: "Approvat awtomatikament mill-politika ta' Intelligent Terminal"
+permission.allow_directory_session: "Din is-sessjoni"
+permission.allow_directory_global: "Dejjem"
+permission.directory_to_store: "Direttorju: %{path}"
 
 # ── Status tal-aġent (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "Ma nstabx"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "L-iswiċċjar tal-aġent mhuwiex disponibbli b
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mexxi l-pannell tal-aġent ta' dan it-tab (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Ħalli direttorju għal din is-sessjoni ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Elenka direttorji permessi għal din is-sessjoni ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "Neħħi għotja tad-direttorju tas-sessjoni (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "L-għotjiet tad-direttorju globali huma ġestiti f'Settings tat-Terminal Intelliġenti."
+path_grants.no_active_session: "M'hemm l-ebda sessjoni attiva ACP."
+path_grants.added: "%{path} permess għal din is-sessjoni. Terminal Intelliġenti jista' jużah għal deċiżjonijiet ta' permess issa; ACP jirreklamah fit-talba taċ-ċiklu tal-ħajja tas-sessjoni li jmiss."
+path_grants.already_present: "%{path} huwa diġà permess għal din is-sessjoni."
+path_grants.removed: "Neħħa l-għotja tad-direttorju tas-sessjoni għal %{path}."
+path_grants.not_found: "%{path} mhix għotja tad-direttorju tas-sessjoni."
+path_grants.failed: "Ma setgħetx taġġorna l-għotjiet tad-direttorju: %{error}"
+path_grants.list_header: "Direttorji permessi"
+path_grants.global_header: "Ambitu globali:"
+path_grants.session_header: "Ambitu tas-sessjoni:"
+path_grants.none: "  (ebda direttorji)"
+path_grants.not_advertised: "Dan l-Agent ma jistax jirċievi direttorji addizzjonali permezz ta’ ACP. Intelligent Terminal xorta juża dawn il-mogħdijiet għall-verifiki tal-permessi."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Qed jiġu aġġornati l-għotjiet globali tad-direttorji..."
+path_grants.global_host_only: "Bħalissa, l-għotjiet globali tad-direttorji jappoġġjaw biss aġenti ospitati fuq Windows."
+path_grants.absolute_required: "Daħħal mogħdija assoluta tad-direttorju."
+path_grants.global_added: "%{path} ġie miżjud mal-għotjiet globali tad-direttorji."
+path_grants.global_already_present: "%{path} diġà huwa għotja globali tad-direttorju."
+path_grants.global_removed: "%{path} tneħħa mill-għotjiet globali tad-direttorji."
+path_grants.global_not_found: "%{path} mhuwiex għotja globali tad-direttorju."
+path_grants.global_failed: "Ma setgħux jiġu aġġornati l-għotjiet globali tad-direttorji: %{error}"
 model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}

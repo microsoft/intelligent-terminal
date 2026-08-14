@@ -142,6 +142,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, AiCoordinatorEnabled);
         INHERITABLE_SETTING(String, AiCoordinatorCommandline);
         INHERITABLE_SETTING(String, AiCoordinatorProfile);
+        INHERITABLE_SETTING(IVector<String>, AiAllowedHostDirectories);
         INHERITABLE_SETTING(String, AiConfirmationReadOps);
         INHERITABLE_SETTING(String, AiConfirmationCreateOps);
         INHERITABLE_SETTING(String, AiConfirmationInputOps);

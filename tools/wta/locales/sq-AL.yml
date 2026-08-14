@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} bosh e re"
 permission.compact.default_description: "Leje e kërkuar"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N për të përgjigjur · ndryshoni madhësinë për kartën e plotë]"  # {Locked="Y/N"}
+permission.auto_approved: "Miratuar automatikisht nga politika e Intelligent Terminal"
+permission.allow_directory_session: "Kjo seancë"
+permission.allow_directory_global: "Gjithmonë"
+permission.directory_to_store: "Direktoria: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nuk u gjet"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
 commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Lejo një drejtori për këtë sesion ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Listoni drejtoritë e lejuara për këtë sesion ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "Hiqni një grant të drejtorisë së sesioneve (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Grantet globale të drejtorisë menaxhohen në Cilësimet Inteligjente të Terminalit."
+path_grants.no_active_session: "Nuk ka asnjë seancë aktive ACP."
+path_grants.added: "Lejohet %{path} për këtë seancë. Terminali inteligjent mund ta përdorë atë për vendimet e lejeve tani; ACP e reklamon atë në kërkesën e ciklit të jetës së seancës tjetër."
+path_grants.already_present: "%{path} lejohet tashmë për këtë seancë."
+path_grants.removed: "U hoq granti i drejtorisë së sesioneve për %{path}."
+path_grants.not_found: "%{path} nuk është një grant i drejtorisë së sesioneve."
+path_grants.failed: "Grantet e drejtorisë nuk mund të përditësohen: %{error}"
+path_grants.list_header: "Drejtoritë e lejuara"
+path_grants.global_header: "Shtrirja globale:"
+path_grants.session_header: "Shtrirja e seancës:"
+path_grants.none: "  (nuk ka drejtori)"
+path_grants.not_advertised: "Ky Agent nuk mund të marrë direktori shtesë përmes ACP. Intelligent Terminal vazhdon t'i përdorë këto shtigje për kontrollet e lejeve."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Po përditësohen lejet globale të direktorive..."
+path_grants.global_host_only: "Lejet globale të direktorive aktualisht mbështesin vetëm agjentët e pritur në Windows."
+path_grants.absolute_required: "Fut një shteg absolut të direktorive."
+path_grants.global_added: "%{path} u shtua te lejet globale të direktorive."
+path_grants.global_already_present: "%{path} është tashmë një leje globale e direktorive."
+path_grants.global_removed: "%{path} u hoq nga lejet globale të direktorive."
+path_grants.global_not_found: "%{path} nuk është një leje globale e direktorive."
+path_grants.global_failed: "Nuk mund të përditësoheshin lejet globale të direktorive: %{error}"
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}

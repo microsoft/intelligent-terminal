@@ -101,6 +101,10 @@ recommendations.open_new_empty: "%{kind} ריק חדש"
 permission.compact.default_description: "התבקשה הרשאה"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N לתשובה · שנה גודל לכרטיס מלא]"  # {Locked="Y/N"}
+permission.auto_approved: "אושר אוטומטית על-ידי מדיניות ההרשאות של Intelligent Terminal"
+permission.allow_directory_session: "הפעלה זו"
+permission.allow_directory_global: "תמיד"
+permission.directory_to_store: "ספרייה: %{path}"
 
 # ── מצב סוכן (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "לא נמצא"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "אפשר ספריה עבור הפעלה זו ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "רשום ספריות מותרות עבור הפעלה ACP זה"  # {Locked="ACP"}
+commands.remove_dir.summary: "הסר מענק ספריית הפעלה (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "מענקי ספרייה גלובליים מנוהלים בהגדרות מסוף אינטליגנטי."
+path_grants.no_active_session: "אין ACP session פעיל."
+path_grants.added: "מותר %{path} להפעלה זו. מסוף חכם יכול להשתמש בו להחלטות הרשאה כעת; ACP מפרסם אותו בבקשת מחזור החיים של ההפעלה הבאה."
+path_grants.already_present: "%{path} כבר מותר להפעלה זו."
+path_grants.removed: "הסר את מענק ספריית ההפעלה עבור %{path}."
+path_grants.not_found: "%{path} אינו מענק ספריית הפעלה."
+path_grants.failed: "לא ניתן היה לעדכן את מענקי הספרייה: %{error}"
+path_grants.list_header: "ספריות מותרות"
+path_grants.global_header: "היקף גלובלי:"
+path_grants.session_header: "היקף הפגישה:"
+path_grants.none: "  (אין ספריות)"
+path_grants.not_advertised: "ל-Agent הזה אין אפשרות לקבל ספריות נוספות דרך ACP. Intelligent Terminal עדיין משתמש בנתיבים האלה לבדיקות הרשאה."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "מעדכן הרשאות כלליות לספריות..."
+path_grants.global_host_only: "הרשאות כלליות לספריות תומכות כעת רק בסוכנים שמתארחים ב-Windows."
+path_grants.absolute_required: "הזן נתיב מוחלט לספריה."
+path_grants.global_added: "%{path} נוסף להרשאות הכלליות לספריות."
+path_grants.global_already_present: "%{path} כבר מוגדר כהרשאה כללית לספריה."
+path_grants.global_removed: "%{path} הוסר מההרשאות הכלליות לספריות."
+path_grants.global_not_found: "%{path} אינו הרשאה כללית לספריה."
+path_grants.global_failed: "לא ניתן לעדכן את ההרשאות הכלליות לספריות: %{error}"
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}

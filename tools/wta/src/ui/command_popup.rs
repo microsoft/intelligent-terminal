@@ -12,10 +12,19 @@ use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use super::popup;
 use crate::app::{App, AvailableAgent};
-use crate::commands::{CommandSpec, MovePositionSpec, REGISTRY};
+use crate::commands::{CommandKind, CommandSpec, MovePositionSpec, REGISTRY};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
+
+fn command_scope_label(spec: &CommandSpec) -> Option<String> {
+    matches!(spec.kind, CommandKind::AddDir | CommandKind::RemoveDir).then(|| {
+        t!("path_grants.session_header")
+            .trim()
+            .trim_end_matches([':', '：'])
+            .to_string()
+    })
+}
 
 /// Per-frame state captured from the [`App`] so callers don't need to know
 /// the popup internals.
@@ -37,6 +46,7 @@ pub enum PopupCandidates<'a> {
     Commands(Cow<'a, [&'static CommandSpec]>),
     MovePositions(&'a [&'static MovePositionSpec]),
     Agents(Vec<&'a AvailableAgent>),
+    DirectoryPaths(Vec<String>),
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -48,6 +58,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
         PopupCandidates::Agents(candidates) => candidates.len(),
+        PopupCandidates::DirectoryPaths(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
         return;
@@ -63,6 +74,9 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             .iter()
             .map(|spec| {
                 let mut spans = command_name_spans(spec.name, state.command_query);
+                if let Some(scope) = command_scope_label(spec) {
+                    spans.push(Span::styled(format!("{scope} · "), theme::DIM));
+                }
                 spans.push(Span::styled(spec.summary(), theme::DIM));
                 // The `/model` row shows the pane's current model so the user can
                 // see what they're on before opening the picker.
@@ -96,6 +110,15 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                 ]))
             })
             .collect(),
+        PopupCandidates::DirectoryPaths(candidates) => candidates
+            .iter()
+            .map(|path| {
+                ListItem::new(Line::from(Span::styled(
+                    format!(" {path} "),
+                    theme::INPUT_TEXT,
+                )))
+            })
+            .collect(),
     };
 
     let selected_style = if state.pane_focused {
@@ -104,7 +127,16 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         theme::SELECTED_INACTIVE
     };
     let list = List::new(items)
-        .block(popup::block(t!("commands.popup_title").into_owned()))
+        .block(popup::block(
+            if matches!(state.candidates, PopupCandidates::DirectoryPaths(_)) {
+                t!("path_grants.session_header")
+                    .trim()
+                    .trim_end_matches([':', '：'])
+                    .to_string()
+            } else {
+                t!("commands.popup_title").into_owned()
+            },
+        ))
         .highlight_style(selected_style)
         .highlight_symbol("> ");
 
@@ -166,10 +198,15 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     )))
     .chain(std::iter::once(Line::default()))
     .chain(REGISTRY.iter().map(|spec| {
-        Line::from(vec![
-            Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
-            Span::styled(spec.summary(), theme::DIM),
-        ])
+        let mut spans = vec![Span::styled(
+            format!("  /{:<8}  ", spec.name),
+            theme::INPUT_TEXT,
+        )];
+        if let Some(scope) = command_scope_label(spec) {
+            spans.push(Span::styled(format!("{scope} · "), theme::DIM));
+        }
+        spans.push(Span::styled(spec.summary(), theme::DIM));
+        Line::from(spans)
     }))
     .chain(std::iter::once(Line::default()))
     .chain(std::iter::once(Line::from(Span::styled(
@@ -197,12 +234,19 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_name_spans, popup_highlight};
+    use super::{command_name_spans, command_scope_label, popup_highlight};
     use crate::commands;
     use crate::theme;
 
     fn spec(name: &str) -> &'static commands::CommandSpec {
         commands::lookup(name).expect("registered command")
+    }
+
+    #[test]
+    fn directory_mutation_commands_show_session_scope() {
+        assert!(command_scope_label(spec("add-dir")).is_some());
+        assert!(command_scope_label(spec("remove-dir")).is_some());
+        assert!(command_scope_label(spec("list-dirs")).is_none());
     }
 
     #[test]

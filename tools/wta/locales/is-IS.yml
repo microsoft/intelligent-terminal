@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Nýtt tómt %{kind}"
 permission.compact.default_description: "Heimild óskað"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N til að svara · breyttu stærð til að sjá fullt kort]"  # {Locked="Y/N"}
+permission.auto_approved: "Samþykkt sjálfkrafa samkvæmt stefnu Intelligent Terminal"
+permission.allow_directory_session: "Þessi lota"
+permission.allow_directory_global: "Alltaf"
+permission.directory_to_store: "Mappa: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Fannst ekki"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Ekki er hægt að skipta um fulltrúa utan Win
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
 commands.move.summary: "Færa agentspjald þessa flipa (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Leyfa möppu fyrir þessa ACP lotu (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Listaðu yfir leyfilegar möppur fyrir þessa ACP lotu"  # {Locked="ACP"}
+commands.remove_dir.summary: "Fjarlægja veitingu setuskrár (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Alþjóðlegum skráarstyrkjum er stjórnað í Intelligent Terminal Settings."
+path_grants.no_active_session: "Það er engin virk ACP session."
+path_grants.added: "Leyfilegt %{path} fyrir þessa lotu. Snjallútstöð getur notað það fyrir leyfisákvarðanir núna; ACP auglýsir það í næstu lífsferilsbeiðni."
+path_grants.already_present: "%{path} er nú þegar leyft fyrir þessa lotu."
+path_grants.removed: "Fjarlægði lotuskrárstyrkinn fyrir %{path}."
+path_grants.not_found: "%{path} er ekki styrkur fyrir lotuskrá."
+path_grants.failed: "Gat ekki uppfært möppustyrki: %{error}"
+path_grants.list_header: "Leyfðar möppur"
+path_grants.global_header: "Alþjóðlegt umfang:"
+path_grants.session_header: "Umfang þings:"
+path_grants.none: "  (engar möppur)"
+path_grants.not_advertised: "Þessi Agent getur ekki tekið við fleiri möppum í gegnum ACP. Intelligent Terminal notar þessar slóðir áfram við heimildarathuganir."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Uppfæri altækar möppuheimildir..."
+path_grants.global_host_only: "Altækar möppuheimildir styðja sem stendur aðeins fulltrúa sem hýstir eru í Windows."
+path_grants.absolute_required: "Sláðu inn algilda möppuslóð."
+path_grants.global_added: "%{path} var bætt við altækar möppuheimildir."
+path_grants.global_already_present: "%{path} er þegar altæk möppuheimild."
+path_grants.global_removed: "%{path} var fjarlægt úr altækum möppuheimildum."
+path_grants.global_not_found: "%{path} er ekki altæk möppuheimild."
+path_grants.global_failed: "Ekki tókst að uppfæra altækar möppuheimildir: %{error}"
 model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}

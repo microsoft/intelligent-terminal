@@ -97,6 +97,10 @@ recommendations.open_new_empty: "Nová prázdna %{kind}"
 permission.compact.default_description: "Vyžiadané povolenie"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N na odpoveď · zmeňte veľkosť pre úplnú kartu]"  # {Locked="Y/N"}
+permission.auto_approved: "Automaticky schválené politikou Intelligent Terminal"
+permission.allow_directory_session: "Táto relácia"
+permission.allow_directory_global: "Vždy"
+permission.directory_to_store: "Adresár: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nenájdený"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Prepínanie agentov nie je k dispozícii mimo 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
 commands.move.summary: "Presunúť panel agenta pre túto kartu (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Povoliť adresár pre túto ACP reláciu (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Zoznam povolených adresárov pre túto ACP reláciu"  # {Locked="ACP"}
+commands.remove_dir.summary: "Odstrániť udelenie adresára relácie (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Udelenie globálnych adresárov sa spravuje v nastaveniach inteligentného terminálu."
+path_grants.no_active_session: "Neexistuje žiadna aktívna ACP relácia."
+path_grants.added: "Povolené %{path} pre túto reláciu. Inteligentný Terminál ho teraz môže použiť na rozhodnutia o povolení; ACP ho inzeruje pri ďalšej žiadosti životného cyklu relácie."
+path_grants.already_present: "%{path} je už pre túto reláciu povolené."
+path_grants.removed: "Odstránil sa grant adresára relácie pre %{path}."
+path_grants.not_found: "%{path} nie je udelenie adresára relácie."
+path_grants.failed: "Nepodarilo sa aktualizovať granty adresára: %{error}"
+path_grants.list_header: "Povolené adresáre"
+path_grants.global_header: "Globálny rozsah:"
+path_grants.session_header: "Rozsah relácie:"
+path_grants.none: "  (žiadne adresáre)"
+path_grants.not_advertised: "Tento Agent nemôže prijímať ďalšie adresáre prostredníctvom ACP. Intelligent Terminal tieto cesty naďalej používa na kontroly povolení."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Aktualizujú sa globálne povolenia adresárov..."
+path_grants.global_host_only: "Globálne povolenia adresárov momentálne podporujú iba agentov hosťovaných vo Windowse."
+path_grants.absolute_required: "Zadajte absolútnu cestu k adresáru."
+path_grants.global_added: "%{path} sa pridal do globálnych povolení adresárov."
+path_grants.global_already_present: "%{path} už je globálne povolenie adresára."
+path_grants.global_removed: "%{path} sa odstránil z globálnych povolení adresárov."
+path_grants.global_not_found: "%{path} nie je globálne povolenie adresára."
+path_grants.global_failed: "Globálne povolenia adresárov sa nepodarilo aktualizovať: %{error}"
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}

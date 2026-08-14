@@ -115,6 +115,24 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Legacy startup fallback for ACP read/search permission requests.
+    /// New hosts deliver the current policy over the runtime config channel.
+    #[arg(long, hide = true, default_value = "prompt")]
+    pub(crate) confirmation_read_operations: String,
+
+    /// Legacy startup fallback for ACP edit/move/delete permission requests.
+    #[arg(long, hide = true, default_value = "prompt")]
+    pub(crate) confirmation_create_operations: String,
+
+    /// Legacy startup fallback for ACP execute permission requests.
+    #[arg(long, hide = true, default_value = "prompt")]
+    pub(crate) confirmation_input_operations: String,
+
+    /// Legacy startup fallback for additional directory roots. New hosts use
+    /// the runtime config channel so this list cannot overflow helper argv.
+    #[arg(long, hide = true, value_name = "PATH")]
+    pub(crate) allowed_directory: Vec<std::path::PathBuf>,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]

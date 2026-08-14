@@ -101,6 +101,10 @@ recommendations.open_new_empty: "ახალი ცარიელი %{kind}"
 permission.compact.default_description: "ნებართვა მოთხოვნილია"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N პასუხისთვის · ზომის შეცვლა სრული ბარათისთვის]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal-ის პოლიტიკით ავტომატურად დამტკიცდა"
+permission.allow_directory_session: "ეს სესია"
+permission.allow_directory_global: "ყოველთვის"
+permission.directory_to_store: "დირექტორია: %{path}"
 
 # ── აგენტის სტატუსი (src/agent_check.rs) ───────────────────────────────────
 agent.status.not_found: "ვერ მოიძებნა"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "აგენტის გადართვა
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
 commands.move.summary: "ამ ჩანართის აგენტის პანელის გადატანა (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "დაუშვით დირექტორია ამ ACP სესიისთვის (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ჩამოთვალეთ დაშვებული დირექტორიები ამ ACP სესიისთვის"  # {Locked="ACP"}
+commands.remove_dir.summary: "წაშალეთ სესიის დირექტორია გრანტი (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "გლობალური დირექტორია გრანტები იმართება ინტელექტუალური ტერმინალის პარამეტრებში."
+path_grants.no_active_session: "არ არის აქტიური ACP სესია."
+path_grants.added: "დაშვებულია %{path} ამ სესიისთვის. ჭკვიან ტერმინალს შეუძლია გამოიყენოს იგი ნებართვის გადაწყვეტილების მისაღებად; ACP აქვეყნებს მას რეკლამას შემდეგი სესიის სასიცოცხლო ციკლის მოთხოვნით."
+path_grants.already_present: "%{path} უკვე დაშვებულია ამ სესიისთვის."
+path_grants.removed: "წაიშალა სესიის დირექტორიას გრანტი %{path}-ისთვის."
+path_grants.not_found: "%{path} არ არის სესიის დირექტორიის გრანტი."
+path_grants.failed: "დირექტორია გრანტების განახლება ვერ მოხერხდა: %{error}"
+path_grants.list_header: "დაშვებული დირექტორიები"
+path_grants.global_header: "გლობალური ფარგლები:"
+path_grants.session_header: "სესიის ფარგლები:"
+path_grants.none: "  (არ არის დირექტორიები)"
+path_grants.not_advertised: "ამ Agent-ს ACP-ის მეშვეობით დამატებითი დირექტორიების მიღება არ შეუძლია. Intelligent Terminal კვლავ იყენებს ამ ბილიკებს ნებართვების შესამოწმებლად."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "მიმდინარეობს გლობალური დირექტორიის ნებართვების განახლება..."
+path_grants.global_host_only: "გლობალური დირექტორიის ნებართვები ამჟამად მხოლოდ Windows-ში განთავსებულ აგენტებს უჭერს მხარს."
+path_grants.absolute_required: "შეიყვანეთ დირექტორიის აბსოლუტური გზა."
+path_grants.global_added: "%{path} დაემატა გლობალური დირექტორიის ნებართვებს."
+path_grants.global_already_present: "%{path} უკვე გლობალური დირექტორიის ნებართვაა."
+path_grants.global_removed: "%{path} წაიშალა გლობალური დირექტორიის ნებართვებიდან."
+path_grants.global_not_found: "%{path} არ არის გლობალური დირექტორიის ნებართვა."
+path_grants.global_failed: "გლობალური დირექტორიის ნებართვების განახლება ვერ მოხერხდა: %{error}"
 model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}

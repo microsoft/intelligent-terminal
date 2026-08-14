@@ -101,6 +101,10 @@ recommendations.open_new_empty: "Yangi bo‘sh %{kind}"
 permission.compact.default_description: "Ruxsat soʻralmoqda"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N javob uchun · toʻliq karta uchun oʻlchamni oʻzgartiring]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal siyosatiga ko‘ra avtomatik tasdiqlandi"
+permission.allow_directory_session: "Bu seans uchun"
+permission.allow_directory_global: "Doim ruxsat berish"
+permission.directory_to_store: "Katalog: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Topilmadi"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Agentni almashtirish Windows Terminal ilovasid
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bu tabning agent panelini koʻchirish (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Ushbu ACP sessiyasi uchun katalogga ruxsat bering (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Ushbu ACP sessiyasi uchun ruxsat etilgan kataloglarni ro'yxatlang"  # {Locked="ACP"}
+commands.remove_dir.summary: "Seans katalogi grantini olib tashlash (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Global katalog grantlari Intelligent Terminal Settings orqali boshqariladi."
+path_grants.no_active_session: "Hech qanday faol ACP sessiyasi mavjud emas."
+path_grants.added: "Bu seans uchun ruxsat berilgan %{path}. Aqlli terminal endi ruxsat qarorlari uchun undan foydalanishi mumkin; ACP uni keyingi seansning hayot aylanishi so'rovida e'lon qiladi."
+path_grants.already_present: "%{path} bu seans uchun allaqachon ruxsat etilgan."
+path_grants.removed: "%{path} uchun seans katalogi granti olib tashlandi."
+path_grants.not_found: "%{path} - bu seans katalogi granti emas."
+path_grants.failed: "Katalog grantlarini yangilab boʻlmadi: %{error}"
+path_grants.list_header: "Ruxsat berilgan kataloglar"
+path_grants.global_header: "Global qamrov:"
+path_grants.session_header: "Sessiya doirasi:"
+path_grants.none: "  (kataloglar yo'q)"
+path_grants.not_advertised: "Bu Agent ACP orqali qo‘shimcha kataloglarni qabul qila olmaydi. Intelligent Terminal ruxsatlarni tekshirish uchun bu yo‘llardan foydalanishda davom etadi."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Global katalog ruxsatlari yangilanmoqda..."
+path_grants.global_host_only: "Global katalog ruxsatlari hozirda faqat Windows tizimida joylashtirilgan agentlarni qoʻllab-quvvatlaydi."
+path_grants.absolute_required: "Mutlaq katalog yoʻlini kiriting."
+path_grants.global_added: "%{path} global katalog ruxsatlariga qoʻshildi."
+path_grants.global_already_present: "%{path} allaqachon global katalog ruxsatidir."
+path_grants.global_removed: "%{path} global katalog ruxsatlaridan olib tashlandi."
+path_grants.global_not_found: "%{path} global katalog ruxsati emas."
+path_grants.global_failed: "Global katalog ruxsatlarini yangilab boʻlmadi: %{error}"
 model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
 system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}

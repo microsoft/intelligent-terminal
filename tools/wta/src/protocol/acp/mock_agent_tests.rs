@@ -16,7 +16,7 @@ use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_new_session, dispatch_prompt, dispatch_rename_session, AutofixTextKind, CancelRequest,
     DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest,
+    RenameSessionRequest, SessionRoots,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -333,6 +333,13 @@ fn connect_with(
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        operation_policies:
+            crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
+        session_roots: Arc::new(SessionRoots::new(
+            "copilot".to_string(),
+            crate::agent_source::AgentSource::Host,
+            Vec::new(),
+        )),
     });
     let wta = WtaClient { state };
 
@@ -668,9 +675,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
-    let proposal_channels = Arc::new(
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
-    );
+    let proposal_channels =
+        Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
@@ -679,6 +685,13 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        operation_policies:
+            crate::protocol::acp::permission_policy::OperationPolicies::default().into(),
+        session_roots: Arc::new(SessionRoots::new(
+            "copilot".to_string(),
+            crate::agent_source::AgentSource::Host,
+            Vec::new(),
+        )),
     });
     let wta = WtaClient { state };
 
@@ -1281,6 +1294,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.client.state.session_roots,
             );
 
             // The in-flight cancel oneshot fires when the spawned task runs.
@@ -1308,6 +1322,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.client.state.session_roots,
             );
             for _ in 0..10 {
                 tokio::task::yield_now().await;
@@ -1346,6 +1361,7 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 "Test",
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1396,6 +1412,7 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
                 "Test",
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1455,6 +1472,7 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 "Test",
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             assert!(
@@ -1507,6 +1525,7 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 std::time::Duration::from_secs(5),
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1557,6 +1576,7 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 std::time::Duration::from_secs(5),
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1613,6 +1633,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 std::time::Duration::from_secs(5),
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1664,6 +1685,7 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 std::time::Duration::from_millis(50),
                 &h.proposal_channels,
                 false,
+                &h.client.state.session_roots,
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1762,7 +1784,20 @@ async fn dispatch_master_ext_session_focus_completes() {
 /// directly and assert the `SessionUpdate → AppEvent` translation without
 /// spinning up the ACP I/O loop.
 fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
+    bare_client_with_policy(crate::protocol::acp::permission_policy::OperationPolicies::default())
+}
+
+fn bare_client_with_policy(
+    operation_policies: crate::protocol::acp::permission_policy::OperationPolicies,
+) -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let cwd = std::env::current_dir().expect("current directory");
+    let session_roots = Arc::new(SessionRoots::new(
+        "copilot".to_string(),
+        crate::agent_source::AgentSource::Host,
+        Vec::new(),
+    ));
+    session_roots.remember(&acp::schema::v1::SessionId::new("s1"), &cwd);
     let state = Arc::new(ClientState {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
@@ -1773,6 +1808,8 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
             crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
         ),
         hidden_tool_calls: Mutex::new(HashMap::new()),
+        operation_policies: operation_policies.into(),
+        session_roots,
     });
     (WtaClient { state }, event_rx)
 }
@@ -1926,9 +1963,7 @@ async fn session_notification_routes_provider_reported_zero_size() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(
-                acp::schema::v1::UsageUpdate::new(1, 0),
-            ),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(1, 0)),
         ))
         .await
         .expect("provider-owned capacity must not be rejected by the client");
@@ -1947,7 +1982,9 @@ async fn notification_dispatch_routes_over_capacity_usage_and_keeps_chat_flow() 
     client
         .dispatch_session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(101, 100)),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(
+                101, 100,
+            )),
         ))
         .await;
 
@@ -2924,6 +2961,45 @@ async fn request_permission_returns_selected_option() {
             }
         })
         .await;
+}
+
+#[tokio::test]
+async fn request_permission_auto_approves_read_inside_session_root() {
+    let (client, mut rx) = bare_client_with_policy(
+        crate::protocol::acp::permission_policy::OperationPolicies::new("auto", "prompt", "prompt"),
+    );
+    let path = std::env::current_dir()
+        .expect("current directory")
+        .join("Cargo.toml");
+    let req = acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("read-tool"),
+            acp::schema::v1::ToolCallUpdateFields::new()
+                .kind(acp::schema::v1::ToolKind::Read)
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(path)]),
+        ),
+        vec![acp::schema::v1::PermissionOption::new(
+            "allow-once",
+            "Allow once",
+            acp::schema::v1::PermissionOptionKind::AllowOnce,
+        )],
+    );
+
+    let response = client.request_permission(req).await.unwrap();
+    assert!(matches!(
+        response.outcome,
+        acp::schema::v1::RequestPermissionOutcome::Selected(_)
+    ));
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::ToolCallAutoApproved { session_id, id })
+            if session_id == "s1" && id == "read-tool"
+    ));
+    assert!(
+        !matches!(rx.try_recv(), Ok(AppEvent::PermissionRequest { .. })),
+        "automatic approval must not emit a blocking permission card"
+    );
 }
 
 /// If the responder is dropped without a choice (e.g. the pane closes), the

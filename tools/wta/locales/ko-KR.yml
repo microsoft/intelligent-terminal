@@ -84,6 +84,10 @@ recommendations.open_new_empty: "새 빈 %{kind}"
 permission.compact.default_description: "권한 요청됨"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N으로 응답 · 전체 카드를 보려면 크기 조정]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal 정책에 따라 자동 승인됨"
+permission.allow_directory_session: "이 세션"
+permission.allow_directory_global: "항상"
+permission.directory_to_store: "디렉터리: %{path}"
 
 # ── 에이전트 상태 (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "찾을 수 없음"
@@ -211,6 +215,32 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
 commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "이 ACP 세션에 대한 디렉터리를 허용합니다(/add-dir <absolute-path>)."  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "이 ACP 세션에 허용된 디렉터리를 나열합니다."  # {Locked="ACP"}
+commands.remove_dir.summary: "세션 디렉터리 권한 부여 제거(/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "전역 디렉터리 부여는 지능형 터미널 설정에서 관리됩니다."
+path_grants.no_active_session: "활성 ACP 세션이 없습니다."
+path_grants.added: "이 세션에 대해 %{path}가 허용됩니다. 지능형 터미널은 이제 권한 결정에 이를 사용할 수 있습니다. ACP는 다음 세션 수명 주기 요청 시 이를 광고합니다."
+path_grants.already_present: "이 세션에는 %{path}가 이미 허용되어 있습니다."
+path_grants.removed: "%{path}에 대한 세션 디렉터리 부여를 제거했습니다."
+path_grants.not_found: "%{path}는 세션 디렉터리 부여가 아닙니다."
+path_grants.failed: "디렉터리 권한 부여를 업데이트할 수 없습니다: %{error}"
+path_grants.list_header: "허용된 디렉터리"
+path_grants.global_header: "글로벌 범위:"
+path_grants.session_header: "세션 범위:"
+path_grants.none: "  (디렉토리 없음)"
+path_grants.not_advertised: "이 Agent는 ACP를 통해 추가 디렉터리를 받을 수 없습니다. Intelligent Terminal은 권한 검사에 계속 이 경로를 사용합니다."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "전역 디렉터리 권한을 업데이트하는 중..."
+path_grants.global_host_only: "전역 디렉터리 권한은 현재 Windows에서 호스트되는 에이전트만 지원합니다."
+path_grants.absolute_required: "절대 디렉터리 경로를 입력하세요."
+path_grants.global_added: "%{path}을(를) 전역 디렉터리 권한에 추가했습니다."
+path_grants.global_already_present: "%{path}은(는) 이미 전역 디렉터리 권한입니다."
+path_grants.global_removed: "%{path}을(를) 전역 디렉터리 권한에서 제거했습니다."
+path_grants.global_not_found: "%{path}은(는) 전역 디렉터리 권한이 아닙니다."
+path_grants.global_failed: "전역 디렉터리 권한을 업데이트할 수 없습니다: %{error}"
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}

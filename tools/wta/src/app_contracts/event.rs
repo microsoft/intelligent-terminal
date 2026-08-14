@@ -145,6 +145,15 @@ pub enum AppEvent {
         cwd: Option<String>,
         exit_code: Option<i64>,
     },
+    ToolCallAutoApproved {
+        session_id: String,
+        id: String,
+    },
+    AddDirGhostCwdResolved {
+        generation: u64,
+        input: String,
+        cwd: Option<String>,
+    },
     ToolTerminalOutput {
         session_id: String,
         terminal_id: String,
@@ -171,6 +180,8 @@ pub enum AppEvent {
         target: Option<String>,
         /// See `PermissionState::target_is_command`.
         target_is_command: bool,
+        grant_directory: Option<String>,
+        allow_once_id: Option<String>,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
     },

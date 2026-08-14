@@ -1,3 +1,5 @@
+pub const SESSION_DIRECTORY_GRANT_KIND: &str = "intellterm_session_directory_grant";
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PermOption {
     pub id: String,
@@ -19,5 +21,9 @@ impl PermOption {
         self.kind
             .get(..6)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("reject"))
+    }
+
+    pub fn is_session_directory_grant(&self) -> bool {
+        self.kind == SESSION_DIRECTORY_GRANT_KIND
     }
 }

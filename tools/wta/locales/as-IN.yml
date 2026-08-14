@@ -102,6 +102,10 @@ recommendations.open_new_empty: "নতুন খালী %{kind}"
 permission.compact.default_description: "অনুমতি অনুৰোধ কৰা হৈছে"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N উত্তৰ দিয়ক · সম্পূৰ্ণ কাৰ্ড চাবলৈ আকাৰ সলনি কৰক]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal-ৰ অনুমতি নীতিৰ অধীনত স্বয়ংক্ৰিয়ভাৱে অনুমোদিত"
+permission.allow_directory_session: "এই ছেশ্যন"  # Button: allow this directory for the current session
+permission.allow_directory_global: "সদায়"  # Button: always allow this directory globally
+permission.directory_to_store: "ডাইৰেক্টৰী: %{path}"
 
 # ── এজেণ্ট স্থিতি (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "পোৱা নগল"
@@ -219,6 +223,32 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "এই ACP অধিবেশনৰ বাবে এটা পঞ্জিকাৰ অনুমতি দিয়ক (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "এই ACP অধিবেশনৰ বাবে অনুমোদিত পঞ্জিকাসমূহ তালিকাভুক্ত কৰক"  # {Locked="ACP"}
+commands.remove_dir.summary: "এটা অধিবেশন পঞ্জিকা অনুদান আঁতৰাওক (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "গ্লোবেল ডাইৰেকটৰি অনুদানসমূহ বুদ্ধিমত্তাসম্পন্ন টাৰ্মিনেল সংহতিসমূহত পৰিচালিত হয়।"
+path_grants.no_active_session: "কোনো সক্ৰিয় ACP অধিবেশন নাই।"
+path_grants.added: "এই অধিবেশনৰ বাবে %{path} অনুমতি দিয়া হৈছে। ইন্টেলিজেন্ট টাৰ্মিনেল-এ এতিয়া অনুমতিৰ সিদ্ধান্তৰ বাবে ইয়াক ব্যৱহাৰ কৰিব পাৰে; ACP এ পৰৱৰ্তী অধিবেশন জীৱনচক্ৰ অনুৰোধত ইয়াক বিজ্ঞাপন দিয়ে।"
+path_grants.already_present: "এই অধিবেশনৰ বাবে %{path} ইতিমধ্যে অনুমতি দিয়া হৈছে।"
+path_grants.removed: "%{path} ৰ বাবে অধিবেশন পঞ্জিকা অনুদান আঁতৰোৱা হৈছে ।"
+path_grants.not_found: "%{path} এটা অধিবেশন পঞ্জিকা অনুদান নহয়।"
+path_grants.failed: "ডাইৰেকটৰি অনুদানসমূহ আপডেইট কৰিব পৰা নগ'ল: %{error}"
+path_grants.list_header: "অনুমোদিত ডাইৰেকটৰিসমূহ"
+path_grants.global_header: "গ্লোবেল স্কোপ:"
+path_grants.session_header: "অধিবেশনৰ পৰিসৰ:"
+path_grants.none: "  (কোনো ডাইৰেকটৰি নাই)"
+path_grants.not_advertised: "এই Agent-এ ACP-ৰ জৰিয়তে অতিৰিক্ত ডাইৰেক্টৰি গ্ৰহণ কৰিব নোৱাৰে। Intelligent Terminal-এ এতিয়াও অনুমতি পৰীক্ষাৰ বাবে এই পথসমূহ ব্যৱহাৰ কৰে।"  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহ আপডেইট কৰা হৈছে..."
+path_grants.global_host_only: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহে বৰ্তমান কেৱল Windows-ত হ'ষ্ট কৰা এজেণ্টসমূহ সমৰ্থন কৰে।"
+path_grants.absolute_required: "এটা নিৰপেক্ষ ডাইৰেকটৰি পথ দিয়ক।"
+path_grants.global_added: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহত %{path} যোগ কৰা হ'ল।"
+path_grants.global_already_present: "%{path} ইতিমধ্যে এটা গোলকীয় ডাইৰেকটৰি অনুদান।"
+path_grants.global_removed: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহৰ পৰা %{path} আঁতৰোৱা হ'ল।"
+path_grants.global_not_found: "%{path} এটা গোলকীয় ডাইৰেকটৰি অনুদান নহয়।"
+path_grants.global_failed: "গোলকীয় ডাইৰেকটৰি অনুদানসমূহ আপডেইট কৰিব পৰা নগ'ল: %{error}"
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}

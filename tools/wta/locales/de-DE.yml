@@ -89,6 +89,10 @@ recommendations.open_new_empty: "Neue(r) leere(r) %{kind}"
 permission.compact.default_description: "Berechtigung angefordert"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N zum Antworten · Größe ändern für vollständige Karte]"  # {Locked="Y/N"}
+permission.auto_approved: "Automatisch durch die Intelligent Terminal-Richtlinie genehmigt"
+permission.allow_directory_session: "Diese Sitzung"
+permission.allow_directory_global: "Immer"
+permission.directory_to_store: "Verzeichnis: %{path}"
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Nicht gefunden"
@@ -218,6 +222,32 @@ system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb eine
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
 commands.move.summary: "Agentenbereich dieser Registerkarte verschieben (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Erlauben Sie ein Verzeichnis für diese ACP-Sitzung (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Listen Sie die zulässigen Verzeichnisse für diese ACP-Sitzung auf"  # {Locked="ACP"}
+commands.remove_dir.summary: "Entfernen Sie die Gewährung eines Sitzungsverzeichnisses (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Globale Verzeichnisberechtigungen werden in den Intelligent Terminal-Einstellungen verwaltet."
+path_grants.no_active_session: "Es gibt keine aktive ACP-Sitzung."
+path_grants.added: "Erlaubt %{path} für diese Sitzung. Intelligentes Terminal kann es nun für Berechtigungsentscheidungen verwenden; ACP kündigt es bei der nächsten Sitzungslebenszyklusanforderung an."
+path_grants.already_present: "%{path} ist für diese Sitzung bereits zulässig."
+path_grants.removed: "Die Sitzungsverzeichnisgewährung für %{path} wurde entfernt."
+path_grants.not_found: "%{path} ist keine Sitzungsverzeichnisgewährung."
+path_grants.failed: "Verzeichnisberechtigungen konnten nicht aktualisiert werden: %{error}"
+path_grants.list_header: "Erlaubte Verzeichnisse"
+path_grants.global_header: "Globaler Geltungsbereich:"
+path_grants.session_header: "Sitzungsbereich:"
+path_grants.none: "  (keine Verzeichnisse)"
+path_grants.not_advertised: "Dieser Agent kann über ACP keine zusätzlichen Verzeichnisse empfangen. Intelligent Terminal verwendet diese Pfade weiterhin für Berechtigungsprüfungen."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Globale Verzeichnisfreigaben werden aktualisiert..."
+path_grants.global_host_only: "Globale Verzeichnisfreigaben unterstützen derzeit nur unter Windows gehostete Agents."
+path_grants.absolute_required: "Geben Sie einen absoluten Verzeichnispfad ein."
+path_grants.global_added: "%{path} wurde den globalen Verzeichnisfreigaben hinzugefügt."
+path_grants.global_already_present: "%{path} ist bereits eine globale Verzeichnisfreigabe."
+path_grants.global_removed: "%{path} wurde aus den globalen Verzeichnisfreigaben entfernt."
+path_grants.global_not_found: "%{path} ist keine globale Verzeichnisfreigabe."
+path_grants.global_failed: "Globale Verzeichnisfreigaben konnten nicht aktualisiert werden: %{error}"
 model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}

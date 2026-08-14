@@ -39,6 +39,14 @@ impl App {
                 self.handle_key(key);
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right)
+                    if self.current_tab().input_has_nav_focus() =>
+                {
+                    self.text_selection.clear();
+                    if self.accept_command_ghost() {
+                        self.refresh_add_dir_ghost_cwd();
+                    }
+                }
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
@@ -287,6 +295,7 @@ impl App {
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
+                    tab.auto_approved_tool_calls.clear();
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -365,6 +374,7 @@ impl App {
                 tab.loading_target_session_id = None;
                 tab.replay_agent_buffer.clear();
                 tab.replay_user_buffer.clear();
+                tab.auto_approved_tool_calls.clear();
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
@@ -765,6 +775,12 @@ impl App {
                         tab.messages.push(ChatMessage::Agent(text));
                     }
                 }
+                tab.tool_calls
+                    .insert(id.clone(), (title.clone(), status.clone()));
+                let policy_note = tab
+                    .auto_approved_tool_calls
+                    .remove(&id)
+                    .then(|| t!("permission.auto_approved").into_owned());
                 tab.messages.push(ChatMessage::ToolCall {
                     id,
                     title,
@@ -772,6 +788,7 @@ impl App {
                     kind,
                     location,
                     location_is_command,
+                    policy_note,
                     cwd,
                     output,
                     exit_code,
@@ -851,6 +868,46 @@ impl App {
                     }
                 }
             }
+            AppEvent::ToolCallAutoApproved { session_id, id } => {
+                let tab = self.session_tab_mut(&session_id);
+                let mut annotated = false;
+                for message in &mut tab.messages {
+                    if let ChatMessage::ToolCall {
+                        id: message_id,
+                        policy_note,
+                        ..
+                    } = message
+                    {
+                        if message_id == &id {
+                            *policy_note = Some(t!("permission.auto_approved").into_owned());
+                            annotated = true;
+                        }
+                    }
+                }
+                if !annotated && (tab.turn.is_in_flight() || tab.loading_session) {
+                    tab.auto_approved_tool_calls.insert(id);
+                }
+            }
+            AppEvent::AddDirGhostCwdResolved {
+                generation,
+                input,
+                cwd,
+            } => {
+                if generation == self.add_dir_ghost_generation
+                    && self.current_tab().input == input
+                    && self.current_tab().cursor_pos == input.len()
+                    && commands::add_dir_awaiting_path(&input)
+                {
+                    if cwd.is_none() {
+                        self.add_dir_ghost_refresh_for = None;
+                    }
+                    self.resolved_add_dir_ghost_cwd = Some(ResolvedAddDirGhostCwd {
+                        generation,
+                        input,
+                        cwd,
+                    });
+                }
+            }
             AppEvent::ToolTerminalOutput {
                 session_id,
                 terminal_id,
@@ -903,6 +960,8 @@ impl App {
             }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
+                tab.tool_calls.remove(&id);
+                tab.auto_approved_tool_calls.remove(&id);
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
                 );
@@ -940,6 +999,8 @@ impl App {
                 kind_label,
                 target,
                 target_is_command,
+                grant_directory,
+                allow_once_id,
                 options,
                 responder,
             } => {
@@ -955,12 +1016,15 @@ impl App {
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
                 tab.permission.push_back(PermissionState {
+                    session_id,
                     tool_call_id,
                     description,
                     title,
                     kind_label,
                     target,
                     target_is_command,
+                    grant_directory,
+                    allow_once_id,
                     options,
                     selected: 0,
                     responder: Some(responder),
@@ -1328,6 +1392,11 @@ impl App {
                     return;
                 }
 
+                if method == "allowed_directories_changed" {
+                    self.handle_allowed_directories_changed(&params);
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -1356,6 +1425,63 @@ impl App {
                         self.autofix_enabled = enabled;
                     }
 
+                    if matches!(
+                        self.current_agent_source,
+                        crate::agent_source::AgentSource::Host
+                    ) {
+                        if let Some(values) = params
+                            .get("allowed_host_directories")
+                            .and_then(|v| v.as_array())
+                        {
+                            let Some(directories) = values
+                                .iter()
+                                .map(|value| value.as_str().map(std::path::PathBuf::from))
+                                .collect::<Option<Vec<_>>>()
+                            else {
+                                tracing::warn!(
+                                    target: "path_grants",
+                                    "ignoring malformed allowed_host_directories update"
+                                );
+                                return;
+                            };
+                            self.path_grants.replace_configured_directories(directories);
+                        }
+                    }
+
+                    if params.get("confirmation_read_operations").is_some()
+                        || params.get("confirmation_create_operations").is_some()
+                        || params.get("confirmation_input_operations").is_some()
+                    {
+                        use crate::protocol::acp::permission_policy::ConfirmationPolicy;
+
+                        let current = self.operation_policies.snapshot();
+                        let updated = crate::protocol::acp::permission_policy::OperationPolicies {
+                            read: params
+                                .get("confirmation_read_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.read),
+                            create: params
+                                .get("confirmation_create_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.create),
+                            input: params
+                                .get("confirmation_input_operations")
+                                .and_then(|value| value.as_str())
+                                .map(ConfirmationPolicy::parse)
+                                .unwrap_or(current.input),
+                        };
+                        tracing::info!(
+                            target: "permission_policy",
+                            read = ?updated.read,
+                            create = ?updated.create,
+                            input = ?updated.input,
+                            "confirmation policies hot-reloaded from settings change"
+                        );
+                        self.operation_policies.replace(updated);
+                    }
+
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
@@ -1380,7 +1506,7 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                        tracing::info!(
+                            tracing::info!(
                             target: "autofix",
                             model = raw,
                                 target_agent_id,
@@ -1410,10 +1536,10 @@ impl App {
                                 Ok(models) => self.set_cloud_models(models),
                                 Err(error) => {
                                     tracing::error!(
-                                        target: "cloud_models",
-                                        %error,
-                                        "invalid cloud model catalog in agent_config_changed"
-                        );
+                                                    target: "cloud_models",
+                                                    %error,
+                                                    "invalid cloud model catalog in agent_config_changed"
+                                    );
                                     return;
                                 }
                             }
@@ -2321,6 +2447,8 @@ impl App {
                             acp_model: None,
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
+                            operation_policies: self.operation_policies.clone(),
+                            path_grants: Arc::clone(&self.path_grants),
                             prompt_rx: None, // try_start_acp will create fresh channels
                             cancel_rx: None,
                             new_session_rx: None,

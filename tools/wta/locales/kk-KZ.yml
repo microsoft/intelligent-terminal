@@ -101,6 +101,10 @@ recommendations.open_new_empty: "Жаңа бос %{kind}"
 permission.compact.default_description: "Рұқсат сұралуда"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N жауап үшін · толық карта үшін өлшемін өзгертіңіз]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal саясаты бойынша автоматты түрде мақұлданды"
+permission.allow_directory_session: "Осы сеанс"
+permission.allow_directory_global: "Әрқашан"
+permission.directory_to_store: "Каталог: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Табылмады"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Агентті ауыстыру Windows Termin
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Осы панель үшін модельді таңдаңыз (тікелей ауыстыру үшін /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Осы қойындының агент панелін жылжыту (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Осы ACP сеансы үшін каталогқа рұқсат беріңіз (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Осы ACP сеансы үшін рұқсат етілген каталогтарды тізімдеңіз"  # {Locked="ACP"}
+commands.remove_dir.summary: "Сеанс каталогының грантын жою (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Жаһандық каталог гранттары Intelligent Terminal Settings ішінде басқарылады."
+path_grants.no_active_session: "Белсенді ACP сеансы жоқ."
+path_grants.added: "Бұл сеанс үшін рұқсат етілген %{path}. Зияткер терминал оны қазір рұқсат шешімдері үшін пайдалана алады; ACP оны келесі сеанстың өмірлік циклінің сұрауында жарнамалайды."
+path_grants.already_present: "%{path} осы сеанс үшін әлдеқашан рұқсат етілген."
+path_grants.removed: "%{path} үшін сеанс каталогының гранты жойылды."
+path_grants.not_found: "%{path} сеанс каталогының гранты емес."
+path_grants.failed: "Каталог гранттарын жаңарту мүмкін болмады: %{error}"
+path_grants.list_header: "Рұқсат етілген каталогтар"
+path_grants.global_header: "Ғаламдық ауқым:"
+path_grants.session_header: "Сеанс ауқымы:"
+path_grants.none: "  (каталогтар жоқ)"
+path_grants.not_advertised: "Бұл Agent ACP арқылы қосымша каталогтарды қабылдай алмайды. Intelligent Terminal бұл жолдарды рұқсаттарды тексеру үшін әлі де пайдаланады."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Глобалдық каталог рұқсаттары жаңартылуда..."
+path_grants.global_host_only: "Глобалдық каталог рұқсаттары қазір тек Windows жүйесінде орналастырылған агенттерді қолдайды."
+path_grants.absolute_required: "Каталогтің абсолюттік жолын енгізіңіз."
+path_grants.global_added: "%{path} глобалдық каталог рұқсаттарына қосылды."
+path_grants.global_already_present: "%{path} әлдеқашан глобалдық каталог рұқсаты болып табылады."
+path_grants.global_removed: "%{path} глобалдық каталог рұқсаттарынан жойылды."
+path_grants.global_not_found: "%{path} глобалдық каталог рұқсаты емес."
+path_grants.global_failed: "Глобалдық каталог рұқсаттарын жаңарту мүмкін болмады: %{error}"
 model_picker.title: "Модельді таңдаңыз (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Қосылған агент таңдауға болатын ешбір модельді жарияламады."
 system.model_set: "Осы панельдің моделі %{model} етіп орнатылды."  # {Locked="%{model}"}

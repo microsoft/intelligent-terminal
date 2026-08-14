@@ -33,6 +33,12 @@ namespace Microsoft.Terminal.Settings.Editor
         void Remove();
     }
 
+    runtimeclass AllowedDirectoryEntry
+    {
+        String Path { get; };
+        void Remove();
+    }
+
     runtimeclass AIAgentsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         AIAgentsViewModel(Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings);
@@ -97,6 +103,13 @@ namespace Microsoft.Terminal.Settings.Editor
         // Whether the auto-suggest toggle should be enabled: detection must be
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
+        Windows.Foundation.Collections.IObservableVector<AllowedDirectoryEntry> AllowedHostDirectories { get; };
+        Boolean IsAllowedHostDirectoriesExpanded;
+        Boolean IsAddingAllowedHostDirectory { get; };
+        String NewAllowedHostDirectory;
+        Boolean CanAddAllowedHostDirectory { get; };
+        void BeginAddAllowedHostDirectory();
+        void AddAllowedHostDirectory();
 
         // GPO policy lock indicators.
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent

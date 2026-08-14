@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Nieuw leeg %{kind}"
 permission.compact.default_description: "Machtiging gevraagd"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N om te antwoorden · formaat wijzigen voor volledige kaart]"  # {Locked="Y/N"}
+permission.auto_approved: "Automatisch goedgekeurd door het beleid van Intelligent Terminal"
+permission.allow_directory_session: "Deze sessie"
+permission.allow_directory_global: "Altijd"
+permission.directory_to_store: "Map: %{path}"
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Niet gevonden"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Schakelen tussen agents is niet beschikbaar bu
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
 commands.move.summary: "Het agentdeelvenster van dit tabblad verplaatsen (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Sta een map toe voor deze ACP sessie (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Lijst met toegestane mappen voor deze ACP-sessie"  # {Locked="ACP"}
+commands.remove_dir.summary: "Een sessiemaptoekenning verwijderen (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Globale directorytoekenningen worden beheerd in Intelligent Terminal Settings."
+path_grants.no_active_session: "Er is geen actieve ACP sessie."
+path_grants.added: "Toegestaan ​​%{path} voor deze sessie. Intelligente Terminal kan het nu gebruiken voor toestemmingsbeslissingen; ACP maakt er reclame voor bij het volgende sessielevenscyclusverzoek."
+path_grants.already_present: "%{path} is al toegestaan ​​voor deze sessie."
+path_grants.removed: "De sessiemaptoekenning voor %{path} is verwijderd."
+path_grants.not_found: "%{path} is geen sessiemaptoekenning."
+path_grants.failed: "Kan directorytoelagen niet bijwerken: %{error}"
+path_grants.list_header: "Toegestane mappen"
+path_grants.global_header: "Mondiale reikwijdte:"
+path_grants.session_header: "Sessiebereik:"
+path_grants.none: "  (geen mappen)"
+path_grants.not_advertised: "Deze Agent kan geen extra mappen ontvangen via ACP. Intelligent Terminal gebruikt deze paden nog steeds voor machtigingscontroles."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Algemene maptoekenningen worden bijgewerkt..."
+path_grants.global_host_only: "Algemene maptoekenningen ondersteunen momenteel alleen agents die op Windows worden gehost."
+path_grants.absolute_required: "Voer een absoluut mappad in."
+path_grants.global_added: "%{path} is toegevoegd aan de algemene maptoekenningen."
+path_grants.global_already_present: "%{path} is al een algemene maptoekenning."
+path_grants.global_removed: "%{path} is verwijderd uit de algemene maptoekenningen."
+path_grants.global_not_found: "%{path} is geen algemene maptoekenning."
+path_grants.global_failed: "Kan de algemene maptoekenningen niet bijwerken: %{error}"
 model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}

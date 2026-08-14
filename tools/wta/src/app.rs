@@ -14,6 +14,8 @@ struct DeferredAcpParams {
     acp_model: Option<String>,
     agent_source: crate::agent_source::AgentSource,
     source_cwd: Option<String>,
+    operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
+    path_grants: Arc<crate::path_grants::SessionRoots>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
     cancel_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>>,
     new_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>>,
@@ -46,6 +48,34 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
         spec: commands::lookup("agent").expect("/agent is registered"),
         rest: selected?.id.clone(),
     })
+}
+
+fn add_dir_command_on_enter(input: &str, ghost_cwd: Option<&str>) -> Option<ParsedCommand> {
+    if !commands::add_dir_awaiting_path(input) {
+        return None;
+    }
+    let ghost_cwd = ghost_cwd.filter(|cwd| !cwd.is_empty())?;
+    Some(ParsedCommand {
+        kind: CommandKind::AddDir,
+        spec: commands::lookup("add-dir").expect("/add-dir is registered"),
+        rest: ghost_cwd.to_string(),
+    })
+}
+
+struct ResolvedAddDirGhostCwd {
+    generation: u64,
+    input: String,
+    cwd: Option<String>,
+}
+
+fn parse_directory_command_path(arguments: &str) -> Option<String> {
+    let path = arguments
+        .trim()
+        .strip_prefix('"')
+        .and_then(|path| path.strip_suffix('"'))
+        .unwrap_or_else(|| arguments.trim())
+        .trim();
+    (!path.is_empty()).then(|| path.to_string())
 }
 
 mod attachments;
@@ -543,7 +573,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                        .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -936,6 +966,8 @@ pub struct App {
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<RestartRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
+    path_grants: Arc<crate::path_grants::SessionRoots>,
+    operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -1076,6 +1108,10 @@ pub struct App {
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
     pub source_cwd: Option<String>,
+    add_dir_ghost_generation: u64,
+    add_dir_ghost_refresh_for: Option<String>,
+    /// Active-pane cwd produced for the exact `/add-dir` input generation.
+    resolved_add_dir_ghost_cwd: Option<ResolvedAddDirGhostCwd>,
     /// When true, surface raw `agent_event` payloads in the chat as
     /// `ChatMessage::AgentEvent` for diagnostics. Controlled by the
     /// `WTA_LOG_AGENT_EVENT` env var (1/true/yes).
@@ -1132,10 +1168,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude  => Some("claude"),
-        CliSource::Codex   => Some("codex"),
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini  => Some("gemini"),
+        CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1248,6 +1284,13 @@ impl App {
             rename_session_tx,
             restart_tx,
             master_request_tx,
+            path_grants: Arc::new(crate::path_grants::SessionRoots::new(
+                "custom".to_string(),
+                crate::agent_source::AgentSource::Host,
+                Vec::new(),
+            )),
+            operation_policies:
+                crate::protocol::acp::permission_policy::SharedOperationPolicies::default(),
             debug_capture_enabled,
             help_overlay_visible: false,
             transport_lost: false,
@@ -1285,6 +1328,9 @@ impl App {
             last_dispatched_command: None,
             source_session_id: None,
             source_cwd: None,
+            add_dir_ghost_generation: 0,
+            add_dir_ghost_refresh_for: None,
+            resolved_add_dir_ghost_cwd: None,
             log_agent_events: false,
             activity_frame: 0,
             close_pane_armed_at: None,
@@ -1332,6 +1378,8 @@ impl App {
         acp_model: Option<String>,
         agent_source: crate::agent_source::AgentSource,
         source_cwd: Option<String>,
+        operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
+        path_grants: Arc<crate::path_grants::SessionRoots>,
         owner_tab_id: Option<String>,
         shell_mgr: Arc<crate::shell::ShellManager>,
         wt_connected: bool,
@@ -1341,6 +1389,8 @@ impl App {
             acp_model,
             agent_source,
             source_cwd,
+            operation_policies,
+            path_grants,
             prompt_rx: None,
             cancel_rx: None,
             new_session_rx: None,
@@ -1434,6 +1484,8 @@ impl App {
                 let acp_model = params.acp_model.clone();
                 let agent_source = params.agent_source.clone();
                 let source_cwd = params.source_cwd.clone();
+                let operation_policies = params.operation_policies.clone();
+                let path_grants = Arc::clone(&params.path_grants);
                 let event_tx = tx.clone();
                 let shell_mgr = Arc::clone(&params.shell_mgr);
                 let wt_connected = params.wt_connected;
@@ -1474,30 +1526,32 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                                pipe_name,
-                                acp_model,
+                            pipe_name,
+                            acp_model,
                             cloud_models,
-                                agent_id_opt,
-                                agent_source,
-                                source_cwd,
-                                owner_tab_opt,
-                                None, // initial_load_session_id: already handled by the dead initial task
-                                event_tx_for_pipe.clone(),
-                                prompt_rx,
-                                cancel_rx,
-                                new_session_rx,
-                                load_session_rx,
-                                drop_session_rx,
-                                rename_session_rx,
-                                restart_rx,
-                                shrx,
-                                master_ext_rx,
-                                shell_mgr,
-                                wt_connected,
-                                post_login_auth, // only true on genuine LoginComplete reconnects
+                            agent_id_opt,
+                            agent_source,
+                            source_cwd,
+                            owner_tab_opt,
+                            None, // initial_load_session_id: already handled by the dead initial task
+                            operation_policies,
+                            path_grants,
+                            event_tx_for_pipe.clone(),
+                            prompt_rx,
+                            cancel_rx,
+                            new_session_rx,
+                            load_session_rx,
+                            drop_session_rx,
+                            rename_session_rx,
+                            restart_rx,
+                            shrx,
+                            master_ext_rx,
+                            shell_mgr,
+                            wt_connected,
+                            post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                            )
-                            .await
+                        )
+                        .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -2157,7 +2211,7 @@ impl App {
         let idx = self.current_tab().model_picker_selected;
         let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
-        self.close_model_picker();
+            self.close_model_picker();
             self.apply_model_pick(id);
         }
     }
@@ -3814,6 +3868,8 @@ impl App {
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
+            AppEvent::ToolCallAutoApproved { .. } => "tool_call_auto_approved",
+            AppEvent::AddDirGhostCwdResolved { .. } => "add_dir_ghost_cwd_resolved",
             AppEvent::ToolTerminalOutput { .. } => "tool_terminal_output",
             AppEvent::HideToolCall { .. } => "hide_tool_call",
             AppEvent::Plan { .. } => "plan",
@@ -4289,6 +4345,7 @@ impl App {
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
         let agent_candidates: Vec<_> = self.agent_command_candidates().collect();
+        let directory_candidates = self.remove_dir_command_candidates();
         let candidates = if self.transport_lost {
             let filtered: Vec<&'static crate::commands::CommandSpec> = tab
                 .command_popup_candidates
@@ -4302,6 +4359,8 @@ impl App {
             crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
         } else if !agent_candidates.is_empty() {
             crate::ui::PopupCandidates::Agents(agent_candidates)
+        } else if !directory_candidates.is_empty() {
+            crate::ui::PopupCandidates::DirectoryPaths(directory_candidates)
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
         } else {
@@ -4359,6 +4418,7 @@ impl App {
     pub(super) fn command_popup_visible(&self) -> bool {
         if !self.current_tab().command_popup_visible()
             && self.agent_command_candidates().next().is_none()
+            && self.remove_dir_command_candidates().is_empty()
         {
             return false;
         }
@@ -4381,13 +4441,13 @@ impl App {
             commands::agent_id_prefix(&self.current_tab().input)
         };
         self.available_agents.iter().filter(move |agent| {
-                prefix.is_some_and(|prefix| {
-                    agent
-                        .id
-                        .get(..prefix.len())
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
-                })
+            prefix.is_some_and(|prefix| {
+                agent
+                    .id
+                    .get(..prefix.len())
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
             })
+        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4397,11 +4457,43 @@ impl App {
             .last()
     }
 
+    fn remove_dir_command_candidates(&self) -> Vec<String> {
+        if self.transport_lost {
+            return Vec::new();
+        }
+        let Some(prefix) = commands::remove_dir_prefix(&self.current_tab().input) else {
+            return Vec::new();
+        };
+        let Some(session_id) = self.current_tab().session_id.as_deref() else {
+            return Vec::new();
+        };
+        let prefix = prefix.to_lowercase();
+        self.path_grants
+            .session_directories(session_id)
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .filter(|path| path.to_lowercase().starts_with(&prefix))
+            .collect()
+    }
+
+    fn selected_remove_dir_command_candidate(&self) -> Option<String> {
+        let candidates = self.remove_dir_command_candidates();
+        let selected = self
+            .current_tab()
+            .command_popup_selected
+            .min(candidates.len().saturating_sub(1));
+        candidates.get(selected).cloned()
+    }
+
     fn command_popup_candidate_count(&self) -> usize {
         let agent_count = self.agent_command_candidates().count();
         if agent_count > 0 {
             agent_count
         } else {
+            let directory_count = self.remove_dir_command_candidates().len();
+            if directory_count > 0 {
+                return directory_count;
+            }
             let tab = self.current_tab();
             tab.command_popup_candidates.len() + tab.move_position_candidates.len()
         }
@@ -4424,12 +4516,76 @@ impl App {
         if tab.cursor_pos != tab.input.len() {
             return None;
         }
+        if commands::add_dir_awaiting_path(&tab.input) {
+            return self.resolved_add_dir_ghost_cwd();
+        }
         let prefix = commands::agent_id_prefix(&tab.input)?;
         let candidate = self.selected_agent_command_candidate()?;
         candidate
             .id
             .get(prefix.len()..)
             .filter(|suffix| !suffix.is_empty())
+    }
+
+    fn resolved_add_dir_ghost_cwd(&self) -> Option<&str> {
+        let tab = self.current_tab();
+        let resolved = self.resolved_add_dir_ghost_cwd.as_ref()?;
+        if resolved.generation != self.add_dir_ghost_generation
+            || resolved.input != tab.input
+            || tab.cursor_pos != tab.input.len()
+            || !commands::add_dir_awaiting_path(&tab.input)
+        {
+            return None;
+        }
+        resolved.cwd.as_deref().filter(|cwd| !cwd.is_empty())
+    }
+
+    fn accept_command_ghost(&mut self) -> bool {
+        let Some(suffix) = self.command_ghost_suffix().map(str::to_string) else {
+            return false;
+        };
+        self.current_tab_mut().insert_input_str(&suffix);
+        true
+    }
+
+    fn refresh_add_dir_ghost_cwd(&mut self) {
+        let input = {
+            let tab = self.current_tab();
+            if tab.cursor_pos != tab.input.len() || !commands::add_dir_awaiting_path(&tab.input) {
+                self.add_dir_ghost_refresh_for = None;
+                self.resolved_add_dir_ghost_cwd = None;
+                return;
+            }
+            tab.input.clone()
+        };
+        if self.add_dir_ghost_refresh_for.as_deref() == Some(input.as_str()) {
+            return;
+        }
+        self.resolved_add_dir_ghost_cwd = None;
+        let Some(event_tx) = self.event_tx.clone() else {
+            return;
+        };
+        self.add_dir_ghost_refresh_for = Some(input.clone());
+        self.add_dir_ghost_generation = self.add_dir_ghost_generation.wrapping_add(1);
+        let generation = self.add_dir_ghost_generation;
+        let shell_mgr = Arc::clone(&self.shell_mgr);
+        tokio::spawn(async move {
+            let cwd = shell_mgr
+                .wt_get_active_pane()
+                .await
+                .ok()
+                .and_then(|pane| {
+                    pane.get("cwd")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                })
+                .filter(|cwd| !cwd.is_empty());
+            let _ = event_tx.send(AppEvent::AddDirGhostCwdResolved {
+                generation,
+                input,
+                cwd,
+            });
+        });
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
@@ -4497,6 +4653,17 @@ impl App {
                     self.handle_slash_command(parsed);
                     return true;
                 }
+                if let Some(path) = self.selected_remove_dir_command_candidate() {
+                    let spec = commands::lookup("remove-dir").expect("/remove-dir is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::RemoveDir,
+                        spec,
+                        rest: path,
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
                 if let Some(position) = self.current_tab().selected_move_position() {
                     let spec = commands::lookup("move").expect("/move is registered");
                     let parsed = ParsedCommand {
@@ -4542,6 +4709,13 @@ impl App {
         // 2. No popup: classify the committed line.
         if self.current_tab().input.is_empty() {
             return false;
+        }
+        if let Some(command) =
+            add_dir_command_on_enter(&self.current_tab().input, self.resolved_add_dir_ghost_cwd())
+        {
+            self.current_tab_mut().clear_input();
+            self.handle_slash_command(command);
+            return true;
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
@@ -4615,6 +4789,9 @@ impl App {
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
             CommandKind::Move => self.cmd_move(cmd.rest),
+            CommandKind::AddDir => self.cmd_add_dir(cmd.rest),
+            CommandKind::ListDirs => self.cmd_list_dirs(),
+            CommandKind::RemoveDir => self.cmd_remove_dir(cmd.rest),
         }
     }
 
@@ -4662,8 +4839,9 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4672,9 +4850,9 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-                tab_id,
-                cwd: self.source_cwd.clone(),
-            });
+            tab_id,
+            cwd: self.source_cwd.clone(),
+        });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
         }
@@ -4708,8 +4886,9 @@ impl App {
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4845,6 +5024,131 @@ impl App {
         self.project_active_tab_state();
     }
 
+    fn cmd_add_dir(&mut self, arguments: String) {
+        let path = parse_directory_command_path(&arguments);
+        let Some(session_id) = self.current_tab().session_id.clone() else {
+            self.push_path_grant_message(ChatMessage::warning(
+                t!("path_grants.no_active_session").into_owned(),
+            ));
+            return;
+        };
+        let Some(path) = path else {
+            self.current_tab_mut()
+                .replace_input("/add-dir ".to_string());
+            self.refresh_add_dir_ghost_cwd();
+            return;
+        };
+        match self
+            .path_grants
+            .add_session_directory(&session_id, std::path::PathBuf::from(&path))
+        {
+            Ok(true) => self.push_path_grant_message(ChatMessage::success(
+                t!("path_grants.added", path = path.as_str()).into_owned(),
+            )),
+            Ok(false) => self.push_path_grant_message(ChatMessage::info(
+                t!("path_grants.already_present", path = path.as_str()).into_owned(),
+            )),
+            Err(error) => self.push_path_grant_message(ChatMessage::warning(
+                t!("path_grants.failed", error = error.as_str()).into_owned(),
+            )),
+        }
+    }
+
+    fn cmd_remove_dir(&mut self, arguments: String) {
+        let path = parse_directory_command_path(&arguments);
+        let Some(session_id) = self.current_tab().session_id.clone() else {
+            self.push_path_grant_message(ChatMessage::warning(
+                t!("path_grants.no_active_session").into_owned(),
+            ));
+            return;
+        };
+        let Some(path) = path else {
+            self.current_tab_mut()
+                .replace_input("/remove-dir ".to_string());
+            return;
+        };
+        match self
+            .path_grants
+            .remove_session_directory(&session_id, std::path::Path::new(&path))
+        {
+            Ok(true) => self.push_path_grant_message(ChatMessage::success(
+                t!("path_grants.removed", path = path.as_str()).into_owned(),
+            )),
+            Ok(false) => self.push_path_grant_message(ChatMessage::info(
+                t!("path_grants.not_found", path = path.as_str()).into_owned(),
+            )),
+            Err(error) => self.push_path_grant_message(ChatMessage::warning(
+                t!("path_grants.failed", error = error.as_str()).into_owned(),
+            )),
+        }
+    }
+
+    fn cmd_list_dirs(&mut self) {
+        let globals = self.path_grants.configured_directories();
+        let sessions = self
+            .current_tab()
+            .session_id
+            .as_deref()
+            .map(|session_id| self.path_grants.session_directories(session_id))
+            .unwrap_or_default();
+        self.push_path_grant_message(ChatMessage::DirectoryList {
+            global: globals
+                .into_iter()
+                .map(|directory| directory.display().to_string())
+                .collect(),
+            session: sessions
+                .into_iter()
+                .map(|directory| directory.display().to_string())
+                .collect(),
+            additional_directories_supported: self.path_grants.additional_directories_supported(),
+        });
+    }
+
+    fn handle_allowed_directories_changed(&mut self, params: &serde_json::Value) {
+        let target_tab = params
+            .get("tab_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        if !target_tab.is_empty()
+            && self
+                .owner_tab_id
+                .as_deref()
+                .is_some_and(|owner| owner != target_tab)
+        {
+            return;
+        }
+        let Some(directories) = params
+            .get("directories")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|value| value.as_str().map(std::path::PathBuf::from))
+                    .collect::<Option<Vec<_>>>()
+            })
+        else {
+            return;
+        };
+        self.path_grants.replace_configured_directories(directories);
+    }
+
+    fn push_path_grant_message(&mut self, message: ChatMessage) {
+        let tab = self.current_tab_mut();
+        tab.messages.push(message);
+        tab.scroll_to_bottom();
+    }
+
+    pub(crate) fn set_path_grants(&mut self, path_grants: Arc<crate::path_grants::SessionRoots>) {
+        self.path_grants = path_grants;
+    }
+
+    pub(crate) fn set_operation_policies(
+        &mut self,
+        operation_policies: crate::protocol::acp::permission_policy::SharedOperationPolicies,
+    ) {
+        self.operation_policies = operation_policies;
+    }
+
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
     /// transport this App is running on:
     ///
@@ -4937,8 +5241,7 @@ impl App {
                 let offset = self.current_tab().rec_scroll.offset;
                 // `card_h` includes the inter-card gap, so subtracting it
                 // yields the rendered card's exclusive bottom row.
-                let rendered_bottom_exclusive =
-                    line_top.saturating_add(card_h.saturating_sub(1));
+                let rendered_bottom_exclusive = line_top.saturating_add(card_h.saturating_sub(1));
                 let viewport_bottom = offset.saturating_add(viewport_height);
                 if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
                     self.current_tab_mut().rec_scroll.set(line_top);

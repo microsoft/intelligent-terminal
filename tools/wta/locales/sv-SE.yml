@@ -88,6 +88,10 @@ recommendations.open_new_empty: "Ny tom %{kind}"
 permission.compact.default_description: "Behörighet begärd"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N för att svara · ändra storlek för fullständigt kort]"  # {Locked="Y/N"}
+permission.auto_approved: "Godkändes automatiskt enligt principen i Intelligent Terminal"
+permission.allow_directory_session: "Den här sessionen"
+permission.allow_directory_global: "Alltid"
+permission.directory_to_store: "Katalog: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Hittades inte"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
 commands.move.summary: "Flytta agentpanelen för den här fliken (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Tillåt en katalog för denna ACP-session (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Lista tillåtna kataloger för denna ACP session"  # {Locked="ACP"}
+commands.remove_dir.summary: "Ta bort ett sessionskatalogbeviljande (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Globala katalogbidrag hanteras i Intelligenta terminalinställningar."
+path_grants.no_active_session: "Det finns ingen aktiv ACP session."
+path_grants.added: "Tillåtet %{path} för denna session. Intelligent Terminal kan använda den för behörighetsbeslut nu; ACP annonserar det på nästa sessions livscykelförfrågan."
+path_grants.already_present: "%{path} är redan tillåtet för denna session."
+path_grants.removed: "Tog bort sessionskatalogbeviljande för %{path}."
+path_grants.not_found: "%{path} är inte ett sessionskatalogbidrag."
+path_grants.failed: "Kunde inte uppdatera katalogbidrag: %{error}"
+path_grants.list_header: "Tillåtna kataloger"
+path_grants.global_header: "Globalt omfång:"
+path_grants.session_header: "Sessionens omfattning:"
+path_grants.none: "  (inga kataloger)"
+path_grants.not_advertised: "Denna Agent kan inte ta emot ytterligare kataloger via ACP. Intelligent Terminal använder fortfarande dessa sökvägar för behörighetskontroller."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Uppdaterar globala katalogbehörigheter..."
+path_grants.global_host_only: "Globala katalogbehörigheter stöder för närvarande endast agenter som körs på Windows."
+path_grants.absolute_required: "Ange en absolut katalogsökväg."
+path_grants.global_added: "Lade till %{path} i globala katalogbehörigheter."
+path_grants.global_already_present: "%{path} är redan en global katalogbehörighet."
+path_grants.global_removed: "Tog bort %{path} från globala katalogbehörigheter."
+path_grants.global_not_found: "%{path} är inte en global katalogbehörighet."
+path_grants.global_failed: "Det gick inte att uppdatera globala katalogbehörigheter: %{error}"
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}

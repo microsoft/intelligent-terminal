@@ -1690,13 +1690,21 @@ namespace winrt::TerminalApp::implementation
     {
         const auto& globals = _settings.GlobalSettings();
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
-        return AgentRuntimeConfigSnapshot{
+        AgentRuntimeConfigSnapshot snapshot{
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
-            globals.EffectiveAutoFixEnabled(),
         };
+        for (const auto& directory : globals.AiAllowedHostDirectories())
+        {
+            snapshot.allowedHostDirectories.emplace_back(directory);
+        }
+        snapshot.confirmationReadOperations = globals.AiConfirmationReadOps();
+        snapshot.confirmationCreateOperations = globals.AiConfirmationCreateOps();
+        snapshot.confirmationInputOperations = globals.AiConfirmationInputOps();
+        snapshot.autofixEnabled = globals.EffectiveAutoFixEnabled();
+        return snapshot;
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
@@ -1708,14 +1716,16 @@ namespace winrt::TerminalApp::implementation
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
+    //   - allowed_host_directories + confirmation_*_operations :
+    //     permission evaluation inputs shared by the running ACP client.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
 
         // First call just seeds the baseline — there's no running helper to
-        // notify yet. Each helper requests the full catalog after its ACP
-        // connection reaches Connected; argv carries only bounded bootstrap
-        // identity/selection data.
+        // notify yet. Each helper requests permission inputs before ACP
+        // initialization and the full model catalog after it connects; argv
+        // carries only bounded bootstrap identity/selection data.
         if (!_agentRuntimeConfigInitialized)
         {
             _lastAgentRuntimeConfig = current;
@@ -1730,8 +1740,14 @@ namespace winrt::TerminalApp::implementation
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
+        const bool allowedDirectoriesChanged =
+            last.allowedHostDirectories != current.allowedHostDirectories;
+        const bool confirmationPoliciesChanged =
+            last.confirmationReadOperations != current.confirmationReadOperations ||
+            last.confirmationCreateOperations != current.confirmationCreateOperations ||
+            last.confirmationInputOperations != current.confirmationInputOperations;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged && !allowedDirectoriesChanged && !confirmationPoliciesChanged)
         {
             return;
         }
@@ -1751,6 +1767,21 @@ namespace winrt::TerminalApp::implementation
             params["custom_model_selection"] = winrt::to_string(current.customModelSelection);
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
+        }
+        if (allowedDirectoriesChanged)
+        {
+            Json::Value directories{ Json::arrayValue };
+            for (const auto& directory : current.allowedHostDirectories)
+            {
+                directories.append(winrt::to_string(directory));
+            }
+            params["allowed_host_directories"] = std::move(directories);
+        }
+        if (confirmationPoliciesChanged)
+        {
+            params["confirmation_read_operations"] = winrt::to_string(current.confirmationReadOperations);
+            params["confirmation_create_operations"] = winrt::to_string(current.confirmationCreateOperations);
+            params["confirmation_input_operations"] = winrt::to_string(current.confirmationInputOperations);
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -5101,8 +5132,34 @@ namespace winrt::TerminalApp::implementation
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
         const auto statusTabId = pickStr("tab_id");
+        const auto runtimeConfigRequestId = pickStr("runtime_config_request_id");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
+
+        if (!runtimeConfigRequestId.empty())
+        {
+            if (statusTabId.empty() || !_FindTabByStableId(statusTabId))
+            {
+                return;
+            }
+
+            const auto runtimeConfig = _CaptureAgentRuntimeConfig();
+            Json::Value config{ Json::objectValue };
+            config["tab_id"] = winrt::to_string(statusTabId);
+            config["runtime_config_request_id"] = winrt::to_string(runtimeConfigRequestId);
+            config["confirmation_read_operations"] = winrt::to_string(runtimeConfig.confirmationReadOperations);
+            config["confirmation_create_operations"] = winrt::to_string(runtimeConfig.confirmationCreateOperations);
+            config["confirmation_input_operations"] = winrt::to_string(runtimeConfig.confirmationInputOperations);
+            Json::Value directories{ Json::arrayValue };
+            for (const auto& directory : runtimeConfig.allowedHostDirectories)
+            {
+                directories.append(winrt::to_string(directory));
+            }
+            config["allowed_host_directories"] = std::move(directories);
+            _agentPaneLog("OnAgentStatusChanged: delivering initial runtime configuration");
+            _RaiseProtocolEvent("agent_config_changed", config);
+            return;
+        }
 
         // If WTA signals a new agent selection (e.g. from FRE or preflight),
         // persist it to settings so the next launch uses the same agent.

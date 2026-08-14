@@ -88,6 +88,10 @@ recommendations.open_new_empty: "New empty %{kind}"
 permission.compact.default_description: "[!!_Permission requested_!!]"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[!!_[Y/N to answer · resize for full card]_!!]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "[!!_Not found_!!]"
@@ -214,6 +218,32 @@ system.agent_switch_unavailable: "[!!_Agent switching is unavailable outside a W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!!_Pick the model for this pane (/model <id> to switch directly)_!!]"  # {Locked="/model","<id>"}
 commands.move.summary: "[!!_Move this tab's agent pane (/move <position>)_!!]"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "[!!_Allow a directory for this ACP session (/add-dir <absolute-path>)_!!]"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "[!!_List allowed directories for this ACP session_!!]"  # {Locked="ACP"}
+commands.remove_dir.summary: "[!!_Remove a session directory grant (/remove-dir <absolute-path>)_!!]"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "[!!_Global directory grants are managed in Intelligent Terminal Settings._!!]"
+path_grants.no_active_session: "[!!_There is no active ACP session._!!]"
+path_grants.added: "[!!_Allowed %{path} for this session. Intelligent Terminal can use it for permission decisions now; ACP advertises it on the next session lifecycle request._!!]"
+path_grants.already_present: "[!!_%{path} is already allowed for this session._!!]"
+path_grants.removed: "[!!_Removed the session directory grant for %{path}._!!]"
+path_grants.not_found: "[!!_%{path} is not a session directory grant._!!]"
+path_grants.failed: "[!!_Could not update directory grants: %{error}_!!]"
+path_grants.list_header: "[!!_Allowed directories_!!]"
+path_grants.global_header: "[!!_Global:_!!]"
+path_grants.session_header: "[!!_Session:_!!]"
+path_grants.none: "[!!_  (none)_!!]"
+path_grants.not_advertised: "[!!_This Agent can't receive additional directories through ACP. Intelligent Terminal still uses these paths for permission checks._!!]"  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "[!!_Updating global directory grants..._!!]"
+path_grants.global_host_only: "[!!_Global directory grants currently support Windows-hosted agents only._!!]"
+path_grants.absolute_required: "[!!_Enter an absolute directory path._!!]"
+path_grants.global_added: "[!!_Added %{path} to global directory grants._!!]"
+path_grants.global_already_present: "[!!_%{path} is already a global directory grant._!!]"
+path_grants.global_removed: "[!!_Removed %{path} from global directory grants._!!]"
+path_grants.global_not_found: "[!!_%{path} is not a global directory grant._!!]"
+path_grants.global_failed: "[!!_Could not update global directory grants: %{error}_!!]"
 model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
 system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}

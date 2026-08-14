@@ -58,6 +58,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
+        tab.auto_approved_tool_calls.clear();
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
@@ -183,12 +184,12 @@ impl App {
                 return DirectProposalEvaluation::Duplicate(
                     "a card is already showing for this turn".to_string(),
                 );
-                }
+            }
             TurnState::Idle => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
-                    );
-                }
+                );
+            }
             TurnState::Submitted(_) | TurnState::Streaming { .. } => {}
         }
 
@@ -311,7 +312,7 @@ impl App {
                     retryable: false,
                 }
             }
-            }
+        }
     }
 
     pub(super) fn commit_terminal_action_proposal(&mut self, proposal_id: &str) -> bool {
@@ -339,12 +340,12 @@ impl App {
                 "direct_proposal_fix",
             );
         } else {
-                self.turn_surface_recommendation(
+            self.turn_surface_recommendation(
                 &pending.session_id,
                 pending.recommendations,
                 "direct_proposal",
-                );
-            }
+            );
+        }
         self.session_tab_mut(&pending.session_id)
             .active_direct_proposal_id = Some(proposal_id.to_string());
         true
@@ -403,11 +404,7 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
                 ..
-            } => Some((
-                format_recommendations_for_chat(recommendations),
-                None,
-                true,
-            )),
+            } => Some((format_recommendations_for_chat(recommendations), None, true)),
             TurnState::Surfaced {
                 outcome:
                     TurnOutcome::ResolvedRecommendation {
@@ -416,11 +413,7 @@ impl App {
                     },
                 end_pending: true,
                 ..
-            } => Some((
-                summary.clone(),
-                Some(trailing_marker.clone()),
-                false,
-            )),
+            } => Some((summary.clone(), Some(trailing_marker.clone()), false)),
             TurnState::Surfaced {
                 end_pending: true, ..
             } => {
@@ -495,7 +488,12 @@ impl App {
     }
 
     fn turn_close_finalize_autofix_text(&mut self, session_id: &str) {
-        if !self.session_tab(session_id).active_agent_text().trim().is_empty() {
+        if !self
+            .session_tab(session_id)
+            .active_agent_text()
+            .trim()
+            .is_empty()
+        {
             self.turn_surface_explain(session_id, "autofix_text");
             self.turn_release_end_pending(session_id);
             return;
@@ -529,7 +527,11 @@ impl App {
     }
 
     fn turn_close_finalize_chat(&mut self, session_id: &str) {
-        let response_chars = self.session_tab(session_id).active_agent_text().chars().count();
+        let response_chars = self
+            .session_tab(session_id)
+            .active_agent_text()
+            .chars()
+            .count();
         self.log_selection_phase_for(
             session_id,
             "assistant_text",
@@ -603,6 +605,7 @@ impl App {
     fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
+        tab.auto_approved_tool_calls.clear();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -797,11 +800,7 @@ impl App {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((
-                    label,
-                    Some(summary.clone()),
-                    trailing_marker.clone(),
-                ))
+                Some((label, Some(summary.clone()), trailing_marker.clone()))
             }
             _ => None,
         };
@@ -836,6 +835,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
+        tab.auto_approved_tool_calls.clear();
         tab.user_input.clear();
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
@@ -960,11 +960,7 @@ impl App {
 
     /// Surface an autofix Explain answer as a chat turn + bottom-bar
     /// Suggested indicator.
-    fn turn_surface_explain(
-        &mut self,
-        session_id: &str,
-        phase_name: &str,
-    ) {
+    fn turn_surface_explain(&mut self, session_id: &str, phase_name: &str) {
         // Defensive: only autofix turns surface an explain answer here.
         let prompt = self.session_tab(session_id).turn.prompt();
         let Some(prompt) = prompt.filter(|prompt| prompt.autofix.is_some()) else {
@@ -974,13 +970,15 @@ impl App {
         // explanation, but skip the bottom-bar /
         // suggested-pane side effects below.
         let bar_pane = prompt.context.target_pane_id().map(str::to_string);
-        let response_chars = self.session_tab(session_id).active_agent_text().chars().count();
+        let response_chars = self
+            .session_tab(session_id)
+            .active_agent_text()
+            .chars()
+            .count();
         self.log_selection_phase_for(
             session_id,
             phase_name,
-            &format!(
-                "pane={bar_pane:?} chars={response_chars}"
-            ),
+            &format!("pane={bar_pane:?} chars={response_chars}"),
         );
 
         let turn_prompt_label = t!("chat.autofix_prompt_label").into_owned();

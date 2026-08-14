@@ -88,6 +88,10 @@ recommendations.open_new_empty: "New empty %{kind}"
 permission.compact.default_description: "[!! Per_mission requested !!]"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[!! [Y/_N to answer · resize for full card] !!]"  # {Locked="Y/N"}
+permission.auto_approved: "Auto-approved by Intelligent Terminal policy"
+permission.allow_directory_session: "This session"
+permission.allow_directory_global: "Always"
+permission.directory_to_store: "Directory: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "[!! Not_ found !!]"
@@ -214,6 +218,32 @@ system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
 commands.move.summary: "[!! Mo_ve this tab's agent pane (/move <position>) !!]"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "[!! Allow a dire_ctory for this ACP sess_ion (/add-dir <absolute-path>) !!]"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "[!! List allowed dire_ctories for this ACP sess_ion !!]"  # {Locked="ACP"}
+commands.remove_dir.summary: "[!! Remove a sess_ion dire_ctory grant (/remove-dir <absolute-path>) !!]"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "[!! Glo_bal dire_ctory grants are managed in Intelligent Terminal Settings. !!]"
+path_grants.no_active_session: "[!! There is no active ACP sess_ion. !!]"
+path_grants.added: "[!! All_owed %{path} for this sess_ion. Intelligent Terminal can use it for permission decisions now; ACP advertises it on the next session lifecycle request. !!]"
+path_grants.already_present: "[!! %{path} is already allowed for this sess_ion. !!]"
+path_grants.removed: "[!! Rem_oved the sess_ion dire_ctory grant for %{path}. !!]"
+path_grants.not_found: "[!! %{path} is not a sess_ion dire_ctory grant. !!]"
+path_grants.failed: "[!! Could not update dire_ctory grants: %{error} !!]"
+path_grants.list_header: "[!! All_owed dire_ctories !!]"
+path_grants.global_header: "[!! Glo_bal: !!]"
+path_grants.session_header: "[!! Session: !!]"
+path_grants.none: "[!!   (none) !!]"
+path_grants.not_advertised: "[!! T_his Agent can't receive additional directories through ACP. Intelligent Terminal still uses these paths for permission checks. !!]"  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "[!! Upd_ating glo_bal dire_ctory grants... !!]"
+path_grants.global_host_only: "[!! Glo_bal dire_ctory grants currently support Windows-hosted agents only. !!]"
+path_grants.absolute_required: "[!! Ent_er an absolute dire_ctory path. !!]"
+path_grants.global_added: "[!! Add_ed %{path} to glo_bal dire_ctory grants. !!]"
+path_grants.global_already_present: "[!! %{path} is already a glo_bal dire_ctory grant. !!]"
+path_grants.global_removed: "[!! Rem_oved %{path} from glo_bal dire_ctory grants. !!]"
+path_grants.global_not_found: "[!! %{path} is not a glo_bal dire_ctory grant. !!]"
+path_grants.global_failed: "[!! Could not update glo_bal dire_ctory grants: %{error} !!]"
 model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"
 system.model_set: "[!! Mod_el for this pane set to %{model}. !!]"  # {Locked="%{model}"}

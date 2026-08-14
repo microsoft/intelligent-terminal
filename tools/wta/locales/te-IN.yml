@@ -101,6 +101,10 @@ recommendations.open_new_empty: "కొత్త ఖాళీ %{kind}"
 permission.compact.default_description: "అనుమతి అభ్యర్థించబడింది"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N సమాధానం ఇవ్వండి · పూర్తి కార్డ్ కోసం రీసైజ్ చేయండి]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal విధానం ప్రకారం స్వయంచాలకంగా ఆమోదించబడింది"
+permission.allow_directory_session: "ఈ సెషన్"
+permission.allow_directory_global: "ఎల్లప్పుడూ"
+permission.directory_to_store: "డైరెక్టరీ: %{path}"
 
 # ── ఏజెంట్ స్థితి (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "కనుగొనబడలేదు"
@@ -217,6 +221,32 @@ system.agent_switch_unavailable: "Windows Terminal ట్యాబ్ వెల�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ఈ ట్యాబ్ యొక్క ఏజెంట్ పేన్‌ను తరలించండి (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "ఈ ACP సెషన్ కోసం డైరెక్టరీని అనుమతించండి (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "ఈ ACP సెషన్ కోసం అనుమతించబడిన డైరెక్టరీలను జాబితా చేయండి"  # {Locked="ACP"}
+commands.remove_dir.summary: "సెషన్ డైరెక్టరీ గ్రాంట్‌ను తీసివేయండి (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "గ్లోబల్ డైరెక్టరీ గ్రాంట్లు ఇంటెలిజెంట్ టెర్మినల్ సెట్టింగ్‌లలో నిర్వహించబడతాయి."
+path_grants.no_active_session: "క్రియాశీల ACP సెషన్ లేదు."
+path_grants.added: "ఈ సెషన్ కోసం %{path} అనుమతించబడింది. ఇంటెలిజెంట్ టెర్మినల్ ఇప్పుడు అనుమతి నిర్ణయాల కోసం దీన్ని ఉపయోగించవచ్చు; ACP తదుపరి సెషన్ లైఫ్‌సైకిల్ అభ్యర్థనలో దీనిని ప్రచారం చేస్తుంది."
+path_grants.already_present: "ఈ సెషన్ కోసం %{path} ఇప్పటికే అనుమతించబడింది."
+path_grants.removed: "%{path} కోసం సెషన్ డైరెక్టరీ మంజూరు తీసివేయబడింది."
+path_grants.not_found: "%{path} అనేది సెషన్ డైరెక్టరీ గ్రాంట్ కాదు."
+path_grants.failed: "డైరెక్టరీ గ్రాంట్‌లను అప్‌డేట్ చేయడం సాధ్యపడలేదు: %{error}"
+path_grants.list_header: "అనుమతించబడిన డైరెక్టరీలు"
+path_grants.global_header: "ప్రపంచ పరిధి:"
+path_grants.session_header: "సెషన్ పరిధి:"
+path_grants.none: "  (డైరెక్టరీలు లేవు)"
+path_grants.not_advertised: "ఈ Agent ACP ద్వారా అదనపు డైరెక్టరీలను స్వీకరించలేరు. Intelligent Terminal అనుమతి తనిఖీల కోసం ఇప్పటికీ ఈ పాత్‌లను ఉపయోగిస్తుంది."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "గ్లోబల్ డైరెక్టరీ అనుమతులను నవీకరిస్తోంది..."
+path_grants.global_host_only: "గ్లోబల్ డైరెక్టరీ అనుమతులు ప్రస్తుతం Windowsలో హోస్ట్ చేసిన ఏజెంట్లకు మాత్రమే మద్దతు ఇస్తాయి."
+path_grants.absolute_required: "సంపూర్ణ డైరెక్టరీ పాత్‌ను నమోదు చేయండి."
+path_grants.global_added: "గ్లోబల్ డైరెక్టరీ అనుమతులకు %{path} జోడించబడింది."
+path_grants.global_already_present: "%{path} ఇప్పటికే గ్లోబల్ డైరెక్టరీ అనుమతి."
+path_grants.global_removed: "గ్లోబల్ డైరెక్టరీ అనుమతుల నుండి %{path} తీసివేయబడింది."
+path_grants.global_not_found: "%{path} గ్లోబల్ డైరెక్టరీ అనుమతి కాదు."
+path_grants.global_failed: "గ్లోబల్ డైరెక్టరీ అనుమతులను నవీకరించలేకపోయాము: %{error}"
 model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
 system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}

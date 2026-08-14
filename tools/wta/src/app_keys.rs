@@ -8,6 +8,56 @@
 use super::*;
 
 impl App {
+    fn resolve_permission_selection(&mut self, selected: usize) {
+        let Some(mut permission) = self.current_tab_mut().permission.pop_front() else {
+            return;
+        };
+        let Some(option) = permission.options.get(selected).cloned() else {
+            self.current_tab_mut().permission.push_front(permission);
+            return;
+        };
+
+        if option.is_session_directory_grant() {
+            let Some(directory) = permission.grant_directory.as_deref() else {
+                self.current_tab_mut().permission.push_front(permission);
+                return;
+            };
+            let Some(allow_once_id) = permission.allow_once_id.clone() else {
+                self.current_tab_mut().permission.push_front(permission);
+                return;
+            };
+            match self
+                .path_grants
+                .add_session_directory(&permission.session_id, std::path::PathBuf::from(directory))
+            {
+                Ok(_) => {
+                    self.push_path_grant_message(ChatMessage::success(
+                        t!("path_grants.session_added", path = directory).into_owned(),
+                    ));
+                    if let Some(responder) = permission.responder {
+                        let _ = responder.send(allow_once_id);
+                    } else {
+                        let _ = self.permission_tx.send(allow_once_id);
+                    }
+                }
+                Err(error) => {
+                    permission.selected = selected;
+                    self.current_tab_mut().permission.push_front(permission);
+                    self.push_path_grant_message(ChatMessage::warning(
+                        t!("path_grants.update_failed", error = error).into_owned(),
+                    ));
+                }
+            }
+            return;
+        }
+
+        if let Some(responder) = permission.responder {
+            let _ = responder.send(option.id);
+        } else {
+            let _ = self.permission_tx.send(option.id);
+        }
+    }
+
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
         // `Char` keys) — the user's prompt can be reconstructed from this
@@ -265,14 +315,14 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().agents_view.search_query.push(*character);
+                        self.current_tab_mut()
+                            .agents_view
+                            .search_query
+                            .push(*character);
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::F(5) => {}
+                    KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -395,8 +445,8 @@ impl App {
                         request.selected = request.selected.saturating_sub(1);
                     }
                     KeyCode::Down => {
-                        request.selected = (request.selected + 1)
-                            .min(request.selection_count().saturating_sub(1));
+                        request.selected =
+                            (request.selected + 1).min(request.selection_count().saturating_sub(1));
                     }
                     KeyCode::Char(character)
                         if request.request.allow_freeform
@@ -420,9 +470,7 @@ impl App {
                                     selected_index: None,
                                 });
                             }
-                        } else if let Some(answer) =
-                            request.request.choices.get(request.selected)
-                        {
+                        } else if let Some(answer) = request.request.choices.get(request.selected) {
                             resolved = Some(UserInputResponse::Answered {
                                 answer: answer.clone(),
                                 selected_index: Some(request.selected),
@@ -462,42 +510,19 @@ impl App {
                     }
                 }
                 KeyCode::Enter => {
-                    let option_id = perm.options[perm.selected].id.clone();
-                    // Pop the resolved entry; the next queued request (if
-                    // any) automatically becomes the new front and is
-                    // rendered on the next frame.
-                    if let Some(perm) = self.current_tab_mut().permission.pop_front() {
-                        if let Some(responder) = perm.responder {
-                            let _ = responder.send(option_id);
-                        } else {
-                            let _ = self.permission_tx.send(option_id);
-                        }
-                    }
+                    let selected = perm.selected;
+                    self.resolve_permission_selection(selected);
                 }
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     // Quick allow: find first allow option
                     if let Some(idx) = perm.allow_index() {
-                        let option_id = perm.options[idx].id.clone();
-                        if let Some(perm) = self.current_tab_mut().permission.pop_front() {
-                            if let Some(responder) = perm.responder {
-                                let _ = responder.send(option_id);
-                            } else {
-                                let _ = self.permission_tx.send(option_id);
-                            }
-                        }
+                        self.resolve_permission_selection(idx);
                     }
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') => {
                     // Quick deny: find first reject option
                     if let Some(idx) = perm.reject_index() {
-                        let option_id = perm.options[idx].id.clone();
-                        if let Some(perm) = self.current_tab_mut().permission.pop_front() {
-                            if let Some(responder) = perm.responder {
-                                let _ = responder.send(option_id);
-                            } else {
-                                let _ = self.permission_tx.send(option_id);
-                            }
-                        }
+                        self.resolve_permission_selection(idx);
                     }
                 }
                 _ => {}
@@ -525,8 +550,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
                         .current_tab()
@@ -555,8 +579,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() => {
                 let choices_len = self
                     .current_tab()
                     .turn
@@ -586,10 +609,16 @@ impl App {
             }
             KeyCode::Right
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_next_recommendation_action();
+            }
+            KeyCode::Tab
+                if self.current_tab().input_has_nav_focus()
+                    && commands::add_dir_awaiting_path(&self.current_tab().input)
+                    && self.command_ghost_suffix().is_some() =>
+            {
+                let _ = self.accept_command_ghost();
             }
             KeyCode::Tab
                 if self.current_tab().input.is_empty()
@@ -618,8 +647,7 @@ impl App {
             }
             KeyCode::Left
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_previous_recommendation_action();
             }
@@ -963,5 +991,6 @@ impl App {
             }
             _ => {}
         }
+        self.refresh_add_dir_ghost_cwd();
     }
 }

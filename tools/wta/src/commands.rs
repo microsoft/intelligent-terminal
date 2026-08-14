@@ -54,6 +54,12 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Add a persistent directory grant to the active ACP session.
+    AddDir,
+    /// List the active session and configured global directory grants.
+    ListDirs,
+    /// Remove a persistent directory grant from the active ACP session.
+    RemoveDir,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -129,6 +135,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
+    },
+    CommandSpec {
+        name: "add-dir",
+        summary_key: "commands.add_dir.summary",
+        kind: CommandKind::AddDir,
+    },
+    CommandSpec {
+        name: "list-dirs",
+        summary_key: "commands.list_dirs.summary",
+        kind: CommandKind::ListDirs,
+    },
+    CommandSpec {
+        name: "remove-dir",
+        summary_key: "commands.remove_dir.summary",
+        kind: CommandKind::RemoveDir,
     },
 ];
 
@@ -316,6 +337,47 @@ pub fn move_position_prefix(input: &str) -> Option<&str> {
     single_argument_prefix(input, "move")
 }
 
+/// Return the path prefix while completing `/remove-dir <path>`.
+///
+/// Unlike the single-token argument completers, directory paths may contain
+/// whitespace, so the entire remainder is used as the filter.
+pub fn remove_dir_prefix(input: &str) -> Option<&str> {
+    let trimmed = input.trim_start();
+    let rest = trimmed.strip_prefix('/')?;
+    let command = "remove-dir";
+    let command_end = rest.get(..command.len())?;
+    if !command_end.eq_ignore_ascii_case(command) {
+        return None;
+    }
+    let arguments = rest.get(command.len()..)?;
+    if !arguments.starts_with(char::is_whitespace) {
+        return None;
+    }
+    Some(arguments.trim_start())
+}
+
+/// Whether `/add-dir` is waiting for its default active-pane directory.
+///
+/// A trailing whitespace is required so the ghost never overlaps command-name
+/// completion. Once any path text is present, the ghost is hidden.
+pub fn add_dir_awaiting_path(input: &str) -> bool {
+    let trimmed = input.trim_start();
+    let command = "/add-dir";
+    let Some(command_end) = trimmed.get(..command.len()) else {
+        return false;
+    };
+    if !command_end.eq_ignore_ascii_case(command) {
+        return false;
+    }
+    let Some(arguments) = trimmed.get(command.len()..) else {
+        return false;
+    };
+    if !arguments.starts_with(char::is_whitespace) || !input.ends_with(char::is_whitespace) {
+        return false;
+    }
+    arguments.trim().is_empty()
+}
+
 fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {
     let trimmed = input.trim_start();
     let rest = trimmed.strip_prefix('/')?;
@@ -465,7 +527,7 @@ mod tests {
         assert_eq!(middle[0].name, "clear");
 
         let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
-        assert_eq!(ranked, vec!["stop", "restart"]);
+        assert_eq!(ranked, vec!["stop", "restart", "list-dirs"]);
 
         let none = matches("zzz");
         assert!(none.is_empty());
@@ -494,6 +556,15 @@ mod tests {
         assert_eq!(move_position_prefix("/move"), None);
         assert_eq!(move_position_prefix("/move left extra"), None);
         assert_eq!(move_position_prefix("/model r"), None);
+    }
+
+    #[test]
+    fn remove_dir_prefix_accepts_paths_with_spaces() {
+        assert_eq!(remove_dir_prefix("/remove-dir "), Some(""));
+        assert_eq!(remove_dir_prefix("/REMOVE-DIR D:\\work tree"), Some("D:\\work tree"));
+        assert_eq!(remove_dir_prefix("  /remove-dir C:\\src"), Some("C:\\src"));
+        assert_eq!(remove_dir_prefix("/remove-directory "), None);
+        assert_eq!(remove_dir_prefix("/remove-dir"), None);
     }
 
     #[test]

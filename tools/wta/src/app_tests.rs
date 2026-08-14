@@ -1537,6 +1537,7 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
             kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -2228,10 +2229,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(
-        app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4")
-    );
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Notice {
@@ -2240,10 +2238,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         })
     ));
     match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-            session_id,
-            model,
-        } => {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
         }
@@ -2492,6 +2487,36 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
+}
+
+#[test]
+fn confirmation_policies_hot_update_shared_permission_snapshot() {
+    use crate::protocol::acp::permission_policy::{
+        ConfirmationPolicy, OperationPolicies, SharedOperationPolicies,
+    };
+
+    let mut app = test_app();
+    let policies = SharedOperationPolicies::new(OperationPolicies::new("auto", "auto", "auto"));
+    app.set_operation_policies(policies.clone());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "confirmation_read_operations": "deny",
+            "confirmation_input_operations": "prompt"
+        }),
+    });
+
+    assert_eq!(
+        policies.snapshot(),
+        OperationPolicies {
+            read: ConfirmationPolicy::Deny,
+            create: ConfirmationPolicy::Auto,
+            input: ConfirmationPolicy::Prompt,
+        }
+    );
 }
 
 #[test]
@@ -5260,8 +5285,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5327,8 +5352,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5506,12 +5531,15 @@ fn perm_option_kind_matching_is_case_insensitive() {
 
     // PermissionState index helpers pick the first matching option.
     let perm = PermissionState {
+        session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: String::new(),
         title: String::new(),
         kind_label: None,
         target: None,
         target_is_command: false,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![opt("AllowOnce"), opt("RejectOnce")],
         selected: 0,
         responder: None,
@@ -5544,6 +5572,8 @@ fn permission_request_replaces_thinking_until_dismissed() {
         kind_label: None,
         target: None,
         target_is_command: false,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![
             PermOption {
                 id: "allow-once".into(),
@@ -5754,6 +5784,62 @@ fn cancelling_turn_drops_pending_user_input() {
 }
 
 #[test]
+fn session_directory_permission_persists_before_allow_once_response() {
+    let mut app = test_app();
+    let store_path = std::env::temp_dir().join(format!(
+        "wta-permission-selection-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let roots = std::sync::Arc::new(crate::path_grants::SessionRoots::for_test(
+        "copilot".into(),
+        crate::agent_source::AgentSource::Host,
+        Vec::new(),
+        store_path.clone(),
+    ));
+    app.set_path_grants(std::sync::Arc::clone(&roots));
+    let directory = std::env::temp_dir();
+    let (responder, response) = tokio::sync::oneshot::channel();
+    app.current_tab_mut().permission.push_back(PermissionState {
+        session_id: "session-1".into(),
+        tool_call_id: "tool".into(),
+        description: "Allow file access?".into(),
+        title: "Allow file access?".into(),
+        kind_label: None,
+        target: Some(directory.join("file.txt").to_string_lossy().into_owned()),
+        target_is_command: false,
+        grant_directory: Some(directory.to_string_lossy().into_owned()),
+        allow_once_id: Some("agent-allow-once".into()),
+        options: vec![
+            PermOption {
+                id: "agent-allow-once".into(),
+                name: "Allow once".into(),
+                kind: "AllowOnce".into(),
+            },
+            PermOption {
+                id: "intellterm-session-directory-grant".into(),
+                name: "Allow for session".into(),
+                kind: crate::app_contracts::SESSION_DIRECTORY_GRANT_KIND.into(),
+            },
+        ],
+        selected: 1,
+        responder: Some(responder),
+    });
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(response.blocking_recv().unwrap(), "agent-allow-once");
+    assert_eq!(
+        roots.session_directories("session-1"),
+        vec![directory.clone()]
+    );
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[test]
 fn surfaced_recommendation_hides_thinking_before_turn_end() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
@@ -5798,8 +5884,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5879,8 +5965,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -6008,16 +6094,12 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
     });
 
     let details = &app.current_tab().completed_turns[0].details;
-    assert!(
-        matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file.")
-    );
+    assert!(matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file."));
     assert!(matches!(
         &details[1],
         ChatMessage::ToolCall { title, .. } if title == "apply_patch"
     ));
-    assert!(
-        matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
-    );
+    assert!(matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete."));
 }
 
 #[test]
@@ -6242,12 +6324,15 @@ fn render_permission_card_shows_options() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().permission.push_back(PermissionState {
+        session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_XYZ".into(),
         title: "Run: echo PERM_XYZ".into(),
         kind_label: None,
         target: None,
         target_is_command: false,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![
             PermOption {
                 id: "allow-once".into(),
@@ -6286,12 +6371,15 @@ fn render_permission_card_shows_kind_glyph_and_target() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().permission.push_back(PermissionState {
+        session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: "Run command (rm -rf build)".into(),
         title: "Run command".into(),
         kind_label: Some("$".into()),
         target: Some("rm -rf build".into()),
         target_is_command: true,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![PermOption {
             id: "allow-once".into(),
             name: "Allow once".into(),
@@ -6325,6 +6413,7 @@ fn render_tool_call_card_in_chat() {
         kind: ToolCallKind::Execute,
         location: None,
         location_is_command: false,
+        policy_note: None,
         cwd: None,
         output: None,
         exit_code: None,
@@ -6361,9 +6450,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -6372,13 +6461,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -7479,12 +7568,15 @@ fn render_permission_compact_shows_hint() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().permission.push_back(PermissionState {
+        session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_COMPACT_XYZ".into(),
         title: "Run: echo PERM_COMPACT_XYZ".into(),
         kind_label: None,
         target: None,
         target_is_command: false,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![
             PermOption {
                 id: "allow-once".into(),
@@ -7555,10 +7647,7 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    install_recs(
-        &mut app,
-        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
-    );
+    install_recs(&mut app, vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")]);
 
     let text = render_to_text(&mut app, 80, 7);
     assert!(
@@ -7804,6 +7893,109 @@ fn running_tool_replaces_thinking_until_tool_completes() {
         app.current_tab().should_show_thinking(),
         "after tool completion the generic row indicates that the Agent is still responding"
     );
+}
+
+#[test]
+fn automatic_permission_annotation_survives_tool_call_event_ordering() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCallAutoApproved {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+    });
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Read Cargo.toml".into(),
+        status: "Pending".into(),
+        kind: ToolCallKind::Other,
+        location: Some(r"C:\src\Cargo.toml".into()),
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+
+    assert!(app.current_tab().messages.iter().any(|message| {
+        matches!(
+            message,
+            ChatMessage::ToolCall {
+                id,
+                policy_note: Some(note),
+                ..
+            } if id == "tool" && note.contains("Auto-approved")
+        )
+    }));
+    assert!(app.current_tab().auto_approved_tool_calls.is_empty());
+}
+
+#[test]
+fn automatic_permission_annotation_does_not_survive_a_new_turn() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "first");
+    app.handle_event(AppEvent::ToolCallAutoApproved {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "reused".into(),
+    });
+    submit_test_prompt(&mut app, "second");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "reused".into(),
+        title: "Unrelated call".into(),
+        status: "Pending".into(),
+        kind: ToolCallKind::Other,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    assert!(app.current_tab().messages.iter().any(|message| {
+        matches!(
+            message,
+            ChatMessage::ToolCall {
+                id,
+                policy_note: None,
+                ..
+            } if id == "reused"
+        )
+    }));
+}
+
+#[test]
+fn automatic_permission_marker_is_cleared_at_turn_boundaries() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "first");
+    app.handle_event(AppEvent::ToolCallAutoApproved {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "missing".into(),
+    });
+    app.turn_close(DEFAULT_TAB_ID);
+    assert!(app.current_tab().auto_approved_tool_calls.is_empty());
+
+    submit_test_prompt(&mut app, "second");
+    app.handle_event(AppEvent::ToolCallAutoApproved {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "missing".into(),
+    });
+    app.turn_cancel(DEFAULT_TAB_ID);
+    assert!(app.current_tab().auto_approved_tool_calls.is_empty());
+}
+
+#[test]
+fn automatic_permission_marker_is_cleared_by_session_reset() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCallAutoApproved {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "missing".into(),
+    });
+    app.cmd_new(false);
+    assert!(app.current_tab().auto_approved_tool_calls.is_empty());
 }
 
 #[test]
@@ -8058,6 +8250,7 @@ fn expanded_tool_call_renders_typed_details() {
             kind: ToolCallKind::Edit,
             location: Some(r"C:\src\main.rs:42".into()),
             location_is_command: false,
+            policy_note: None,
             cwd: None,
             output: None,
             exit_code: None,
@@ -8104,7 +8297,10 @@ fn expanded_tool_call_renders_typed_details() {
         "TERM_TYPED_OUTPUT",
         "image/png",
     ] {
-        assert!(text.contains(needle), "missing {needle:?}; rendered:\n{text}");
+        assert!(
+            text.contains(needle),
+            "missing {needle:?}; rendered:\n{text}"
+        );
     }
 }
 
@@ -8393,8 +8589,7 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        source:
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -8603,12 +8798,15 @@ use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
 fn perm_with(desc: &str) -> PermissionState {
     PermissionState {
+        session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: desc.to_string(),
         title: desc.to_string(),
         kind_label: None,
         target: None,
         target_is_command: false,
+        grant_directory: None,
+        allow_once_id: None,
         options: vec![PermOption {
             id: "allow_once".into(),
             name: "Allow".into(),
@@ -9188,7 +9386,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -9598,10 +9796,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -9619,21 +9817,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },

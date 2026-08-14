@@ -257,7 +257,7 @@ pub(super) fn shell_from_active(active: &serde_json::Value) -> Option<String> {
 /// tab's protocol `tab_id` from `list_tabs` for the inner `list_panes` call —
 /// sidesteps the id-space mismatch entirely. Returns `None` when no pane
 /// matches (channel error, pane closed).
-async fn resolve_pane_by_session_id(
+pub(crate) async fn resolve_pane_by_session_id(
     shell_mgr: &ShellManager,
     session_id: &str,
 ) -> Option<serde_json::Value> {

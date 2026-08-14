@@ -3016,4 +3016,24 @@
     <value>{} | {} | Compatível com OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="AIAgents_AllowedHostDirectories.Header" xml:space="preserve">
+    <value>Diretórios permitidos</value>
+    <comment>Header for the AI settings control that manages persistent host filesystem roots available to AI agents.</comment>
+  </data>
+  <data name="AIAgents_AllowedHostDirectories.HelpText" xml:space="preserve">
+    <value>Permita que os agentes trabalhem nestes diretórios do Windows além do diretório de trabalho do painel ativo. As permissões das ferramentas ainda são avaliadas separadamente.</value>
+    <comment>Help text for persistent AI agent directory grants. 'Agent' means an AI agent; this does not automatically approve tool operations.</comment>
+  </data>
+  <data name="AIAgents_AllowedHostDirectoryInput.PlaceholderText" xml:space="preserve">
+    <value>Insira um caminho absoluto, como C:\src ou \\server\share</value>
+    <comment>{Locked="C:\src","\\server\share"} Placeholder for adding a Windows directory grant. Preserve example path syntax.</comment>
+  </data>
+  <data name="AIAgents_AllowedHostDirectoryAdd.Content" xml:space="preserve">
+    <value>Adicionar</value>
+    <comment>Button that adds the entered absolute Windows path to persistent AI agent directory grants.</comment>
+  </data>
+  <data name="AIAgents_AllowedHostDirectoryRemove.Content" xml:space="preserve">
+    <value>Remover</value>
+    <comment>Button on one directory row that removes that persistent AI agent directory grant.</comment>
+  </data>
 </root>

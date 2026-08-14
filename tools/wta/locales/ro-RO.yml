@@ -88,6 +88,10 @@ recommendations.open_new_empty: "%{kind} gol nou"
 permission.compact.default_description: "Permisiune solicitată"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N pentru a răspunde · redimensionați pentru cardul complet]"  # {Locked="Y/N"}
+permission.auto_approved: "Aprobat automat conform politicii Intelligent Terminal"
+permission.allow_directory_session: "Această sesiune"
+permission.allow_directory_global: "Întotdeauna"
+permission.directory_to_store: "Director: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Negăsit"
@@ -215,6 +219,32 @@ system.agent_switch_unavailable: "Comutarea agentului nu este disponibilă în a
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}
 commands.move.summary: "Mutați panoul agentului al acestei file (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Permiteți un director pentru această sesiune ACP (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Listați directoarele permise pentru această sesiune ACP"  # {Locked="ACP"}
+commands.remove_dir.summary: "Eliminați acordarea unui director de sesiune (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Subvențiile globale pentru directoare sunt gestionate în Intelligent Terminal Settings."
+path_grants.no_active_session: "Nu există o sesiune activă ACP."
+path_grants.added: "Este permis %{path} pentru această sesiune. Terminal Inteligent îl poate folosi acum pentru decizii privind permisiunea; ACP îl face publicitate la următoarea solicitare a ciclului de viață al sesiunii."
+path_grants.already_present: "%{path} este deja permis pentru această sesiune."
+path_grants.removed: "A fost eliminată acordarea directorului de sesiune pentru %{path}."
+path_grants.not_found: "%{path} nu este o acordare a directorului de sesiune."
+path_grants.failed: "Nu s-au putut actualiza acordările de director: %{error}"
+path_grants.list_header: "Directoare permise"
+path_grants.global_header: "Sfera globală:"
+path_grants.session_header: "Domeniul sesiunii:"
+path_grants.none: "  (fara directoare)"
+path_grants.not_advertised: "Acest Agent nu poate primi directoare suplimentare prin ACP. Intelligent Terminal utilizează în continuare aceste căi pentru verificarea permisiunilor."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Se actualizează permisiunile globale pentru directoare..."
+path_grants.global_host_only: "Permisiunile globale pentru directoare acceptă momentan doar agenți găzduiți în Windows."
+path_grants.absolute_required: "Introduceți o cale absolută de director."
+path_grants.global_added: "%{path} a fost adăugat la permisiunile globale pentru directoare."
+path_grants.global_already_present: "%{path} este deja o permisiune globală pentru director."
+path_grants.global_removed: "%{path} a fost eliminat din permisiunile globale pentru directoare."
+path_grants.global_not_found: "%{path} nu este o permisiune globală pentru director."
+path_grants.global_failed: "Nu s-au putut actualiza permisiunile globale pentru directoare: %{error}"
 model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}

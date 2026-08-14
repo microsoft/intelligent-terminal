@@ -101,6 +101,10 @@ recommendations.open_new_empty: "Yeni boş %{kind}"
 permission.compact.default_description: "İzin isteniyor"
 permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N yanıtlamak için · tam kart için yeniden boyutlandırın]"  # {Locked="Y/N"}
+permission.auto_approved: "Intelligent Terminal ilkesiyle otomatik olarak onaylandı"
+permission.allow_directory_session: "Bu oturum"
+permission.allow_directory_global: "Her zaman"
+permission.directory_to_store: "Dizin: %{path}"
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
 agent.status.not_found: "Bulunamadı"
@@ -216,6 +220,32 @@ system.agent_switch_unavailable: "Aracı geçişi, bir Windows Terminal sekmesin
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "Bu sekmenin aracı panelini taşı (/move <position>)"  # {Locked="/move","<position>"}
+commands.add_dir.summary: "Bu ACP oturumu için bir dizine izin verin (/add-dir <absolute-path>)"  # {Locked="ACP","/add-dir","<absolute-path>"}
+commands.list_dirs.summary: "Bu ACP oturumu için izin verilen dizinleri listeleyin"  # {Locked="ACP"}
+commands.remove_dir.summary: "Bir oturum dizini iznini kaldırın (/remove-dir <absolute-path>)"  # {Locked="/remove-dir","<absolute-path>"}
+
+# ── Session directory grants (/add-dir, /list-dirs, /remove-dir) ───────────
+# {Locked="ACP","/add-dir","/remove-dir","<absolute-path>","additionalDirectories","%{path}","%{error}"}
+path_grants.global_settings_only: "Genel dizin bağışları Akıllı Terminal Ayarlarında yönetilir."
+path_grants.no_active_session: "Etkin ACP oturumu yok."
+path_grants.added: "Bu oturum için %{path} izin verildi. Akıllı Terminal artık onu izin kararları için kullanabilir; ACP bunu bir sonraki oturum yaşam döngüsü isteğinde duyurur."
+path_grants.already_present: "Bu oturum için %{path}'e zaten izin veriliyor."
+path_grants.removed: "%{path} için oturum dizini izni kaldırıldı."
+path_grants.not_found: "%{path} bir oturum dizini izni değildir."
+path_grants.failed: "Dizin izinleri güncellenemedi: %{error}"
+path_grants.list_header: "İzin verilen dizinler"
+path_grants.global_header: "Küresel kapsam:"
+path_grants.session_header: "Oturum kapsamı:"
+path_grants.none: "  (dizin yok)"
+path_grants.not_advertised: "Bu Agent, ACP üzerinden ek dizinler alamaz. Intelligent Terminal izin denetimleri için bu yolları kullanmaya devam eder."  # {Locked="Agent","ACP","Intelligent Terminal"}
+path_grants.updating_global: "Genel dizin izinleri güncelleştiriliyor..."
+path_grants.global_host_only: "Genel dizin izinleri şu anda yalnızca Windows üzerinde barındırılan aracıları destekliyor."
+path_grants.absolute_required: "Mutlak bir dizin yolu girin."
+path_grants.global_added: "%{path} genel dizin izinlerine eklendi."
+path_grants.global_already_present: "%{path} zaten bir genel dizin iznidir."
+path_grants.global_removed: "%{path} genel dizin izinlerinden kaldırıldı."
+path_grants.global_not_found: "%{path} bir genel dizin izni değildir."
+path_grants.global_failed: "Genel dizin izinleri güncelleştirilemedi: %{error}"
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}

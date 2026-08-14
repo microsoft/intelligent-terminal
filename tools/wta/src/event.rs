@@ -26,6 +26,7 @@ fn map_crossterm_event(event: Event) -> Option<AppEvent> {
                     | MouseEventKind::Down(MouseButton::Left)
                     | MouseEventKind::Drag(MouseButton::Left)
                     | MouseEventKind::Up(MouseButton::Left)
+                    | MouseEventKind::Down(MouseButton::Right)
             ) =>
         {
             Some(AppEvent::Mouse(mouse))
@@ -200,11 +201,12 @@ mod tests {
     }
 
     #[test]
-    fn left_button_selection_events_are_forwarded() {
+    fn supported_button_events_are_forwarded() {
         for kind in [
             MouseEventKind::Down(MouseButton::Left),
             MouseEventKind::Drag(MouseButton::Left),
             MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::Down(MouseButton::Right),
         ] {
             let mouse = MouseEvent {
                 kind,

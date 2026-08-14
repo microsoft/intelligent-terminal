@@ -311,6 +311,11 @@ attacker-controlled user-context process (in-pane shell, Agent CLI, etc.)
 
 The mutation path is a direct filesystem write. This is not a new OS privilege — the attacker already runs as the user — but it can persistently change AI behavior without any in-band confirmation. Agent selection, custom agent commands, delegate behavior, Autofix, and future confirmation knobs are all policy-relevant even if some knobs are not enforced today. An Agent CLI (semi-trusted) and a pane-context process can both reach the file: `settings.json` lives at a well-known per-user path that any user-context process can discover via `%LOCALAPPDATA%` or by enumerating package data, so path knowledge is not a meaningful gate. The mitigation is therefore at the *read* side: WT's settings-load / agent-launch path must meta-confirm policy-relevant changes before honoring them, rather than relying on the file being write-protected.
 
+The untrusted COM `SendEvent` surface does not expose an allowed-directory
+settings-write route. Global allowed-directory mutations are user-initiated
+through the Settings UI; active WTA helpers only consume the resulting
+settings-change notification.
+
 ### 5.3 Agent hook bridge path
 
 Install path:
@@ -405,8 +410,8 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | Scope or authorize lower-impact COM mutations (`ClosePane`, `FocusPane`, `SetSessionVariable`) by source/target pane or explicit caller policy | Planned | Pane DoS, UI redress, and session-variable state spoofing |
 | Add per-subscriber filtering / authorization for `Subscribe` + `SendEvent` so a pane-context COM subscriber cannot observe other panes' agent events | Roadmap | Event broadcast disclosure |
 | Keep `GetCapabilities()` synchronized with IDL and stock `wtcli.exe` | Current implementation matches reviewed COM surface | Review accuracy; prevents clients from relying on nonexistent or stale methods |
-| Implement runtime confirmation enforcement for sensitive read/create/input operation classes | Not implemented; settings-model knobs exist but are not wired to runtime authorization | Prompt injection, settings persistence |
-| After enforcement exists, default `aiIntegration.confirmation.{read,create,input}Operations` to `prompt` on fresh install (all three currently default to `auto` per `MTSMSettings.h`) | Not implemented | Prompt-injection blast radius |
+| Enforce runtime confirmation policy for sensitive read/create/input operation classes | Implemented; see [`ACP path grants and permission policy`](./specs/acp-path-grants-and-permission-policy.md). | Prompt injection, settings persistence |
+| Use path-scoped `auto` for read operations and `prompt` for create/input operations on fresh installs | Implemented in `MTSMSettings.h` | Prompt-injection blast radius |
 | Scrub `WT_COM_CLSID` from Agent CLI environment or restrict COM independently | Planned | Compromised Agent CLI direct COM access |
 | Treat hook-originated `agent_event` as untrusted and add source binding / pane scoping before updating WTA session state | Roadmap | Hook event spoofing and registry poisoning |
 | Pin the hook bundle and hook-side `wtcli.exe` resolution to packaged locations in production; gate `WTA_HOOKS_BUNDLE_DIR`, dev-tree, and `WTCLI_PATH` overrides behind debug or explicit consent | Planned | Hook bridge supply chain / path substitution |
