@@ -52,6 +52,8 @@ pub enum AppEvent {
     SessionConfigSetCompleted {
         session_id: String,
         config_id: String,
+        value: String,
+        model_compat: bool,
     },
     SessionConfigSetFailed {
         session_id: String,

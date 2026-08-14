@@ -280,7 +280,7 @@ fn slash_config_without_options_notes_none() {
 
     run_slash(&mut app, "config");
 
-    assert!(!app.current_tab().config_picker_open);
+    assert!(!app.current_tab().config_picker.is_open());
     assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
@@ -316,9 +316,9 @@ fn slash_model_opens_the_standard_model_config_option() {
     run_slash(&mut app, "model");
 
     assert!(!app.current_tab().model_picker_open);
-    assert!(app.current_tab().config_picker_open);
+    assert!(app.current_tab().config_picker.is_open());
     assert_eq!(
-        app.current_tab().config_picker_value_option_id.as_deref(),
+        app.current_tab().config_picker.option_id(),
         Some("agent-model")
     );
 }
@@ -335,7 +335,7 @@ fn escape_from_slash_model_closes_the_config_picker() {
     run_slash(&mut app, "model");
     app.config_picker_escape();
 
-    assert!(!app.current_tab().config_picker_open);
+    assert!(!app.current_tab().config_picker.is_open());
 }
 
 #[test]
@@ -351,8 +351,78 @@ fn escape_from_config_value_picker_returns_to_option_list() {
     app.config_picker_enter();
     app.config_picker_escape();
 
-    assert!(app.current_tab().config_picker_open);
-    assert!(app.current_tab().config_picker_value_option_id.is_none());
+    assert!(app.current_tab().config_picker.is_open());
+    assert!(app.current_tab().config_picker.option_id().is_none());
+}
+
+#[test]
+fn slash_model_selection_uses_the_generic_config_request_lifecycle() {
+    let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_down();
+    app.config_picker_enter();
+
+    match master_rx.try_recv().expect("model config update request") {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+            session_id,
+            config_id,
+            value,
+        } => {
+            assert_eq!(session_id.to_string(), "session-1");
+            assert_eq!(config_id, "agent-model");
+            assert_eq!(value, "code");
+        }
+        other => panic!("expected SetSessionConfigOption, got {other:?}"),
+    }
+    assert!(!app.current_tab().config_picker.is_open());
+    assert_eq!(
+        app.current_tab().config_pending_id.as_deref(),
+        Some("agent-model")
+    );
+    assert!(app.current_tab().model_override.is_none());
+
+    app.handle_event(AppEvent::SessionConfigSetCompleted {
+        session_id: "session-1".into(),
+        config_id: "agent-model".into(),
+        value: "code".into(),
+        model_compat: true,
+    });
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("code"));
+    assert!(
+        app.config_popup_state().is_none(),
+        "the /model deep link remains closed after completion"
+    );
+}
+
+#[test]
+fn failed_model_config_selection_keeps_the_previous_model() {
+    let (mut app, _master_rx) = super::tests::test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_down();
+    app.config_picker_enter();
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "session-1".into(),
+        config_id: "agent-model".into(),
+        message: "rejected".into(),
+    });
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(app.current_tab().model_override.is_none());
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
 }
 
 #[test]
@@ -367,7 +437,7 @@ fn config_picker_select_sends_session_scoped_option_request() {
 
     app.config_picker_enter();
     assert_eq!(
-        app.current_tab().config_picker_value_option_id.as_deref(),
+        app.current_tab().config_picker.option_id(),
         Some("mode")
     );
     app.config_picker_down();
@@ -394,6 +464,8 @@ fn config_picker_select_sends_session_scoped_option_request() {
     app.handle_event(AppEvent::SessionConfigSetCompleted {
         session_id: "session-1".into(),
         config_id: "mode".into(),
+        value: "code".into(),
+        model_compat: false,
     });
 
     assert_eq!(
@@ -418,8 +490,23 @@ fn unbound_background_config_update_does_not_close_current_picker() {
         options: Vec::new(),
     });
 
-    assert!(app.current_tab().config_picker_open);
+    assert!(app.current_tab().config_picker.is_open());
     assert_eq!(app.config_popup_state().unwrap().options[0].id, "mode");
+}
+
+#[test]
+fn unbound_background_config_failure_does_not_pollute_current_tab() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("current-session".into());
+    let message_count = app.current_tab().messages.len();
+
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "closed-session".into(),
+        config_id: "mode".into(),
+        message: "the session is no longer active".into(),
+    });
+
+    assert_eq!(app.current_tab().messages.len(), message_count);
 }
 
 #[test]

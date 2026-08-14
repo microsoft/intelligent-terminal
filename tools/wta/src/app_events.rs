@@ -362,63 +362,66 @@ impl App {
             } => {
                 self.session_config_options
                     .insert(session_id.clone(), options);
-                let target_tab = self
-                    .session_to_tab
-                    .get(&session_id)
-                    .cloned()
-                    .or_else(|| {
-                        (self.current_tab().session_id.as_deref() == Some(session_id.as_str()))
-                            .then(|| self.active_tab_key().to_string())
-                    });
+                let target_tab = self.bound_tab_for_session(&session_id);
                 let Some(target_tab) = target_tab else {
                     return;
                 };
-                let option_count = self
+                let options = self
                     .session_config_options
                     .get(&session_id)
-                    .map(Vec::len)
-                    .unwrap_or(0);
-                let selected_option_id = self
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                let mut picker = self
                     .tab_sessions
                     .get(&target_tab)
-                    .and_then(|tab| tab.config_picker_value_option_id.clone());
-                let selected_option_exists = selected_option_id.as_deref().is_some_and(|id| {
-                    self.session_config_options
-                        .get(&session_id)
-                        .is_some_and(|options| options.iter().any(|option| option.id == id))
-                });
-                let row_count = selected_option_id
-                    .as_deref()
-                    .and_then(|id| {
-                        self.session_config_options
-                            .get(&session_id)
-                            .and_then(|options| options.iter().find(|option| option.id == id))
-                    })
-                    .map(|option| option.values.len())
-                    .unwrap_or(option_count);
-                let tab = self.tab_mut(&target_tab);
-                if option_count == 0 {
-                    tab.config_picker_open = false;
-                    tab.config_picker_selected = 0;
-                    tab.config_picker_value_option_id = None;
-                    tab.config_picker_returns_to_options = false;
-                } else if !selected_option_exists && selected_option_id.is_some() {
-                    tab.config_picker_value_option_id = None;
-                    tab.config_picker_selected = 0;
-                    tab.config_picker_returns_to_options = false;
-                } else {
-                    tab.config_picker_selected =
-                        tab.config_picker_selected.min(row_count.saturating_sub(1));
-                }
+                    .map(|tab| tab.config_picker.clone())
+                    .unwrap_or_default();
+                picker.reconcile(options);
+                self.tab_mut(&target_tab).config_picker = picker;
             }
             AppEvent::SessionConfigSetCompleted {
                 session_id,
                 config_id,
+                value,
+                model_compat,
             } => {
-                let target_tab = self.tab_for_session(&session_id);
-                let tab = self.tab_mut(&target_tab);
-                if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
-                    tab.config_pending_id = None;
+                let value_name = self
+                    .session_config_options
+                    .get_mut(&session_id)
+                    .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
+                    .map(|option| {
+                        option.current_value = value.clone();
+                        option.current_value_name().to_string()
+                    })
+                    .unwrap_or_else(|| value.clone());
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                {
+                    let tab = self.tab_mut(&target_tab);
+                    if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                        tab.config_pending_id = None;
+                    }
+                    if model_compat {
+                        tab.model_override = Some(value.clone());
+                        tab.messages.push(ChatMessage::success(
+                            t!("system.model_set", model = value_name.as_str()).into_owned(),
+                        ));
+                        tab.scroll_to_bottom();
+                    }
+                }
+                if model_compat {
+                    if let Some((_, current_model_id)) =
+                        self.session_model_configs.get_mut(&session_id)
+                    {
+                        *current_model_id = Some(value.clone());
+                    }
+                    if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                        self.agent_current_model_id = Some(value);
+                        self.rebuild_model_catalog_from_agent_state();
+                        self.publish_agent_status();
+                    }
                 }
             }
             AppEvent::SessionConfigSetFailed {
@@ -432,7 +435,10 @@ impl App {
                     .and_then(|options| options.iter().find(|option| option.id == config_id))
                     .map(|option| option.name.clone())
                     .unwrap_or(config_id.clone());
-                let target_tab = self.tab_for_session(&session_id);
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
                 let tab = self.tab_mut(&target_tab);
                 if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                     tab.config_pending_id = None;

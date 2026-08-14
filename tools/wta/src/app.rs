@@ -60,8 +60,9 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, NoticeKind, PermissionState, RecommendationFocus, TabSession,
-    ToolCallContent, ToolCallKind, ToolCallLocation, ToolCallOutput, UserInputState, View,
+    ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
+    RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
+    ToolCallOutput, UserInputState, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -2006,7 +2007,7 @@ impl App {
     fn open_agent_picker(&mut self, selected: usize) {
         let tab = self.current_tab_mut();
         tab.model_picker_open = false;
-        tab.config_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.agent_picker_open = true;
         tab.agent_picker_selected = selected;
     }
@@ -2064,7 +2065,7 @@ impl App {
     // ── /config picker ──────────────────────────────────────────────────
 
     fn config_picker_visible(&self) -> bool {
-        self.current_tab().config_picker_open
+        self.current_tab().config_picker.is_open()
     }
 
     fn current_session_config_options(&self) -> &[crate::app_contracts::AcpSessionConfigOption] {
@@ -2095,10 +2096,7 @@ impl App {
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
         tab.model_picker_open = false;
-        tab.config_picker_open = true;
-        tab.config_picker_selected = 0;
-        tab.config_picker_value_option_id = None;
-        tab.config_picker_returns_to_options = false;
+        tab.config_picker = ConfigPickerState::Options { selected: 0 };
     }
 
     fn open_config_value_picker(&mut self, config_id: String) {
@@ -2117,59 +2115,67 @@ impl App {
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
         tab.model_picker_open = false;
-        tab.config_picker_open = true;
-        tab.config_picker_selected = selected;
-        tab.config_picker_value_option_id = Some(config_id);
-        tab.config_picker_returns_to_options = false;
-    }
-
-    fn close_config_picker(&mut self) {
-        let tab = self.current_tab_mut();
-        tab.config_picker_open = false;
-        tab.config_picker_value_option_id = None;
-        tab.config_picker_returns_to_options = false;
+        tab.config_picker = ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected: None,
+        };
     }
 
     fn config_picker_row_count(&self) -> usize {
         let options = self.current_session_config_options();
         self.current_tab()
-            .config_picker_value_option_id
-            .as_deref()
+            .config_picker
+            .option_id()
             .and_then(|config_id| options.iter().find(|option| option.id == config_id))
             .map(|option| option.values.len())
             .unwrap_or(options.len())
     }
 
     fn config_picker_up(&mut self) {
-        self.current_tab_mut().config_picker_selected =
-            self.current_tab().config_picker_selected.saturating_sub(1);
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = selected.saturating_sub(1);
+            }
+            ConfigPickerState::Closed => {}
+        }
     }
 
     fn config_picker_down(&mut self) {
         let max = self.config_picker_row_count().saturating_sub(1);
-        let selected = self.current_tab().config_picker_selected;
-        self.current_tab_mut().config_picker_selected = (selected + 1).min(max);
-    }
-
-    fn config_picker_escape(&mut self) {
-        if self.current_tab().config_picker_value_option_id.is_some()
-            && self.current_tab().config_picker_returns_to_options
-        {
-            let tab = self.current_tab_mut();
-            tab.config_picker_value_option_id = None;
-            tab.config_picker_selected = 0;
-            tab.config_picker_returns_to_options = false;
-        } else {
-            self.close_config_picker();
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = (*selected + 1).min(max);
+            }
+            ConfigPickerState::Closed => {}
         }
     }
 
+    fn config_picker_escape(&mut self) {
+        let next = match &self.current_tab().config_picker {
+            ConfigPickerState::Values {
+                parent_selected: Some(selected),
+                ..
+            } => ConfigPickerState::Options {
+                selected: *selected,
+            },
+            _ => ConfigPickerState::Closed,
+        };
+        self.current_tab_mut().config_picker = next;
+    }
+
     fn config_picker_enter(&mut self) {
-        let selected = self.current_tab().config_picker_selected;
-        let value_option_id = self.current_tab().config_picker_value_option_id.clone();
+        let picker = self.current_tab().config_picker.clone();
         let options = self.current_session_config_options();
 
-        if let Some(config_id) = value_option_id {
+        if let ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected,
+        } = picker
+        {
             let Some(option) = options.iter().find(|option| option.id == config_id) else {
                 self.config_picker_escape();
                 return;
@@ -2185,19 +2191,15 @@ impl App {
             let session_id = self.current_tab().session_id.clone();
             let config_id = option.id.clone();
             let value_id = value.id.clone();
-            let is_model = option.is_model();
-            if is_model {
-                self.close_config_picker();
-                self.apply_model_pick(value_id);
-            } else if let Some(session_id) = session_id {
+            if let Some(session_id) = session_id {
                 let tab = self.current_tab_mut();
                 if tab.config_pending_id.is_some() {
                     return;
                 }
                 tab.config_pending_id = Some(config_id.clone());
-                tab.config_picker_value_option_id = None;
-                tab.config_picker_selected = 0;
-                tab.config_picker_returns_to_options = false;
+                tab.config_picker = parent_selected
+                    .map(|selected| ConfigPickerState::Options { selected })
+                    .unwrap_or(ConfigPickerState::Closed);
                 let _ = self.master_request_tx.send(
                     crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
                         session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
@@ -2209,6 +2211,9 @@ impl App {
             return;
         }
 
+        let ConfigPickerState::Options { selected } = picker else {
+            return;
+        };
         let Some(option) = options.get(selected) else {
             return;
         };
@@ -2218,10 +2223,11 @@ impl App {
             .position(|value| value.id == option.current_value)
             .unwrap_or(0);
         let option_id = option.id.clone();
-        let tab = self.current_tab_mut();
-        tab.config_picker_value_option_id = Some(option_id);
-        tab.config_picker_selected = value_selected;
-        tab.config_picker_returns_to_options = true;
+        self.current_tab_mut().config_picker = ConfigPickerState::Values {
+            option_id,
+            selected: value_selected,
+            parent_selected: Some(selected),
+        };
     }
 
     // ── /model picker ───────────────────────────────────────────────────
@@ -2303,7 +2309,7 @@ impl App {
             .unwrap_or(0);
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
-        tab.config_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.model_picker_open = true;
         tab.model_picker_selected = selected;
     }
@@ -3785,6 +3791,13 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
     }
 
+    fn bound_tab_for_session(&self, session_id: &str) -> Option<String> {
+        self.session_to_tab.get(session_id).cloned().or_else(|| {
+            (self.current_tab().session_id.as_deref() == Some(session_id))
+                .then(|| self.active_tab_key().to_string())
+        })
+    }
+
     /// Mutable view of the tab that owns the given session id. Lazily
     /// creates the `TabSession` if missing.
     pub fn session_tab_mut(&mut self, session_id: &str) -> &mut TabSession {
@@ -4631,7 +4644,7 @@ impl App {
 
     pub fn config_popup_state(&self) -> Option<crate::ui::ConfigPopupState<'_>> {
         let tab = self.current_tab();
-        if !tab.config_picker_open {
+        if !tab.config_picker.is_open() {
             return None;
         }
         let options = self.current_session_config_options();
@@ -4639,13 +4652,13 @@ impl App {
             return None;
         }
         let value_option = tab
-            .config_picker_value_option_id
-            .as_deref()
+            .config_picker
+            .option_id()
             .and_then(|config_id| options.iter().find(|option| option.id == config_id));
         Some(crate::ui::ConfigPopupState {
             options,
             value_option,
-            selected: tab.config_picker_selected,
+            selected: tab.config_picker.selected(),
             pending_config_id: tab.config_pending_id.as_deref(),
             pane_focused: self.pane_focused,
         })

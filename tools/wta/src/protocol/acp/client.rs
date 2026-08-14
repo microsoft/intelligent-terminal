@@ -1505,18 +1505,18 @@ impl WtaClient {
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
-                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
-                    session_id: sid.clone(),
-                    options: crate::protocol::acp::session_config::select_options(
-                        &update.config_options,
-                    ),
-                });
                 let (available_models, current_model_id) =
                     crate::protocol::acp::model_select::models_from_config_options(
                         &sid,
                         &update.config_options,
                     )
                     .unwrap_or_default();
+                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
+                    session_id: sid.clone(),
+                    options: crate::protocol::acp::session_config::select_options(
+                        &update.config_options,
+                    ),
+                });
                 let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
                     session_id: sid,
                     available_models,
@@ -2864,7 +2864,7 @@ pub async fn run_acp_client_over_pipe(
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
-    let (session_id, available_models, current_model_id, session_config, has_bootstrap) =
+    let (session_id, mut available_models, mut current_model_id, mut session_config, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref()
         {
             // No bootstrap. AgentConnected fires with the to-be-loaded
@@ -3000,10 +3000,22 @@ pub async fn run_acp_client_over_pipe(
             )
             .await;
             match model_result {
-                Ok(()) => startup_probe.log(&format!(
-                    "ACP session model set to {} (over pipe)",
-                    requested_model
-                )),
+                Ok(config_options) => {
+                    if let Some(config_options) = config_options {
+                        (available_models, current_model_id) =
+                            crate::protocol::acp::model_select::models_from_config_options(
+                                session_id.0.as_ref(),
+                                &config_options,
+                            )
+                            .unwrap_or_default();
+                        session_config =
+                            crate::protocol::acp::session_config::select_options(&config_options);
+                    }
+                    startup_probe.log(&format!(
+                        "ACP session model set to {} (over pipe)",
+                        requested_model
+                    ));
+                }
                 Err(error) if is_redundant_startup_model_error(&prompt_usage_identity, &error) => {
                     tracing::warn!(
                         target: "helper",
@@ -3395,12 +3407,32 @@ fn dispatch_master_ext_request(
                     )
                     .await
                     {
-                        Ok(_) => tracing::info!(
-                            target: "acp",
-                            session_id = %sid.0,
-                            model = %model,
-                            "acp-model hot-applied to live session"
-                        ),
+                        Ok(config_options) => {
+                            if let Some(config_options) = config_options {
+                                let (available_models, current_model_id) =
+                                    crate::protocol::acp::model_select::models_from_config_options(
+                                        sid.0.as_ref(),
+                                        &config_options,
+                                    )
+                                    .unwrap_or_default();
+                                publish_session_config_options(
+                                    &event_tx,
+                                    &sid,
+                                    Some(&config_options),
+                                );
+                                let _ = event_tx.send(AppEvent::ModelConfigUpdated {
+                                    session_id: sid.to_string(),
+                                    available_models,
+                                    current_model_id,
+                                });
+                            }
+                            tracing::info!(
+                                target: "acp",
+                                session_id = %sid.0,
+                                model = %model,
+                                "acp-model hot-applied to live session"
+                            );
+                        }
                         Err(err) => tracing::warn!(
                             target: "acp",
                             session_id = %sid.0,
@@ -3429,32 +3461,52 @@ fn dispatch_master_ext_request(
                     return;
                 }
 
-                let request = acp::schema::v1::SetSessionConfigOptionRequest::new(
-                    session_id.clone(),
-                    config_id.clone(),
-                    value.as_str(),
+                let model_compat = crate::protocol::acp::model_select::is_model_config(
+                    session_id.0.as_ref(),
+                    &config_id,
                 );
-                match conn.set_session_config_option(request).await {
-                    Ok(response) => {
-                        let (available_models, current_model_id) =
-                            crate::protocol::acp::model_select::models_from_config_options(
-                                session_id.0.as_ref(),
-                                &response.config_options,
-                            )
-                            .unwrap_or_default();
-                        publish_session_config_options(
-                            &event_tx,
-                            &session_id,
-                            Some(&response.config_options),
-                        );
-                        let _ = event_tx.send(AppEvent::ModelConfigUpdated {
-                            session_id: session_id.to_string(),
-                            available_models,
-                            current_model_id,
-                        });
+                let result = if model_compat {
+                    crate::protocol::acp::model_select::apply_session_model(
+                        &conn,
+                        session_id.clone(),
+                        value.clone(),
+                    )
+                    .await
+                } else {
+                    let request = acp::schema::v1::SetSessionConfigOptionRequest::new(
+                        session_id.clone(),
+                        config_id.clone(),
+                        value.as_str(),
+                    );
+                    conn.set_session_config_option(request)
+                        .await
+                        .map(|response| Some(response.config_options))
+                };
+                match result {
+                    Ok(config_options) => {
+                        if let Some(config_options) = config_options {
+                            let (available_models, current_model_id) =
+                                crate::protocol::acp::model_select::models_from_config_options(
+                                    session_id.0.as_ref(),
+                                    &config_options,
+                                )
+                                .unwrap_or_default();
+                            publish_session_config_options(
+                                &event_tx,
+                                &session_id,
+                                Some(&config_options),
+                            );
+                            let _ = event_tx.send(AppEvent::ModelConfigUpdated {
+                                session_id: session_id.to_string(),
+                                available_models,
+                                current_model_id,
+                            });
+                        }
                         let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
                             session_id: session_id.to_string(),
                             config_id,
+                            value,
+                            model_compat,
                         });
                     }
                     Err(error) => {

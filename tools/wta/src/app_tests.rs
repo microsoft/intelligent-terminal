@@ -6419,7 +6419,7 @@ fn render_config_picker_lists_options_and_current_values() {
             }],
         }],
     });
-    app.current_tab_mut().config_picker_open = true;
+    app.current_tab_mut().config_picker = ConfigPickerState::Options { selected: 0 };
 
     let text = render_to_text(&mut app, 120, 24);
     assert!(text.contains("ReasoningXYZ"), "rendered:\n{text}");
