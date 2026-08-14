@@ -5,7 +5,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.session.start"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.session.start"
         }]
       }
     ],
@@ -14,7 +14,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.session.end"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.session.end"
         }]
       }
     ],
@@ -23,7 +23,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.notification"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.notification"
         }]
       }
     ],
@@ -32,7 +32,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.prompt.submit"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.prompt.submit"
         }]
       }
     ],
@@ -41,7 +41,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.starting"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.starting"
         }]
       }
     ],
@@ -50,7 +50,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.finished"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.finished"
         }]
       }
     ],
@@ -59,7 +59,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.failed"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.tool.failed"
         }]
       }
     ],
@@ -68,7 +68,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.error"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.error"
         }]
       }
     ],
@@ -77,7 +77,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.stop"
+          "command": "& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source copilot --event agent.stop"
         }]
       }
     ]

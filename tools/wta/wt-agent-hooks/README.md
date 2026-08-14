@@ -154,6 +154,15 @@ The launcher and `wtcli agent-hook` both require `WT_COM_CLSID` and
 process has no `WT_SESSION`, so its redundant hooks are dropped before
 `wtcli.exe` starts and cannot be incorrectly attributed to the active shell pane.
 
+**Shell differences matter.** Copilot CLI runs hook commands through
+**PowerShell 7+** on Windows, so its `hooks.json` invokes the launcher with the
+`&` call operator (`& "${PLUGIN_ROOT}/hooks/agent-hook.cmd" …`) — without it
+PowerShell parses the quoted path as a string expression and fails with
+`ParserError: Unexpected token 'cli-source'`, which Copilot treats as a
+fail-closed deny of the tool call. Claude, Gemini, and Codex dispatch their
+hooks through `cmd.exe`, where a leading `&` is itself a syntax error, so they
+keep the bare quoted-path form.
+
 ## Manual install (for testing without `wta` startup)
 
 The auto-installer in `wta` is the supported path. For ad-hoc testing

@@ -564,6 +564,196 @@ fn bundle_hooks_thread_cli_source() {
     assert!(CODEX_HOOKS_JSON.contains("--cli-source codex"));
 }
 
+/// Copilot CLI runs hook commands through PowerShell on Windows, where a
+/// quoted path is parsed as a string expression rather than a command — it has
+/// to be invoked with the `&` call operator or the hook dies with
+/// `ParserError: Unexpected token`, which Copilot treats as a fail-closed deny.
+/// The other CLIs dispatch their hooks through `cmd.exe`, where a leading `&`
+/// is a syntax error, so the prefix has to stay Copilot-only.
+#[test]
+fn copilot_hook_commands_use_powershell_call_operator() {
+    let copilot_commands: Vec<&str> = COPILOT_HOOKS_JSON
+        .lines()
+        .filter(|line| line.contains("\"command\":"))
+        .collect();
+    assert!(!copilot_commands.is_empty());
+    for command in copilot_commands {
+        assert!(
+            command.contains(r#"& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\""#),
+            "copilot hook must invoke the launcher via PowerShell's call operator: {command}"
+        );
+    }
+
+    for (cli, hooks) in [
+        ("claude", CLAUDE_HOOKS_JSON),
+        ("gemini", GEMINI_HOOKS_JSON),
+        ("codex", CODEX_HOOKS_JSON),
+    ] {
+        assert!(
+            !hooks.contains(r#"& \""#),
+            "{cli} hooks run under cmd.exe, where a leading `&` is invalid"
+        );
+    }
+}
+
+/// Which shell a CLI dispatches its `hooks.json` `command` string through on
+/// Windows. Copilot documents PowerShell 7+; the others go through `cmd.exe`.
+#[derive(Clone, Copy)]
+enum HookShell {
+    PowerShell,
+    Cmd,
+}
+
+/// Every `command` string in a bundle's `hooks.json`.
+fn hook_command_strings(hooks_json: &str) -> Vec<String> {
+    let doc: Value = serde_json::from_str(hooks_json).unwrap();
+    let mut commands = Vec::new();
+    for matchers in doc["hooks"].as_object().unwrap().values() {
+        for matcher in matchers.as_array().unwrap() {
+            for hook in matcher["hooks"].as_array().unwrap() {
+                commands.push(hook["command"].as_str().unwrap().to_string());
+            }
+        }
+    }
+    assert!(!commands.is_empty());
+    commands
+}
+
+/// Copilot requires PowerShell 7+, but Windows PowerShell parses the construct
+/// under test identically, so it is a valid stand-in where `pwsh` is absent.
+fn powershell_exe() -> &'static str {
+    static EXE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    EXE.get_or_init(|| {
+        let probe = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+            .output();
+        if probe.is_ok() {
+            "pwsh"
+        } else {
+            "powershell"
+        }
+    })
+}
+
+/// Runs one hook command line the way its CLI would. `WT_COM_CLSID` /
+/// `WT_SESSION` are cleared so the launcher stops at its env gate instead of
+/// reaching `wtcli.exe`: the shell's parse-and-dispatch behavior is what is
+/// under test, and it must not depend on a live Terminal.
+fn run_hook_command(shell: HookShell, command: &str) -> std::process::Output {
+    use std::os::windows::process::CommandExt;
+
+    let mut spawned = match shell {
+        HookShell::PowerShell => {
+            let mut c = std::process::Command::new(powershell_exe());
+            c.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+            c
+        }
+        HookShell::Cmd => {
+            // `raw_arg` bypasses Rust's CRT-style argument escaping, which
+            // `cmd.exe` does not honor. `/s` plus the outer quotes is the
+            // canonical wrapping Node's `spawn(.., { shell: true })` emits,
+            // i.e. what the cmd-dispatched CLIs actually run.
+            let mut c = std::process::Command::new("cmd");
+            c.raw_arg(format!("/d /s /c \"{command}\""));
+            c
+        }
+    };
+    spawned
+        .env_remove("WT_COM_CLSID")
+        .env_remove("WT_SESSION")
+        .output()
+        .expect("hook shell should start")
+}
+
+/// Per-CLI hook bundle: bundle subdir, path placeholder, `hooks.json`, shell.
+const HOOK_SHELL_CASES: [(&str, &str, &str, &str, HookShell); 4] = [
+    (
+        "copilot",
+        "copilot/wt-agent-hooks",
+        "${PLUGIN_ROOT}",
+        COPILOT_HOOKS_JSON,
+        HookShell::PowerShell,
+    ),
+    (
+        "claude",
+        "claude/wt-agent-hooks",
+        "${CLAUDE_PLUGIN_ROOT}",
+        CLAUDE_HOOKS_JSON,
+        HookShell::Cmd,
+    ),
+    (
+        "gemini",
+        "gemini-extension",
+        "${extensionPath}",
+        GEMINI_HOOKS_JSON,
+        HookShell::Cmd,
+    ),
+    (
+        "codex",
+        "codex/wt-agent-hooks",
+        "${PLUGIN_ROOT}",
+        CODEX_HOOKS_JSON,
+        HookShell::Cmd,
+    ),
+];
+
+/// The shipped hook command lines must actually be *executable* by the shell
+/// their CLI dispatches through. The other bundle tests only compare text, so
+/// a command every shell rejects still passed them — and because Copilot's
+/// `PreToolUse` hook is fail-closed, one shell-level parse error there denies
+/// every tool call for the whole session.
+#[test]
+fn bundled_hook_commands_execute_in_their_cli_shell() {
+    let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wt-agent-hooks");
+    // The staging path carries a space so this also covers command quoting.
+    let staging = unique_dir("shell exec");
+
+    for (cli, subdir, placeholder, hooks_json, shell) in HOOK_SHELL_CASES {
+        let plugin_root = staging.join(cli);
+        copy_dir_recursive(&bundle_root.join(subdir), &plugin_root).unwrap();
+        let resolved_root = plugin_root.to_string_lossy().replace('\\', "/");
+
+        for command in hook_command_strings(hooks_json) {
+            let command = command.replace(placeholder, &resolved_root);
+            let out = run_hook_command(shell, &command);
+            assert!(
+                out.status.success(),
+                "{cli} hook must exit 0 under its shell: {command}\nstderr: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert!(
+                out.stdout.is_empty() && out.stderr.is_empty(),
+                "{cli} hook must stay silent: {command}\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
+/// Negative control for `bundled_hook_commands_execute_in_their_cli_shell`:
+/// without the call operator PowerShell must reject Copilot's command, proving
+/// that test would actually catch the regression rather than pass vacuously.
+#[test]
+fn copilot_hook_command_without_call_operator_fails_in_powershell() {
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("wt-agent-hooks/copilot/wt-agent-hooks")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let command = hook_command_strings(COPILOT_HOOKS_JSON)
+        .swap_remove(0)
+        .replace("${PLUGIN_ROOT}", &plugin_root);
+    let regressed = command
+        .strip_prefix("& ")
+        .expect("fixed copilot command starts with the call operator");
+
+    let out = run_hook_command(HookShell::PowerShell, regressed);
+    assert!(
+        !out.status.success(),
+        "a quoted path without `&` must fail to parse in PowerShell: {regressed}"
+    );
+}
+
 /// Both CLIs must carry the common event set. Copilot additionally
 /// subscribes to tool-use hooks; claude dropped them in #81 for
 /// latency. `ErrorOccurred` must NOT appear (undocumented legacy
