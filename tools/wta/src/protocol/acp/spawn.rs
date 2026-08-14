@@ -282,6 +282,11 @@ pub(crate) fn spawn_agent_process(
 
     // Keep the log path available to pre-0.1.5 hook bundles while startup
     // auto-upgrade replaces their PowerShell bridge with `wtcli agent-hook`.
+    // The only reader is the deleted `send-event.ps1`, which can still be
+    // cached on disk for one agent lifetime after an IT upgrade.
+    //
+    // RETIREMENT (#620): delete once no supported upgrade path can leave a
+    // pre-0.1.5 `wt-agent-hooks` bundle installed.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
     // Forward the user's locale to the agent process via standard POSIX

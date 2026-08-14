@@ -83,7 +83,11 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // startup auto-upgrade replaces their PowerShell bridge with
             // `wtcli agent-hook`. Inject it after regenerate() on the
             // per-connection environment so concurrent pane launches cannot
-            // race.
+            // race. The only reader is the deleted `send-event.ps1`, which can
+            // still be cached on disk for one agent lifetime after an upgrade.
+            //
+            // RETIREMENT (#620): delete once no supported upgrade path can
+            // leave a pre-0.1.5 wt-agent-hooks bundle installed.
             {
                 const auto wtaLogDir = ::IntelligentTerminal::LogDirVersioned();
                 if (!wtaLogDir.empty())
