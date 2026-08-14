@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+#[cfg(test)]
+use std::cell::Cell;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -22,6 +24,26 @@ const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 const MAX_TOOL_PREVIEW_LINES: usize = 2;
 const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
+
+#[cfg(test)]
+thread_local! {
+    static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_line_build_count() {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_line_build_count() -> usize {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_line_build() {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+}
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
     let mut lines = output.text.lines().rev();
@@ -333,8 +355,14 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner_area = inner.inner(area);
     let visible_height = inner_area.height as usize;
     let wrap_width = inner_area.width as usize;
-    let requested_lines = visible_height
-        .saturating_add(app.current_tab().chat_scroll.offset)
+    let selection_pending = app.current_tab().completed_turn_selection_visible_pending;
+    let selection_target_idx = selection_pending
+        .then_some(app.current_tab().selected_completed_turn_idx)
+        .flatten()
+        .filter(|index| *index < app.current_tab().completed_turns.len());
+    let mut effective_offset = app.current_tab().chat_scroll.offset;
+    let mut requested_lines = visible_height
+        .saturating_add(effective_offset)
         .saturating_add(32);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
@@ -361,7 +389,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             wrap_width,
         );
         reversed_lines.extend(message_lines.drain(..).rev());
-        if reversed_lines.len() >= requested_lines {
+        if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
             truncated = true;
             break;
         }
@@ -370,11 +398,30 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     if !truncated {
         let selected_idx = app.current_tab().selected_completed_turn_idx;
         let pane_focused = app.pane_focused;
+        let mut selection_reached = selection_target_idx.is_none();
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let mut turn_lines =
+                build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            if selection_target_idx == Some(idx) {
+                let rows_below = rendered_lines_height(&reversed_lines, wrap_width);
+                let selected_height = rendered_lines_height(&turn_lines, wrap_width);
+                let selected_end = rows_below.saturating_add(selected_height);
+                let viewport_height = visible_height.max(1);
+                effective_offset = if rows_below < effective_offset {
+                    rows_below
+                } else if selected_end > effective_offset.saturating_add(viewport_height) {
+                    selected_end.saturating_sub(viewport_height)
+                } else {
+                    effective_offset
+                };
+                requested_lines = visible_height
+                    .saturating_add(effective_offset)
+                    .saturating_add(32);
+                selection_reached = true;
+            }
             reversed_lines.extend(turn_lines.drain(..).rev());
-            if reversed_lines.len() >= requested_lines {
+            if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
                 break;
             }
@@ -400,7 +447,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = rendered_lines_height(&lines, wrap_width);
-    let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
+    let scroll = total_lines.saturating_sub(visible_height.saturating_add(effective_offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
@@ -409,6 +456,12 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .scroll((scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(paragraph, area);
+
+    if selection_pending {
+        let tab = app.current_tab_mut();
+        tab.chat_scroll.offset = effective_offset;
+        tab.completed_turn_selection_visible_pending = false;
+    }
 
     // Update the scroll bound only when the build saw all of history;
     // otherwise the true max is still unknown and the stored value (possibly
@@ -442,6 +495,9 @@ fn build_completed_turn_lines<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    #[cfg(test)]
+    record_completed_turn_line_build();
+
     let chevron = if turn.expanded { "▼ " } else { "▶ " };
     // Selected row highlights the current Tab target. When the pane is focused
     // it's the live, active selection (bright SELECTED bar); when the pane is
@@ -1038,6 +1094,20 @@ mod tests {
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn completed_turn_build_counter_does_not_leak_across_threads() {
+        reset_completed_turn_line_build_count();
+        std::thread::spawn(|| {
+            reset_completed_turn_line_build_count();
+            record_completed_turn_line_build();
+            assert_eq!(completed_turn_line_build_count(), 1);
+        })
+        .join()
+        .expect("counter thread must finish");
+
+        assert_eq!(completed_turn_line_build_count(), 0);
     }
 
     #[test]

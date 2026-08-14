@@ -608,7 +608,7 @@ impl App {
             KeyCode::Esc if self.current_tab().selected_completed_turn_idx.is_some() => {
                 // Esc clears the past-turn selection without any other side
                 // effect. Lets the user back out of the history nav cleanly.
-                self.current_tab_mut().selected_completed_turn_idx = None;
+                self.current_tab_mut().clear_completed_turn_selection();
             }
             KeyCode::Up if self.current_tab().selected_completed_turn_idx.is_some() => {
                 self.current_tab_mut().select_older_completed_turn();

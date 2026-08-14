@@ -9115,6 +9115,89 @@ fn message_list_focus_routes_arrows_to_completed_turn_selection() {
 }
 
 #[test]
+fn empty_completed_turn_navigation_clears_pending_visibility() {
+    let mut app = test_app();
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_older_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_newer_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+}
+
+#[test]
+fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..12 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("SELECT_SCROLL_TURN_{index:02}"),
+            details: vec![ChatMessage::Agent(format!(
+                "ACK_SELECT_SCROLL_TURN_{index:02}"
+            ))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+
+    let before = render_to_text(&mut app, 80, 16);
+    assert!(before.contains("SELECT_SCROLL_TURN_11"));
+    assert!(!before.contains("SELECT_SCROLL_TURN_00"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    let newest_selected = render_to_text(&mut app, 80, 16);
+    assert!(newest_selected.contains("SELECT_SCROLL_TURN_11"));
+    assert_eq!(
+        app.current_tab().chat_scroll.offset,
+        0,
+        "selecting an already-visible turn must not move the viewport",
+    );
+    for _ in 0..11 {
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let after = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        app.current_tab().completed_turns.len() * 2,
+        "selection-follow rendering must not add a third completed-turn layout pass",
+    );
+    assert!(
+        after.contains("SELECT_SCROLL_TURN_00"),
+        "the viewport must follow keyboard selection to the oldest completed turn; rendered:\n{after}",
+    );
+
+    for _ in 0..11 {
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    }
+    let newest_again = render_to_text(&mut app, 80, 16);
+    assert!(newest_again.contains("SELECT_SCROLL_TURN_11"));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+
+    app.current_tab_mut().chat_scroll.offset = 4;
+    let manually_scrolled = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        app.current_tab().chat_scroll.offset,
+        4,
+        "a later manual scroll must not be overridden after selection visibility is consumed",
+    );
+    assert!(!manually_scrolled.contains("SELECT_SCROLL_TURN_11"));
+}
+
+#[test]
 fn input_history_deduplicates_and_caps_at_fifty() {
     let mut tab = TabSession::default();
     for index in 0..55 {
@@ -9196,10 +9279,14 @@ fn submitting_prompt_records_only_that_tab_history() {
 fn clearing_chat_keeps_input_history_for_the_tab() {
     let mut tab = TabSession::default();
     tab.record_input_history("keep me");
+    tab.selected_completed_turn_idx = Some(0);
+    tab.completed_turn_selection_visible_pending = true;
 
     tab.clear_chat_history();
 
     assert_eq!(tab.input_history.entries[0], "keep me");
+    assert_eq!(tab.selected_completed_turn_idx, None);
+    assert!(!tab.completed_turn_selection_visible_pending);
 }
 
 #[test]
@@ -9396,10 +9483,18 @@ fn typing_returns_to_input_after_clearing_selection() {
         trailing_marker: None,
     });
     app.current_tab_mut().selected_completed_turn_idx = Some(0);
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
 
     // Esc backs out of history nav, then typing lands in the input again.
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(
+        !app
+            .current_tab()
+            .completed_turn_selection_visible_pending,
+        "clearing selection must also clear its pending visibility request",
+    );
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     assert_eq!(app.current_tab().input, "x");
 }

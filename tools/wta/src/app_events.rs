@@ -1660,7 +1660,6 @@ impl App {
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
                         tab.completed_turns.clear();
-                        tab.selected_completed_turn_idx = None;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

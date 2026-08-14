@@ -336,6 +336,10 @@ pub struct TabSession {
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
     pub selected_completed_turn_idx: Option<usize>,
+    /// Set when keyboard navigation changes the completed-turn selection.
+    /// The chat render pass consumes it after adjusting scroll just enough to
+    /// reveal the selected turn.
+    pub completed_turn_selection_visible_pending: bool,
     pub chat_scroll: Scroll,
 
     // Session replay state. These buffers are used only while loading_session
@@ -512,6 +516,7 @@ impl TabSession {
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
+        self.clear_completed_turn_selection();
         self.turn = TurnState::Idle;
         self.clear_recommendations();
         self.attachments
@@ -621,7 +626,7 @@ impl TabSession {
     pub fn select_older_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -629,12 +634,13 @@ impl TabSession {
             Some(0) => None,
             Some(index) => Some(index - 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
     }
 
     pub fn select_newer_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -642,6 +648,12 @@ impl TabSession {
             Some(index) if index + 1 >= len => None,
             Some(index) => Some(index + 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
+    }
+
+    pub fn clear_completed_turn_selection(&mut self) {
+        self.selected_completed_turn_idx = None;
+        self.completed_turn_selection_visible_pending = false;
     }
 
     pub fn toggle_selected_completed_turn(&mut self) {
@@ -650,9 +662,9 @@ impl TabSession {
         };
         if let Some(turn) = self.completed_turns.get_mut(index) {
             turn.expanded = !turn.expanded;
+            self.completed_turn_selection_visible_pending = true;
         }
     }
-
 }
 
 /// Top-level UI view selector. Toggled with Ctrl+Shift+/.
