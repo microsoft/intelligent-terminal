@@ -324,6 +324,38 @@ fn slash_model_opens_the_standard_model_config_option() {
 }
 
 #[test]
+fn escape_from_slash_model_closes_the_config_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_escape();
+
+    assert!(!app.current_tab().config_picker_open);
+}
+
+#[test]
+fn escape_from_config_value_picker_returns_to_option_list() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "config");
+    app.config_picker_enter();
+    app.config_picker_escape();
+
+    assert!(app.current_tab().config_picker_open);
+    assert!(app.current_tab().config_picker_value_option_id.is_none());
+}
+
+#[test]
 fn config_picker_select_sends_session_scoped_option_request() {
     let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
     app.current_tab_mut().session_id = Some("session-1".into());

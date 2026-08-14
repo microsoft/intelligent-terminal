@@ -2098,6 +2098,7 @@ impl App {
         tab.config_picker_open = true;
         tab.config_picker_selected = 0;
         tab.config_picker_value_option_id = None;
+        tab.config_picker_returns_to_options = false;
     }
 
     fn open_config_value_picker(&mut self, config_id: String) {
@@ -2119,12 +2120,14 @@ impl App {
         tab.config_picker_open = true;
         tab.config_picker_selected = selected;
         tab.config_picker_value_option_id = Some(config_id);
+        tab.config_picker_returns_to_options = false;
     }
 
     fn close_config_picker(&mut self) {
         let tab = self.current_tab_mut();
         tab.config_picker_open = false;
         tab.config_picker_value_option_id = None;
+        tab.config_picker_returns_to_options = false;
     }
 
     fn config_picker_row_count(&self) -> usize {
@@ -2149,10 +2152,13 @@ impl App {
     }
 
     fn config_picker_escape(&mut self) {
-        if self.current_tab().config_picker_value_option_id.is_some() {
+        if self.current_tab().config_picker_value_option_id.is_some()
+            && self.current_tab().config_picker_returns_to_options
+        {
             let tab = self.current_tab_mut();
             tab.config_picker_value_option_id = None;
             tab.config_picker_selected = 0;
+            tab.config_picker_returns_to_options = false;
         } else {
             self.close_config_picker();
         }
@@ -2191,6 +2197,7 @@ impl App {
                 tab.config_pending_id = Some(config_id.clone());
                 tab.config_picker_value_option_id = None;
                 tab.config_picker_selected = 0;
+                tab.config_picker_returns_to_options = false;
                 let _ = self.master_request_tx.send(
                     crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
                         session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
@@ -2214,6 +2221,7 @@ impl App {
         let tab = self.current_tab_mut();
         tab.config_picker_value_option_id = Some(option_id);
         tab.config_picker_selected = value_selected;
+        tab.config_picker_returns_to_options = true;
     }
 
     // ── /model picker ───────────────────────────────────────────────────

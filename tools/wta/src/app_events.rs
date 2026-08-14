@@ -401,9 +401,11 @@ impl App {
                     tab.config_picker_open = false;
                     tab.config_picker_selected = 0;
                     tab.config_picker_value_option_id = None;
+                    tab.config_picker_returns_to_options = false;
                 } else if !selected_option_exists && selected_option_id.is_some() {
                     tab.config_picker_value_option_id = None;
                     tab.config_picker_selected = 0;
+                    tab.config_picker_returns_to_options = false;
                 } else {
                     tab.config_picker_selected =
                         tab.config_picker_selected.min(row_count.saturating_sub(1));

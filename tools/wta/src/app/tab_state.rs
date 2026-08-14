@@ -424,6 +424,8 @@ pub struct TabSession {
     pub config_picker_selected: usize,
     /// Config option whose values are currently shown; `None` shows the option list.
     pub config_picker_value_option_id: Option<String>,
+    /// Whether Esc from the value picker returns to the `/config` option list.
+    pub config_picker_returns_to_options: bool,
     /// Config option currently awaiting a `session/set_config_option` response.
     pub config_pending_id: Option<String>,
     /// True while the `/agent` picker is open for this tab.
