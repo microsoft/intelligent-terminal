@@ -9279,10 +9279,14 @@ fn submitting_prompt_records_only_that_tab_history() {
 fn clearing_chat_keeps_input_history_for_the_tab() {
     let mut tab = TabSession::default();
     tab.record_input_history("keep me");
+    tab.selected_completed_turn_idx = Some(0);
+    tab.completed_turn_selection_visible_pending = true;
 
     tab.clear_chat_history();
 
     assert_eq!(tab.input_history.entries[0], "keep me");
+    assert_eq!(tab.selected_completed_turn_idx, None);
+    assert!(!tab.completed_turn_selection_visible_pending);
 }
 
 #[test]
@@ -9479,10 +9483,18 @@ fn typing_returns_to_input_after_clearing_selection() {
         trailing_marker: None,
     });
     app.current_tab_mut().selected_completed_turn_idx = Some(0);
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
 
     // Esc backs out of history nav, then typing lands in the input again.
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(
+        !app
+            .current_tab()
+            .completed_turn_selection_visible_pending,
+        "clearing selection must also clear its pending visibility request",
+    );
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     assert_eq!(app.current_tab().input, "x");
 }

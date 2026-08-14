@@ -881,7 +881,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.selection_visible_pending = true;
-        tab.selected_completed_turn_idx = None;
+        tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
         tab.turn = TurnState::Surfaced {
             prompt,

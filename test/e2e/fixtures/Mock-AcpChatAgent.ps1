@@ -74,5 +74,17 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 result = @{ stopReason = 'end_turn' }
             }
         }
+        default {
+            if ($null -ne $request.id) {
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    error = @{
+                        code = -32601
+                        message = 'Method not found'
+                    }
+                }
+            }
+        }
     }
 }
