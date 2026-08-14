@@ -55,8 +55,9 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
 
         # Install the hooks the same way FRE/Settings do, so this exercises the SHIPPED bundle
         # rather than whatever the developer happens to have installed. Anything we install is
-        # removed again in AfterAll — leaving the plugin files behind while restoring the CLI
-        # config would strand an orphaned install directory (see #621).
+        # removed again in AfterAll: restoring only the CLI config would leave the plugin files
+        # behind as an orphaned install directory that the CLI no longer lists but that can
+        # still break the next install.
         $preinstalled = script:Get-HookInstallState
         $script:configBackup = Backup-CopilotConfig
         try {
