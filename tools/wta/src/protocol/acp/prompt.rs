@@ -276,6 +276,8 @@ mod tests {
             assert!(!prompt.contains("```json"));
         }
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("`request_user_input`"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("instead of guessing"));
         assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Submit exactly one `send` action"));
     }
 

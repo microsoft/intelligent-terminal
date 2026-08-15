@@ -218,8 +218,17 @@ system.agent_switch_unavailable: "উইন্ডোজ টার্মিনা
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনের জন্য মডেল নির্বাচন করুন (সরাসরি পরিবর্তন করতে /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "এই এজেন্ট সেশন কনফিগার করুন"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "এই ট্যাবের এজেন্ট পেনটি সরান (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "মডেল নির্বাচন করুন (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "সেশন কনফিগারেশন (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "সংযুক্ত এজেন্ট কোনো কনফিগারযোগ্য সেশন বিকল্প বিজ্ঞাপন করেনি।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} আপডেট করতে ব্যর্থ হয়েছে: %{error}"
 system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}

@@ -66,6 +66,23 @@ Describe 'JSON helpers' -Tag 'Unit' {
         $o.acpAgent | Should -Be 'copilot'
         $o.autoFixEnabled | Should -BeTrue
     }
+
+    It 'Set-WtSetting verifies nested object arrays structurally' {
+        $settingsPath = Join-Path $TestDrive 'nested-settings.json'
+        '{}' | Set-Content -LiteralPath $settingsPath -Encoding utf8
+        $app = [pscustomobject]@{ SettingsPath = $settingsPath }
+        $providers = @(@{
+            id = 'provider-local'
+            models = @(@{ id = 'test-model'; name = 'Test Model' })
+        })
+
+        Set-WtSetting -App $app -Key 'customModelProviders' -Value $providers | Out-Null
+
+        $stored = Get-WtSetting -App $app -Key 'customModelProviders'
+        @($stored) | Should -HaveCount 1
+        $stored[0].id | Should -Be 'provider-local'
+        $stored[0].models[0].name | Should -Be 'Test Model'
+    }
 }
 
 Describe 'Agent settings cleanup' -Tag 'Unit' {

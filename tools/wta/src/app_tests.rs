@@ -815,7 +815,7 @@ fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
     );
 }
 
-fn test_app_with_master_rx() -> (
+pub(super) fn test_app_with_master_rx() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>,
 ) {
@@ -1534,8 +1534,14 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
             id: "t1".to_string(),
             title: "ls".to_string(),
             status: "done".to_string(),
+            kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         },
         ChatMessage::Agent("Here are the files...".to_string()),
     ];
@@ -2092,10 +2098,6 @@ fn model_config_update_refreshes_active_session_picker() {
         1,
         "the picker must highlight the model reported by the latest config update"
     );
-    assert_eq!(
-        app.model_popup_state().and_then(|state| state.current_id),
-        Some("gpt-5.6-sol")
-    );
 }
 
 #[test]
@@ -2230,6 +2232,13 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         app.current_tab().model_override.as_deref(),
         Some("gpt-5.4")
     );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Notice {
+            kind: NoticeKind::Success,
+            ..
+        })
+    ));
     match master_rx.try_recv().expect("live model switch request") {
         crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
             session_id,
@@ -3946,9 +3955,12 @@ fn shift_enter_history_row_without_load_session_capability_shows_hint() {
     assert_eq!(cmd.kind, DispatchedCommandKind::NotResumable);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("LoadSessionNotSupported"), "argv: {}", argv);
-    // The current tab gets a System hint message.
+    // The current tab gets a warning notice.
     let has_hint = app.current_tab().messages.iter().any(|m| {
-        matches!(m, ChatMessage::System(text)
+        matches!(m, ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            text,
+        }
             if text.contains("loadSession")
                 && text.contains("Press Enter"))
     });
@@ -4620,8 +4632,11 @@ fn soft_stop_appends_system_line_without_changing_state() {
         app.current_tab()
             .messages
             .iter()
-            .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
-        "a soft stop must append its localized System line"
+            .any(|m| matches!(m, ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                text,
+            } if *text == expected)),
+        "a soft stop must append its localized warning"
     );
     assert!(
         matches!(app.state, ConnectionState::Connected),
@@ -4664,7 +4679,10 @@ fn soft_stop_reasons_map_to_distinct_localized_lines() {
             app.current_tab()
                 .messages
                 .iter()
-                .any(|m| matches!(m, ChatMessage::System(s) if *s == expected)),
+                .any(|m| matches!(m, ChatMessage::Notice {
+                    kind: NoticeKind::Warning,
+                    text,
+                } if *text == expected)),
             "reason {reason:?} must render the {key} line"
         );
     }
@@ -5284,13 +5302,13 @@ async fn mock_agent_reply_streams_into_app_chat() {
             );
 
             // "What the chat shows" while streaming: the mock's reply is in
-            // the active tab's streaming buffer.
+            // the active tab's ordered transcript.
             assert!(
                 app.current_tab()
-                    .pending_agent_response
+                    .active_agent_text()
                     .contains("MOCK_OK:hello"),
-                "mock reply must stream into the App chat buffer; got {:?}",
-                app.current_tab().pending_agent_response
+                "mock reply must stream into the App transcript; got {:?}",
+                app.current_tab().active_agent_text()
             );
         })
         .await;
@@ -5435,6 +5453,37 @@ async fn permission_quick_reject_key_round_trips_to_agent() {
         .await;
 }
 
+#[tokio::test]
+async fn permission_enter_resolves_only_the_fifo_front() {
+    let mut app = test_app();
+    let (first_tx, first_rx) = tokio::sync::oneshot::channel();
+    let (second_tx, mut second_rx) = tokio::sync::oneshot::channel();
+
+    let mut first = perm_with("first");
+    first.responder = Some(first_tx);
+    let mut second = perm_with("second");
+    second.responder = Some(second_tx);
+    app.current_tab_mut().permission.push_back(first);
+    app.current_tab_mut().permission.push_back(second);
+
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    assert_eq!(
+        first_rx.await.expect("first responder dropped"),
+        "allow_once"
+    );
+    assert_eq!(
+        second_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "the queued responder must remain pending"
+    );
+    assert_eq!(app.current_tab().permission.len(), 1);
+    assert_eq!(
+        app.current_tab().permission.front().unwrap().title,
+        "second"
+    );
+}
+
 /// The `kind` string is the ACP `PermissionOptionKind` rendered via
 /// `format!("{:?}", …)`, i.e. PascalCase (`AllowOnce`, `RejectAlways`).
 /// `PermOption::is_allow`/`is_reject` must match those case-insensitively
@@ -5472,7 +5521,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_keeps_thinking_until_turn_ends() {
+fn permission_request_replaces_thinking_until_dismissed() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -5510,7 +5559,10 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         responder,
     });
 
-    assert!(app.current_tab().should_show_thinking());
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "an actionable permission replaces passive Thinking feedback"
+    );
     app.current_tab_mut().permission.pop_front();
     assert!(app.current_tab().should_show_thinking());
     let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
@@ -5518,6 +5570,216 @@ fn permission_request_keeps_thinking_until_turn_ends() {
     };
     *end_pending = false;
     assert!(!app.current_tab().should_show_thinking());
+}
+
+fn begin_user_input_test(app: &mut App) {
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Submitted(SubmittedPrompt {
+        id: 1,
+        text: "test".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    });
+}
+
+#[test]
+fn user_input_choice_returns_selected_index() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "choice".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which approach?".into(),
+            choices: vec!["A".into(), "B".into()],
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "B".into(),
+            selected_index: Some(1),
+        }
+    );
+    assert!(app.current_tab().user_input.is_empty());
+}
+
+#[test]
+fn user_input_accepts_freeform_and_escape_cancels() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "freeform".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Name it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "x".into(),
+            selected_index: None,
+        }
+    );
+
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "cancel".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Continue?".into(),
+            choices: vec!["Yes".into()],
+            allow_freeform: false,
+        },
+        responder,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Cancelled
+    );
+}
+
+#[test]
+fn help_overlay_dismisses_before_user_input() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "behind-help".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Continue?".into(),
+            choices: vec!["Yes".into()],
+            allow_freeform: false,
+        },
+        responder,
+    });
+    app.help_overlay_visible = true;
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(!app.help_overlay_visible);
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert!(matches!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Cancelled
+    );
+}
+
+#[test]
+fn user_input_owns_focus_and_cancellation_removes_only_its_request() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (first_responder, mut first_response) = tokio::sync::oneshot::channel();
+    let (second_responder, mut second_response) = tokio::sync::oneshot::channel();
+    for (request_id, responder) in [("first", first_responder), ("second", second_responder)] {
+        app.handle_event(AppEvent::UserInputRequest {
+            request_id: request_id.into(),
+            session_id: DEFAULT_TAB_ID.into(),
+            request: crate::agent_tools::user_input::UserInputRequest {
+                question: "Choose".into(),
+                choices: vec!["A".into()],
+                allow_freeform: false,
+            },
+            responder,
+        });
+    }
+
+    assert!(!app.current_tab().input_has_nav_focus());
+    assert!(!app.current_tab().should_show_thinking());
+    app.handle_event(AppEvent::CancelUserInputRequest {
+        request_id: "second".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert_eq!(
+        app.current_tab().user_input.front().unwrap().request_id,
+        "first"
+    );
+    assert!(matches!(
+        second_response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
+    assert!(matches!(
+        first_response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+}
+
+#[test]
+fn cancelling_turn_drops_pending_user_input() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "turn-cancel".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Continue?".into(),
+            choices: vec!["Yes".into()],
+            allow_freeform: false,
+        },
+        responder,
+    });
+
+    app.turn_cancel(DEFAULT_TAB_ID);
+
+    assert!(app.current_tab().user_input.is_empty());
+    assert!(matches!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
+}
+
+#[test]
+fn surfaced_recommendation_hides_thinking_before_turn_end() {
+    let mut app = test_app();
+    let prompt = SubmittedPrompt {
+        id: 1,
+        text: "test".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    };
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::Recommendation(RecommendationSet {
+            recommended_choice: None,
+            choices: Vec::new(),
+        }),
+        end_pending: true,
+    };
+
+    assert!(
+        app.current_tab().turn.is_in_flight(),
+        "end_pending must continue to gate new prompts"
+    );
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "the surfaced result replaces Thinking"
+    );
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`
@@ -5657,7 +5919,7 @@ async fn streaming_two_chunks_coalesce_in_app_chat() {
             .await;
 
             assert_eq!(
-                app.current_tab().pending_agent_response,
+                app.current_tab().active_agent_text(),
                 "MOCK_OK",
                 "streamed chunks must coalesce into one contiguous reply"
             );
@@ -5706,6 +5968,100 @@ async fn tool_call_completion_updates_card_status() {
             );
         })
         .await;
+}
+
+#[test]
+fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "change it");
+
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "I will update the file.".into(),
+    });
+    app.current_tab_mut().reveal_chars = 12;
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-1".into(),
+        title: "apply_patch".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Edit,
+        location: Some("src/main.rs".into()),
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "The update is complete.".into(),
+    });
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        0,
+        "a new prose segment after a tool must start its own reveal cursor"
+    );
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+
+    let details = &app.current_tab().completed_turns[0].details;
+    assert!(
+        matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file.")
+    );
+    assert!(matches!(
+        &details[1],
+        ChatMessage::ToolCall { title, .. } if title == "apply_patch"
+    ));
+    assert!(
+        matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
+    );
+}
+
+#[test]
+fn tool_only_turn_commits_the_ordered_tool_transcript() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-1".into(),
+        title: "Find files".into(),
+        status: "Completed".into(),
+        kind: ToolCallKind::Search,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+
+    let tab = app.current_tab();
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(matches!(
+        tab.completed_turns[0].details.as_slice(),
+        [ChatMessage::ToolCall { id, .. }] if id == "tool-1"
+    ));
+}
+
+#[test]
+fn live_transcript_does_not_consume_replay_accumulators() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "live");
+    app.current_tab_mut().replay_agent_buffer = "replayed history".into();
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "live response");
+
+    let tab = app.current_tab();
+    assert_eq!(tab.streaming_agent_text(), Some("live response"));
+    assert_eq!(tab.active_agent_text(), "live response");
+    assert_eq!(tab.replay_agent_buffer, "replayed history");
 }
 
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
@@ -5966,8 +6322,14 @@ fn render_tool_call_card_in_chat() {
         id: "mock-tool-1".into(),
         title: "Run: echo TOOL_XYZ".into(),
         status: "Pending".into(),
+        kind: ToolCallKind::Execute,
         location: None,
         location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
     });
 
     let text = render_to_text(&mut app, 80, 24);
@@ -6031,6 +6393,37 @@ fn render_model_picker_lists_models() {
         !text.contains("shared-model (BYOM)"),
         "the cloud-mode model picker must omit BYOM rows; rendered:\n{text}"
     );
+    assert!(
+        !text.contains('●'),
+        "the model picker must not prefix the current model with a circle; rendered:\n{text}"
+    );
+}
+
+#[test]
+fn render_config_picker_lists_options_and_current_values() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-config".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-config".into(),
+        options: vec![crate::app_contracts::AcpSessionConfigOption {
+            id: "reasoning".into(),
+            name: "ReasoningXYZ".into(),
+            description: Some("Controls depth".into()),
+            category: Some("thought_level".into()),
+            current_value: "high".into(),
+            values: vec![crate::app_contracts::AcpSessionConfigValue {
+                id: "high".into(),
+                name: "HighXYZ".into(),
+                description: Some("Think longer".into()),
+            }],
+        }],
+    });
+    app.current_tab_mut().config_picker = ConfigPickerState::Options { selected: 0 };
+
+    let text = render_to_text(&mut app, 120, 24);
+    assert!(text.contains("ReasoningXYZ"), "rendered:\n{text}");
+    assert!(text.contains("HighXYZ"), "rendered:\n{text}");
 }
 
 #[test]
@@ -6693,7 +7086,10 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
     assert!(
         tab.messages
             .iter()
-            .any(|m| matches!(m, ChatMessage::System(s) if *s == want)),
+            .any(|m| matches!(m, ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                text,
+            } if *text == want)),
         "Alt+V without image capability must push the not-supported message"
     );
     assert!(
@@ -7104,13 +7500,11 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
 
 /// Render: when the pane is too short for a full permission card, the
 /// compact one-row fallback must paint the description and the `[Y/N]`
-/// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path
-/// is gated on `terminal_rows - 3 < CARD_MIN_SIZE`.
+/// hint. Lifts `render_compact` in `ui/permission.rs`.
 #[test]
 fn render_permission_compact_shows_hint() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.terminal_rows = 7; // ceiling = 4 < CARD_MIN_SIZE(5) → compact fallback
     app.current_tab_mut().permission.push_back(PermissionState {
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_COMPACT_XYZ".into(),
@@ -7133,8 +7527,14 @@ fn render_permission_compact_shows_hint() {
         selected: 0,
         responder: None,
     });
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("QUEUED_COMPACT_2"));
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("QUEUED_COMPACT_3"));
 
-    let text = render_to_text(&mut app, 80, 24);
+    let text = render_to_text(&mut app, 80, 7);
     assert!(
         text.contains("PERM_COMPACT_XYZ"),
         "the compact permission row must paint its description; rendered:\n{text}"
@@ -7142,6 +7542,64 @@ fn render_permission_compact_shows_hint() {
     assert!(
         text.contains("Y/N"),
         "the compact permission row must paint the [Y/N] hint; rendered:\n{text}"
+    );
+    assert!(
+        text.contains("[1/3]"),
+        "the compact permission row must expose the pending count; rendered:\n{text}"
+    );
+}
+
+#[test]
+fn render_permission_queue_keeps_one_actionable_and_previews_the_rest() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for description in [
+        "CURRENT_PERMISSION",
+        "QUEUED_PERMISSION_2",
+        "QUEUED_PERMISSION_3",
+        "QUEUED_PERMISSION_4",
+        "QUEUED_PERMISSION_5",
+        "QUEUED_PERMISSION_6",
+    ] {
+        app.current_tab_mut()
+            .permission
+            .push_back(perm_with(description));
+    }
+
+    let text = render_to_text(&mut app, 100, 30);
+    assert!(text.contains("[1/6]"), "rendered:\n{text}");
+    assert!(text.contains("CURRENT_PERMISSION"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_2"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_3"), "rendered:\n{text}");
+    assert!(text.contains("QUEUED_PERMISSION_4"), "rendered:\n{text}");
+    assert!(!text.contains("QUEUED_PERMISSION_5"), "rendered:\n{text}");
+    assert!(text.contains("+2"), "rendered:\n{text}");
+}
+
+#[test]
+fn render_recommendation_compact_keeps_summary_and_actions_visible() {
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    install_recs(
+        &mut app,
+        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
+    );
+
+    let text = render_to_text(&mut app, 80, 7);
+    assert!(
+        text.contains("COMPACT_RECOMMENDATION_XYZ"),
+        "compact recommendation must retain its selected summary; rendered:\n{text}"
+    );
+    let run_label = t!("recommendations.button_run_command").into_owned();
+    assert!(
+        text.contains(&run_label),
+        "compact recommendation must retain its primary action; rendered:\n{text}"
+    );
+    assert!(
+        text.contains('○') && !text.contains('✓'),
+        "compact recommendation must use the pending marker; rendered:\n{text}"
     );
 }
 
@@ -7277,34 +7735,34 @@ fn submit_clears_messages_and_pushes_user_bubble() {
 }
 
 #[test]
-fn first_message_chunk_transitions_to_streaming_with_buf() {
+fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     assert!(app.current_tab().should_show_thinking());
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "partial");
     assert!(advanced, "first message chunk must advance the buffer");
-    assert_eq!(app.current_tab().turn.buffer(), Some("partial"));
+    assert_eq!(app.current_tab().streaming_agent_text(), Some("partial"));
     assert!(app.current_tab().turn.is_streaming());
     assert!(
-        app.current_tab().should_show_thinking(),
-        "Thinking remains throughout the in-flight turn"
+        !app.current_tab().should_show_thinking(),
+        "visible response text replaces the generic Thinking row"
     );
     app.advance_reveal();
     assert!(
-        app.current_tab().should_show_thinking(),
-        "revealing response text must not hide Thinking before turn end"
+        !app.current_tab().should_show_thinking(),
+        "revealing response text remains the visible progress indicator"
     );
 }
 
 #[test]
-fn thought_chunk_first_transitions_with_empty_buf() {
+fn thought_chunk_first_transitions_without_visible_text() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
     assert!(!advanced, "thought chunks never advance the buffer");
     let tab = app.current_tab();
     assert!(tab.turn.is_streaming());
-    assert_eq!(tab.turn.buffer(), Some(""));
+    assert_eq!(tab.streaming_agent_text(), None);
     assert!(
         tab.should_show_thinking(),
         "hidden thought chunks are not user-visible feedback"
@@ -7312,7 +7770,7 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn structured_stream_keeps_thinking_after_explanation_is_visible() {
+fn structured_stream_hides_thinking_after_response_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     app.turn_observe_chunk(
@@ -7321,7 +7779,7 @@ fn structured_stream_keeps_thinking_after_explanation_is_visible() {
         r#"{"kind":"explanation""#,
     );
     app.advance_reveal();
-    assert!(app.current_tab().should_show_thinking());
+    assert!(!app.current_tab().should_show_thinking());
 
     app.turn_observe_chunk(
         DEFAULT_TAB_ID,
@@ -7329,11 +7787,11 @@ fn structured_stream_keeps_thinking_after_explanation_is_visible() {
         r#","explanation":"Visible answer"}"#,
     );
     app.advance_reveal();
-    assert!(app.current_tab().should_show_thinking());
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 #[test]
-fn tool_call_keeps_thinking_while_turn_is_in_flight() {
+fn running_tool_replaces_thinking_until_tool_completes() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
@@ -7341,22 +7799,340 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
         id: "tool".into(),
         title: "Find files".into(),
         status: "InProgress".into(),
+        kind: ToolCallKind::Search,
         location: None,
         location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
     });
-    assert!(app.current_tab().should_show_thinking());
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "the running tool card is already visible progress"
+    );
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool".into(),
-        status: "Completed".into(),
+        title: None,
+        status: Some("Completed".into()),
+        kind: None,
         location: None,
         location_is_command: false,
+        output: None,
+        content: None,
+        locations: None,
+        cwd: None,
+        exit_code: None,
     });
     assert!(
         app.current_tab().should_show_thinking(),
-        "tool completion does not end the agent turn"
+        "after tool completion the generic row indicates that the Agent is still responding"
     );
+}
+
+#[test]
+fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
+    let mut app = test_app();
+    let expected_cwd = concat!("C:", "\\", "repo");
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Preparing command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Other,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: Some("bash".into()),
+        status: None,
+        kind: Some(ToolCallKind::Execute),
+        location: Some("cargo test".into()),
+        location_is_command: true,
+        output: Some(ToolCallOutput {
+            text: "running tests".into(),
+            truncated: false,
+        }),
+        content: None,
+        locations: None,
+        cwd: Some(expected_cwd.into()),
+        exit_code: None,
+    });
+
+    let Some(ChatMessage::ToolCall {
+        title,
+        status,
+        kind,
+        location,
+        cwd,
+        output,
+        ..
+    }) = app.current_tab().messages.last()
+    else {
+        panic!("expected tool-call card");
+    };
+    assert_eq!(title, "bash");
+    assert_eq!(status, "InProgress");
+    assert_eq!(*kind, ToolCallKind::Execute);
+    assert_eq!(location.as_deref(), Some("cargo test"));
+    assert_eq!(cwd.as_deref(), Some(expected_cwd));
+    assert_eq!(
+        output.as_ref().map(|output| output.text.as_str()),
+        Some("running tests")
+    );
+}
+
+#[test]
+fn tool_call_update_replaces_and_clears_standard_collections() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Edit source".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Edit,
+        location: Some("old.rs".into()),
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Attachment {
+            label: "old attachment".into(),
+            uri: None,
+        }],
+        locations: vec![ToolCallLocation {
+            path: "old.rs".into(),
+            line: Some(1),
+        }],
+    });
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: None,
+        status: None,
+        kind: None,
+        location: None,
+        location_is_command: false,
+        output: None,
+        content: Some(Vec::new()),
+        locations: Some(Vec::new()),
+        cwd: None,
+        exit_code: None,
+    });
+
+    let Some(ChatMessage::ToolCall {
+        location,
+        content,
+        locations,
+        ..
+    }) = app.current_tab().messages.last()
+    else {
+        panic!("expected tool-call card");
+    };
+    assert_eq!(location, &None);
+    assert!(content.is_empty());
+    assert!(locations.is_empty());
+}
+
+#[test]
+fn terminal_output_updates_only_the_tool_call_referencing_the_terminal() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "run");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-call-1".into(),
+        title: "Run command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Execute,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Terminal {
+            id: "term-1".into(),
+            output: None,
+            exit_code: None,
+        }],
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool-call-2".into(),
+        title: "Run another command".into(),
+        status: "InProgress".into(),
+        kind: ToolCallKind::Execute,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: vec![ToolCallContent::Terminal {
+            id: "term-2".into(),
+            output: None,
+            exit_code: None,
+        }],
+        locations: Vec::new(),
+    });
+    app.handle_event(AppEvent::ToolTerminalOutput {
+        session_id: DEFAULT_TAB_ID.into(),
+        terminal_id: "term-1".into(),
+        output: ToolCallOutput {
+            text: "terminal output".into(),
+            truncated: false,
+        },
+        exit_code: Some(0),
+    });
+
+    let cards = app
+        .current_tab()
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            ChatMessage::ToolCall {
+                id,
+                output,
+                exit_code,
+                content,
+                ..
+            } => Some((id.as_str(), output, exit_code, content)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let matching = cards
+        .iter()
+        .find(|(id, ..)| *id == "tool-call-1")
+        .expect("matching tool-call card");
+    assert_eq!(
+        matching.1.as_ref().map(|output| output.text.as_str()),
+        Some("terminal output")
+    );
+    assert_eq!(*matching.2, Some(0));
+    assert!(matches!(
+        &matching.3[0],
+        ToolCallContent::Terminal {
+            output: Some(output),
+            exit_code: Some(0),
+            ..
+        } if output.text == "terminal output"
+    ));
+
+    let unrelated = cards
+        .iter()
+        .find(|(id, ..)| *id == "tool-call-2")
+        .expect("unrelated tool-call card");
+    assert_eq!(unrelated.1, &None);
+    assert_eq!(*unrelated.2, None);
+    assert!(matches!(
+        &unrelated.3[0],
+        ToolCallContent::Terminal {
+            output: None,
+            exit_code: None,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn legacy_tool_call_deserialization_defaults_standard_details() {
+    let message: ChatMessage = serde_json::from_value(json!({
+        "ToolCall": {
+            "id": "legacy",
+            "title": "Read file",
+            "status": "Completed",
+            "kind": "Read",
+            "location": null,
+            "location_is_command": false,
+            "cwd": null,
+            "output": null,
+            "exit_code": null
+        }
+    }))
+    .expect("legacy persisted tool call should deserialize");
+
+    assert!(matches!(
+        message,
+        ChatMessage::ToolCall {
+            content,
+            locations,
+            ..
+        } if content.is_empty() && locations.is_empty()
+    ));
+}
+
+#[test]
+fn expanded_tool_call_renders_typed_details() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Update source".into(),
+        details: vec![ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Edit source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some(r"C:\src\main.rs:42".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![
+                ToolCallContent::Diff {
+                    path: r"C:\src\main.rs".into(),
+                    old_text: Some(ToolCallOutput {
+                        text: "OLD_TYPED_LINE".into(),
+                        truncated: false,
+                    }),
+                    new_text: ToolCallOutput {
+                        text: "NEW_TYPED_LINE".into(),
+                        truncated: false,
+                    },
+                },
+                ToolCallContent::Terminal {
+                    id: "TERM_TYPED_ID".into(),
+                    output: Some(ToolCallOutput {
+                        text: "TERM_TYPED_OUTPUT".into(),
+                        truncated: false,
+                    }),
+                    exit_code: Some(0),
+                },
+                ToolCallContent::Attachment {
+                    label: "image/png".into(),
+                    uri: Some("file:///image.png".into()),
+                },
+            ],
+            locations: vec![ToolCallLocation {
+                path: r"C:\src\main.rs".into(),
+                line: Some(42),
+            }],
+        }],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let text = render_to_text(&mut app, 100, 40);
+    for needle in [
+        r"C:\src\main.rs:42",
+        "OLD_TYPED_LINE",
+        "NEW_TYPED_LINE",
+        "TERM_TYPED_ID",
+        "TERM_TYPED_OUTPUT",
+        "image/png",
+    ] {
+        assert!(text.contains(needle), "missing {needle:?}; rendered:\n{text}");
+    }
 }
 
 #[test]
@@ -7463,7 +8239,7 @@ fn stale_autofix_chunks_dropped_when_generation_diverges() {
         "state unchanged on stale drop, got {:?}",
         tab.turn
     );
-    assert_eq!(tab.turn.buffer(), None);
+    assert_eq!(tab.streaming_agent_text(), None);
 }
 
 #[test]
@@ -7482,6 +8258,10 @@ fn stale_autofix_at_close_resets_to_idle() {
         app.current_tab().turn.is_idle(),
         "stale-close must reset to Idle, got {:?}",
         app.current_tab().turn
+    );
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "stale-close must discard the invalidated active transcript"
     );
 }
 
@@ -7530,7 +8310,13 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty(), "messages cleared on cancel");
-    assert!(tab.tool_calls.is_empty(), "tool_calls cleared on cancel");
+
+    app.turn_cancel(DEFAULT_TAB_ID);
+    assert_eq!(
+        app.current_tab().completed_turns.len(),
+        1,
+        "cancelling an already-idle turn must not commit the transcript twice"
+    );
 }
 
 #[test]
@@ -7561,7 +8347,6 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty());
-    assert!(tab.tool_calls.is_empty());
 }
 
 #[test]
@@ -7676,6 +8461,134 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     );
     let execution = recommendation_rx.try_recv().unwrap();
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    let tab = app.session_tab(session_id);
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("executed")));
+}
+
+#[test]
+fn direct_proposal_defers_history_until_tool_updates_finish() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-tool-update";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    app.handle_event(AppEvent::ToolCall {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: "Inspect files".into(),
+        status: "Running".into(),
+        kind: ToolCallKind::Search,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: Vec::new(),
+    });
+
+    let (proposal_id, _final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    assert!(
+        app.session_tab(session_id).completed_turns.is_empty(),
+        "surfacing a card must not move an in-flight transcript into history"
+    );
+
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: session_id.into(),
+        id: "tool-1".into(),
+        title: None,
+        status: Some("Completed".into()),
+        kind: None,
+        location: None,
+        location_is_command: false,
+        output: None,
+        content: None,
+        locations: None,
+        cwd: None,
+        exit_code: Some(0),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Everything is ready.".into(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(|detail| {
+        matches!(
+            detail,
+            ChatMessage::ToolCall { id, status, .. }
+                if id == "tool-1" && status == "Completed"
+        )
+    }));
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Everything is ready.")
+    ));
+}
+
+#[test]
+fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-cancel-trailing";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: session_id.into(),
+        text: "Trailing explanation.".into(),
+    });
+
+    app.turn_cancel(session_id);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    app.turn_cancel(session_id);
+
+    let tab = app.session_tab(session_id);
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.completed_turns.len(), 1);
+    assert!(tab.completed_turns[0].details.iter().any(
+        |detail| matches!(detail, ChatMessage::Agent(text) if text == "Trailing explanation.")
+    ));
+    assert!(tab.completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains("canceled")));
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+    );
 }
 
 #[test]
@@ -7709,6 +8622,10 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
 
 use crate::app::turn_state::{SubmittedPrompt, TurnOutcome, TurnState};
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction};
+use crate::ui::action_panel::{
+    permission_card_height, permission_queue_card_height, recommendation_card_height,
+    recommendation_panel_height,
+};
 use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
 fn perm_with(desc: &str) -> PermissionState {
@@ -7774,6 +8691,16 @@ fn permission_card_height_single_line_is_card_min() {
 }
 
 #[test]
+fn permission_queue_card_height_counts_preview_and_overflow_rows() {
+    let perm = perm_with("current");
+    let queued = ["two", "three", "four"].into_iter().map(str::to_string);
+    assert_eq!(
+        permission_queue_card_height(&perm, 6, queued, 2, 80),
+        CARD_MIN_SIZE as usize + 4
+    );
+}
+
+#[test]
 fn permission_card_height_counts_wrap_at_actual_panel_width() {
     let perm = perm_with(&"a".repeat(200));
     // Full-width terminal: wrap at 80 - 8 = 72.
@@ -7807,13 +8734,45 @@ fn permission_card_height_treats_blank_lines_as_one_row() {
 }
 
 #[test]
+fn permission_card_height_counts_wrapped_formatted_command_rows() {
+    let mut perm = perm_with("Run command?");
+    perm.target = Some("a".repeat(150));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    // command_format truncates the statement to 100 chars plus an ellipsis,
+    // and permission rendering prepends "$ " before wrapping.
+    let rendered_command_width = 2_usize + 101;
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rendered_command_width.div_ceil(inner_width)
+    );
+}
+
+#[test]
+fn permission_card_height_counts_each_wrapped_split_command_line() {
+    let mut perm = perm_with("Run commands?");
+    perm.target = Some(format!("{}; {}", "a".repeat(45), "b".repeat(45)));
+    perm.target_is_command = true;
+
+    let inner_width = card_content_width(28);
+    let rows_per_command = (2_usize + 45).div_ceil(inner_width);
+    assert_eq!(
+        permission_card_height(&perm, 28),
+        CARD_MIN_SIZE as usize + rows_per_command * 2
+    );
+}
+
+#[test]
 fn rec_card_height_includes_inter_card_gap() {
-    let h = rec_card_height(&rec_send("ls"), 80);
+    let h = recommendation_card_height(&rec_send("ls"), 80);
     assert_eq!(h as u16, CARD_MIN_SIZE + 1);
 }
 
 #[test]
 fn rec_card_height_handles_open_action_synthesis() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let choice = RecommendationChoice {
         choice: 0,
         title: "t".into(),
@@ -7823,67 +8782,81 @@ fn rec_card_height_handles_open_action_synthesis() {
             parent: None,
             cwd: Some("C:/repo".into()),
             title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+    // The rendered "New tab (logs) in C:/repo" fits on one row at width 72.
+    // Directions are ignored for tab targets.
+    assert_eq!(
+        recommendation_card_height(&choice, 80) as u16,
+        CARD_MIN_SIZE + 1
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_panel_direction_display() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::Open {
+            target: OpenTarget::Panel,
+            parent: None,
+            cwd: Some("C:/repo".into()),
+            title: Some("logs".into()),
+            direction: Some("left".into()),
+            profile: None,
+        }],
+    };
+
+    // The renderer displays "New panel (left) (logs) in C:/repo", which wraps
+    // at the 32-cell content width. The old planner omitted "(left)".
+    assert_eq!(
+        recommendation_card_height(&choice, 40) as u16,
+        CARD_MIN_SIZE + 2
+    );
+}
+
+#[test]
+fn rec_card_height_uses_localized_open_and_send_fallback() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("es-ES");
+    let choice = RecommendationChoice {
+        choice: 0,
+        title: "t".into(),
+        rationale: String::new(),
+        actions: vec![RecommendedAction::OpenAndSend {
+            target: OpenTarget::Tab,
+            parent: None,
+            input: "aaaaaaaa".into(),
+            agent: None,
+            cwd: None,
+            title: None,
             direction: None,
             profile: None,
         }],
     };
-    let h = rec_card_height(&choice, 80);
-    // "New tab (logs) in C:/repo" fits on one row at width 72.
-    assert_eq!(h as u16, CARD_MIN_SIZE + 1);
+
+    // The localized renderer text is "agente: aaaaaaaa" (16 chars), which
+    // wraps at the 15-character content width. The old hard-coded "agent"
+    // label fit on one row.
+    assert_eq!(
+        recommendation_card_height(&choice, 23) as u16,
+        CARD_MIN_SIZE + 2
+    );
 }
 
 #[test]
-fn permission_panel_height_zero_when_no_permission() {
+fn recommendation_panel_height_sums_card_canvases() {
     let mut app = test_app();
-    app.terminal_rows = 30;
-    assert_eq!(app.permission_panel_height(80), 0);
-}
-
-#[test]
-fn permission_panel_height_falls_back_to_compact_below_card_min() {
-    let mut app = test_app();
-    app.terminal_rows = 7; // ceiling = 7-3 = 4 < CARD_MIN_SIZE
-    app.current_tab_mut().permission.push_back(perm_with("ok"));
-    // Must stay visible — agent flow blocks on this prompt. 1-row strip
-    // is the compact fallback rendered by `ui::permission::render`.
-    assert_eq!(app.permission_panel_height(80), 1);
-}
-
-#[test]
-fn permission_panel_height_admits_at_card_min_ceiling() {
-    let mut app = test_app();
-    app.terminal_rows = 8; // ceiling = 5 == CARD_MIN_SIZE
-    app.current_tab_mut().permission.push_back(perm_with("ok"));
-    assert_eq!(app.permission_panel_height(80), CARD_MIN_SIZE);
-}
-
-#[test]
-fn rec_panel_height_floor_lets_tallest_card_render() {
-    let mut app = test_app();
-    app.terminal_rows = 20;
-    let tall = "x".repeat(500);
-    install_recs(&mut app, vec![rec_send(&tall)]);
-    let tall_h = rec_card_height(
-        &app.current_tab().turn.recommendations().unwrap().choices[0],
-        80,
-    ) as u16;
-    // ceiling = 20 - 5 = 15; tall card is much larger; floor wins.
-    assert_eq!(app.rec_panel_height(80), tall_h);
-}
-
-#[test]
-fn rec_panel_height_caps_at_ceiling_when_total_exceeds() {
-    let mut app = test_app();
-    app.terminal_rows = 30;
-    // Three short cards, each h=6 → total 18; ceiling 30-5=25.
     install_recs(&mut app, vec![rec_send("a"), rec_send("b"), rec_send("c")]);
-    assert_eq!(app.rec_panel_height(80), 18);
-}
-
-#[test]
-fn rec_panel_height_zero_when_no_recs() {
-    let app = test_app();
-    assert_eq!(app.rec_panel_height(80), 0);
+    assert_eq!(
+        recommendation_panel_height(app.current_tab().turn.recommendations().unwrap(), 80),
+        18
+    );
 }
 
 #[test]
@@ -7896,8 +8869,8 @@ fn main_area_width_reflects_debug_panel_split() {
 }
 
 /// Regression: `ui::recommendations::render` used `area.width` (= `h_rec[1]`
-/// = `main_area.width - 2`) when calling `rec_card_height`, while
-/// `rec_panel_height` / `sync_rec_scroll_max` used `main_area.width`. The
+/// = `main_area.width - 2`) when calling the card-height helper, while the
+/// panel planner / scroll bound used `main_area.width`. The
 /// 2-cell desync clipped the bottom card and undercounted scroll bounds
 /// whenever a card's wrap row count differed between the two widths.
 ///
@@ -7918,21 +8891,97 @@ fn rec_card_height_matches_predict_and_render_paths() {
     app.terminal_rows = 30;
     install_recs(&mut app, vec![choice.clone()]);
 
-    let predict = app.rec_panel_height(app.main_area_width()) as usize;
-    // Same width the renderer now uses (`app.main_area_width()`).
-    let render = rec_card_height(&choice, app.main_area_width());
+    let predict = recommendation_panel_height(
+        app.current_tab().turn.recommendations().unwrap(),
+        app.main_area_width(),
+    ) as usize;
+    let render = recommendation_card_height(&choice, app.main_area_width());
     assert_eq!(predict, render);
 
     // Sanity: confirm the chosen text *is* a sensitive input — i.e. the
     // old buggy basis (h_rec[1] width = W-2) would have produced a
     // different height. If this ever fails the test no longer guards
     // the regression.
-    let buggy = rec_card_height(&choice, app.main_area_width() - 2);
+    let buggy = recommendation_card_height(&choice, app.main_area_width() - 2);
     assert_ne!(
         render, buggy,
         "text length 42 should wrap differently at width 50 vs 48 — \
          pick a different critical input"
     );
+}
+
+#[test]
+fn recommendation_navigation_preserves_offset_for_fully_visible_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 12);
+    app.current_tab_mut().rec_scroll.set(2);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 2);
+}
+
+#[test]
+fn recommendation_navigation_scrolls_clipped_card_into_view() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, 10);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(
+        app.current_tab().rec_scroll.offset,
+        recommendation_card_height(&rec_send("a"), 80)
+    );
+}
+
+#[test]
+fn compact_recommendation_navigation_resets_canvas_scroll() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![
+            send_choice("pane-A", "a"),
+            send_choice("pane-B", "b"),
+            send_choice("pane-C", "c"),
+        ],
+        0,
+        None,
+    );
+    app.sync_rec_scroll_max(80, crate::ui::action_panel::COMPACT_RECOMMENDATION_HEIGHT);
+    app.current_tab_mut().rec_scroll.set(4);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert_eq!(app.current_tab().rec_scroll.offset, 0);
 }
 
 // ─── Per-tab input history ──────────────────────────────────────────
@@ -8093,6 +9142,89 @@ fn message_list_focus_routes_arrows_to_completed_turn_selection() {
 }
 
 #[test]
+fn empty_completed_turn_navigation_clears_pending_visibility() {
+    let mut app = test_app();
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_older_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
+    app.current_tab_mut().select_newer_completed_turn();
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(!app
+        .current_tab()
+        .completed_turn_selection_visible_pending);
+}
+
+#[test]
+fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..12 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("SELECT_SCROLL_TURN_{index:02}"),
+            details: vec![ChatMessage::Agent(format!(
+                "ACK_SELECT_SCROLL_TURN_{index:02}"
+            ))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+
+    let before = render_to_text(&mut app, 80, 16);
+    assert!(before.contains("SELECT_SCROLL_TURN_11"));
+    assert!(!before.contains("SELECT_SCROLL_TURN_00"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    let newest_selected = render_to_text(&mut app, 80, 16);
+    assert!(newest_selected.contains("SELECT_SCROLL_TURN_11"));
+    assert_eq!(
+        app.current_tab().chat_scroll.offset,
+        0,
+        "selecting an already-visible turn must not move the viewport",
+    );
+    for _ in 0..11 {
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let after = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        app.current_tab().completed_turns.len() * 2,
+        "selection-follow rendering must not add a third completed-turn layout pass",
+    );
+    assert!(
+        after.contains("SELECT_SCROLL_TURN_00"),
+        "the viewport must follow keyboard selection to the oldest completed turn; rendered:\n{after}",
+    );
+
+    for _ in 0..11 {
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    }
+    let newest_again = render_to_text(&mut app, 80, 16);
+    assert!(newest_again.contains("SELECT_SCROLL_TURN_11"));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+
+    app.current_tab_mut().chat_scroll.offset = 4;
+    let manually_scrolled = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        app.current_tab().chat_scroll.offset,
+        4,
+        "a later manual scroll must not be overridden after selection visibility is consumed",
+    );
+    assert!(!manually_scrolled.contains("SELECT_SCROLL_TURN_11"));
+}
+
+#[test]
 fn input_history_deduplicates_and_caps_at_fifty() {
     let mut tab = TabSession::default();
     for index in 0..55 {
@@ -8174,10 +9306,14 @@ fn submitting_prompt_records_only_that_tab_history() {
 fn clearing_chat_keeps_input_history_for_the_tab() {
     let mut tab = TabSession::default();
     tab.record_input_history("keep me");
+    tab.selected_completed_turn_idx = Some(0);
+    tab.completed_turn_selection_visible_pending = true;
 
     tab.clear_chat_history();
 
     assert_eq!(tab.input_history.entries[0], "keep me");
+    assert_eq!(tab.selected_completed_turn_idx, None);
+    assert!(!tab.completed_turn_selection_visible_pending);
 }
 
 #[test]
@@ -8374,10 +9510,18 @@ fn typing_returns_to_input_after_clearing_selection() {
         trailing_marker: None,
     });
     app.current_tab_mut().selected_completed_turn_idx = Some(0);
+    app.current_tab_mut()
+        .completed_turn_selection_visible_pending = true;
 
     // Esc backs out of history nav, then typing lands in the input again.
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+    assert!(
+        !app
+            .current_tab()
+            .completed_turn_selection_visible_pending,
+        "clearing selection must also clear its pending visibility request",
+    );
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     assert_eq!(app.current_tab().input, "x");
 }

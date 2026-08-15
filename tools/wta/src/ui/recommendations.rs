@@ -1,9 +1,11 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Wrap};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::{rec_card_height, App};
+use crate::app::App;
 use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendedAction};
 use crate::theme;
+use crate::ui::action_panel::{recommendation_card_height, PanelMode};
 use crate::ui::card::{self, CARD_MIN_SIZE};
 
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
@@ -20,25 +22,29 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode.
-pub fn render(frame: &mut Frame, app: &App, area: Rect) {
+pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) {
     let Some(recs) = app.current_tab().turn.recommendations() else { return };
-    if area.width == 0 || area.height == 0 {
+    if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
+        return;
+    }
+    if mode == PanelMode::Compact {
+        render_compact(frame, app, area);
         return;
     }
 
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
-    // `area` is `h_rec[1]` (post-padding), but `rec_card_height` /
-    // `rec_panel_height` / `sync_rec_scroll_max` all root their wrap math at
-    // `main_area.width` (see `CARD_H_CHROME`). Use the same basis here or
+    // `area` is `h_rec[1]` (post-padding), but card-height prediction and
+    // scroll bounds both root their wrap math at `main_area.width` (see
+    // `CARD_H_CHROME`). Use the same basis here or
     // wrap rows go 2 cells narrower at render than at predict, clipping the
     // bottom card and undercounting `rec_scroll.max`.
     let panel_width = app.main_area_width();
 
     let mut canvas_top = 0usize;
     for (idx, choice) in recs.choices.iter().enumerate() {
-        let h = rec_card_height(choice, panel_width);
+        let h = recommendation_card_height(choice, panel_width);
         if canvas_top >= rec_scroll {
             let card_h = h.saturating_sub(1) as u16; // last canvas row is inter-card gap
             let y = area.y + (canvas_top - rec_scroll) as u16;
@@ -60,6 +66,85 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
         canvas_top += h;
     }
+}
+
+fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(recommendations) = app.current_tab().turn.recommendations() else {
+        return;
+    };
+    let selected = app
+        .current_tab()
+        .selected_recommendation
+        .min(recommendations.choices.len().saturating_sub(1));
+    let Some(choice) = recommendations.choices.get(selected) else {
+        return;
+    };
+    let (summary, buttons, body_kind) = extract_card_content(choice);
+    let marker = "○";
+    let position = if recommendations.choices.len() > 1 {
+        format!(" ↑↓ {}/{} ", selected + 1, recommendations.choices.len())
+    } else {
+        " ".to_string()
+    };
+    let prefix = format!("{marker}{position}");
+    let summary_width =
+        (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
+    let summary = truncate_compact(&summary.replace(['\r', '\n'], " "), summary_width);
+    let body_style = match body_kind {
+        CardBodyKind::Code => theme::CARD_CODE,
+        CardBodyKind::Description => theme::CARD_DESCRIPTION,
+    };
+    frame.render_widget(
+        compact_summary_paragraph(
+            Line::from(vec![
+                Span::styled(prefix, theme::TOOL_CALL_PENDING),
+                Span::styled(summary, body_style),
+            ]),
+            crate::rtl::text_alignment(),
+        ),
+        Rect {
+            height: 1,
+            ..area
+        },
+    );
+
+    if area.height > 1 {
+        let button_area = Rect {
+            y: area.y + 1,
+            height: 1,
+            ..area
+        };
+        let focused = (app.current_tab().recommendation_focus
+            == crate::app::RecommendationFocus::Button)
+            .then_some(app.current_tab().selected_button);
+        card::render_buttons(frame, button_area, &buttons, focused);
+    }
+}
+
+fn truncate_compact(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    if UnicodeWidthStr::width(text) <= width {
+        return text.to_string();
+    }
+    let content_width = width.saturating_sub(1);
+    let mut used = 0;
+    let mut result = String::new();
+    for character in text.chars() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if used + character_width > content_width {
+            break;
+        }
+        result.push(character);
+        used += character_width;
+    }
+    result.push('…');
+    result
+}
+
+fn compact_summary_paragraph(line: Line<'static>, alignment: Alignment) -> Paragraph<'static> {
+    Paragraph::new(line).alignment(alignment)
 }
 
 /// Render the recommendations navigation hint. Called by `layout.rs` to
@@ -103,7 +188,7 @@ fn render_card(
         return;
     };
 
-    let (command_text, buttons, body_kind) = extract_card_content(choice, app, is_selected);
+    let (command_text, buttons, body_kind) = extract_card_content(choice);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
@@ -135,82 +220,114 @@ enum CardBodyKind {
     Description,
 }
 
-fn extract_card_content(
-    choice: &RecommendationChoice,
-    _app: &App,
-    _is_selected: bool,
-) -> (String, Vec<String>, CardBodyKind) {
-    for action in &choice.actions {
-        match action {
-            RecommendedAction::Send { input, .. } => {
-                return (
-                    input.clone(),
-                    vec![
-                        t!("recommendations.button_run_command").into_owned(),
-                        t!("recommendations.button_insert_in_terminal").into_owned(),
-                    ],
-                    CardBodyKind::Code,
-                );
-            }
-            RecommendedAction::OpenAndSend {
-                target,
-                input,
-                agent,
-                ..
-            } => {
-                let fallback = t!("recommendations.agent_fallback").into_owned();
-                let agent_label = agent.as_deref().unwrap_or(&fallback);
-                let display = t!("recommendations.open_and_send_display",
-                    agent = agent_label, input = input.as_str()).into_owned();
-                let target_label = match target {
-                    OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
-                    OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
-                };
-                return (display, vec![target_label], CardBodyKind::Code);
-            }
-            RecommendedAction::Open {
-                target,
-                cwd,
-                title,
-                direction,
-                ..
-            } => {
-                let kind = match target {
-                    OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
-                    OpenTarget::Panel => match direction.as_deref() {
-                        Some(d) if !d.is_empty() => {
-                            t!("recommendations.open_kind_panel_direction", direction = d).into_owned()
-                        }
-                        _ => t!("recommendations.open_kind_panel").into_owned(),
-                    },
-                };
-                let display = match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        t!("recommendations.open_new_with_title_and_cwd",
-                            kind = kind.as_str(), title = t, cwd = c).into_owned()
-                    }
-                    (Some(t), _) if !t.is_empty() => {
-                        t!("recommendations.open_new_with_title",
-                            kind = kind.as_str(), title = t).into_owned()
-                    }
-                    (_, Some(c)) if !c.is_empty() => {
-                        t!("recommendations.open_new_with_cwd",
-                            kind = kind.as_str(), cwd = c).into_owned()
-                    }
-                    _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
-                };
-                let button = match target {
-                    OpenTarget::Tab => t!("recommendations.button_open_tab").into_owned(),
-                    OpenTarget::Panel => t!("recommendations.button_open_panel").into_owned(),
-                };
-                return (display, vec![button], CardBodyKind::Description);
+fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, CardBodyKind) {
+    let display = recommendation_display_text(choice);
+    let (buttons, body_kind) = match choice.actions.first() {
+        Some(RecommendedAction::Send { .. }) => (
+            vec![
+                t!("recommendations.button_run_command").into_owned(),
+                t!("recommendations.button_insert_in_terminal").into_owned(),
+            ],
+            CardBodyKind::Code,
+        ),
+        Some(RecommendedAction::OpenAndSend { target, .. }) => {
+            let target_label = match target {
+                OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
+                OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
+            };
+            (vec![target_label], CardBodyKind::Code)
+        }
+        Some(RecommendedAction::Open { target, .. }) => {
+            let button = match target {
+                OpenTarget::Tab => t!("recommendations.button_open_tab").into_owned(),
+                OpenTarget::Panel => t!("recommendations.button_open_panel").into_owned(),
+            };
+            (vec![button], CardBodyKind::Description)
+        }
+        None => (
+            vec![t!("recommendations.button_execute").into_owned()],
+            CardBodyKind::Description,
+        ),
+    };
+    (display, buttons, body_kind)
+}
+
+pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> String {
+    match choice.actions.first() {
+        Some(RecommendedAction::Send { input, .. }) => input.clone(),
+        Some(RecommendedAction::OpenAndSend { input, agent, .. }) => {
+            let fallback = t!("recommendations.agent_fallback").into_owned();
+            let agent_label = agent.as_deref().unwrap_or(&fallback);
+            t!(
+                "recommendations.open_and_send_display",
+                agent = agent_label,
+                input = input.as_str()
+            )
+            .into_owned()
+        }
+        Some(RecommendedAction::Open {
+            target,
+            cwd,
+            title,
+            direction,
+            ..
+        }) => {
+            let kind = match target {
+                OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
+                OpenTarget::Panel => match direction.as_deref() {
+                    Some(direction) if !direction.is_empty() => t!(
+                        "recommendations.open_kind_panel_direction",
+                        direction = direction
+                    )
+                    .into_owned(),
+                    _ => t!("recommendations.open_kind_panel").into_owned(),
+                },
+            };
+            match (title.as_deref(), cwd.as_deref()) {
+                (Some(title), Some(cwd)) if !title.is_empty() && !cwd.is_empty() => t!(
+                    "recommendations.open_new_with_title_and_cwd",
+                    kind = kind.as_str(),
+                    title = title,
+                    cwd = cwd
+                )
+                .into_owned(),
+                (Some(title), _) if !title.is_empty() => t!(
+                    "recommendations.open_new_with_title",
+                    kind = kind.as_str(),
+                    title = title
+                )
+                .into_owned(),
+                (_, Some(cwd)) if !cwd.is_empty() => t!(
+                    "recommendations.open_new_with_cwd",
+                    kind = kind.as_str(),
+                    cwd = cwd
+                )
+                .into_owned(),
+                _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
             }
         }
+        None => choice.title.clone(),
     }
+}
 
-    (
-        choice.title.clone(),
-        vec![t!("recommendations.button_execute").into_owned()],
-        CardBodyKind::Description,
-    )
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_summary_paragraph_right_aligns_for_rtl() {
+        let area = Rect::new(0, 0, 8, 1);
+        let mut buffer = Buffer::empty(area);
+
+        compact_summary_paragraph(
+            Line::from("RTL"),
+            crate::rtl::text_alignment_for_locale("qps-plocm"),
+        )
+        .render(area, &mut buffer);
+
+        assert_eq!(buffer[(4, 0)].symbol(), " ");
+        assert_eq!(buffer[(5, 0)].symbol(), "R");
+        assert_eq!(buffer[(6, 0)].symbol(), "T");
+        assert_eq!(buffer[(7, 0)].symbol(), "L");
+    }
 }

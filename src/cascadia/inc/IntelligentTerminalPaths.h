@@ -20,6 +20,7 @@
 
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace IntelligentTerminal
@@ -30,16 +31,44 @@ namespace IntelligentTerminal
     //   * Unpackaged: %LOCALAPPDATA%\IntelligentTerminal\logs
     //
     // Logs are transient cache, hence `LocalCache\Local` (not `LocalState`,
-    // which holds persistent state like the agent-pane session index). Returns
-    // an empty path when `%LOCALAPPDATA%` is unavailable.
+    // which holds persistent state like the agent-pane session index). Mirrors
+    // WTA by falling back to `%APPDATA%`, then the process temp directory, when
+    // `%LOCALAPPDATA%` is unavailable.
     inline std::filesystem::path LogDir()
     {
-        wchar_t localAppData[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        const auto environmentPath = [](const wchar_t* name) {
+            const auto required = GetEnvironmentVariableW(name, nullptr, 0);
+            if (required == 0)
+            {
+                return std::filesystem::path{};
+            }
+
+            std::wstring value(required, L'\0');
+            const auto copied = GetEnvironmentVariableW(name, value.data(), required);
+            if (copied == 0 || copied >= required)
+            {
+                return std::filesystem::path{};
+            }
+
+            value.resize(copied);
+            return std::filesystem::path{ std::move(value) };
+        };
+
+        auto base = environmentPath(L"LOCALAPPDATA");
+        if (base.empty())
         {
-            return {};
+            base = environmentPath(L"APPDATA");
         }
-        std::filesystem::path base{ std::wstring(localAppData) };
+        if (base.empty())
+        {
+            std::error_code error;
+            base = std::filesystem::temp_directory_path(error);
+            if (error)
+            {
+                return {};
+            }
+            return base / L"IntelligentTerminal" / L"logs";
+        }
 
         // Two-call pattern: query the family-name length first. A packaged
         // process returns ERROR_INSUFFICIENT_BUFFER and fills `length`; an

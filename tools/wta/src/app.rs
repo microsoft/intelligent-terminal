@@ -60,7 +60,9 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, PermissionState, RecommendationFocus, TabSession, View,
+    ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
+    RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
+    ToolCallOutput, UserInputState, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -913,6 +915,8 @@ pub struct App {
     /// Latest ACP model config for each session. Notifications can race ahead
     /// of the event that attaches their session to a tab.
     session_model_configs: HashMap<String, (Vec<AcpModelInfo>, Option<String>)>,
+    /// Complete ordered ACP select config options, keyed by SessionId.
+    session_config_options: HashMap<String, Vec<crate::app_contracts::AcpSessionConfigOption>>,
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -1230,6 +1234,7 @@ impl App {
             model_picker_models: Vec::new(),
             current_model_id: None,
             session_model_configs: HashMap::new(),
+            session_config_options: HashMap::new(),
             prompt_name: None,
             session_id: String::new(),
             wt_connected,
@@ -1987,7 +1992,7 @@ impl App {
             Some(agent) => self.apply_agent_pick(agent),
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::error(
                     t!("system.agent_unknown", agent = arg).into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -2002,6 +2007,7 @@ impl App {
     fn open_agent_picker(&mut self, selected: usize) {
         let tab = self.current_tab_mut();
         tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.agent_picker_open = true;
         tab.agent_picker_selected = selected;
     }
@@ -2050,10 +2056,178 @@ impl App {
 
     fn push_agent_switch_unavailable(&mut self) {
         let tab = self.current_tab_mut();
-        tab.messages.push(ChatMessage::System(
+        tab.messages.push(ChatMessage::warning(
             t!("system.agent_switch_unavailable").into_owned(),
         ));
         tab.scroll_to_bottom();
+    }
+
+    // ── /config picker ──────────────────────────────────────────────────
+
+    fn config_picker_visible(&self) -> bool {
+        self.current_tab().config_picker.is_open()
+    }
+
+    fn current_session_config_options(&self) -> &[crate::app_contracts::AcpSessionConfigOption] {
+        self.current_tab()
+            .session_id
+            .as_deref()
+            .and_then(|session_id| self.session_config_options.get(session_id))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    fn cmd_config(&mut self) {
+        if self.current_session_config_options().is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::info(
+                t!("system.no_config_options").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        self.open_config_picker();
+    }
+
+    fn open_config_picker(&mut self) {
+        if self.current_session_config_options().is_empty() {
+            return;
+        }
+        let tab = self.current_tab_mut();
+        tab.agent_picker_open = false;
+        tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Options { selected: 0 };
+    }
+
+    fn open_config_value_picker(&mut self, config_id: String) {
+        let Some(option) = self
+            .current_session_config_options()
+            .iter()
+            .find(|option| option.id == config_id)
+        else {
+            return;
+        };
+        let selected = option
+            .values
+            .iter()
+            .position(|value| value.id == option.current_value)
+            .unwrap_or(0);
+        let tab = self.current_tab_mut();
+        tab.agent_picker_open = false;
+        tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected: None,
+        };
+    }
+
+    fn config_picker_row_count(&self) -> usize {
+        let options = self.current_session_config_options();
+        self.current_tab()
+            .config_picker
+            .option_id()
+            .and_then(|config_id| options.iter().find(|option| option.id == config_id))
+            .map(|option| option.values.len())
+            .unwrap_or(options.len())
+    }
+
+    fn config_picker_up(&mut self) {
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = selected.saturating_sub(1);
+            }
+            ConfigPickerState::Closed => {}
+        }
+    }
+
+    fn config_picker_down(&mut self) {
+        let max = self.config_picker_row_count().saturating_sub(1);
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = (*selected + 1).min(max);
+            }
+            ConfigPickerState::Closed => {}
+        }
+    }
+
+    fn config_picker_escape(&mut self) {
+        let next = match &self.current_tab().config_picker {
+            ConfigPickerState::Values {
+                parent_selected: Some(selected),
+                ..
+            } => ConfigPickerState::Options {
+                selected: *selected,
+            },
+            _ => ConfigPickerState::Closed,
+        };
+        self.current_tab_mut().config_picker = next;
+    }
+
+    fn config_picker_enter(&mut self) {
+        let picker = self.current_tab().config_picker.clone();
+        let options = self.current_session_config_options();
+
+        if let ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected,
+        } = picker
+        {
+            let Some(option) = options.iter().find(|option| option.id == config_id) else {
+                self.config_picker_escape();
+                return;
+            };
+            let Some(value) = option.values.get(selected) else {
+                return;
+            };
+            if value.id == option.current_value {
+                self.config_picker_escape();
+                return;
+            }
+
+            let session_id = self.current_tab().session_id.clone();
+            let config_id = option.id.clone();
+            let value_id = value.id.clone();
+            if let Some(session_id) = session_id {
+                let tab = self.current_tab_mut();
+                if tab.config_pending_id.is_some() {
+                    return;
+                }
+                tab.config_pending_id = Some(config_id.clone());
+                tab.config_picker = parent_selected
+                    .map(|selected| ConfigPickerState::Options { selected })
+                    .unwrap_or(ConfigPickerState::Closed);
+                let _ = self.master_request_tx.send(
+                    crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+                        session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
+                        config_id,
+                        value: value_id,
+                    },
+                );
+            }
+            return;
+        }
+
+        let ConfigPickerState::Options { selected } = picker else {
+            return;
+        };
+        let Some(option) = options.get(selected) else {
+            return;
+        };
+        let value_selected = option
+            .values
+            .iter()
+            .position(|value| value.id == option.current_value)
+            .unwrap_or(0);
+        let option_id = option.id.clone();
+        self.current_tab_mut().config_picker = ConfigPickerState::Values {
+            option_id,
+            selected: value_selected,
+            parent_selected: Some(selected),
+        };
     }
 
     // ── /model picker ───────────────────────────────────────────────────
@@ -2068,10 +2242,21 @@ impl App {
     /// Crossing modes requires changing Settings and restarting the agent.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
+        let model_config_id = self
+            .current_session_config_options()
+            .iter()
+            .find(|option| option.is_model())
+            .map(|option| option.id.clone());
+        if arg.is_empty() {
+            if let Some(config_id) = model_config_id {
+                self.open_config_value_picker(config_id);
+                return;
+            }
+        }
         if self.model_picker_models.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.no_models").into_owned()));
+                .push(ChatMessage::info(t!("system.no_models").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -2095,7 +2280,7 @@ impl App {
             Some(_) => self.open_model_picker(),
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::error(
                     t!("system.model_unknown", model = arg.as_str()).into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -2124,6 +2309,7 @@ impl App {
             .unwrap_or(0);
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.model_picker_open = true;
         tab.model_picker_selected = selected;
     }
@@ -2195,7 +2381,7 @@ impl App {
         let session_id = {
             let tab = self.current_tab_mut();
             tab.model_override = Some(model_id.clone());
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::success(
                 t!("system.model_set", model = name.as_str()).into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -2427,7 +2613,7 @@ impl App {
                     "activate_agent_session_with_shift: not resumable",
                 );
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(msg));
+                tab.messages.push(ChatMessage::warning(msg));
                 tab.scroll_to_bottom();
                 #[cfg(test)]
                 {
@@ -2767,7 +2953,7 @@ impl App {
                 "dispatch_resume_in_agent_pane: agent does not support loadSession",
             );
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
+            tab.messages.push(ChatMessage::warning(msg));
             tab.scroll_to_bottom();
             #[cfg(test)]
             {
@@ -3605,6 +3791,13 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
     }
 
+    fn bound_tab_for_session(&self, session_id: &str) -> Option<String> {
+        self.session_to_tab.get(session_id).cloned().or_else(|| {
+            (self.current_tab().session_id.as_deref() == Some(session_id))
+                .then(|| self.active_tab_key().to_string())
+        })
+    }
+
     /// Mutable view of the tab that owns the given session id. Lazily
     /// creates the `TabSession` if missing.
     pub fn session_tab_mut(&mut self, session_id: &str) -> &mut TabSession {
@@ -3795,6 +3988,9 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
+            AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
+            AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -3813,9 +4009,12 @@ impl App {
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
+            AppEvent::ToolTerminalOutput { .. } => "tool_terminal_output",
             AppEvent::HideToolCall { .. } => "hide_tool_call",
             AppEvent::Plan { .. } => "plan",
             AppEvent::PermissionRequest { .. } => "permission_request",
+            AppEvent::UserInputRequest { .. } => "user_input_request",
+            AppEvent::CancelUserInputRequest { .. } => "cancel_user_input_request",
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
@@ -3856,7 +4055,9 @@ impl App {
             tab.messages.len(),
             tab.completed_turns.len(),
             tab.input.chars().count(),
-            tab.turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            tab.streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             tab.chat_scroll.offset,
             tab.activity_frame,
             tab.turn.recommendations().map(|r| r.choices.len()).unwrap_or(0),
@@ -4117,12 +4318,10 @@ impl App {
         }
     }
 
-    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
-    /// the length of what the renderer would show in full. `None` when the
-    /// tab is not streaming visible prose.
+    /// Number of user-visible characters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        let buf = tab.turn.buffer()?;
-        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
+            .map(|text| text.chars().count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
@@ -4181,7 +4380,7 @@ impl App {
         }
         if !self.agent_supports_image {
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::warning(
                 t!("system.image_not_supported").into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -4194,7 +4393,7 @@ impl App {
             }
             None => {
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::info(
                     t!("system.image_clipboard_empty").into_owned(),
                 ));
                 tab.scroll_to_bottom();
@@ -4233,7 +4432,7 @@ impl App {
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        self.current_tab().turn.is_in_flight()
+        self.current_tab().should_show_thinking()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).
@@ -4280,7 +4479,7 @@ impl App {
         // When the transport to master is lost, only /restart can run — so the
         // popup simply doesn't show the other commands (rather than greying
         // them). Collapse the candidate list to /restart if it's among the
-        // prefix matches; otherwise show nothing (the typed prefix excludes
+        // search matches; otherwise show nothing (the typed query excludes
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
@@ -4309,6 +4508,11 @@ impl App {
             candidates,
             selected: tab.command_popup_selected,
             pane_focused: self.pane_focused,
+            command_query: tab
+                .input
+                .trim_start()
+                .strip_prefix('/')
+                .unwrap_or_default(),
             current_model: self.current_model_display(),
         })
     }
@@ -4431,17 +4635,37 @@ impl App {
         if !tab.model_picker_open || self.model_picker_models.is_empty() {
             return None;
         }
-        let current_id = self.current_model_id_for_picker();
         Some(crate::ui::ModelPopupState {
             models: &self.model_picker_models,
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
-            current_id,
             disabled: self
                 .model_picker_models
                 .iter()
                 .map(|model| !self.model_pick_enabled(&model.id))
                 .collect(),
+        })
+    }
+
+    pub fn config_popup_state(&self) -> Option<crate::ui::ConfigPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.config_picker.is_open() {
+            return None;
+        }
+        let options = self.current_session_config_options();
+        if options.is_empty() {
+            return None;
+        }
+        let value_option = tab
+            .config_picker
+            .option_id()
+            .and_then(|config_id| options.iter().find(|option| option.id == config_id));
+        Some(crate::ui::ConfigPopupState {
+            options,
+            value_option,
+            selected: tab.config_picker.selected(),
+            pending_config_id: tab.config_pending_id.as_deref(),
+            pane_focused: self.pane_focused,
         })
     }
 
@@ -4553,7 +4777,7 @@ impl App {
                 // Warn but fall through: the raw line (leading `/` intact) is
                 // still sent so the user doesn't lose what they typed.
                 let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(
+                tab.messages.push(ChatMessage::warning(
                     t!("system.unknown_command", command = name.as_str()).into_owned(),
                 ));
                 false
@@ -4570,7 +4794,7 @@ impl App {
         let msg = t!("connection.lost").into_owned();
         self.current_tab_mut()
             .messages
-            .push(ChatMessage::System(msg));
+            .push(ChatMessage::warning(msg));
     }
 
     /// Dispatch a parsed slash-command. The Enter handler is responsible
@@ -4607,6 +4831,7 @@ impl App {
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Config => self.cmd_config(),
             CommandKind::Move => self.cmd_move(cmd.rest),
         }
     }
@@ -4621,7 +4846,6 @@ impl App {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
-        tab.selected_completed_turn_idx = None;
         tab.scroll_to_bottom();
     }
 
@@ -4639,11 +4863,11 @@ impl App {
             }
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.cancelled").into_owned()));
+                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
             tab.scroll_to_bottom();
         } else {
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(
+            tab.messages.push(ChatMessage::info(
                 t!("system.no_prompt_in_flight").into_owned(),
             ));
             tab.scroll_to_bottom();
@@ -4656,7 +4880,7 @@ impl App {
         if in_flight {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -4670,13 +4894,13 @@ impl App {
             });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
+            self.session_config_options.remove(&session_id);
         }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.completed_turns.clear();
-        tab.selected_completed_turn_idx = None;
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -4702,7 +4926,7 @@ impl App {
         if in_flight {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -4862,13 +5086,13 @@ impl App {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();
         self.session_model_configs.clear();
+        self.session_config_options.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
-            tab.selected_completed_turn_idx = None;
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
@@ -4886,68 +5110,20 @@ impl App {
         }
     }
 
-    /// Height of the recommendations panel — grows to fit content, capped so
-    /// input and chat still have room, but floored at the tallest card's
-    /// height so any card is fully renderable when scrolled to. Using the
-    /// tallest (not just the recommended) means Down/Up navigation never
-    /// lands on a card too tall for the panel.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols` — passing the wrong one
-    /// under-counts wrap rows and clips the bottom card when the debug panel
-    /// is open.
-    pub fn rec_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(recs) = self.current_tab().turn.recommendations() else {
-            return 0;
-        };
-        let card_heights = recs
-            .choices
-            .iter()
-            .map(|c| rec_card_height(c, panel_width) as u16);
-        let total = card_heights.clone().sum::<u16>();
-        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_SIZE);
-        // Reserve: input(3) + chat_min(1) + rec_hint(1) = 5.
-        let ceiling = self.terminal_rows.saturating_sub(5);
-        total.min(ceiling).max(floor)
-    }
-
-    /// Height reserved for the embedded permission card. Returns 0 only when
-    /// no permission is pending — when one *is* pending, the user must be
-    /// able to see it (the agent flow is blocked until they answer), so we
-    /// fall back to a 1-row compact strip when the full card can't fit.
-    /// `permission::render` reads the actual reserved height and switches
-    /// between full and compact rendering.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols`.
-    pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(perm) = self.current_tab().permission.front() else {
-            return 0;
-        };
-        let card_h = permission_card_height(perm, panel_width) as u16;
-        // Permission is modal — only hard-reserve input(3).
-        let ceiling = self.terminal_rows.saturating_sub(3);
-        let h = card_h.min(ceiling);
-        if h >= ui::card::CARD_MIN_SIZE {
-            h
-        } else {
-            1
-        }
-    }
-
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
     /// `recommendations::render` so the renderer stays `&App` and any
     /// wheel-driven over-scroll is clamped before paint.
-    pub fn sync_rec_scroll_max(&mut self, panel_width: u16) {
-        let panel_cards_h = self.rec_panel_height(panel_width) as usize;
+    pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
+        let panel_cards_h = panel_height as usize;
+        self.current_tab_mut().rec_viewport_height = panel_height;
         let Some(recs) = self.current_tab().turn.recommendations() else {
             return;
         };
         let total: usize = recs
             .choices
             .iter()
-            .map(|c| rec_card_height(c, panel_width))
+            .map(|c| ui::action_panel::recommendation_card_height(c, panel_width))
             .sum();
         self.current_tab_mut()
             .rec_scroll
@@ -4958,22 +5134,31 @@ impl App {
         self.current_tab_mut().clear_recommendations();
     }
 
-    /// Scroll the rec panel so the selected card's top sits at the panel top.
+    /// Keep the selected recommendation visible without moving a card that
+    /// already fits in the full panel viewport. Compact mode renders only the
+    /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
-        let panel_height = self.rec_panel_height(panel_width) as usize;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
+        let viewport_height = self.current_tab().rec_viewport_height as usize;
+        if viewport_height < ui::card::CARD_MIN_SIZE as usize {
+            self.current_tab_mut().rec_scroll.set(0);
+            return;
+        }
 
         let mut line_top = 0usize;
         for (idx, choice) in recs.choices.iter().enumerate() {
-            let card_h = rec_card_height(choice, panel_width);
+            let card_h = ui::action_panel::recommendation_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
-                let tab = self.current_tab_mut();
-                if line_top < tab.rec_scroll.offset
-                    || line_top + card_h > tab.rec_scroll.offset + panel_height
-                {
-                    tab.rec_scroll.set(line_top);
+                let offset = self.current_tab().rec_scroll.offset;
+                // `card_h` includes the inter-card gap, so subtracting it
+                // yields the rendered card's exclusive bottom row.
+                let rendered_bottom_exclusive =
+                    line_top.saturating_add(card_h.saturating_sub(1));
+                let viewport_bottom = offset.saturating_add(viewport_height);
+                if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
+                    self.current_tab_mut().rec_scroll.set(line_top);
                 }
                 return;
             }
@@ -5069,6 +5254,7 @@ impl App {
         let removed = self.tab_sessions.remove(closed_tab_id);
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
+            self.session_config_options.remove(session_id);
         }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
@@ -5282,11 +5468,11 @@ impl App {
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
-            tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
             self.session_model_configs.remove(&session_id);
+            self.session_config_options.remove(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -5493,97 +5679,6 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 
 #[path = "app_turn.rs"]
 mod app_turn;
-
-/// Computes the rendered height (in terminal rows) of a recommendation card.
-/// Includes one trailing row used as the inter-card gap in the rec panel.
-pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -> usize {
-    use crate::coordinator::RecommendedAction;
-    let inner_width = ui::card::card_content_width(panel_width);
-
-    let text = choice
-        .actions
-        .iter()
-        .find_map(|action| match action {
-            RecommendedAction::Send { input, .. } => Some(input.clone()),
-            RecommendedAction::OpenAndSend { agent, input, .. } => {
-                let label = agent.as_deref().unwrap_or("agent");
-                Some(format!("{}: {}", label, input))
-            }
-            RecommendedAction::Open {
-                target, cwd, title, ..
-            } => {
-                use crate::coordinator::OpenTarget;
-                let kind = match target {
-                    OpenTarget::Tab => "tab",
-                    OpenTarget::Panel => "panel",
-                };
-                Some(match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        format!("New {} ({}) in {}", kind, t, c)
-                    }
-                    (Some(t), _) if !t.is_empty() => format!("New {} ({})", kind, t),
-                    (_, Some(c)) if !c.is_empty() => format!("New {} in {}", kind, c),
-                    _ => format!("New {} (empty)", kind),
-                })
-            }
-        })
-        .unwrap_or_else(|| choice.title.clone());
-
-    let content_lines: usize = text
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
-
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows + 1 gap.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
-}
-
-/// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
-/// a header line (`{kind_label} {title}` or just `title`) plus, for a
-/// path target, one wrapped line, or for a command target, one line per
-/// split statement (see `ui::command_format`) — NOT `description`, which
-/// is only the fallback text for the 1-row compact card. No inter-card
-/// gap — only one card is ever shown.
-pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
-    let inner_width = ui::card::card_content_width(panel_width);
-    let wrap_lines = |text: &str| -> usize {
-        text.lines()
-            .map(|line| {
-                let chars = line.chars().count();
-                if chars == 0 {
-                    1
-                } else {
-                    chars.div_ceil(inner_width)
-                }
-            })
-            .sum::<usize>()
-            .max(1)
-    };
-
-    let header = match &perm.kind_label {
-        Some(icon) => format!("{icon} {}", perm.title),
-        None => perm.title.clone(),
-    };
-    let mut content_lines = wrap_lines(&header);
-    if let Some(target) = &perm.target {
-        if perm.target_is_command {
-            content_lines += ui::command_format::command_display_lines(target).len();
-        } else {
-            content_lines += wrap_lines(target);
-        }
-    }
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
-}
 
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
 ///

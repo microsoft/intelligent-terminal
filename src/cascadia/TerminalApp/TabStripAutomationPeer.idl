@@ -1,0 +1,13 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+import "TabStrip.idl";
+
+namespace TerminalApp
+{
+    [default_interface] runtimeclass TabStripAutomationPeer :
+        Windows.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+    {
+        TabStripAutomationPeer(TabStrip owner);
+    }
+}

@@ -715,7 +715,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {
-            target,
             parent,
             input,
             agent,
@@ -729,10 +728,9 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(agent) = agent.as_deref() {
                 ensure_non_empty("agent", agent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
         RecommendedAction::Open {
-            target,
             parent,
             direction,
             ..
@@ -740,22 +738,19 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
     }
 
     Ok(())
 }
 
-fn validate_direction(direction: Option<&str>, target: &OpenTarget) -> Result<()> {
+fn validate_direction(direction: Option<&str>) -> Result<()> {
     let Some(value) = direction else {
         return Ok(());
     };
     if value.is_empty() {
         bail!("field 'direction' must not be empty");
-    }
-    if matches!(target, OpenTarget::Tab) {
-        bail!("field 'direction' is only valid when target is 'panel'");
     }
     match value {
         "right" | "left" | "up" | "down" | "auto" | "automatic" => Ok(()),
@@ -2089,7 +2084,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.59.0" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.65.0" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -2098,7 +2093,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };
@@ -2615,7 +2610,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_open_tab_with_direction() {
+    fn accepts_open_tab_with_direction() {
         let text = r#"```json
 {
   "recommended_choice": 1,
@@ -2635,7 +2630,7 @@ mod tests {
 }
 ```"#;
 
-        assert!(parse_recommendation_set(text).is_err());
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
@@ -3354,7 +3349,7 @@ mod tests {
             r#""C:\npm tools\codex.cmd" --search"#
         ));
         assert!(!is_direct_known_agent_command(
-            "npx -y @agentclientprotocol/codex-acp@1.1.4"
+            "npx -y @agentclientprotocol/codex-acp@1.1.13"
         ));
     }
 

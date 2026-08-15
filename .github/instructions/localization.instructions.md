@@ -202,10 +202,10 @@ Terms that should always be locked:
 |------|--------|
 | Hooks, Hook | Technical term (shell hooks) |
 | CLI | Technical acronym |
-| ACP | Technical acronym (Agent Control Protocol) |
+| ACP | Technical acronym (Agent Client Protocol) |
 | PATH | Environment variable |
 | PowerShell | Product name |
-| Copilot, Claude, Gemini | Brand names |
+| Copilot, Claude, Codex, Gemini, OpenCode | Brand names |
 | JSON, YAML, XML | Technical formats |
 
 ### Translator guidance comments

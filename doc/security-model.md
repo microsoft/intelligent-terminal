@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| **Document status** | Draft v1.3 |
-| **Last updated** | 2026-05-21 |
+| **Document status** | Draft v1.4 |
+| **Last updated** | 2026-08-14 |
 | **Audience** | Microsoft internal security review |
 | **Component** | Windows Terminal fork with embedded AI agents (WT + WTA + WTCLI) |
 
@@ -35,7 +35,7 @@ Highest-priority residual risks:
 | **Create/split over COM** | `CreateTab` / `SplitPane` can spawn attacker-chosen commands as WT children. | Still exposed through COM and stock `wtcli.exe`. |
 | **Event broadcast disclosure** | Legacy `agent_event` envelopes are broadcast to every subscribed COM caller; a pane-context subscriber can passively observe other panes' agent prompts and tool calls. | No per-subscriber filtering; only observed platform COM activation behavior gates `Subscribe`. |
 | **Prompt injection** | COM access does not prove the LLM's requested action is safe. | Confirmation settings exist in the settings model, but they default to `auto` and the current implementation does not enforce them on the runtime operation paths reviewed here. |
-| **Autofix-triggered context disclosure** | Crafted OSC 133 failure marks can trigger automatic Autofix analysis that reads source-pane context and sends it to the Agent CLI / LLM before any fix-execution confirmation. | `autoFixEnabled` defaults to `true`; no first-run opt-in or analysis-time confirmation is implemented. |
+| **Autofix-triggered context disclosure** | When Autofix is enabled, crafted OSC 133 failure marks can trigger analysis that reads source-pane context and sends it to the Agent CLI / LLM before any fix-execution confirmation. | `autoFixEnabled` defaults to `false`, providing fresh-install opt-in. Once enabled, no per-event analysis confirmation is implemented. |
 | **Delegation context disclosure** | `wta delegate` / `?<prompt>` reads active-pane context and passes it to the delegate Agent CLI / LLM as startup prompt context. | No context-specific confirmation or redaction; the assembled delegate command line may also appear in process and diagnostic surfaces. |
 | **Scrollback/log disclosure** | Pane output and diagnostic logs may contain secrets, source code, prompts, or command output. | Redaction is not implemented. |
 | **Settings persistence via filesystem** | A process running as the user can overwrite `settings.json` and persistently change agent selection, Autofix behavior, or future AI policy knobs. | No meta-confirmation when WT reads policy-relevant settings and launches WTA / agent processes with those values. |
@@ -375,7 +375,7 @@ Delegation is an agent-launch and context-transfer path, not a direct shell-inpu
 | WTA binary substitution | Supply chain / EoP | High | Production intent is co-located packaged `wta.exe`, but `_DetectWtaPath()` also supports local dev and PATH fallbacks. Any resolved WTA binary runs with WTA's normal environment (`WT_COM_CLSID` etc.) and can drive WT over COM. |
 | Diagnostic logs may disclose sensitive data | Information disclosure | Medium | WTA logs may contain command lines, event payload summaries, errors, and metadata. Raw user/agent content (prompts, responses, terminal output, typed input) is gated to `trace` level; the shipping `info` default and `debug` log lengths/ids/enums, not content. Known examples include `wta-main_*.log`, `wta-delegate.log`, `terminal-agent-pane.log`, and `wta-install-hooks.log` under `logs\<pkgver>\`. Retention is bounded (only the current version's dir kept, daily cli rotation, 3-day per-PID helper prune). |
 | Direct `settings.json` file write | Tampering | Critical for persistent AI-policy bypass; not OS privilege escalation | Inherits filesystem ACL behavior; no meta-confirmation for policy changes before WT honors the changed settings in future WTA / agent launches. |
-| Crafted OSC marks for Autofix | Information disclosure / Prompt injection / Tampering | High | OSC 133 is shell-controlled. With `autoFixEnabled=true` by default, a crafted failure mark can trigger WTA's Autofix analysis path to submit an agent prompt and read source-pane context via `wt_read_last_prompt` / `wt_read_pane_output` before any fix-execution confirmation. User interaction still gates applying a suggested fix, but pane-context disclosure and prompt-injection exposure can happen during analysis. |
+| Crafted OSC marks for Autofix | Information disclosure / Prompt injection / Tampering | High when Autofix is enabled | OSC 133 is shell-controlled. `autoFixEnabled` defaults to `false`, but after the user enables it a crafted failure mark can trigger WTA's Autofix analysis path to submit an agent prompt and read source-pane context via `wt_read_last_prompt` / `wt_read_pane_output` before any per-event confirmation. User interaction still gates applying a suggested fix, but pane-context disclosure and prompt-injection exposure can happen during analysis. |
 | Delegation context disclosure | Information disclosure / Prompt injection | High | `wta delegate` / `?<prompt>` reads the active pane's recent output (`ReadPaneOutput(..., 30)`) and appends it as terminal context to the delegate prompt. It then uses COM `CreateTab(commandline)` to have WT launch the delegate Agent CLI in a new tab, not `send_input`. Sensitive pane data can be disclosed to the Agent CLI / LLM and exposed through command-line or diagnostic surfaces without a separate context confirmation. |
 
 ### Scope boundary note
@@ -415,7 +415,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | Per-turn rate limit for shell-input calls | Roadmap | Agent runaway / prompt-injection loops |
 | Pin or verify built-in Agent CLI binary identity and ACP adapter provenance | Partial — known-location / PATH resolution only; no signature pinning; `npx` adapter package versions / sources are not pinned or vendored | Agent CLI and adapter supply chain |
 | Pin or verify WTA binary identity and remove PATH fallback from production launches | Planned | WTA binary substitution |
-| Autofix opt-in / first-run hardening | Not implemented; `autoFixEnabled` defaults to `true` | Automatic pane-context disclosure, surprise background analysis, and prompt-injection exposure |
+| Autofix opt-in / first-run hardening | Implemented for fresh installs: `autoFixEnabled` defaults to `false`; no per-event analysis confirmation exists after opt-in | Reduces default pane-context disclosure; enabled Autofix remains exposed to crafted failure marks |
 | Delegation context confirmation and prompt transport hardening | Not implemented; delegate prompt is enriched with recent active-pane output and launched through startup command line | Pane-context disclosure to delegate Agent CLI / LLM and command-line/log surfaces |
 
 ---
@@ -445,7 +445,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | **P1** | Add per-turn shell-input rate limiting. |
 | **P1** | Add source-pane / target-pane authorization for `SendInput`, or explicitly document that any COM-allowed caller may target any pane by session GUID. |
 | **P1** | Scope or authorize lower-impact COM mutations (`ClosePane`, `FocusPane`, `SetSessionVariable`) separately from process creation. |
-| **P1** | Autofix opt-in / first-run hardening — change `autoFixEnabled` default to `false` (or surface an analysis-time prompt) so pane context is not sent to the Agent CLI / LLM by surprise. |
+| **P1** | Add clear Autofix context-disclosure consent and consider per-event analysis confirmation or source validation for crafted OSC failure marks. |
 | **P1** | Add delegation context confirmation/redaction and avoid putting full pane context into delegate command lines or diagnostic logs. |
 | **P2** | Migrate read methods (`ReadPaneOutput`, `GetSettings`, topology reads) after mutation methods. |
 | **P2** | Tighten built-in Agent CLI resolution and binary identity checks, and pin/vendor/verify ACP adapter packages launched through package managers such as `npx -y`. |

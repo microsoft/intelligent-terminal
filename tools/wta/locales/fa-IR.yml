@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "تغییر عامل در خارج از برگ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "مدل این پنل را انتخاب کنید (/model <id> برای تغییر مستقیم)"  # {Locked="/model","<id>"}
+commands.config.summary: "پیکربندی این نشست عامل"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "انتقال پنل عامل این زبانه (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
 system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "پیکربندی نشست (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "عامل متصل هیچ گزینه نشست قابل پیکربندی را تبلیغ نکرد."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "به‌روزرسانی %{option} ناموفق بود: %{error}"
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}

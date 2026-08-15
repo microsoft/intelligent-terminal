@@ -1,8 +1,8 @@
 # Multi-Window Behavior of the Agent Pane
 
 Author: kaitao@microsoft.com
-Date: 2026-05-26 (post-Z follow-ups: per-tab + per-window event routing
-hardening B12–B20; agent-pane stash/restore B4–B11)
+Date: 2026-08-14 (post-Z follow-ups: per-tab + per-window event routing,
+agent-pane stash/restore, and per-tab independent agent pooling)
 Branch: `dev/vanzue/window-management`
 Status: Helper + master architecture (Z-M1 through Z-M6) is shipped and
 default. Post-Z work tightened the multi-tab + multi-window event
@@ -14,19 +14,20 @@ See "Design history" for the rationale of the original pivot.
 - **Each agent pane runs as its own `wta-helper` process** spawned by
   Windows Terminal as a normal conpty child (same Win32 pattern as today's
   legacy mode and any other conpty-backed pane).
-- **One `wta-master` process per Terminal process** owns the single agent
-  CLI subprocess (claude / copilot / gemini).
+- **One `wta-master` process per Terminal process** lazily owns a pool of
+  agent CLI subprocesses keyed by agent identity, execution source, and
+  command line.
 - Helpers connect to the master via a **named pipe** and speak **ACP
-  JSON-RPC** — the master multiplexes per-tab `sessionId`s onto its single
-  ACP connection to the agent CLI.
+  JSON-RPC** — helpers with the same agent key share one ACP connection, and
+  the master routes every `sessionId` to its owning helper and agent instance.
 - TermControl ↔ helper communication is plain conpty (no custom protocol);
   helper ↔ master is plain ACP JSON-RPC over a pipe; master ↔ agent CLI is
   plain ACP JSON-RPC over stdio. **No bespoke wire format is invented.**
 
 ```
 WT (one process, N windows)
- └─ SharedWta singleton spawns ─► wta-master ◄──── ACP JSON-RPC ───► agent CLI
-                                       ▲                              (one child)
+ └─ SharedWta singleton spawns ─► wta-master ◄──── ACP JSON-RPC ───► agent CLI pool
+                                       ▲                         (one per active key)
                                        │ ACP JSON-RPC over named pipe
                                        │
  (per agent pane:)                     │
@@ -246,16 +247,16 @@ WindowsTerminal.exe (one process)
 ```
 
 - **`wta-master`**: singleton per Terminal process, spawned by
-  `SharedWta` on first agent-pane request. Headless (no UI). Owns the
-  single ACP connection to the agent CLI subprocess. Listens on a
-  named pipe for helper connections.
+  `SharedWta` on first agent-pane request. Headless (no UI). Lazily owns an
+  ACP connection per active agent key and listens on a named pipe for helper
+  connections.
 - **`wta-helper`**: one per agent pane. Conpty child of its
   TerminalControl. Runs the full Ratatui chat UI for one tab.
   Connects to master via named pipe; speaks ACP JSON-RPC as a
   client.
-- **`agent CLI`**: existing claude/copilot/gemini ACP-protocol
-  subprocess. One per master (= one per Terminal process). Owns N
-  ACP sessions internally, one per attached helper.
+- **`agent CLI`**: an ACP-protocol subprocess such as Copilot, Claude, Codex,
+  Gemini, or OpenCode. One warm process per distinct agent key owns the ACP
+  sessions for helpers sharing that key.
 
 ### 2. Per-pane attachment model
 
@@ -597,14 +598,14 @@ calls `Tab::StashAgentPane()`, `true` calls `Tab::RestoreStashedAgentPane`
 if the pane is stashed; otherwise `_AutoCreateHiddenAgentPaneShared`
 (first-open).
 
-### 9. Per-tab independent agents (future)
+### 9. Per-tab independent agents
 
-`AttachPaneParams.agent_id` is currently metadata-only because the
-master holds a single agent CLI subprocess shared across helpers.
-Future: master could maintain a pool of agent CLI subprocesses keyed
-by `agent_id`. Each helper requests sessions from the agent CLI
-matching its `agent_id`. Wire format is already extensible (see Z-R4
-risk below). Not in v1.
+The master maintains a lazy agent CLI pool keyed by the master-resolved agent
+identity, execution source, and command line. Each helper declares its agent ID
+during `initialize`; policy filtering and command reconstruction remain
+master-owned. Helpers with the same key reuse one process, while different keys
+can spawn in parallel. Dead processes are reaped from the pool and restarted
+on demand.
 
 ## What needs to change
 
