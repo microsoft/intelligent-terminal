@@ -138,7 +138,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
         $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
         $command = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
-        $evidencePhase = if ($env:ITE2E_MOUSE_EVIDENCE_PHASE -in @('red', 'green')) {
+        $evidencePhase = if ($env:ITE2E_MOUSE_EVIDENCE_PHASE -in @('red', 'green', 'extension-red', 'extension-green')) {
             $env:ITE2E_MOUSE_EVIDENCE_PHASE
         }
         else {
@@ -231,11 +231,12 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-reexpand.txt') -Value $afterReexpand -Encoding utf8NoBOM
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-reexpand.png') | Out-Null
 
+        $prefixColumn = $triangleColumn + 2
         $promptColumn = $triangleColumn + 4
         Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
-            -Column $promptColumn -Row $promptRows[0].Row | Out-Null
+            -Column $prefixColumn -Row $promptRows[0].Row | Out-Null
         (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
-            Should -Match $replyPattern -Because 'clicking prompt text must not collapse the turn'
+            Should -Match $replyPattern -Because 'clicking the prompt prefix must not collapse the turn'
 
         Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane `
             -Kind Down -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
@@ -245,5 +246,76 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
             -Kind Up -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
         (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
             Should -Match $replyPattern -Because 'dragging from the triangle must remain text selection and not collapse the turn'
+    }
+
+    It 'Clicking a multiline prompt row selects and collapses its completed turn' -Tag 'CompletedTurnPromptMouse' {
+        $id = [guid]::NewGuid().ToString('N')
+        $lineOne = "SCROLL_TURN_00_$id"
+        $lineTwo = "MOUSE_INPUT_SECOND_$id"
+        $reply = "ACK_$lineOne"
+        $replyPattern = [regex]::Escape($reply)
+        $readyPattern = Get-WtaLocalizedTextRegex -Key 'input.placeholder.connected'
+        if (-not $readyPattern) {
+            $readyPattern = '(?i)Ask anything.*for commands'
+        }
+
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Escape | Out-Null
+
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $lineOne -NoSubmit | Out-Null
+        Send-AgentShiftEnter -App $script:app -PaneSessionId $script:agentPane | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $lineTwo -NoSubmit | Out-Null
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+
+        $turnCompleted = Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            $text -match $replyPattern -and $text -match $readyPattern
+        }
+        $turnCompleted | Should -BeTrue -Because 'the multiline deterministic turn must complete before prompt hit-testing'
+
+        $fixturePrompts = @(Get-Content -LiteralPath $script:fixtureLog | Where-Object { $_ -match ('\|prompt\|' + [regex]::Escape($lineOne)) })
+        $fixturePrompts.Count | Should -Be 1 -Because 'the fixture must receive the multiline prompt exactly once'
+
+        $before = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        $lines = $before -split "`r?`n"
+        $firstRows = @(
+            for ($row = 0; $row -lt $lines.Count; $row++) {
+                if ($lines[$row] -match ('>\s*' + [regex]::Escape($lineOne))) {
+                    [pscustomobject]@{ Row = $row; Column = $lines[$row].IndexOf($lineOne) }
+                }
+            }
+        )
+        $secondRows = @(
+            for ($row = 0; $row -lt $lines.Count; $row++) {
+                if ($lines[$row].Contains($lineTwo)) {
+                    [pscustomobject]@{ Row = $row; Column = $lines[$row].IndexOf($lineTwo) }
+                }
+            }
+        )
+        $firstRows.Count | Should -Be 1 -Because 'the first prompt line must map to one completed-turn row'
+        $secondRows.Count | Should -Be 1 -Because 'the second prompt line must map to one completed-turn row'
+        $secondRows[0].Row | Should -BeGreaterThan $firstRows[0].Row -Because 'the prompt must remain visibly multiline after completion'
+        $before | Should -Match $replyPattern -Because 'expanded details must be visible before prompt click'
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'before-prompt-click.txt') -Value $before -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'before-prompt-click.png') | Out-Null
+
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column ($secondRows[0].Column + 2) -Row $secondRows[0].Row | Out-Null
+
+        $collapsed = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -notmatch $replyPattern
+        }
+        $after = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-prompt-click.txt') -Value $after -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-prompt-click.png') | Out-Null
+        $collapsed | Should -BeTrue -Because 'clicking the second rendered prompt line must collapse the completed turn'
+
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+        $reexpanded = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -match $replyPattern
+        }
+        $afterEnter = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-prompt-enter.txt') -Value $afterEnter -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-prompt-enter.png') | Out-Null
+        $reexpanded | Should -BeTrue -Because 'Enter must re-expand the completed turn selected by its prompt click'
     }
 }

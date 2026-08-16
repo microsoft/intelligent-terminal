@@ -8,11 +8,7 @@
 use super::*;
 
 impl App {
-    fn completed_turn_triangle_at(
-        &self,
-        column: u16,
-        row: u16,
-    ) -> Option<CompletedTurnTriangleHit> {
+    fn completed_turn_hit_at(&self, column: u16, row: u16) -> Option<CompletedTurnHitRegion> {
         let tab = self.current_tab();
         if self.mode != AppMode::Chat
             || tab.current_view != View::Chat
@@ -23,10 +19,10 @@ impl App {
         {
             return None;
         }
-        self.completed_turn_triangle_hits
+        self.completed_turn_hits
             .iter()
             .copied()
-            .find(|hit| hit.column == column && hit.row == row)
+            .find(|hit| hit.contains(column, row))
     }
 
     fn active_mouse_tab_id(&self) -> String {
@@ -35,10 +31,31 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
     }
 
+    fn cancel_completed_turn_click(&mut self) {
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
+    }
+
+    fn restore_completed_turn_click(&mut self, column: u16, row: u16) {
+        let active_tab_id = self.active_mouse_tab_id();
+        let Some(click) = self.last_completed_turn_click.take().filter(|click| {
+            click.tab_id == active_tab_id && click.column == column && click.row == row
+        }) else {
+            return;
+        };
+        let tab = self.current_tab_mut();
+        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+            return;
+        };
+        turn.expanded = click.previous_expanded;
+        tab.selected_completed_turn_idx = click.previous_selected_index;
+        tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
-                self.pressed_completed_turn_triangle = None;
+                self.cancel_completed_turn_click();
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy {
@@ -71,7 +88,7 @@ impl App {
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
                 {
-                    self.pressed_completed_turn_triangle = None;
+                    self.cancel_completed_turn_click();
                     self.text_selection.clear();
                     let code = if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
                         KeyCode::Up
@@ -85,7 +102,7 @@ impl App {
                     if self.mode == AppMode::Chat
                         && self.current_tab().current_view == View::Chat =>
                 {
-                    self.pressed_completed_turn_triangle = None;
+                    self.cancel_completed_turn_click();
                     self.text_selection.clear();
                     let lines = if mouse.modifiers.contains(KeyModifiers::ALT) {
                         1
@@ -103,28 +120,55 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                    self.pressed_completed_turn_triangle = self
-                        .completed_turn_triangle_at(mouse.column, mouse.row)
-                        .map(|hit| PressedCompletedTurnTriangle {
+                    self.text_selection.handle_mouse(mouse);
+                    let click_count = self.text_selection.click_count().unwrap_or(1);
+                    if click_count > 1 {
+                        self.pressed_completed_turn = None;
+                        if click_count == 2 {
+                            self.restore_completed_turn_click(mouse.column, mouse.row);
+                        }
+                        return;
+                    }
+                    self.last_completed_turn_click = None;
+                    self.pressed_completed_turn = self
+                        .completed_turn_hit_at(mouse.column, mouse.row)
+                        .map(|hit| PressedCompletedTurn {
                             tab_id: self.active_mouse_tab_id(),
                             hit,
                         });
-                    self.text_selection.handle_mouse(mouse);
                 }
                 crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
-                    self.pressed_completed_turn_triangle = None;
+                    self.cancel_completed_turn_click();
                     self.text_selection.handle_mouse(mouse);
                 }
                 crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
-                    let pressed = self.pressed_completed_turn_triangle.take();
-                    let released = self.completed_turn_triangle_at(mouse.column, mouse.row);
+                    let pressed = self.pressed_completed_turn.take();
+                    let released = self.completed_turn_hit_at(mouse.column, mouse.row);
                     let active_tab_id = self.active_mouse_tab_id();
                     self.text_selection.handle_mouse(mouse);
                     if let Some(pressed) = pressed.filter(|pressed| {
-                        pressed.tab_id == active_tab_id && Some(pressed.hit) == released
+                        pressed.tab_id == active_tab_id
+                            && released.is_some_and(|hit| hit.turn_index == pressed.hit.turn_index)
                     }) {
-                        self.current_tab_mut()
-                            .toggle_completed_turn(pressed.hit.turn_index);
+                        let tab = self.current_tab_mut();
+                        let previous_selected_index = tab.selected_completed_turn_idx;
+                        let previous_selection_pending =
+                            tab.completed_turn_selection_visible_pending;
+                        let previous_expanded = tab.completed_turns[pressed.hit.turn_index].expanded;
+                        if tab.select_completed_turn(pressed.hit.turn_index)
+                            && tab.toggle_completed_turn(pressed.hit.turn_index)
+                            && pressed.hit.kind == CompletedTurnHitKind::UserInput
+                        {
+                            self.last_completed_turn_click = Some(CompletedTurnClickRecord {
+                                tab_id: active_tab_id,
+                                column: mouse.column,
+                                row: mouse.row,
+                                turn_index: pressed.hit.turn_index,
+                                previous_selected_index,
+                                previous_selection_pending,
+                                previous_expanded,
+                            });
+                        }
                     }
                 }
                 _ => {
@@ -193,7 +237,7 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
-                self.pressed_completed_turn_triangle = None;
+                self.cancel_completed_turn_click();
                 self.text_selection.clear();
                 self.terminal_cols = w;
                 self.terminal_rows = h;
@@ -202,7 +246,7 @@ impl App {
                 self.advance_reveal();
             }
             AppEvent::FocusChanged(focused) => {
-                self.pressed_completed_turn_triangle = None;
+                self.cancel_completed_turn_click();
                 self.pane_focused = focused;
             }
             AppEvent::ConnectionStage(stage) => {

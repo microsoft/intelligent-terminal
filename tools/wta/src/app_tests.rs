@@ -6104,9 +6104,28 @@ fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
-        .draw(|frame| crate::ui::render(frame, app))
+        .draw(|frame| {
+            crate::ui::render(frame, app);
+            app.text_selection.snapshot_and_render(frame.buffer_mut());
+        })
         .expect("render must not panic");
-    let buf = terminal.backend().buffer();
+    buffer_to_text(terminal.backend().buffer())
+}
+
+fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    use ratatui::{backend::TestBackend, Terminal};
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| {
+            crate::ui::render(frame, app);
+            app.text_selection.snapshot_and_render(frame.buffer_mut());
+        })
+        .expect("render must not panic");
+    terminal.backend().buffer().clone()
+}
+
+fn buffer_to_text(buf: &ratatui::buffer::Buffer) -> String {
     let w = buf.area.width as usize;
     let mut out = String::new();
     for (i, cell) in buf.content.iter().enumerate() {
@@ -7470,6 +7489,270 @@ fn clicking_completed_turn_triangle_toggles_details() {
 }
 
 #[test]
+fn clicking_multiline_completed_turn_prompt_selects_and_reuses_enter_toggle() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MULTILINE_FIRST\nMULTILINE_SECOND internal space AUTO_WRAP_TARGET".into(),
+        details: vec![ChatMessage::Agent("MULTILINE_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let before = render_to_text(&mut app, 24, 16);
+    let (row, column) = before
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MULTILINE_SECOND")
+                .map(|column| (row as u16, column as u16 + 2))
+        })
+        .expect("expanded prompt second line must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    assert!(
+        !app.current_tab().completed_turns[0].expanded,
+        "clicking the rendered second prompt line must collapse the turn",
+    );
+    assert_eq!(
+        app.current_tab().selected_completed_turn_idx,
+        Some(0),
+        "mouse click must reuse completed-turn keyboard selection",
+    );
+
+    let selected_buffer = render_to_buffer(&mut app, 80, 16);
+    let selected_text = buffer_to_text(&selected_buffer);
+    let (selected_row, selected_column) = selected_text
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MULTILINE_FIRST")
+                .map(|column| (row as u16, column as u16))
+        })
+        .expect("selected collapsed prompt must be visible");
+    assert_eq!(
+        selected_buffer
+            .cell((selected_column, selected_row))
+            .expect("selected prompt cell must exist")
+            .style()
+            .fg,
+        Some(ratatui::style::Color::Cyan),
+        "mouse selection must use the same cyan style as keyboard selection",
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "Enter must toggle the turn selected by mouse click",
+    );
+}
+
+#[test]
+fn completed_turn_user_input_hits_follow_rendered_text_boundaries() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "BOUNDARY_FIRST\nBOUNDARY_SECOND  x AUTO_WRAP_TARGET_MORE\n\nBOUNDARY_LAST".into(),
+        details: vec![ChatMessage::Agent("BOUNDARY_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 24, 18);
+    let regions: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .collect();
+    assert!(
+        regions.len() >= 4,
+        "multiline and wrapped prompt rows need separate hit ranges"
+    );
+
+    let locate = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| line.find(needle).map(|column| (row as u16, column as u16)))
+            .unwrap_or_else(|| panic!("{needle:?} must be visible; rendered:\n{rendered}"))
+    };
+    let (first_row, first_column) = locate("BOUNDARY_FIRST");
+    let (second_row, second_column) = locate("BOUNDARY_SECOND");
+    let (wrap_row, wrap_column) = locate("AUTO_WRAP");
+    let (last_row, last_column) = locate("BOUNDARY_LAST");
+    let (detail_row, detail_column) = locate("BOUNDARY_DETAIL");
+
+    for (row, column) in [
+        (first_row, first_column + 2),
+        (second_row, second_column + 2),
+        (wrap_row, wrap_column + 2),
+        (last_row, last_column + 2),
+    ] {
+        assert!(regions.iter().any(|hit| hit.contains(column, row)));
+    }
+
+    let internal_space_column = rendered
+        .lines()
+        .nth(second_row as usize)
+        .expect("second row")
+        .find("BOUNDARY_SECOND  x")
+        .expect("internal spaces") as u16
+        + "BOUNDARY_SECOND ".len() as u16;
+    assert!(regions
+        .iter()
+        .any(|hit| hit.contains(internal_space_column, second_row)));
+
+    let first_line = rendered.lines().nth(first_row as usize).expect("first row");
+    let prefix_byte = first_line.find('>').expect("prompt prefix");
+    let prefix_column = unicode_width::UnicodeWidthStr::width(&first_line[..prefix_byte]) as u16;
+    assert!(
+        !regions
+            .iter()
+            .any(|hit| hit.contains(prefix_column, first_row)),
+        "prefix at ({prefix_column}, {first_row}) overlapped {regions:?}; rendered:\n{rendered}",
+    );
+    assert!(!regions
+        .iter()
+        .any(|hit| hit.contains(detail_column, detail_row)));
+    for hit in &regions {
+        assert!(!hit.contains(hit.end_column, hit.row));
+    }
+
+    let click = |app: &mut App, row, column| {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+    };
+    click(&mut app, second_row, second_column + 2);
+    assert!(!app.current_tab().completed_turns[0].expanded);
+    render_to_text(&mut app, 80, 18);
+    let summary_hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .expect("collapsed summary must expose its rendered prompt text");
+    click(&mut app, summary_hit.row, summary_hit.start_column);
+    assert!(app.current_tab().completed_turns[0].expanded);
+}
+
+#[test]
+fn completed_turn_user_input_multiclick_preserves_turn_state_and_text_selection() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    for click_count in [2, 3] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "MULTICLICK_FIRST\nMULTICLICK_PROMPT_WORD".into(),
+            details: vec![ChatMessage::Agent("MULTICLICK_DETAIL".into())],
+            expanded: true,
+            trailing_marker: None,
+        });
+        let rendered = render_to_text(&mut app, 80, 16);
+        let (row, column) = rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find("MULTICLICK_PROMPT_WORD")
+                    .map(|column| (row as u16, column as u16 + 2))
+            })
+            .expect("multiclick prompt must be visible");
+
+        for click_index in 0..click_count {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+            if click_index == 0 {
+                assert_eq!(app.text_selection.click_count(), Some(1));
+            }
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+            if click_index == 0 {
+                assert_eq!(app.text_selection.click_count(), Some(1));
+                assert!(
+                    app.last_completed_turn_click.is_some(),
+                    "first user-input click must retain rollback state",
+                );
+            }
+            render_to_text(&mut app, 80, 16);
+        }
+
+        assert!(
+            app.current_tab().completed_turns[0].expanded,
+            "multi-click selection must restore the initial expanded state",
+        );
+        assert_eq!(
+            app.current_tab().selected_completed_turn_idx,
+            None,
+            "{click_count}-click selection must restore the initial turn selection",
+        );
+        let selected_text = app
+            .text_selection
+            .selected_text()
+            .expect("double/triple click must preserve text selection");
+        assert!(selected_text.contains("MULTICLICK_PROMPT_WORD"));
+    }
+}
+
+#[test]
+fn completed_turn_user_input_hit_uses_terminal_cell_width() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "界 A".into(),
+        details: Vec::new(),
+        expanded: true,
+        trailing_marker: None,
+    });
+    render_to_text(&mut app, 80, 16);
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .expect("wide prompt must have a user-input hit range");
+    assert_eq!(hit.end_column - hit.start_column, 4);
+    for column in hit.start_column..hit.end_column {
+        assert!(hit.contains(column, hit.row));
+    }
+    assert!(!hit.contains(hit.end_column, hit.row));
+}
+
+#[test]
 fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -7496,6 +7779,7 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
             })
         })
         .expect("completed turn must be visible");
+    let prefix_column = triangle_column + 2;
     let prompt_column = triangle_column + 4;
 
     let send_mouse = |app: &mut App, kind, column| {
@@ -7510,12 +7794,12 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
     send_mouse(
         &mut app,
         MouseEventKind::Down(MouseButton::Left),
-        prompt_column,
+        prefix_column,
     );
     send_mouse(
         &mut app,
         MouseEventKind::Up(MouseButton::Left),
-        prompt_column,
+        prefix_column,
     );
     assert!(app.current_tab().completed_turns[0].expanded);
 
@@ -7527,7 +7811,7 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
     send_mouse(
         &mut app,
         MouseEventKind::Up(MouseButton::Left),
-        prompt_column,
+        prefix_column,
     );
     assert!(app.current_tab().completed_turns[0].expanded);
 
@@ -7638,6 +7922,50 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
 }
 
 #[test]
+fn completed_turn_mouse_selection_continues_with_keyboard_navigation() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for prompt in ["MOUSE_SELECT_OLDER", "MOUSE_SELECT_NEWER"] {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: prompt.into(),
+            details: vec![ChatMessage::Agent(format!("DETAIL_{prompt}"))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MOUSE_SELECT_OLDER")
+                .map(|column| (row as u16, column as u16))
+        })
+        .expect("older prompt must be visible");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(1));
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+}
+
+#[test]
 fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -7653,7 +7981,12 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
     }
 
     let before = render_to_text(&mut app, 80, 10);
-    let initial_hits = app.completed_turn_triangle_hits.clone();
+    let initial_hits: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .collect();
     assert!(!initial_hits.is_empty());
     assert!(initial_hits.len() < app.current_tab().completed_turns.len());
     for hit in &initial_hits {
@@ -7668,7 +8001,7 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
     ] {
         app.handle_event(AppEvent::Mouse(MouseEvent {
             kind,
-            column: target.column,
+            column: target.start_column,
             row: target.row,
             modifiers: KeyModifiers::NONE,
         }));
@@ -7679,9 +8012,14 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
 
     app.current_tab_mut().chat_scroll.by(3);
     let after_scroll = render_to_text(&mut app, 80, 10);
-    let scrolled_hits = &app.completed_turn_triangle_hits;
-    assert_ne!(scrolled_hits, &initial_hits);
-    for hit in scrolled_hits {
+    let scrolled_hits: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .collect();
+    assert_ne!(scrolled_hits, initial_hits);
+    for hit in &scrolled_hits {
         assert!(after_scroll.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
         assert!(hit.row < 10);
     }
@@ -7701,7 +8039,12 @@ fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
     });
 
     let rendered = render_to_text(&mut app, 80, 16);
-    let hit = app.completed_turn_triangle_hits[0];
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .expect("triangle hit must exist");
     let header = rendered
         .lines()
         .nth(hit.row as usize)
@@ -7712,7 +8055,7 @@ fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
         .filter_map(|(column, character)| (character == '▼').then_some(column as u16))
         .collect();
     assert!(triangle_columns.len() >= 2);
-    assert_eq!(hit.column, triangle_columns[0]);
+    assert_eq!(hit.start_column, triangle_columns[0]);
 
     for kind in [
         MouseEventKind::Down(MouseButton::Left),
@@ -7720,7 +8063,7 @@ fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
     ] {
         app.handle_event(AppEvent::Mouse(MouseEvent {
             kind,
-            column: hit.column,
+            column: hit.start_column,
             row: hit.row,
             modifiers: KeyModifiers::NONE,
         }));

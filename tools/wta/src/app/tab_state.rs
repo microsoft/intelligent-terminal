@@ -656,6 +656,15 @@ impl TabSession {
         self.completed_turn_selection_visible_pending = false;
     }
 
+    pub fn select_completed_turn(&mut self, index: usize) -> bool {
+        if index >= self.completed_turns.len() {
+            return false;
+        }
+        self.selected_completed_turn_idx = Some(index);
+        self.completed_turn_selection_visible_pending = true;
+        true
+    }
+
     pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
         let Some(turn) = self.completed_turns.get_mut(index) else {
             return false;

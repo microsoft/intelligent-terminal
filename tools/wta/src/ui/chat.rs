@@ -366,7 +366,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .saturating_add(32);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
-    let mut triangle_offsets = Vec::new();
+    let mut turn_hit_offsets = Vec::new();
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
@@ -403,10 +403,20 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines =
-                build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
+                turn,
+                is_selected,
+                pane_focused,
+                wrap_width,
+            );
             let turn_height = rendered_lines_height(&turn_lines, wrap_width);
-            triangle_offsets.push((idx, rendered_rows_below, turn_height, turn.expanded));
+            turn_hit_offsets.push((
+                idx,
+                rendered_rows_below,
+                turn_height,
+                turn.expanded,
+                prompt_rows,
+            ));
             if selection_target_idx == Some(idx) {
                 let selected_end = rendered_rows_below.saturating_add(turn_height);
                 let viewport_height = visible_height.max(1);
@@ -460,9 +470,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     frame.render_widget(paragraph, area);
 
-    let mut triangle_hits = Vec::new();
+    let mut completed_turn_hits = Vec::new();
     let buffer = frame.buffer_mut();
-    for (turn_index, rows_below, turn_height, expanded) in triangle_offsets {
+    let alignment = crate::rtl::text_alignment();
+    for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
         let Some(header_row) = header_from_top.checked_sub(scroll) else {
             continue;
@@ -475,14 +486,49 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
             .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
         {
-            triangle_hits.push(crate::app::CompletedTurnTriangleHit {
-                column,
+            completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                start_column: column,
+                end_column: column.saturating_add(1),
                 row,
                 turn_index,
+                kind: crate::app::CompletedTurnHitKind::Triangle,
             });
         }
+
+        for prompt_row in prompt_rows {
+            let Some(visible_row) = header_from_top
+                .saturating_add(prompt_row.row_offset)
+                .checked_sub(scroll)
+            else {
+                continue;
+            };
+            if visible_row >= visible_height || prompt_row.body_width == 0 {
+                continue;
+            }
+            let line_width = prompt_row.line_width.min(inner_area.width as usize);
+            let line_offset = match alignment {
+                Alignment::Left => 0,
+                Alignment::Center => (inner_area.width as usize).saturating_sub(line_width) / 2,
+                Alignment::Right => (inner_area.width as usize).saturating_sub(line_width),
+            };
+            let start = inner_area.x as usize
+                + line_offset
+                + prompt_row.body_start.min(line_width);
+            let end = start
+                .saturating_add(prompt_row.body_width)
+                .min(inner_area.x.saturating_add(inner_area.width) as usize);
+            if start < end {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column: start as u16,
+                    end_column: end as u16,
+                    row: inner_area.y.saturating_add(visible_row as u16),
+                    turn_index,
+                    kind: crate::app::CompletedTurnHitKind::UserInput,
+                });
+            }
+        }
     }
-    app.completed_turn_triangle_hits = triangle_hits;
+    app.completed_turn_hits = completed_turn_hits;
 
     if selection_pending {
         let tab = app.current_tab_mut();
@@ -516,12 +562,81 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     });
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PromptRowGeometry {
+    row_offset: usize,
+    line_width: usize,
+    body_start: usize,
+    body_width: usize,
+}
+
+fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<PromptRowGeometry> {
+    let width = wrap_width.max(1);
+    let mut rows = Vec::new();
+    for line in lines {
+        let line_width = line
+            .spans
+            .iter()
+            .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+            .sum::<usize>();
+        let body_start = line
+            .spans
+            .iter()
+            .take(2)
+            .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+            .sum::<usize>();
+        if line_width <= width {
+            rows.push(PromptRowGeometry {
+                row_offset: rows.len(),
+                line_width,
+                body_start,
+                body_width: line_width.saturating_sub(body_start),
+            });
+            continue;
+        }
+
+        let text = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        let pieces = textwrap::wrap(&text, width);
+        if pieces.is_empty() {
+            continue;
+        }
+        for (piece_index, piece) in pieces.into_iter().enumerate() {
+            let line_width = UnicodeWidthStr::width(piece.as_ref()).min(width);
+            let body_start = if piece_index == 0 {
+                body_start.min(line_width)
+            } else {
+                0
+            };
+            rows.push(PromptRowGeometry {
+                row_offset: rows.len(),
+                line_width,
+                body_start,
+                body_width: line_width.saturating_sub(body_start),
+            });
+        }
+    }
+    rows
+}
+
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
+}
+
+fn build_completed_turn_lines_with_prompt_rows<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
 
@@ -586,6 +701,8 @@ fn build_completed_turn_lines<'a>(
         ])]
     };
 
+    let prompt_rows = completed_turn_prompt_rows(&lines, wrap_width);
+
     // Index of the line that should receive an inline trailing marker (eg
     // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
     // first detail row (after all expanded prompt rows); collapsed turns
@@ -624,7 +741,7 @@ fn build_completed_turn_lines<'a>(
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
-    lines
+    (lines, prompt_rows)
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {

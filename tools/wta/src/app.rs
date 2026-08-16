@@ -960,8 +960,9 @@ pub struct App {
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
     pub(crate) text_selection: crate::text_selection::TextSelection,
-    pub(crate) completed_turn_triangle_hits: Vec<CompletedTurnTriangleHit>,
-    pub(crate) pressed_completed_turn_triangle: Option<PressedCompletedTurnTriangle>,
+    pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
+    pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
+    pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1257,8 +1258,9 @@ impl App {
             show_debug_panel: false,
             debug_scroll: 0,
             text_selection: crate::text_selection::TextSelection::default(),
-            completed_turn_triangle_hits: Vec::new(),
-            pressed_completed_turn_triangle: None,
+            completed_turn_hits: Vec::new(),
+            pressed_completed_turn: None,
+            last_completed_turn_click: None,
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -4110,16 +4112,41 @@ impl App {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CompletedTurnTriangleHit {
-    pub(crate) column: u16,
+pub(crate) enum CompletedTurnHitKind {
+    Triangle,
+    UserInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletedTurnHitRegion {
+    pub(crate) start_column: u16,
+    pub(crate) end_column: u16,
     pub(crate) row: u16,
     pub(crate) turn_index: usize,
+    pub(crate) kind: CompletedTurnHitKind,
+}
+
+impl CompletedTurnHitRegion {
+    pub(crate) fn contains(self, column: u16, row: u16) -> bool {
+        self.row == row && column >= self.start_column && column < self.end_column
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PressedCompletedTurnTriangle {
+pub(crate) struct PressedCompletedTurn {
     pub(crate) tab_id: String,
-    pub(crate) hit: CompletedTurnTriangleHit,
+    pub(crate) hit: CompletedTurnHitRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompletedTurnClickRecord {
+    pub(crate) tab_id: String,
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) previous_selected_index: Option<usize>,
+    pub(crate) previous_selection_pending: bool,
+    pub(crate) previous_expanded: bool,
 }
 
 #[path = "app_events.rs"]
@@ -4981,7 +5008,8 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
-        self.pressed_completed_turn_triangle = None;
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(
