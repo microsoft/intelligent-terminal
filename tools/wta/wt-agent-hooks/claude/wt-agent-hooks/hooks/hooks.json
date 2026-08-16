@@ -5,7 +5,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.session.start"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.session.start"
         }]
       }
     ],
@@ -14,7 +14,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.session.end"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.session.end"
         }]
       }
     ],
@@ -23,7 +23,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.notification"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.notification"
         }]
       }
     ],
@@ -32,7 +32,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.prompt.submit"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.prompt.submit"
         }]
       }
     ],
@@ -41,7 +41,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.error"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.error"
         }]
       }
     ],
@@ -50,7 +50,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source claude --event agent.stop"
+          "command": "wtcli.exe agent-hook --cli-source claude --event agent.stop"
         }]
       }
     ]

@@ -122,9 +122,9 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
     }
 
     It 'Hook failure never blocks the agent CLI (an unreachable protocol server degrades silently)' {
-        # Point the pane at a CLSID that is not registered, so agent-hook.cmd passes its env gate
-        # and `wtcli agent-hook` genuinely fails to reach Terminal. The launcher's exit-0 contract
-        # is the only thing standing between that failure and a dead agent session.
+        # Point the pane at a CLSID that is not registered, so `wtcli agent-hook` genuinely fails to reach
+        # Terminal. Its exit-0 contract is the only thing standing between that
+        # failure and a dead agent session.
         $paneId = (New-WtTab -App $script:app).session_id
         $prompt = 'Reply with only the token READY.'
         $command = "`$env:WT_COM_CLSID='{00000000-0000-0000-0000-000000000000}'; " +

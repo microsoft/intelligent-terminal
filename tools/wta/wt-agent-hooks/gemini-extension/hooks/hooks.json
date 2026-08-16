@@ -5,7 +5,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.session.start"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.session.start"
         }]
       }
     ],
@@ -14,7 +14,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.session.end"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.session.end"
         }]
       }
     ],
@@ -23,7 +23,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.prompt.submit"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.prompt.submit"
         }]
       }
     ],
@@ -32,7 +32,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.tool.starting"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.tool.starting"
         }]
       }
     ],
@@ -41,7 +41,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.tool.finished"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.tool.finished"
         }]
       }
     ],
@@ -50,7 +50,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.notification"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.notification"
         }]
       }
     ],
@@ -59,7 +59,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "\"${extensionPath}/hooks/agent-hook.cmd\" --cli-source gemini --event agent.stop"
+          "command": "wtcli.exe agent-hook --cli-source gemini --event agent.stop"
         }]
       }
     ]

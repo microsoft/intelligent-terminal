@@ -495,15 +495,6 @@ const GEMINI_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
 const CODEX_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/hooks.json");
-const CLAUDE_AGENT_HOOK_CMD: &str =
-    include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/agent-hook.cmd");
-const COPILOT_AGENT_HOOK_CMD: &str =
-    include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/agent-hook.cmd");
-const GEMINI_AGENT_HOOK_CMD: &str =
-    include_str!("../wt-agent-hooks/gemini-extension/hooks/agent-hook.cmd");
-const CODEX_AGENT_HOOK_CMD: &str =
-    include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/agent-hook.cmd");
-
 const CLAUDE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/.claude-plugin/plugin.json");
 const COPILOT_PLUGIN_JSON: &str =
@@ -523,7 +514,8 @@ const OPENCODE_PLUGIN_JS_CONTENT: &str =
 const OPENCODE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/opencode/plugin.json");
 
-/// Every manifest-driven CLI uses the native wtcli hook bridge.
+/// Every manifest-driven CLI invokes the native wtcli bridge directly; no
+/// PowerShell script and no batch launcher sits in between any more.
 #[test]
 fn bundle_files_are_well_formed() {
     for hooks in [
@@ -532,25 +524,11 @@ fn bundle_files_are_well_formed() {
         GEMINI_HOOKS_JSON,
         CODEX_HOOKS_JSON,
     ] {
-        assert!(hooks.contains("agent-hook.cmd"));
+        assert!(hooks.contains("wtcli.exe agent-hook"));
         assert!(!hooks.contains("powershell"));
         assert!(!hooks.contains("send-event.ps1"));
+        assert!(!hooks.contains("agent-hook.cmd"));
     }
-
-    for launcher in [
-        CLAUDE_AGENT_HOOK_CMD,
-        COPILOT_AGENT_HOOK_CMD,
-        GEMINI_AGENT_HOOK_CMD,
-        CODEX_AGENT_HOOK_CMD,
-    ] {
-        assert!(launcher.contains("if not defined WT_COM_CLSID exit /b 0"));
-        assert!(launcher.contains("if not defined WT_SESSION exit /b 0"));
-        assert!(launcher.contains("wtcli.exe agent-hook %* >nul 2>nul"));
-        assert!(launcher.contains("exit /b 0"));
-    }
-    assert_eq!(CLAUDE_AGENT_HOOK_CMD, COPILOT_AGENT_HOOK_CMD);
-    assert_eq!(CLAUDE_AGENT_HOOK_CMD, GEMINI_AGENT_HOOK_CMD);
-    assert_eq!(CLAUDE_AGENT_HOOK_CMD, CODEX_AGENT_HOOK_CMD);
 }
 
 /// Per-CLI hooks.json files must each tag emitted events with the right CLI.
@@ -558,50 +536,218 @@ fn bundle_files_are_well_formed() {
 fn bundle_hooks_thread_cli_source() {
     assert!(CLAUDE_HOOKS_JSON.contains("--cli-source claude"));
     assert!(COPILOT_HOOKS_JSON.contains("--cli-source copilot"));
-    assert!(COPILOT_HOOKS_JSON.contains("${PLUGIN_ROOT}"));
-    assert!(!COPILOT_HOOKS_JSON.contains("CLAUDE_PLUGIN_ROOT"));
     assert!(GEMINI_HOOKS_JSON.contains("--cli-source gemini"));
     assert!(CODEX_HOOKS_JSON.contains("--cli-source codex"));
-}
 
-/// Copilot CLI runs hook commands through PowerShell on Windows, where a
-/// quoted path is parsed as a string expression rather than a command — it has
-/// to be invoked with the `&` call operator or the hook dies with
-/// `ParserError: Unexpected token`, which Copilot treats as a fail-closed deny.
-/// The other CLIs dispatch their hooks through `cmd.exe`, where a leading `&`
-/// is a syntax error, so the prefix has to stay Copilot-only.
-#[test]
-fn copilot_hook_commands_use_powershell_call_operator() {
-    let copilot_commands: Vec<&str> = COPILOT_HOOKS_JSON
-        .lines()
-        .filter(|line| line.contains("\"command\":"))
-        .collect();
-    assert!(!copilot_commands.is_empty());
-    for command in copilot_commands {
-        assert!(
-            command.contains(r#"& \"${PLUGIN_ROOT}/hooks/agent-hook.cmd\""#),
-            "copilot hook must invoke the launcher via PowerShell's call operator: {command}"
-        );
-    }
-
+    // The commands invoke `wtcli.exe` off PATH, so no bundle should still be
+    // interpolating a plugin-root placeholder into its hook command.
     for (cli, hooks) in [
         ("claude", CLAUDE_HOOKS_JSON),
+        ("copilot", COPILOT_HOOKS_JSON),
         ("gemini", GEMINI_HOOKS_JSON),
         ("codex", CODEX_HOOKS_JSON),
     ] {
-        assert!(
-            !hooks.contains(r#"& \""#),
-            "{cli} hooks run under cmd.exe, where a leading `&` is invalid"
-        );
+        for placeholder in ["${PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}", "${extensionPath}"] {
+            assert!(
+                !hooks.contains(placeholder),
+                "{cli} hook command should not need {placeholder} any more"
+            );
+        }
     }
 }
 
-/// Which shell a CLI dispatches its `hooks.json` `command` string through on
-/// Windows. Copilot documents PowerShell 7+; the others go through `cmd.exe`.
-#[derive(Clone, Copy)]
+/// The shipped hook command has to parse and run under every shell an agent CLI
+/// might dispatch it through, and which shell that is has repeatedly turned out
+/// to be something we guessed wrong:
+///
+/// * **Copilot** — PowerShell 7+, per GitHub's hooks documentation.
+/// * **Codex** — PowerShell; its sandbox log dispatches every command as
+///   `pwsh.exe -NoProfile -Command`.
+/// * **Gemini** — PowerShell; `hookRunner.ts` resolves ComSpec-powershell →
+///   `pwsh.exe` → `powershell.exe`, with no `cmd.exe` branch at all.
+/// * **Claude** — **bash** (`/usr/bin/bash`), which its own debug log reports.
+///
+/// So the command is a bare executable name with plain arguments: no quoting for
+/// PowerShell to reinterpret as an expression, no `cmd.exe` metacharacters, and
+/// nothing that bash rewrites. Two earlier spellings each failed somewhere —
+/// a quoted path is a PowerShell parse error, and `cmd /c "…"` is destroyed by
+/// bash's MSYS path conversion, which turns `/c` into a Windows path so
+/// `cmd.exe` starts interactively and never runs the bridge.
+#[test]
+fn hook_commands_are_shell_agnostic() {
+    for (cli, hooks) in [
+        ("copilot", COPILOT_HOOKS_JSON),
+        ("codex", CODEX_HOOKS_JSON),
+        ("gemini", GEMINI_HOOKS_JSON),
+        ("claude", CLAUDE_HOOKS_JSON),
+    ] {
+        for command in hook_command_strings(hooks) {
+            let expected = format!("wtcli.exe agent-hook --cli-source {cli} --event ");
+            assert!(
+                command.starts_with(&expected),
+                "{cli} hook must invoke the native bridge directly: {command}"
+            );
+            assert!(
+                is_shell_agnostic(&command),
+                "{cli} hook command is not safe in every shell: {command}"
+            );
+            assert!(
+                powershell_parses(&command),
+                "{cli} hook command must parse under PowerShell: {command}"
+            );
+        }
+    }
+}
+
+/// Characters that at least one candidate shell treats as syntax rather than
+/// text: `cmd.exe` metacharacters, quotes PowerShell would read as an
+/// expression, and the backslash/`$` that bash would rewrite. Keeping all of
+/// them out is what makes one spelling work everywhere.
+const SHELL_METACHARACTERS: [char; 11] =
+    ['&', '|', '<', '>', '^', '(', ')', '"', '\'', '\\', '$'];
+
+/// A command line is shell-agnostic when it is a bare executable name followed
+/// by plain arguments, with nothing any candidate shell would reinterpret.
+fn is_shell_agnostic(command: &str) -> bool {
+    !command.chars().any(|c| SHELL_METACHARACTERS.contains(&c))
+}
+
+/// A shell an agent CLI might dispatch its `hooks.json` `command` string
+/// through. Claude uses bash; the other three use PowerShell. `cmd.exe` is kept
+/// in the sweep because it costs nothing and stops a future CLI switching to it
+/// from silently breaking hooks.
+#[derive(Clone, Copy, Debug)]
 enum HookShell {
+    /// `pwsh` where available, else Windows PowerShell.
     PowerShell,
+    /// `cmd.exe`, wrapped the way Node's `spawn(.., { shell: true })` does.
     Cmd,
+    /// bash, which is what Claude reports running hooks through. Skipped when
+    /// no bash is installed rather than silently narrowing the sweep.
+    Bash,
+}
+
+const HOOK_SHELLS: [HookShell; 3] = [HookShell::PowerShell, HookShell::Cmd, HookShell::Bash];
+
+/// Locates a bash to test against, or `None` when the machine has none.
+fn bash_exe() -> Option<&'static str> {
+    static EXE: std::sync::OnceLock<Option<&'static str>> = std::sync::OnceLock::new();
+    *EXE.get_or_init(|| {
+        for candidate in [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\bash.exe",
+        ] {
+            if Path::new(candidate).is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    })
+}
+
+/// Runs a command line the way a CLI would dispatch it. Returns `None` when the
+/// shell is unavailable on this machine.
+fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+
+    let mut spawned = match shell {
+        HookShell::PowerShell => {
+            let mut c = std::process::Command::new(powershell_exe());
+            c.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+            c
+        }
+        HookShell::Cmd => {
+            // `raw_arg` bypasses Rust's CRT-style escaping, which `cmd.exe`
+            // does not honor.
+            let mut c = std::process::Command::new("cmd");
+            c.raw_arg(format!("/d /s /c \"{command}\""));
+            c
+        }
+        HookShell::Bash => {
+            let mut c = std::process::Command::new(bash_exe()?);
+            c.args(["-c", command]);
+            c
+        }
+    };
+    Some(
+        spawned
+            .env_remove("WT_COM_CLSID")
+            .env_remove("WT_SESSION")
+            .output()
+            .expect("hook shell should start"),
+    )
+}
+
+/// Every shipped hook command must reach `wtcli` — not some other program — in
+/// every candidate shell. Running it with `WT_COM_CLSID` / `WT_SESSION` cleared
+/// makes `wtcli agent-hook` stop at its own env gate, so the observable contract
+/// is "exit 0, print nothing" without needing a live Terminal.
+///
+/// This is the check that would have caught the `cmd /c "…"` spelling: under
+/// bash, MSYS path conversion mangled `/c`, so `cmd.exe` started interactively
+/// and echoed the hook payload instead of running the bridge.
+#[test]
+fn bundled_hook_commands_run_in_every_shell() {
+    for (cli, hooks) in [
+        ("copilot", COPILOT_HOOKS_JSON),
+        ("codex", CODEX_HOOKS_JSON),
+        ("gemini", GEMINI_HOOKS_JSON),
+        ("claude", CLAUDE_HOOKS_JSON),
+    ] {
+        for command in hook_command_strings(hooks) {
+            for shell in HOOK_SHELLS {
+                let Some(out) = run_hook_command(shell, &command) else {
+                    continue;
+                };
+                assert!(
+                    out.status.success(),
+                    "{cli} hook must exit 0 under {shell:?}: {command}\nstderr: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                assert!(
+                    out.stdout.is_empty() && out.stderr.is_empty(),
+                    "{cli} hook must print nothing under {shell:?}: {command}\nstdout: {}\nstderr: {}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+    }
+}
+
+/// `pwsh` where available, else Windows PowerShell — both parse the constructs
+/// under test identically, so either is a valid stand-in.
+fn powershell_exe() -> &'static str {
+    static EXE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    EXE.get_or_init(|| {
+        let probe = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+            .output();
+        if probe.is_ok() {
+            "pwsh"
+        } else {
+            "powershell"
+        }
+    })
+}
+
+/// Asks PowerShell to *parse* (never run) a command line, so the check needs no
+/// installed Terminal and cannot have side effects. This is the exact failure
+/// mode that broke Copilot and Codex hooks: a line starting with a quoted path
+/// parses as a string expression, so the words after it are a syntax error.
+fn powershell_parses(command: &str) -> bool {
+    let script = format!(
+        "$e = $null; \
+         $null = [System.Management.Automation.Language.Parser]::ParseInput('{}', [ref]$null, [ref]$e); \
+         if ($e.Count) {{ exit 1 }} else {{ exit 0 }}",
+        command.replace('\'', "''")
+    );
+    std::process::Command::new(powershell_exe())
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .expect("powershell should start")
+        .status
+        .success()
 }
 
 /// Every `command` string in a bundle's `hooks.json`.
@@ -619,139 +765,53 @@ fn hook_command_strings(hooks_json: &str) -> Vec<String> {
     commands
 }
 
-/// Copilot requires PowerShell 7+, but Windows PowerShell parses the construct
-/// under test identically, so it is a valid stand-in where `pwsh` is absent.
-fn powershell_exe() -> &'static str {
-    static EXE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
-    EXE.get_or_init(|| {
-        let probe = std::process::Command::new("pwsh")
-            .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
-            .output();
-        if probe.is_ok() {
-            "pwsh"
-        } else {
-            "powershell"
-        }
-    })
-}
-
-/// Runs one hook command line the way its CLI would. `WT_COM_CLSID` /
-/// `WT_SESSION` are cleared so the launcher stops at its env gate instead of
-/// reaching `wtcli.exe`: the shell's parse-and-dispatch behavior is what is
-/// under test, and it must not depend on a live Terminal.
-fn run_hook_command(shell: HookShell, command: &str) -> std::process::Output {
-    use std::os::windows::process::CommandExt;
-
-    let mut spawned = match shell {
-        HookShell::PowerShell => {
-            let mut c = std::process::Command::new(powershell_exe());
-            c.args(["-NoProfile", "-NonInteractive", "-Command", command]);
-            c
-        }
-        HookShell::Cmd => {
-            // `raw_arg` bypasses Rust's CRT-style argument escaping, which
-            // `cmd.exe` does not honor. `/s` plus the outer quotes is the
-            // canonical wrapping Node's `spawn(.., { shell: true })` emits,
-            // i.e. what the cmd-dispatched CLIs actually run.
-            let mut c = std::process::Command::new("cmd");
-            c.raw_arg(format!("/d /s /c \"{command}\""));
-            c
-        }
-    };
-    spawned
-        .env_remove("WT_COM_CLSID")
-        .env_remove("WT_SESSION")
-        .output()
-        .expect("hook shell should start")
-}
-
-/// Per-CLI hook bundle: bundle subdir, path placeholder, `hooks.json`, shell.
-const HOOK_SHELL_CASES: [(&str, &str, &str, &str, HookShell); 4] = [
-    (
-        "copilot",
-        "copilot/wt-agent-hooks",
-        "${PLUGIN_ROOT}",
-        COPILOT_HOOKS_JSON,
-        HookShell::PowerShell,
-    ),
-    (
-        "claude",
-        "claude/wt-agent-hooks",
-        "${CLAUDE_PLUGIN_ROOT}",
-        CLAUDE_HOOKS_JSON,
-        HookShell::Cmd,
-    ),
-    (
-        "gemini",
-        "gemini-extension",
-        "${extensionPath}",
-        GEMINI_HOOKS_JSON,
-        HookShell::Cmd,
-    ),
-    (
-        "codex",
-        "codex/wt-agent-hooks",
-        "${PLUGIN_ROOT}",
-        CODEX_HOOKS_JSON,
-        HookShell::Cmd,
-    ),
-];
-
-/// The shipped hook command lines must actually be *executable* by the shell
-/// their CLI dispatches through. The other bundle tests only compare text, so
-/// a command every shell rejects still passed them — and because Copilot's
-/// `PreToolUse` hook is fail-closed, one shell-level parse error there denies
-/// every tool call for the whole session.
+/// Negative controls: every spelling this bundle previously shipped must be
+/// caught, so the checks above cannot pass vacuously. Each failed in a shell we
+/// had not thought to test at the time.
+///
+/// * A bare quoted path fails to parse in PowerShell.
+/// * Prefixing it with PowerShell's `&` call operator fixes PowerShell but is a
+///   syntax error in `cmd.exe` — and still *parses* in PowerShell, which is why
+///   a PowerShell-only check could not have caught it.
+/// * `cmd /c "…"` satisfies both of those, and still breaks under bash: MSYS
+///   path conversion rewrites `/c`, so `cmd.exe` launches interactively, prints
+///   its banner, and never runs the bridge.
 #[test]
-fn bundled_hook_commands_execute_in_their_cli_shell() {
-    let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wt-agent-hooks");
-    // The staging path carries a space so this also covers command quoting.
-    let staging = unique_dir("shell exec");
-
-    for (cli, subdir, placeholder, hooks_json, shell) in HOOK_SHELL_CASES {
-        let plugin_root = staging.join(cli);
-        copy_dir_recursive(&bundle_root.join(subdir), &plugin_root).unwrap();
-        let resolved_root = plugin_root.to_string_lossy().replace('\\', "/");
-
-        for command in hook_command_strings(hooks_json) {
-            let command = command.replace(placeholder, &resolved_root);
-            let out = run_hook_command(shell, &command);
-            assert!(
-                out.status.success(),
-                "{cli} hook must exit 0 under its shell: {command}\nstderr: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            assert!(
-                out.stdout.is_empty() && out.stderr.is_empty(),
-                "{cli} hook must stay silent: {command}\nstdout: {}\nstderr: {}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            );
-        }
-    }
-}
-
-/// Negative control for `bundled_hook_commands_execute_in_their_cli_shell`:
-/// without the call operator PowerShell must reject Copilot's command, proving
-/// that test would actually catch the regression rather than pass vacuously.
-#[test]
-fn copilot_hook_command_without_call_operator_fails_in_powershell() {
-    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("wt-agent-hooks/copilot/wt-agent-hooks")
-        .to_string_lossy()
-        .replace('\\', "/");
-    let command = hook_command_strings(COPILOT_HOOKS_JSON)
-        .swap_remove(0)
-        .replace("${PLUGIN_ROOT}", &plugin_root);
-    let regressed = command
-        .strip_prefix("& ")
-        .expect("fixed copilot command starts with the call operator");
-
-    let out = run_hook_command(HookShell::PowerShell, regressed);
+fn previous_hook_command_spellings_are_rejected() {
+    let quoted_path =
+        r#""C:/plugins/wt-agent-hooks/hooks/agent-hook.cmd" --cli-source copilot --event agent.stop"#;
     assert!(
-        !out.status.success(),
-        "a quoted path without `&` must fail to parse in PowerShell: {regressed}"
+        !powershell_parses(quoted_path),
+        "a bare quoted path must fail to parse in PowerShell: {quoted_path}"
     );
+    assert!(!is_shell_agnostic(quoted_path));
+
+    let call_operator = format!("& {quoted_path}");
+    assert!(
+        powershell_parses(&call_operator),
+        "the call-operator form does parse in PowerShell — that is why it looked correct"
+    );
+    assert!(!is_shell_agnostic(&call_operator));
+
+    let cmd_wrapped =
+        r#"cmd /c "wtcli.exe agent-hook --cli-source copilot --event agent.stop >nul 2>nul & exit 0""#;
+    assert!(
+        powershell_parses(cmd_wrapped),
+        "the cmd-wrapped form parses in PowerShell too — the shape rule is what rejects it"
+    );
+    assert!(
+        !is_shell_agnostic(cmd_wrapped),
+        "the cmd-wrapped form must be rejected: {cmd_wrapped}"
+    );
+
+    // And prove the bash failure empirically where a bash is available: the
+    // wrapper does not reach wtcli, it starts an interactive cmd that echoes.
+    if let Some(out) = run_hook_command(HookShell::Bash, cmd_wrapped) {
+        assert!(
+            !out.stdout.is_empty() || !out.stderr.is_empty(),
+            "under bash the cmd-wrapped form must visibly misbehave rather than run the bridge"
+        );
+    }
 }
 
 /// Both CLIs must carry the common event set. Copilot additionally

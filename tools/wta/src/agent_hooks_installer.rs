@@ -23,20 +23,20 @@
 //       .claude-plugin/marketplace.json
 //       wt-agent-hooks/                    <- the plugin folder Claude copies
 //         .claude-plugin/plugin.json
-//         hooks/{hooks.json,agent-hook.cmd}
+//         hooks/hooks.json
 //     copilot/                             <- passed to `copilot plugin marketplace add`
 //       .github/plugin/marketplace.json
 //       wt-agent-hooks/
 //         plugin.json                      <- Copilot-native root manifest
-//         hooks/{hooks.json,agent-hook.cmd}
+//         hooks/hooks.json
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
-//       hooks/{hooks.json,agent-hook.cmd}
+//       hooks/hooks.json
 //     codex/                               <- passed to `codex plugin marketplace add`
 //       .agents/plugins/marketplace.json   <- Codex's mandatory sentinel location
 //       wt-agent-hooks/                    <- the plugin folder Codex copies
 //         .codex-plugin/plugin.json
-//         hooks/{hooks.json,agent-hook.cmd}
+//         hooks/hooks.json
 //
 // The MSIX package ships this directory next to `wta.exe` (see
 // `CascadiaPackage.wapproj`'s `wt-agent-hooks` Content glob), so at runtime

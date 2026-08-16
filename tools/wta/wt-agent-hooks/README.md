@@ -19,23 +19,17 @@ wt-agent-hooks/
 │   ├── .claude-plugin/marketplace.json
 │   └── wt-agent-hooks/                     # the plugin folder Claude copies into ~/.claude/
 │       ├── .claude-plugin/plugin.json
-│       └── hooks/
-│           ├── hooks.json                  # native wtcli agent-hook commands
-│           └── agent-hook.cmd              # fast env gate + exit-0 launcher
+│       └── hooks/hooks.json                # native wtcli agent-hook commands
 ├── copilot/                                # passed to `copilot plugin marketplace add`
 │   ├── .github/plugin/marketplace.json      # Copilot-native marketplace
 │   └── wt-agent-hooks/
 │       ├── plugin.json                      # Copilot-native root manifest
-│       └── hooks/                           # --cli-source copilot
+│       └── hooks/hooks.json                 # --cli-source copilot
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
-│   └── hooks/
-│       ├── hooks.json                      # 7 native hook commands
-│       └── agent-hook.cmd
+│   └── hooks/hooks.json                    # 7 native hook commands
 ├── codex/                                  # passed to `codex plugin marketplace add`
-│   └── wt-agent-hooks/hooks/
-│       ├── hooks.json                       # native hook commands
-│       └── agent-hook.cmd
+│   └── wt-agent-hooks/hooks/hooks.json     # native hook commands
 ├── opencode/                                # copied to OpenCode's global plugins dir
 │   ├── plugin.json                          # managed bundle version
 │   └── wt-agent-hooks.js                    # OpenCode V1 plugin
@@ -43,11 +37,9 @@ wt-agent-hooks/
     └── state-logger.ps1
 ```
 
-Every integration dispatches through the native `wtcli agent-hook` command.
-Manifest-driven CLIs share a byte-identical `agent-hook.cmd` launcher that
-short-circuits outside a real WT shell pane and preserves the hook exit-0
-contract if `wtcli.exe` is unavailable. Claude and Copilot share the same
-plugin manifest and event schema.
+Every integration dispatches through the native `wtcli agent-hook` command,
+invoked directly from `hooks.json` with no script or batch launcher in between.
+Claude and Copilot share the same plugin manifest and event schema.
 
 ## How install works
 
@@ -138,8 +130,8 @@ References:
 ## Hook bridge
 
 ```
-Agent CLI ─── hook fires ──▶ agent-hook.cmd ──▶ wtcli agent-hook ──▶ WTA
-                             (fast env gate)    (stdin JSON + COM)
+Agent CLI ─── hook fires ──▶ wtcli agent-hook ──▶ WTA
+                             (stdin JSON + COM)
 ```
 
 The native bridge reads the hook JSON from stdin and wraps it as
@@ -149,19 +141,54 @@ field is hard-coded per CLI in `hooks.json`; env-var heuristics are unreliable
 because Copilot CLI inherits Claude's plugin shape and sets
 `CLAUDE_PLUGIN_ROOT`, making it indistinguishable from a real Claude run.
 
-The launcher and `wtcli agent-hook` both require `WT_COM_CLSID` and
-`WT_SESSION`, write nothing, and always exit successfully. The shared ACP
-process has no `WT_SESSION`, so its redundant hooks are dropped before
-`wtcli.exe` starts and cannot be incorrectly attributed to the active shell pane.
+`wtcli agent-hook` requires `WT_COM_CLSID` and `WT_SESSION`, writes nothing, and
+always exits successfully. The shared ACP process has no `WT_SESSION`, so its
+redundant hooks are dropped and cannot be incorrectly attributed to the active
+shell pane.
 
-**Shell differences matter.** Copilot CLI runs hook commands through
-**PowerShell 7+** on Windows, so its `hooks.json` invokes the launcher with the
-`&` call operator (`& "${PLUGIN_ROOT}/hooks/agent-hook.cmd" …`) — without it
-PowerShell parses the quoted path as a string expression and fails with
-`ParserError: Unexpected token 'cli-source'`, which Copilot treats as a
-fail-closed deny of the tool call. Claude, Gemini, and Codex dispatch their
-hooks through `cmd.exe`, where a leading `&` is itself a syntax error, so they
-keep the bare quoted-path form.
+**The command must stay shell-agnostic.** Each CLI decides for itself which
+shell interprets the `command` string. That choice is undocumented, differs per
+CLI, and we guessed it wrong twice — so the bundle assumes nothing and ships one
+spelling that survives all of them:
+
+```
+wtcli.exe agent-hook --cli-source <cli> --event <topic>
+```
+
+A bare executable name with plain arguments: nothing for PowerShell to read as
+an expression, no `cmd.exe` metacharacters, and nothing bash rewrites.
+
+| CLI | Hook shell | How we know |
+| --- | --- | --- |
+| Copilot | PowerShell 7+ | GitHub hooks documentation |
+| Codex | PowerShell | sandbox log dispatches every command as `pwsh.exe -NoProfile -Command` |
+| Gemini | PowerShell | `hookRunner.ts` → `getShellConfiguration()` resolves ComSpec-powershell → `pwsh.exe` → `powershell.exe`, with no `cmd.exe` branch |
+| Claude | **bash** (`/usr/bin/bash`) | its own debug log reports `/usr/bin/bash: line 1: …` |
+
+Spellings that were tried and failed, each in a shell that had not been
+considered at the time:
+
+| Spelling | Fails in | Why |
+| --- | --- | --- |
+| `"<path>/agent-hook.cmd" …` | PowerShell | a leading quoted string is an expression, so the words after it are a parse error |
+| `& "<path>/agent-hook.cmd" …` | `cmd.exe` | `&` is a command separator with nothing before it — and this one still *parses* in PowerShell, which is what made it look correct |
+| `cmd /c "wtcli.exe … & exit 0"` | **bash** | MSYS path conversion rewrites `/c`, so `cmd.exe` launches interactively, prints its banner, echoes the hook payload, and never runs the bridge — while still exiting 0, so the CLI reports the hook as successful |
+
+That last row is why `agent_hooks_installer_tests` executes every shipped
+command under PowerShell, `cmd.exe`, **and** bash rather than reasoning about
+which shell each CLI uses. Exit status alone is not enough evidence that a hook
+worked.
+
+> **Known gap.** Because the command invokes `wtcli.exe` off `PATH` with no
+> wrapper, uninstalling Intelligent Terminal while hook config remains
+> registered leaves each hook failing with "not recognized" (exit 1). Copilot's
+> `PreToolUse` hook is fail-closed, so that would deny its tool calls. Every
+> wrapper that fixes this broke at least one shell, so the resilience needs a
+> different mechanism — tracked separately.
+
+OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
+rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,
+ignores both output streams, and wraps the spawn in `try`/`catch`.
 
 ## Manual install (for testing without `wta` startup)
 

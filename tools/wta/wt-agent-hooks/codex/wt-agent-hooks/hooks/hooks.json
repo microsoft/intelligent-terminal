@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.session.start"
+            "command": "wtcli.exe agent-hook --cli-source codex --event agent.session.start"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.notification"
+            "command": "wtcli.exe agent-hook --cli-source codex --event agent.notification"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.prompt.submit"
+            "command": "wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${PLUGIN_ROOT}/hooks/agent-hook.cmd\" --cli-source codex --event agent.stop"
+            "command": "wtcli.exe agent-hook --cli-source codex --event agent.stop"
           }
         ]
       }

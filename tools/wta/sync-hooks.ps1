@@ -18,16 +18,8 @@ $pairs = @(
         Dst = (Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\hooks.json')
     },
     @{
-        Src = (Join-Path $hooksRoot 'copilot\wt-agent-hooks\hooks\agent-hook.cmd')
-        Dst = (Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\agent-hook.cmd')
-    },
-    @{
         Src = (Join-Path $hooksRoot 'gemini-extension\hooks\hooks.json')
         Dst = (Join-Path $env:USERPROFILE '.gemini\extensions\wt-agent-hooks\hooks\hooks.json')
-    },
-    @{
-        Src = (Join-Path $hooksRoot 'gemini-extension\hooks\agent-hook.cmd')
-        Dst = (Join-Path $env:USERPROFILE '.gemini\extensions\wt-agent-hooks\hooks\agent-hook.cmd')
     }
 )
 
