@@ -5,7 +5,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.session.start"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.session.start",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.session.start } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.session.start; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -14,7 +17,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.session.end"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.session.end",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.session.end } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.session.end; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -23,7 +29,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.notification"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.notification",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.notification } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.notification; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -32,7 +41,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -41,7 +53,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -50,7 +65,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -59,7 +77,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -68,7 +89,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.error"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.error",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.error } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.error; exit 0",
+          "timeoutSec": 5
         }]
       }
     ],
@@ -77,7 +101,10 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.stop"
+          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.stop",
+          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.stop } catch { }; exit 0",
+          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.stop; exit 0",
+          "timeoutSec": 5
         }]
       }
     ]

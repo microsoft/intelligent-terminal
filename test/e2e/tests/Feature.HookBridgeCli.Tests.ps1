@@ -9,9 +9,11 @@
 # Copilot's PreToolUse hook is FAIL-CLOSED that error denied every tool call in the session
 # ("Denied by preToolUse hook ... (hook errored)").
 #
-# Unit tests (`bundled_hook_commands_execute_in_their_cli_shell`) now execute the shipped command
+# Unit tests (`bundled_hook_commands_run_in_every_shell`) now execute the shipped command
 # lines in each CLI's shell, but they cannot prove that the CLI accepts the bundle or that a
-# broken hook does not take the agent down with it. That is what these two cases add.
+# broken hook does not take the agent down with it. That is what these three cases add:
+# a working bundle, a bridge that cannot reach Terminal, and a bridge that is gone from PATH
+# entirely — the state an Intelligent Terminal uninstall leaves behind.
 #
 # The oracle is deliberately LLM-independent: SessionStart/UserPromptSubmit fire on every prompt
 # regardless of what the model decides to do, so a model that answers without calling a tool
@@ -150,6 +152,49 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
             @(Get-WtEvents -Listener $listener -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
             }).Count | Should -Be 0 -Because 'the hook could not reach Terminal, so it must publish nothing'
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+            try { Close-WtPane -App $script:app -SessionId $paneId } catch { }
+        }
+    }
+
+    It 'Uninstalling Terminal never blocks the agent CLI (a bridge missing from PATH degrades silently)' {
+        # The other failure shape: `wtcli.exe` reaches PATH through the MSIX app-execution alias,
+        # which uninstall deletes while the CLI keeps the hook config registered. The shell — not
+        # the bridge — then decides the exit code, and a missing command makes it 1, which a
+        # fail-closed PreToolUse hook turns into a denial of every tool call.
+        #
+        # Scrubbing every PATH entry that supplies wtcli.exe reproduces that state without
+        # uninstalling Terminal. The CLI is resolved to an absolute path first, so the scrub cannot
+        # take the agent itself down with it (Copilot may live in an alias directory too).
+        $paneId = (New-WtTab -App $script:app).session_id
+        $prompt = 'Run the shell command: echo IT-HOOK-TOOL-RAN'
+        $onPathMarker = 'IT-HOOK-BRIDGE-STILL-ON-PATH'
+        $command = "`$c=(Get-Command $($script:Cli)).Source; " +
+                   "`$env:PATH=((`$env:PATH -split ';') | Where-Object { `$_ -and -not (Test-Path (Join-Path `$_ 'wtcli.exe')) }) -join ';'; " +
+                   "if (Get-Command wtcli.exe -ErrorAction SilentlyContinue) { echo $onPathMarker }; " +
+                   "& `$c -p '$prompt' --allow-all-tools; echo $($script:DoneMarker)"
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Send-WtInput -App $script:app -SessionId $paneId -Text $command
+            Send-WtKeys  -App $script:app -SessionId $paneId -Keys @('Enter')
+
+            $doneRe = [regex]::Escape($script:DoneMarker)
+            Wait-Until -TimeoutSec 240 -IntervalSec 2 -Because "$($script:Cli) to finish" -Condition {
+                (Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200) -match $doneRe
+            } | Out-Null
+
+            $out = Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200
+            $out | Should -Match $doneRe -Because 'the CLI must run to completion with no bridge on PATH'
+            $out | Should -Not -Match ([regex]::Escape($onPathMarker)) -Because 'the scrub must actually remove wtcli.exe, or this case passes on a working bridge'
+            $out | Should -Not -Match $script:DenyPattern -Because 'an uninstalled bridge must not deny the agent its tools'
+
+            # Same bounded negative window as the broken-CLSID case: nothing can have been published.
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
+            }).Count | Should -Be 0 -Because 'the bridge was not on PATH, so it must publish nothing'
         }
         finally {
             Stop-WtEventListener -Listener $listener

@@ -24,7 +24,7 @@ wt-agent-hooks/
 │   ├── .github/plugin/marketplace.json      # Copilot-native marketplace
 │   └── wt-agent-hooks/
 │       ├── plugin.json                      # Copilot-native root manifest
-│       └── hooks/hooks.json                 # --cli-source copilot
+│       └── hooks/hooks.json                 # --cli-source copilot, per-shell fields
 ├── gemini-extension/                       # passed to `gemini extensions install`
 │   ├── gemini-extension.json
 │   └── hooks/hooks.json                    # 7 native hook commands
@@ -146,8 +146,8 @@ always exits successfully. The shared ACP process has no `WT_SESSION`, so its
 redundant hooks are dropped and cannot be incorrectly attributed to the active
 shell pane.
 
-**The command must stay shell-agnostic.** Each CLI decides for itself which
-shell interprets the `command` string. That choice is undocumented, differs per
+**The `command` field must stay shell-agnostic.** Each CLI decides for itself
+which shell interprets that string. That choice is undocumented, differs per
 CLI, and we guessed it wrong twice — so the bundle assumes nothing and ships one
 spelling that survives all of them:
 
@@ -179,12 +179,44 @@ command under PowerShell, `cmd.exe`, **and** bash rather than reasoning about
 which shell each CLI uses. Exit status alone is not enough evidence that a hook
 worked.
 
-> **Known gap.** Because the command invokes `wtcli.exe` off `PATH` with no
-> wrapper, uninstalling Intelligent Terminal while hook config remains
-> registered leaves each hook failing with "not recognized" (exit 1). Copilot's
-> `PreToolUse` hook is fail-closed, so that would deny its tool calls. Every
-> wrapper that fixes this broke at least one shell, so the resilience needs a
-> different mechanism — tracked separately.
+### Surviving an Intelligent Terminal uninstall
+
+`wtcli.exe` reaches `PATH` through the MSIX app-execution alias, which uninstall
+deletes — but the hook config stays registered with each CLI. From that moment
+the *shell*, not the bridge, decides the hook's exit code, and a missing command
+makes it 1. Copilot's `preToolUse` hook is fail-closed, so every tool call in
+every later session is denied:
+
+```
+✗ Echo a probe marker string (shell)
+  └ Denied by preToolUse hook from "…" (hook errored)
+```
+
+The fix does not require guessing a shell after all. Copilot's command hooks
+take **`powershell` and `bash` fields that override `command` on their own
+platform**, so each spelling only has to be valid in the one shell that runs it:
+
+| Field | Command |
+| --- | --- |
+| `powershell` | `try { wtcli.exe agent-hook --cli-source copilot --event <topic> } catch { }; exit 0` |
+| `bash` | `command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event <topic>; exit 0` |
+| `command` | unchanged bare spelling — the fallback for a CLI that does not read the per-shell fields |
+
+`try`/`catch` is what makes the PowerShell form work: a missing native command
+raises a catchable `CommandNotFoundException`, and the trailing `exit 0`
+overrides a non-zero exit from the bridge itself. Both keep passing the hook
+JSON on stdin, since PowerShell hands its own stdin to the native child.
+
+Verified against Copilot CLI 1.0.81-0: the bare spelling denies tool calls once
+the bridge is missing, the `powershell` field does not, and the `command` field
+is ignored whenever `powershell` is present. `timeoutSec: 5` bounds the other
+fail-closed edge — a hung COM call — and a hook *timeout* was measured to be
+fail-open, so shortening it only reduces the stall.
+
+Claude, Codex, and Gemini keep the bare spelling. None of them is fail-closed on
+a generic non-zero exit (Claude blocks on exit 2 only), and none documents
+per-shell command fields, so adding shell-specific syntax there would trade a
+harmless error for the guessing game described above.
 
 OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
 rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,
@@ -245,6 +277,6 @@ Gemini has no marketplace concept and reads the extension folder directly.
   upgrade, which is why `agent_hooks_installer` re-runs marketplace
   registration on every wta startup and strips stale entries before
   reinstalling.
-- **Codex must re-trust the 0.1.5 commands once.** Codex hashes each hook
+- **Codex must re-trust the 0.1.6 commands once.** Codex hashes each hook
   command for trust, so replacing the PowerShell command with
   `wtcli agent-hook` requires reviewing the updated plugin through `/hooks`.
