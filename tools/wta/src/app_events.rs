@@ -263,6 +263,7 @@ impl App {
                     self.session_to_tab.remove(&replaced_session_id);
                     self.session_model_configs.remove(&replaced_session_id);
                     self.session_config_options.remove(&replaced_session_id);
+                    self.session_commands.remove(&replaced_session_id);
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
@@ -379,6 +380,12 @@ impl App {
                 picker.reconcile(options);
                 self.tab_mut(&target_tab).config_picker = picker;
             }
+            AppEvent::SessionCommandsUpdated {
+                session_id,
+                commands,
+            } => {
+                self.session_commands.insert(session_id, commands);
+            }
             AppEvent::SessionConfigSetCompleted {
                 session_id,
                 config_id,
@@ -391,10 +398,7 @@ impl App {
                     .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
                     .map(|option| {
                         option.current_value = value.clone();
-                        (
-                            option.name.clone(),
-                            option.current_value_name().to_string(),
-                        )
+                        (option.name.clone(), option.current_value_name().to_string())
                     })
                     .unwrap_or_else(|| (config_id.clone(), value.clone()));
                 let target_tab = self.bound_tab_for_session(&session_id);

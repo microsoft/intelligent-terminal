@@ -107,8 +107,8 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
 }
 
 pub use crate::app_contracts::{
-    AcpModelInfo, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage, PlanEntryStatus,
-    PreflightResult,
+    AcpModelInfo, AcpSessionCommand, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage,
+    PlanEntryStatus, PreflightResult,
 };
 use crate::commands::{self, CommandKind, ParseOutcome, ParsedCommand};
 use crate::coordinator::{recommended_choice_index, RecommendationChoice, RecommendationSet};
@@ -917,6 +917,8 @@ pub struct App {
     session_model_configs: HashMap<String, (Vec<AcpModelInfo>, Option<String>)>,
     /// Complete ordered ACP select config options, keyed by SessionId.
     session_config_options: HashMap<String, Vec<crate::app_contracts::AcpSessionConfigOption>>,
+    /// Complete ordered Agent command snapshots, keyed by SessionId.
+    session_commands: HashMap<String, Vec<AcpSessionCommand>>,
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -1235,6 +1237,7 @@ impl App {
             current_model_id: None,
             session_model_configs: HashMap::new(),
             session_config_options: HashMap::new(),
+            session_commands: HashMap::new(),
             prompt_name: None,
             session_id: String::new(),
             wt_connected,
@@ -3989,6 +3992,7 @@ impl App {
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
+            AppEvent::SessionCommandsUpdated { .. } => "session_commands_updated",
             AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
             AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
             AppEvent::TabError { .. } => "tab_error",
@@ -4469,6 +4473,49 @@ impl App {
             .map(|n| (n.summary.as_str(), &n.severity))
     }
 
+    fn current_session_commands(&self) -> &[AcpSessionCommand] {
+        self.current_tab()
+            .session_id
+            .as_deref()
+            .and_then(|session_id| self.session_commands.get(session_id))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    fn agent_slash_command_candidates(&self) -> Vec<&AcpSessionCommand> {
+        let input = self.current_tab().input.trim_start();
+        if !commands::is_command_prefix(input) {
+            return Vec::new();
+        }
+        let query = input
+            .strip_prefix('/')
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let (prefix, contains): (Vec<_>, Vec<_>) = self
+            .current_session_commands()
+            .iter()
+            .filter(|command| {
+                commands::lookup(&command.name).is_none()
+                    && command.name.to_ascii_lowercase().contains(&query)
+            })
+            .partition(|command| command.name.to_ascii_lowercase().starts_with(&query));
+        prefix.into_iter().chain(contains).collect()
+    }
+
+    fn slash_command_candidates(&self) -> Vec<crate::ui::CommandCandidate<'_>> {
+        self.current_tab()
+            .command_popup_candidates
+            .iter()
+            .copied()
+            .map(crate::ui::CommandCandidate::Client)
+            .chain(
+                self.agent_slash_command_candidates()
+                    .into_iter()
+                    .map(crate::ui::CommandCandidate::Agent),
+            )
+            .collect()
+    }
+
     /// Visible popup state for the renderer. Returns `None` when the
     /// popup should not be drawn this frame. Reads from the active tab.
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
@@ -4483,26 +4530,25 @@ impl App {
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
-        let agent_candidates: Vec<_> = self.agent_command_candidates().collect();
+        let agent_candidates: Vec<_> =
+            self.available_agent_command_candidates().collect();
         let candidates = if self.transport_lost {
-            let filtered: Vec<&'static crate::commands::CommandSpec> = tab
-                .command_popup_candidates
+            let filtered: Vec<_> = tab.command_popup_candidates
                 .iter()
                 .copied()
                 .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                .map(crate::ui::CommandCandidate::Client)
                 .collect();
             if filtered.is_empty() {
                 return None;
             }
-            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
+            crate::ui::PopupCandidates::Commands(filtered)
         } else if !agent_candidates.is_empty() {
             crate::ui::PopupCandidates::Agents(agent_candidates)
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
         } else {
-            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Borrowed(
-                tab.command_popup_candidates.as_slice(),
-            ))
+            crate::ui::PopupCandidates::Commands(self.slash_command_candidates())
         };
         Some(crate::ui::PopupState {
             candidates,
@@ -4514,6 +4560,11 @@ impl App {
                 .strip_prefix('/')
                 .unwrap_or_default(),
             current_model: self.current_model_display(),
+            agent_label: if self.agent_name.is_empty() {
+                self.current_agent_id.as_str()
+            } else {
+                self.agent_name.as_str()
+            },
         })
     }
 
@@ -4553,7 +4604,8 @@ impl App {
     /// invisible popup.
     pub(super) fn command_popup_visible(&self) -> bool {
         if !self.current_tab().command_popup_visible()
-            && self.agent_command_candidates().next().is_none()
+            && self.available_agent_command_candidates().next().is_none()
+            && self.agent_slash_command_candidates().is_empty()
         {
             return false;
         }
@@ -4569,7 +4621,7 @@ impl App {
         true
     }
 
-    fn agent_command_candidates(&self) -> impl Iterator<Item = &AvailableAgent> {
+    fn available_agent_command_candidates(&self) -> impl Iterator<Item = &AvailableAgent> {
         let prefix = if self.transport_lost {
             None
         } else {
@@ -4587,18 +4639,45 @@ impl App {
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
         let selected = self.current_tab().command_popup_selected;
-        self.agent_command_candidates()
+        self.available_agent_command_candidates()
             .take(selected.saturating_add(1))
             .last()
     }
 
+    fn selected_slash_command_candidate(&self) -> Option<crate::ui::CommandCandidate<'_>> {
+        let candidates = self.slash_command_candidates();
+        let selected = self
+            .current_tab()
+            .command_popup_selected
+            .min(candidates.len().saturating_sub(1));
+        candidates.get(selected).copied()
+    }
+
+    fn agent_command_for_input(&self, input: &str) -> Option<&AcpSessionCommand> {
+        let rest = input.trim_start().strip_prefix('/')?;
+        if rest.starts_with('/') {
+            return None;
+        }
+        let name = rest.split_whitespace().next()?;
+        if commands::lookup(name).is_some() {
+            return None;
+        }
+        self.current_session_commands()
+            .iter()
+            .find(|command| command.name.eq_ignore_ascii_case(name))
+    }
+
     fn command_popup_candidate_count(&self) -> usize {
-        let agent_count = self.agent_command_candidates().count();
+        let agent_count = self.available_agent_command_candidates().count();
         if agent_count > 0 {
             agent_count
         } else {
             let tab = self.current_tab();
-            tab.command_popup_candidates.len() + tab.move_position_candidates.len()
+            if !tab.move_position_candidates.is_empty() {
+                tab.move_position_candidates.len()
+            } else {
+                self.slash_command_candidates().len()
+            }
         }
     }
 
@@ -4619,12 +4698,21 @@ impl App {
         if tab.cursor_pos != tab.input.len() {
             return None;
         }
-        let prefix = commands::agent_id_prefix(&tab.input)?;
+        if let Some(prefix) = commands::agent_id_prefix(&tab.input) {
         let candidate = self.selected_agent_command_candidate()?;
-        candidate
+            return candidate
             .id
             .get(prefix.len()..)
-            .filter(|suffix| !suffix.is_empty())
+                .filter(|suffix| !suffix.is_empty());
+        }
+        let command = self.agent_command_for_input(&tab.input)?;
+        let rest = tab.input.trim_start().strip_prefix('/')?;
+        let name = rest.split_whitespace().next()?;
+        let after_name = rest.get(name.len()..)?;
+        (after_name.chars().all(char::is_whitespace) && !after_name.is_empty())
+            .then_some(command.input_hint.as_deref())
+            .flatten()
+            .filter(|hint| !hint.is_empty())
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
@@ -4725,6 +4813,21 @@ impl App {
                     self.handle_slash_command(parsed);
                     return true;
                 }
+                if let Some(crate::ui::CommandCandidate::Agent(command)) =
+                    self.selected_slash_command_candidate()
+                {
+                    let needs_input = command.input_hint.is_some();
+                    let input = if needs_input {
+                        format!("/{} ", command.name)
+                    } else {
+                        format!("/{}", command.name)
+                    };
+                    let tab = self.current_tab_mut();
+                    tab.input = input;
+                    tab.cursor_pos = tab.input.len();
+                    tab.refresh_command_popup();
+                    return needs_input;
+                }
             }
 
             let spec = if self.transport_lost {
@@ -4774,6 +4877,12 @@ impl App {
                 true
             }
             ParseOutcome::Unknown(name) => {
+                if self
+                    .agent_command_for_input(&self.current_tab().input)
+                    .is_some()
+                {
+                    return false;
+                }
                 // Warn but fall through: the raw line (leading `/` intact) is
                 // still sent so the user doesn't lose what they typed.
                 let tab = self.current_tab_mut();
@@ -4879,8 +4988,9 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4895,6 +5005,7 @@ impl App {
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
+            self.session_commands.remove(&session_id);
         }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
@@ -4925,8 +5036,9 @@ impl App {
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -5087,6 +5199,7 @@ impl App {
         self.session_to_tab.clear();
         self.session_model_configs.clear();
         self.session_config_options.clear();
+        self.session_commands.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
@@ -5154,8 +5267,7 @@ impl App {
                 let offset = self.current_tab().rec_scroll.offset;
                 // `card_h` includes the inter-card gap, so subtracting it
                 // yields the rendered card's exclusive bottom row.
-                let rendered_bottom_exclusive =
-                    line_top.saturating_add(card_h.saturating_sub(1));
+                let rendered_bottom_exclusive = line_top.saturating_add(card_h.saturating_sub(1));
                 let viewport_bottom = offset.saturating_add(viewport_height);
                 if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
                     self.current_tab_mut().rec_scroll.set(line_top);
@@ -5255,6 +5367,7 @@ impl App {
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
             self.session_config_options.remove(session_id);
+            self.session_commands.remove(session_id);
         }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
@@ -5473,6 +5586,7 @@ impl App {
         if let Some(session_id) = removed_session_id {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
+            self.session_commands.remove(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for

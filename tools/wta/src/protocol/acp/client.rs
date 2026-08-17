@@ -78,6 +78,9 @@ pub struct PromptSubmission {
     /// inputs. Automatic summaries are untrusted diagnostic context, while
     /// text supplied to `/fix` is user intent.
     pub autofix_text_kind: Option<AutofixTextKind>,
+    /// An Agent-advertised slash command. ACP requires this text to reach
+    /// `session/prompt` verbatim, without planner templates or runtime context.
+    pub agent_command: bool,
     /// Images pasted into the input via Alt+V. Sent to the agent as ACP
     /// `ContentBlock::Image` blocks appended after the text block (only when
     /// the agent advertised `promptCapabilities.image`). Empty for the common
@@ -261,6 +264,12 @@ impl PromptSubmission {
         Self::new_with_kind(text, pane_context, Some(AutofixTextKind::FailureSummary))
     }
 
+    pub fn new_agent_command(text: String, pane_context: Option<PaneContext>) -> Self {
+        let mut prompt = Self::new_with_kind(text, pane_context, None);
+        prompt.agent_command = true;
+        prompt
+    }
+
     fn new_with_kind(
         text: String,
         pane_context: Option<PaneContext>,
@@ -273,12 +282,17 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             autofix_text_kind,
+            agent_command: false,
             images: Vec::new(),
         }
     }
 
     pub fn is_autofix(&self) -> bool {
         self.autofix_text_kind.is_some()
+    }
+
+    pub fn is_agent_command(&self) -> bool {
+        self.agent_command
     }
 
     /// Attach pasted images (Alt+V) to a human-entered prompt.
@@ -822,6 +836,9 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
         acp::schema::v1::SessionUpdate::ToolCall(_) => "tool_call",
         acp::schema::v1::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
         acp::schema::v1::SessionUpdate::Plan(_) => "plan",
+        acp::schema::v1::SessionUpdate::AvailableCommandsUpdate(_) => {
+            "available_commands_update"
+        }
         acp::schema::v1::SessionUpdate::UsageUpdate(_) => "usage_update",
         _ => "other",
     }
@@ -1502,6 +1519,14 @@ impl WtaClient {
                 let _ = self.state.event_tx.send(AppEvent::UsageReported {
                     session_id: sid,
                     snapshot,
+                });
+            }
+            acp::schema::v1::SessionUpdate::AvailableCommandsUpdate(update) => {
+                let commands =
+                    crate::protocol::acp::session_commands::normalize(&update.available_commands);
+                let _ = self.state.event_tx.send(AppEvent::SessionCommandsUpdated {
+                    session_id: sid,
+                    commands,
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
@@ -4176,9 +4201,13 @@ async fn dispatch_prompt_body(
     } else {
         TemplateKind::Planner
     };
-    let include_template = template_memo
-        .should_ship(&prompt_session_id_str, kind)
-        .await;
+    let include_template = if prompt.is_agent_command() {
+        false
+    } else {
+        template_memo
+            .should_ship(&prompt_session_id_str, kind)
+            .await
+    };
 
     prompt_timing_task.activate(
         &prompt_session_id_str,
@@ -4186,17 +4215,23 @@ async fn dispatch_prompt_body(
         &prompt.text,
         prompt.submitted_at_unix_s,
     );
-    let (text, prompt_source, prompt_name, resolved_target_pane) = build_prompt_text(
-        prompt.id,
-        prompt.submitted_at_unix_s,
-        &prompt.text,
-        prompt.autofix_text_kind,
-        include_template,
-        &shell_mgr_task,
-        wt_connected,
-        prompt.pane_context.as_ref(),
-    )
-    .await;
+    let (text, prompt_source, resolved_target_pane) = if prompt.is_agent_command() {
+        (prompt.text.clone(), "agent_command".to_string(), None)
+    } else {
+        let (text, source, name, target) = build_prompt_text(
+            prompt.id,
+            prompt.submitted_at_unix_s,
+            &prompt.text,
+            prompt.autofix_text_kind,
+            include_template,
+            &shell_mgr_task,
+            wt_connected,
+            prompt.pane_context.as_ref(),
+        )
+        .await;
+        let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
+        (text, source, target)
+    };
     if proposal_commands_supported {
         match proposal_channels.issue(
             prompt_session_id_str.clone(),
@@ -4224,7 +4259,6 @@ async fn dispatch_prompt_body(
             pane_id,
         });
     }
-    let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name: prompt_name });
     prompt_timing_task.mark_context_ready(&prompt_session_id_str, text.len());
     acp_log_built_prompt(
         &prompt.text,
@@ -4232,13 +4266,23 @@ async fn dispatch_prompt_body(
         &prompt_source,
         &text,
     );
-    log_turn_trace(
-        prompt.id,
-        &prompt_session_id_str,
-        kind,
-        include_template,
-        &text,
-    );
+    if prompt.is_agent_command() {
+        tracing::info!(
+            target: "acp",
+            prompt_id = prompt.id,
+            session_id = %prompt_session_id_str,
+            prompt_len = text.len(),
+            "sending Agent command verbatim"
+        );
+    } else {
+        log_turn_trace(
+            prompt.id,
+            &prompt_session_id_str,
+            kind,
+            include_template,
+            &text,
+        );
+    }
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
 
     // Telemetry: prompt dispatched over ACP. WTA emits `AgentPromptSent`
@@ -4251,6 +4295,7 @@ async fn dispatch_prompt_body(
         prompt.is_autofix(),
         match kind {
             TemplateKind::Autofix => "Autofix",
+            TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
             TemplateKind::Planner => "Planner",
         },
     );
