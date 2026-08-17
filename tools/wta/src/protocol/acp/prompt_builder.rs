@@ -34,7 +34,7 @@ impl std::fmt::Display for TemplateKind {
 ///
 /// Cleanup is driven by the session lifecycle: `forget()` runs
 /// whenever a SessionId is dropped (via `/new` or `drop_session_rx`),
-/// keeping the map bounded.
+/// keeping the set bounded.
 #[derive(Clone, Default)]
 pub(crate) struct TemplateMemo(Arc<tokio::sync::Mutex<HashSet<String>>>);
 
