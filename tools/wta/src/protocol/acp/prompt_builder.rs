@@ -568,7 +568,7 @@ mod tests {
             "the autofix prompt must clarify materially ambiguous intent"
         );
         assert!(
-            built_prompt.contains("normal tools and capabilities"),
+            built_prompt.contains("normal Agent-owned tools"),
             "the autofix prompt must allow ordinary agent investigation"
         );
         assert!(
@@ -580,11 +580,15 @@ mod tests {
             "the autofix prompt must preserve the agent's normal permission controls"
         );
         assert!(
-            built_prompt.contains("corrected command that completes the user's intended outcome"),
+            built_prompt.contains("private shell is not the failing pane"),
+            "the autofix prompt must preserve the agent/pane execution boundary"
+        );
+        assert!(
+            built_prompt.contains("command must advance the user's intended outcome"),
             "the autofix prompt must propose the goal-oriented corrected command"
         );
         assert!(
-            built_prompt.contains("user can accept the suggestion before it runs"),
+            built_prompt.contains("user can accept the corrected command before it runs"),
             "the autofix prompt must require acceptance before running the corrected command"
         );
         assert!(
