@@ -5572,6 +5572,47 @@ fn permission_request_replaces_thinking_until_dismissed() {
     assert!(!app.current_tab().should_show_thinking());
 }
 
+#[test]
+fn surfaced_autofix_turn_accepts_follow_up_permission_request() {
+    let mut app = test_app();
+    let prompt = SubmittedPrompt {
+        id: 1,
+        text: "autofix".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: Some(AutofixContext { generation: 0 }),
+    };
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::ChatTurn,
+        end_pending: false,
+    };
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+
+    app.handle_event(AppEvent::PermissionRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        tool_call_id: "follow-up-tool".into(),
+        description: "Run the next diagnostic".into(),
+        title: "Run the next diagnostic".into(),
+        kind_label: Some("$".into()),
+        target: Some("winget search PowerToys".into()),
+        target_is_command: true,
+        options: vec![PermOption {
+            id: "allow-once".into(),
+            name: "Allow once".into(),
+            kind: "AllowOnce".into(),
+        }],
+        responder,
+    });
+
+    assert_eq!(app.current_tab().permission.len(), 1);
+    assert_eq!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "WTA must wait for the user instead of implicitly cancelling"
+    );
+}
+
 fn begin_user_input_test(app: &mut App) {
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Submitted(SubmittedPrompt {
         id: 1,
@@ -5580,6 +5621,31 @@ fn begin_user_input_test(app: &mut App) {
         context: TurnContext::default(),
         autofix: None,
     });
+}
+
+#[test]
+fn session_load_preserves_user_input_request() {
+    let mut app = test_app();
+    app.current_tab_mut().loading_session = true;
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "resume-clarification".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which goal should I resume?".into(),
+            choices: vec!["Build".into(), "Test".into()],
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert_eq!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "session load must not implicitly cancel a live clarification request"
+    );
 }
 
 #[test]

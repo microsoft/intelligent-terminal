@@ -1046,10 +1046,10 @@ impl App {
                 responder,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() && !tab.loading_session {
-                    // Auto-deny if the user cancelled before the agent
-                    // got around to asking. Dropping the responder yields
-                    // a Cancelled outcome on the agent side.
+                if !tab.turn.can_service_agent_request() && !tab.loading_session {
+                    // Auto-deny only when no turn remains to own the request.
+                    // A surfaced turn may have released its UI busy gate while
+                    // the Agent continues a multi-step flow.
                     return;
                 }
                 // FIFO push — never overwrite an in-flight request. The
@@ -1075,7 +1075,7 @@ impl App {
                 responder,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.is_in_flight() {
+                if !tab.turn.can_service_agent_request() && !tab.loading_session {
                     return;
                 }
                 tab.user_input.push_back(UserInputState {
