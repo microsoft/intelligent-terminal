@@ -32,7 +32,7 @@ namespace Microsoft::Terminal::CustomModels
             return false;
         }
 
-        PCREDENTIALW credential{};
+        CREDENTIALW* credential{};
         const auto target = CredentialTarget(credentialId);
         if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, &credential))
         {
