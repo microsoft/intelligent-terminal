@@ -12,6 +12,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/CustomModelCredential.h"
 #include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::Foundation;
@@ -26,6 +27,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _provider{ std::move(provider) },
         _remove{ std::move(remove) }
     {
+        if (_provider.ApiKeyRequired() &&
+            ::Microsoft::Terminal::CustomModels::ResolvedLocation(_provider) == L"cloud")
+        {
+            try
+            {
+                _isApiKeyMissing = !::Microsoft::Terminal::CustomModels::HasApiKey(_provider.ApiKeyCredential());
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        }
     }
 
     winrt::hstring CustomModelProviderEntry::ModelsDisplayText() const
@@ -43,6 +56,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             const auto hr = wil::ResultFromCaughtException();
             LOG_HR(hr);
+            const auto target = ::Microsoft::Terminal::CustomModels::CredentialTarget(_provider.ApiKeyCredential());
+            _removalErrorMessage = RS_fmt(L"AIAgents_CustomProviderCredentialRemovalFailed", target);
+            _NotifyChanges(L"RemovalErrorMessage", L"HasRemovalError");
+            return;
         }
         _remove();
     }
@@ -192,7 +209,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             });
         // A Settings page must not depend on an agent pane having connected
         // first. Always refresh the native catalog in a clean environment so
-        // BYOM entries supplement cloud models instead of replacing them.
+        // BYOK entries supplement cloud models instead of replacing them.
         _TriggerAcpModelProbe();
 
         // Delegate agents — same GPO-filtered + install-filter rule.
@@ -306,7 +323,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.CustomModelProviders(providers);
         _originalCustomModelProviders = std::move(mergedProviders);
 
-        // The clean cloud catalog is independent of configured BYOM providers.
+        // The clean cloud catalog is independent of configured BYOK providers.
         // Rebuild the combined list without launching another agent process.
         _RebuildAcpModelListFromCache();
         _NotifyChanges(L"CustomModelProviders");
@@ -354,6 +371,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::NewCustomModelProviderApiKey(const winrt::hstring& value)
+    {
+        _newCustomModelProviderApiKey = value;
+    }
+
     void AIAgentsViewModel::IsCustomModelProvidersExpanded(const bool value)
     {
         if (_isCustomModelProvidersExpanded != value)
@@ -398,6 +420,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         const auto baseUrl = _TrimWhitespace(_newCustomModelProviderBaseUrl);
         const auto modelId = _TrimWhitespace(_newCustomModelId);
+        const auto apiKey = _TrimWhitespace(_newCustomModelProviderApiKey);
         if (baseUrl.empty() || modelId.empty())
         {
             return;
@@ -418,6 +441,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
 
+        winrt::hstring credentialId;
+        if (!apiKey.empty())
+        {
+            credentialId = ::Microsoft::Terminal::CustomModels::StoreApiKey(
+                {},
+                apiKey);
+            provider.ApiKeyCredential(credentialId);
+            provider.ApiKeyRequired(true);
+        }
+        auto removeUncommittedCredential = wil::scope_exit([&]() noexcept {
+            if (!credentialId.empty())
+            {
+                LOG_IF_FAILED(wil::ResultFromException([&]() {
+                    ::Microsoft::Terminal::CustomModels::RemoveApiKey(credentialId);
+                }));
+            }
+        });
+
         auto weakThis = get_weak();
         _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
             provider,
@@ -428,6 +469,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }));
         _CommitCustomModelProviders();
+        removeUncommittedCredential.release();
         CancelCustomModelProvider();
     }
 
@@ -436,10 +478,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _isAddingCustomModelProvider = false;
         _newCustomModelProviderBaseUrl.clear();
         _newCustomModelId.clear();
+        _newCustomModelProviderApiKey.clear();
         _NotifyChanges(
             L"IsAddingCustomModelProvider",
             L"NewCustomModelProviderBaseUrl",
             L"NewCustomModelId",
+            L"NewCustomModelProviderApiKey",
             L"CanSaveCustomModelProvider");
     }
 

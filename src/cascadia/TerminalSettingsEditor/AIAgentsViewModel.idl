@@ -30,6 +30,9 @@ namespace Microsoft.Terminal.Settings.Editor
         String Id { get; };
         String BaseUrl { get; };
         String ModelsDisplayText { get; };
+        Boolean IsApiKeyMissing { get; };
+        String RemovalErrorMessage { get; };
+        Boolean HasRemovalError { get; };
         void Remove();
     }
 
@@ -84,6 +87,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsAddingCustomModelProvider { get; };
         String NewCustomModelProviderBaseUrl;
         String NewCustomModelId;
+        String NewCustomModelProviderApiKey;
         Boolean CanSaveCustomModelProvider { get; };
         String CustomModelProviderUnsupportedMessage { get; };
         void AddCustomModelProvider();

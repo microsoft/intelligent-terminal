@@ -2921,8 +2921,8 @@
     <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM (bring your own model) providers</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>BYOK (bring your own key) providers</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Use an OpenAI-compatible Chat Completions API endpoint. Supports GitHub Copilot and OpenCode.</value>
@@ -2931,6 +2931,14 @@
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} does not support custom OpenAI-compatible Chat Completions providers. Saved providers remain available when you switch to GitHub Copilot or OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>API key missing. Remove and add this provider again.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>Couldn't remove the saved API key from Windows Credential Manager. Remove the Generic Credential named "{0}" manually, then try again.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Remove</value>
@@ -2943,6 +2951,10 @@
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>Model ID</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>API key (optional)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Add New</value>
@@ -2957,8 +2969,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI-compatible</value>

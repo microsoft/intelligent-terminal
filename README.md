@@ -115,6 +115,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Setting | Options |
 |---------|---------|
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
+| Custom providers (BYOK) | Bring your own provider credentials and model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL, Model ID, and optional API key, then select it from `/model`. API keys are stored in Windows Credential Manager; keyless local endpoints such as Ollama remain supported. |
 | Pane placement | Top, Bottom (default), Left, Right |
 | Error detection | Allows Intelligent Terminal to automatically detect command failures |
 | Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
@@ -171,6 +172,16 @@ cannot start, the pane reports the failure without switching to another agent.
 and the interactive delegate action for that profile. Its host or WSL selection
 is also strict: if the selected agent is unavailable, delegation reports that
 error instead of falling back to another agent or execution environment.
+
+#### Custom Providers (BYOK)
+
+Run your agent against your own provider or a model on your machine. BYOK is supported through GitHub Copilot and OpenCode using an OpenAI-compatible Chat Completions endpoint. Under Agent settings, add a provider with a Base URL, Model ID, and optional API key, then pick it from the `/model` picker (configured models show as `modelId (BYOK)`). API keys are stored in Windows Credential Manager; a local Ollama model still works with no key:
+
+```text
+Base URL:  http://localhost:11434/v1
+Model ID:  <your local model>
+API key:   <optional>
+```
 
 ### Agent Management
 

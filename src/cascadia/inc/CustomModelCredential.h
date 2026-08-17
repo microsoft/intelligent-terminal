@@ -25,6 +25,35 @@ namespace Microsoft::Terminal::CustomModels
         return target;
     }
 
+    inline bool HasApiKey(const winrt::hstring& credentialId)
+    {
+        if (credentialId.empty())
+        {
+            return false;
+        }
+
+        CREDENTIALW* credential{};
+        const auto target = CredentialTarget(credentialId);
+        if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, &credential))
+        {
+            const auto error = GetLastError();
+            if (error == ERROR_NOT_FOUND)
+            {
+                return false;
+            }
+            THROW_WIN32(error);
+        }
+
+        const auto clearAndFreeCredential = wil::scope_exit([&]() noexcept {
+            if (credential->CredentialBlob && credential->CredentialBlobSize)
+            {
+                SecureZeroMemory(credential->CredentialBlob, credential->CredentialBlobSize);
+            }
+            CredFree(credential);
+        });
+        return credential->CredentialBlob && credential->CredentialBlobSize > 0;
+    }
+
     inline void RemoveApiKey(const winrt::hstring& credentialId);
 
     inline winrt::hstring StoreApiKey(const winrt::hstring& previousCredentialId, const winrt::hstring& apiKey)

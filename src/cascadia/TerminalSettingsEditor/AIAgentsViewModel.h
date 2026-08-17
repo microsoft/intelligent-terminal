@@ -66,6 +66,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring Id() const { return _provider.Id(); }
         winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
         winrt::hstring ModelsDisplayText() const;
+        bool IsApiKeyMissing() const noexcept { return _isApiKeyMissing; }
+        winrt::hstring RemovalErrorMessage() const { return _removalErrorMessage; }
+        bool HasRemovalError() const noexcept { return !_removalErrorMessage.empty(); }
         void Remove();
 
         Model::CustomModelProvider Provider() const { return _provider; }
@@ -73,6 +76,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     private:
         Model::CustomModelProvider _provider;
         std::function<void()> _remove;
+        bool _isApiKeyMissing{ false };
+        winrt::hstring _removalErrorMessage;
     };
 
     struct AIAgentsViewModel : AIAgentsViewModelT<AIAgentsViewModel>, ViewModelHelper<AIAgentsViewModel>
@@ -133,6 +138,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void NewCustomModelProviderBaseUrl(const winrt::hstring& value);
         winrt::hstring NewCustomModelId() const { return _newCustomModelId; }
         void NewCustomModelId(const winrt::hstring& value);
+        winrt::hstring NewCustomModelProviderApiKey() const { return _newCustomModelProviderApiKey; }
+        void NewCustomModelProviderApiKey(const winrt::hstring& value);
         bool CanSaveCustomModelProvider() const { return _HasNonWhitespace(_newCustomModelProviderBaseUrl) && _HasNonWhitespace(_newCustomModelId); }
         winrt::hstring CustomModelProviderUnsupportedMessage();
         void AddCustomModelProvider();
@@ -234,6 +241,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _customDelegateCommand;
         winrt::hstring _newCustomModelProviderBaseUrl;
         winrt::hstring _newCustomModelId;
+        winrt::hstring _newCustomModelProviderApiKey;
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();

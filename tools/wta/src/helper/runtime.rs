@@ -739,10 +739,17 @@ async fn run_acp_app(
                             &e,
                             protocol::acp::failure::HandshakeStage::Initialize,
                         );
+                        let message = match &failure {
+                            protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                detail,
+                                ..
+                            } => detail.clone(),
+                            _ => format!("helper ACP transport failed: {e:#}"),
+                        };
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
                             failure,
-                            message: format!("helper ACP transport failed: {e:#}"),
+                            message,
                         });
                     }
                 });

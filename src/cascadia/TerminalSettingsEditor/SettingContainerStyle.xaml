@@ -438,7 +438,7 @@
                                    HorizontalAlignment="Stretch"
                                    HorizontalContentAlignment="Stretch"
                                    Content="{TemplateBinding Content}"
-                                   IsExpanded="{TemplateBinding StartExpanded}">
+                                   IsExpanded="{Binding StartExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                         <muxc:Expander.Header>
                             <Grid MinHeight="64">
                                 <Grid.ColumnDefinitions>
