@@ -2999,6 +2999,10 @@
     <value>{0} не подржава прилагођене добављаче Chat Completions компатибилне са OpenAI-јем. Сачувани добављачи остају доступни када пређете на GitHub Copilot или OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>Није могуће уклонити сачувани API кључ из Windows менаџера акредитива. Ручно уклоните генерички акредитив под називом „{0}“, а затим покушајте поново.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Уклони</value>
     <comment>Button that removes a custom model provider.</comment>

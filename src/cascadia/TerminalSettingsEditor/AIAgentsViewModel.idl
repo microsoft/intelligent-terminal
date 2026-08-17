@@ -30,6 +30,8 @@ namespace Microsoft.Terminal.Settings.Editor
         String Id { get; };
         String BaseUrl { get; };
         String ModelsDisplayText { get; };
+        String RemovalErrorMessage { get; };
+        Boolean HasRemovalError { get; };
         void Remove();
     }
 

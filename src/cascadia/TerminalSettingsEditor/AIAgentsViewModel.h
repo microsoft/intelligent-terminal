@@ -66,6 +66,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring Id() const { return _provider.Id(); }
         winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
         winrt::hstring ModelsDisplayText() const;
+        winrt::hstring RemovalErrorMessage() const { return _removalErrorMessage; }
+        bool HasRemovalError() const noexcept { return !_removalErrorMessage.empty(); }
         void Remove();
 
         Model::CustomModelProvider Provider() const { return _provider; }
@@ -73,6 +75,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     private:
         Model::CustomModelProvider _provider;
         std::function<void()> _remove;
+        winrt::hstring _removalErrorMessage;
     };
 
     struct AIAgentsViewModel : AIAgentsViewModelT<AIAgentsViewModel>, ViewModelHelper<AIAgentsViewModel>

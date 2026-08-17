@@ -110,8 +110,14 @@ impl Config {
         api_key: Option<SensitiveString>,
     ) -> Result<Option<SensitiveString>> {
         if self.api_key_required && api_key.is_none() {
+            if let Some(credential_id) = self.credential_id.as_deref() {
+                bail!(
+                    "The saved API key for the selected BYOK provider was not found in Windows Credential Manager. Remove and add the provider again in Settings. Expected Generic Credential: \"{}/{credential_id}\".",
+                    self.credential_resource
+                );
+            }
             bail!(
-                "API key credential for the selected BYOK provider is missing. Re-enter the API key in Settings, then restart the agent."
+                "The selected BYOK provider requires an API key, but no credential reference is saved. Remove and add the provider again in Settings."
             );
         }
         Ok(api_key)
@@ -559,7 +565,12 @@ mod tests {
             .resolve_api_key()
             .err()
             .expect("a configured cloud BYOK key must not silently become keyless");
-        assert!(error.to_string().contains("API key credential"));
+        let message = error.to_string();
+        assert!(message.contains("Windows Credential Manager"));
+        assert!(message.contains(
+            "IntelligentTerminal.TestMissingModelProviderCredential/{79000049-9af3-4ea8-b773-wta-missing-test}"
+        ));
+        assert!(message.contains("Remove and add the provider again in Settings"));
     }
 
     #[test]

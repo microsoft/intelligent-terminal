@@ -45,6 +45,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             const auto hr = wil::ResultFromCaughtException();
             LOG_HR(hr);
+            const auto target = ::Microsoft::Terminal::CustomModels::CredentialTarget(_provider.ApiKeyCredential());
+            _removalErrorMessage = RS_fmt(L"AIAgents_CustomProviderCredentialRemovalFailed", target);
+            _NotifyChanges(L"RemovalErrorMessage", L"HasRemovalError");
+            return;
         }
         _remove();
     }

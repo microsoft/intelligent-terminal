@@ -2932,6 +2932,10 @@
     <value>{0} does not support custom OpenAI-compatible Chat Completions providers. Saved providers remain available when you switch to GitHub Copilot or OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>Couldn't remove the saved API key from Windows Credential Manager. Remove the Generic Credential named "{0}" manually, then try again.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Remove</value>
     <comment>Button that removes a custom model provider.</comment>
