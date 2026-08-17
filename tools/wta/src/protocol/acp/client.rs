@@ -4176,9 +4176,7 @@ async fn dispatch_prompt_body(
     } else {
         TemplateKind::Planner
     };
-    let include_template = template_memo
-        .should_ship(&prompt_session_id_str, kind)
-        .await;
+    let include_base_prompt = template_memo.should_ship_base(&prompt_session_id_str).await;
 
     prompt_timing_task.activate(
         &prompt_session_id_str,
@@ -4191,7 +4189,7 @@ async fn dispatch_prompt_body(
         prompt.submitted_at_unix_s,
         &prompt.text,
         prompt.autofix_text_kind,
-        include_template,
+        include_base_prompt,
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
@@ -4236,7 +4234,7 @@ async fn dispatch_prompt_body(
         prompt.id,
         &prompt_session_id_str,
         kind,
-        include_template,
+        include_base_prompt,
         &text,
     );
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);

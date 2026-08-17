@@ -4908,7 +4908,7 @@ impl App {
     /// `/fix [hint]` — run the auto-fix prompt on demand against the active
     /// terminal pane. Reuses the error-triggered autofix pipeline
     /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
-    /// template plus the working pane's recent output, and any `hint` typed
+    /// instruction overlay plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):

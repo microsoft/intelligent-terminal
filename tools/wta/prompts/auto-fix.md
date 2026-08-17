@@ -1,4 +1,4 @@
-# Fixing a Failed Terminal Command
+# Auto-Fix Instructions
 
 Diagnose a failed command in its pane. Propose the smallest safe correction when clear; otherwise explain.
 
