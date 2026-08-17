@@ -407,6 +407,8 @@ DWORD Renderer::_timerToMillis(TimerRepr t) noexcept
 
         _scheduleRenditionBlink();
 
+        _hyperlinkUnderlineDecisions.clear();
+
         // Add the previous cursor / composition to the dirty rect.
         _invalidateCurrentCursor();
         _invalidateOldComposition();
@@ -1480,11 +1482,26 @@ void Renderer::_PaintBufferOutputGridLineHelper(_In_ IRenderEngine* const pEngin
     }
 }
 
-bool Renderer::_shouldSuppressHyperlinkUnderline(const TextAttribute& textAttribute) const noexcept
+bool Renderer::_shouldSuppressHyperlinkUnderline(const TextAttribute& textAttribute) noexcept
 try
 {
-    return textAttribute.IsHyperlink() &&
-           !ShouldUnderlineHyperlink(_pData->GetHyperlinkUri(textAttribute.GetHyperlinkId()));
+    if (!textAttribute.IsHyperlink())
+    {
+        return false;
+    }
+
+    const auto id = textAttribute.GetHyperlinkId();
+    for (const auto& [cachedId, suppress] : _hyperlinkUnderlineDecisions)
+    {
+        if (cachedId == id)
+        {
+            return suppress;
+        }
+    }
+
+    const auto suppress = !ShouldUnderlineHyperlink(_pData->GetHyperlinkUri(id));
+    _hyperlinkUnderlineDecisions.emplace_back(id, suppress);
+    return suppress;
 }
 CATCH_LOG_RETURN_FALSE()
 

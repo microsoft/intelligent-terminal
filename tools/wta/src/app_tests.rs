@@ -7715,15 +7715,15 @@ fn clicking_input_dialog_restores_input_navigation_after_mouse_turn_selection() 
 }
 
 #[test]
-fn completed_turn_user_input_multiclick_preserves_turn_state_and_text_selection() {
+fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     for click_count in [2, 3] {
         let mut app = test_app();
         app.state = ConnectionState::Connected;
         app.current_tab_mut().completed_turns.push(CompletedTurn {
-            prompt: "MULTICLICK_FIRST\nMULTICLICK_PROMPT_WORD".into(),
-            details: vec![ChatMessage::Agent("MULTICLICK_DETAIL".into())],
+            prompt: "MULTI_CLICK_FIRST\nMULTI_CLICK_PROMPT_WORD".into(),
+            details: vec![ChatMessage::Agent("MULTI_CLICK_DETAIL".into())],
             expanded: true,
             trailing_marker: None,
         });
@@ -7732,10 +7732,10 @@ fn completed_turn_user_input_multiclick_preserves_turn_state_and_text_selection(
             .lines()
             .enumerate()
             .find_map(|(row, line)| {
-                line.find("MULTICLICK_PROMPT_WORD")
+                line.find("MULTI_CLICK_PROMPT_WORD")
                     .map(|column| (row as u16, column as u16 + 2))
             })
-            .expect("multiclick prompt must be visible");
+            .expect("multi-click prompt must be visible");
 
         for click_index in 0..click_count {
             app.handle_event(AppEvent::Mouse(MouseEvent {
@@ -7776,7 +7776,7 @@ fn completed_turn_user_input_multiclick_preserves_turn_state_and_text_selection(
             .text_selection
             .selected_text()
             .expect("double/triple click must preserve text selection");
-        assert!(selected_text.contains("MULTICLICK_PROMPT_WORD"));
+        assert!(selected_text.contains("MULTI_CLICK_PROMPT_WORD"));
     }
 }
 
@@ -8124,6 +8124,54 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
         assert!(after_scroll.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
         assert!(hit.row < 10);
     }
+}
+
+#[test]
+fn completed_turn_prompt_hits_survive_a_clipped_header_row() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: (0..8)
+            .map(|index| format!("CLIPPED_PROMPT_ROW_{index}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        details: vec![ChatMessage::Agent("CLIPPED_PROMPT_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let mut visible_target = None;
+    for offset in 0..12 {
+        app.current_tab_mut().chat_scroll.offset = offset;
+        let rendered = render_to_text(&mut app, 80, 8);
+        if !rendered.contains("CLIPPED_PROMPT_ROW_0") {
+            visible_target = (1..8).find_map(|index| {
+                let marker = format!("CLIPPED_PROMPT_ROW_{index}");
+                rendered
+                    .lines()
+                    .position(|line| line.contains(&marker))
+                    .map(|row| (row as u16, marker))
+            });
+            if visible_target.is_some() {
+                break;
+            }
+        }
+    }
+
+    let (row, marker) =
+        visible_target.expect("a continuation row must remain visible after the header is clipped");
+    assert!(
+        app.completed_turn_hits.iter().any(|hit| {
+            hit.kind == CompletedTurnHitKind::UserInput && hit.row == row && hit.turn_index == 0
+        }),
+        "visible continuation row {marker:?} must retain its click target",
+    );
+    assert!(
+        app.completed_turn_action_links
+            .iter()
+            .any(|link| link.row == row),
+        "visible continuation row {marker:?} must retain its hand-cursor metadata",
+    );
 }
 
 #[test]

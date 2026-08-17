@@ -474,24 +474,21 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let buffer = frame.buffer_mut();
     for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
-        let Some(header_row) = header_from_top.checked_sub(scroll) else {
-            continue;
-        };
-        if header_row >= visible_height {
-            continue;
-        }
-        let row = inner_area.y.saturating_add(header_row as u16);
-        let symbol = if expanded { "▼" } else { "▶" };
-        if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-            .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
         {
-            completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
-                start_column: column,
-                end_column: column.saturating_add(1),
-                row,
-                turn_index,
-                kind: crate::app::CompletedTurnHitKind::Triangle,
-            });
+            let row = inner_area.y.saturating_add(header_row as u16);
+            let symbol = if expanded { "▼" } else { "▶" };
+            if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
+                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+            {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column: column,
+                    end_column: column.saturating_add(1),
+                    row,
+                    turn_index,
+                    kind: crate::app::CompletedTurnHitKind::Triangle,
+                });
+            }
         }
 
         for prompt_row in prompt_rows {

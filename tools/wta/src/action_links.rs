@@ -32,6 +32,14 @@ pub(crate) struct CompletedTurnActionLink {
     pub(crate) action: CompletedTurnAction,
 }
 
+impl CompletedTurnActionLink {
+    fn has_same_geometry(self, other: Self) -> bool {
+        self.start_column == other.start_column
+            && self.end_column == other.end_column
+            && self.row == other.row
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PositionedCell {
     column: u16,
@@ -59,6 +67,7 @@ pub(crate) fn build_overlay(
     ActionLinkOverlay {
         clear: previous
             .iter()
+            .filter(|region| !current.iter().any(|current| region.has_same_geometry(*current)))
             .flat_map(|region| cells_in_region(buffer, *region))
             .collect(),
         actions: current
@@ -175,6 +184,30 @@ mod tests {
 
         assert!(output.contains("plain"));
         assert!(!output.contains("wta-action://"));
+    }
+
+    #[test]
+    fn overlay_does_not_clear_persistent_region_geometry() {
+        let buffer = Buffer::empty(Rect::new(0, 0, 6, 1));
+        let previous = [CompletedTurnActionLink {
+            start_column: 0,
+            end_column: 6,
+            row: 0,
+            action: CompletedTurnAction::Collapse,
+        }];
+        let current = [CompletedTurnActionLink {
+            action: CompletedTurnAction::Expand,
+            ..previous[0]
+        }];
+
+        let overlay = build_overlay(&buffer, &previous, &current);
+
+        assert!(
+            overlay.clear.is_empty(),
+            "persistent geometry must not be drawn once to clear and again to attach its action",
+        );
+        assert_eq!(overlay.actions.len(), 1);
+        assert_eq!(overlay.actions[0].action, CompletedTurnAction::Expand);
     }
 
     #[test]
