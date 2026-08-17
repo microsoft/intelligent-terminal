@@ -16,7 +16,7 @@ pub enum CommandKind {
     New,
     /// Run the auto-fix prompt on demand.
     ///
-    /// Submits the dedicated `auto-fix.md` template plus the active
+    /// Submits the `auto-fix.md` instruction overlay plus the active
     /// terminal pane's recent output to the agent — the same pipeline the
     /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
     /// invoked manually. Any text after `/fix` is passed through as an

@@ -38,7 +38,8 @@ Edit:
 Reference copy:
 - `%LOCALAPPDATA%\IntelligentTerminal\prompts\terminal-agent.default.md`
 
-WTA reads `terminal-agent.md` on each normal prompt submission, but sends the
-full template only on an ACP session's first normal prompt. Later normal prompts
-send only current runtime context and user input. Auto-fix turns read
-`auto-fix.md` and do not cause the planner template to be resent.
+WTA sends `terminal-agent.md` once on an ACP session's first prompt, including
+when that prompt is auto-fix. Later prompts send only current runtime context,
+per-turn instructions, and user input. Auto-fix turns add `auto-fix.md` as an
+instruction overlay; they do not create a separate agent mode or cause the base
+prompt to be resent.

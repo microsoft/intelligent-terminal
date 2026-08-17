@@ -23,14 +23,13 @@ impl std::fmt::Display for TemplateKind {
     }
 }
 
-/// Per-session memo of whether the planner template has been installed.
+/// Per-session memo of whether the base terminal-agent prompt has been installed.
 ///
 /// Each ACP session has its own conversation history with the agent.
-/// We pay the ~10k-char template body once on the first turn of a
+/// We pay the ~10k-char base prompt body once on the first turn of a
 /// session; subsequent turns only carry runtime context + the user
-/// request, because the terminal template is already in history.
-/// Autofix uses a dedicated per-turn instruction template and does not
-/// invalidate the installed planner template.
+/// request. Autofix adds dedicated per-turn instructions and diagnostic
+/// context on top of the same base prompt.
 ///
 /// Cleanup is driven by the session lifecycle: `forget()` runs
 /// whenever a SessionId is dropped (via `/new` or `drop_session_rx`),
@@ -39,14 +38,9 @@ impl std::fmt::Display for TemplateKind {
 pub(crate) struct TemplateMemo(Arc<tokio::sync::Mutex<HashSet<String>>>);
 
 impl TemplateMemo {
-    /// Returns whether the caller must ship the selected template body.
-    /// Autofix always ships its bounded per-turn instructions. Planner ships
-    /// once per session, regardless of intervening autofix turns.
-    pub(crate) async fn should_ship(&self, session_id: &str, kind: TemplateKind) -> bool {
-        match kind {
-            TemplateKind::Autofix => true,
-            TemplateKind::Planner => self.0.lock().await.insert(session_id.to_string()),
-        }
+    /// Returns whether this turn must ship the base terminal-agent prompt.
+    pub(crate) async fn should_ship_base(&self, session_id: &str) -> bool {
+        self.0.lock().await.insert(session_id.to_string())
     }
 
     /// Drops the memo entry for a session that's going away.
@@ -74,7 +68,7 @@ pub(crate) async fn build_prompt_text(
     submitted_at_unix_s: f64,
     user_text: &str,
     autofix_text_kind: Option<AutofixTextKind>,
-    include_template: bool,
+    include_base_prompt: bool,
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
@@ -83,19 +77,17 @@ pub(crate) async fn build_prompt_text(
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
     let template_started = std::time::Instant::now();
-    let planner_template = if is_autofix {
-        prompt::load_autofix_prompt_template()
-    } else {
-        prompt::load_planner_prompt_template()
-    };
+    let planner_template = prompt::load_planner_prompt_template();
+    let autofix_template = is_autofix.then(prompt::load_autofix_prompt_template);
+    let displayed_template = autofix_template.as_ref().unwrap_or(&planner_template);
     prompt_timing_log(
         prompt_id,
         submitted_at_unix_s,
         "planner_template_ready",
         &format!(
             "name={:?} source={} dt={:.3}s",
-            planner_template.display_name,
-            planner_template.source_label,
+            displayed_template.display_name,
+            displayed_template.source_label,
             template_started.elapsed().as_secs_f64()
         ),
     );
@@ -147,29 +139,30 @@ pub(crate) async fn build_prompt_text(
     }
 
     let assemble_started = std::time::Instant::now();
-    // The first planner turn ships the full base template. Later planner turns
-    // rely on conversation history. Autofix always carries its bounded
-    // per-turn instructions but does not invalidate the planner template.
-    let prompt_body = if include_template {
+    let runtime_context = runtime_sections
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    // The base terminal-agent prompt is installed once per session, including
+    // when the first turn is autofix. Autofix is a per-turn instruction overlay
+    // with additional diagnostic context, not a separate agent mode.
+    let prompt_body = if let Some(autofix_template) = autofix_template.as_ref() {
+        let autofix_overlay =
+            prompt::merge_runtime_sections(&autofix_template.content, &runtime_sections);
+        if include_base_prompt {
+            let base_prompt = planner_template
+                .content
+                .replace(prompt::RUNTIME_CONTEXT_MARKER, "");
+            format!("{}\n\n{}", base_prompt.trim_end(), autofix_overlay)
+        } else {
+            autofix_overlay
+        }
+    } else if include_base_prompt {
         prompt::merge_runtime_sections(&planner_template.content, &runtime_sections)
     } else {
-        let runtime_context = runtime_sections
-            .iter()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        if is_autofix {
-            runtime_context
-        } else if runtime_context.is_empty() {
-            "## Turn Mode\nHandle this as a normal terminal-assistant request, not as an auto-fix turn."
-                .to_string()
-        } else {
-            format!(
-                "## Turn Mode\nHandle this as a normal terminal-assistant request, not as an auto-fix turn.\n\n{}",
-                runtime_context
-            )
-        }
+        runtime_context
     };
     let prompt = if let Some(autofix_text_kind) = autofix_text_kind {
         if user_text.trim().is_empty() {
@@ -191,17 +184,17 @@ pub(crate) async fn build_prompt_text(
         submitted_at_unix_s,
         "prompt_assembled",
         &format!(
-            "assemble_dt={:.3}s total_context_dt={:.3}s prompt_len={} include_template={}",
+            "assemble_dt={:.3}s total_context_dt={:.3}s prompt_len={} include_base_prompt={}",
             assemble_started.elapsed().as_secs_f64(),
             total_started.elapsed().as_secs_f64(),
             prompt.len(),
-            include_template
+            include_base_prompt
         ),
     );
     (
         prompt,
-        planner_template.source_label,
-        planner_template.display_name,
+        displayed_template.source_label.clone(),
+        displayed_template.display_name.clone(),
         resolved_context
             .resolved_fix_pane
             .or(resolved_context.resolved_planner_pane),
@@ -231,7 +224,7 @@ pub(crate) fn acp_log_built_prompt(
 ///
 /// Use this to verify rounds 2+ on a session are "clean" — i.e. the
 /// prompt body no longer carries the terminal template. Look for
-/// `include_template=false` paired with a `body_head` that does NOT
+/// `include_base_prompt=false` paired with a `body_head` that does NOT
 /// start with `# Working in Windows Terminal`.
 ///
 /// Snippets are short on purpose (newlines escaped) so each turn fits
@@ -240,7 +233,7 @@ pub(crate) fn log_turn_trace(
     prompt_id: u64,
     session_id: &str,
     kind: TemplateKind,
-    include_template: bool,
+    include_base_prompt: bool,
     prompt_text: &str,
 ) {
     const HEAD_LEN: usize = 200;
@@ -256,7 +249,7 @@ pub(crate) fn log_turn_trace(
         turn = prompt_id,
         session = %session_short(session_id),
         kind = %kind,
-        include_template,
+        include_base_prompt,
         prompt_len = prompt_text.len(),
         "turn_sent"
     );
@@ -339,14 +332,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn autofix_does_not_force_planner_template_to_ship_again() {
+    async fn base_prompt_ships_once_even_when_first_turn_is_autofix() {
         let memo = TemplateMemo::default();
 
-        assert!(memo.should_ship("session", TemplateKind::Planner).await);
-        assert!(memo.should_ship("session", TemplateKind::Autofix).await);
+        assert!(memo.should_ship_base("session").await);
         assert!(
-            !memo.should_ship("session", TemplateKind::Planner).await,
-            "autofix must not invalidate the planner template already in session history"
+            !memo.should_ship_base("session").await,
+            "the first turn must install the base prompt regardless of turn kind"
         );
     }
 
@@ -413,7 +405,7 @@ mod tests {
         }))
     }
 
-    /// A planner turn with `include_template=true` ships the terminal template,
+    /// A planner turn with `include_base_prompt=true` ships the terminal prompt,
     /// the delegate-agents section, and appends the user request.
     #[tokio::test]
     async fn build_prompt_text_planner_includes_template_and_user_request() {
@@ -520,10 +512,10 @@ mod tests {
         assert_eq!(target_pane.as_deref(), Some("work-pane"));
     }
 
-    /// An autofix turn loads the *autofix* persona (not the planner), appends a
-    /// non-empty hint as a User Request, and omits planner-only sections.
+    /// A first-turn autofix installs the base terminal-agent prompt, adds the
+    /// autofix instruction overlay, and appends a non-empty hint.
     #[tokio::test]
-    async fn build_prompt_text_autofix_appends_hint_and_omits_planner_sections() {
+    async fn build_prompt_text_first_autofix_includes_base_and_overlay() {
         let mgr = ShellManager::new();
         let planner = prompt::load_planner_prompt_template();
         let autofix = prompt::load_autofix_prompt_template();
@@ -539,14 +531,16 @@ mod tests {
         )
         .await;
         assert_eq!(display_name, autofix.display_name);
-        assert_ne!(
-            display_name, planner.display_name,
-            "autofix must not reuse the terminal prompt"
+        assert_ne!(display_name, planner.display_name);
+        assert!(
+            built_prompt.contains("You assist from within Windows Terminal"),
+            "first-turn autofix must install the base terminal-agent prompt"
         );
         assert!(
-            !built_prompt.contains("### Supported Delegate Agents"),
-            "autofix prompt is not the planner prompt"
+            built_prompt.contains("Auto-Fix Instructions"),
+            "autofix must add its per-turn instruction overlay"
         );
+        assert!(!built_prompt.contains(prompt::RUNTIME_CONTEXT_MARKER));
         let user_request = format!("## User Request\n{}", "fix the build");
         assert!(
             built_prompt.contains(&user_request),
@@ -628,7 +622,7 @@ mod tests {
         ));
     }
 
-    /// With `include_template=false` the (large) persona body is dropped — only
+    /// With `include_base_prompt=false` the (large) base body is dropped — only
     /// runtime sections and the user request remain. This is the per-session
     /// "template already in history" optimization.
     #[tokio::test]
@@ -643,13 +637,31 @@ mod tests {
             build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None).await;
         assert!(
             !built_prompt.contains(planner.content.trim()),
-            "include_template=false must omit the template body"
+            "include_base_prompt=false must omit the base prompt body"
         );
-        assert!(built_prompt.contains(
-            "Handle this as a normal terminal-assistant request, not as an auto-fix turn."
-        ));
+        assert!(!built_prompt.contains("Turn Mode"));
         let user_request = format!("## User Request\n{}", "hi");
         assert!(built_prompt.contains(&user_request));
+    }
+
+    #[tokio::test]
+    async fn later_autofix_adds_overlay_without_resending_base_prompt() {
+        let mgr = ShellManager::new();
+        let (built_prompt, _s, _d, _f) = build_prompt_text(
+            11,
+            0.0,
+            "fix it",
+            Some(AutofixTextKind::UserRequest),
+            false,
+            &mgr,
+            false,
+            None,
+        )
+        .await;
+
+        assert!(!built_prompt.contains("You assist from within Windows Terminal"));
+        assert!(built_prompt.contains("Auto-Fix Instructions"));
+        assert!(built_prompt.contains("## User Request\nfix it"));
     }
 
     /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
