@@ -590,27 +590,39 @@ fn bundle_hooks_thread_cli_source() {
 /// to. Copilot layers documented `powershell` / `bash` fields on top of it —
 /// those are checked by `copilot_shell_variants_match_their_own_shell`, since
 /// each is dispatched only by the shell it names.
-/// The shell a hook handler pins itself to, when it declares one. Claude
-/// documents a `shell` field accepting `"bash"` or `"powershell"`; a handler
-/// that sets it opts out of the cross-shell contract and is validated only
-/// against the shell it names.
-fn hook_pinned_shell(hook: &Value) -> Option<HookShell> {
-    match hook.get("shell").and_then(Value::as_str) {
-        Some("bash") => Some(HookShell::Bash),
-        Some("powershell") => Some(HookShell::PowerShell),
-        _ => None,
+/// Bundles whose `command` is deliberately written for one shell only, with the
+/// shell it targets. Claude declares this with a `shell` field; Gemini has no
+/// such field, so its single-shell guarantee is recorded here instead — see
+/// `gemini_hooks_exit_zero_when_the_bridge_is_missing` for the source evidence
+/// that Gemini only ever dispatches through PowerShell on Windows.
+const SINGLE_SHELL_BUNDLES: [(&str, HookShell); 1] = [("gemini", HookShell::PowerShell)];
+
+/// The shell a hook handler is written for, if it is not meant to be portable:
+/// either declared inline with Claude's `shell` field, or recorded for a bundle
+/// whose CLI offers no such field.
+fn hook_pinned_shell_for(cli: &str, hook: &Value) -> Option<HookShell> {
+    if let Some(shell) = hook.get("shell").and_then(Value::as_str) {
+        return match shell {
+            "bash" => Some(HookShell::Bash),
+            "powershell" => Some(HookShell::PowerShell),
+            _ => None,
+        };
     }
+    SINGLE_SHELL_BUNDLES
+        .iter()
+        .find(|(name, _)| *name == cli)
+        .map(|(_, shell)| *shell)
 }
 
 /// `command` strings that must work in *every* shell, i.e. those from handlers
-/// that did not pin a shell.
-fn shell_agnostic_commands(hooks_json: &str) -> Vec<String> {
+/// that are not written for one shell in particular.
+fn shell_agnostic_commands(cli: &str, hooks_json: &str) -> Vec<String> {
     let doc: Value = serde_json::from_str(hooks_json).unwrap();
     let mut commands = Vec::new();
     for matchers in doc["hooks"].as_object().unwrap().values() {
         for matcher in matchers.as_array().unwrap() {
             for hook in matcher["hooks"].as_array().unwrap() {
-                if hook_pinned_shell(hook).is_some() {
+                if hook_pinned_shell_for(cli, hook).is_some() {
                     continue;
                 }
                 if let Some(command) = hook.get("command").and_then(Value::as_str) {
@@ -622,15 +634,15 @@ fn shell_agnostic_commands(hooks_json: &str) -> Vec<String> {
     commands
 }
 
-/// `command` strings from handlers that pinned a shell, paired with it.
-fn pinned_shell_commands(hooks_json: &str) -> Vec<(HookShell, String)> {
+/// `command` strings written for one shell, paired with it.
+fn pinned_shell_commands(cli: &str, hooks_json: &str) -> Vec<(HookShell, String)> {
     let doc: Value = serde_json::from_str(hooks_json).unwrap();
     let mut pinned = Vec::new();
     for matchers in doc["hooks"].as_object().unwrap().values() {
         for matcher in matchers.as_array().unwrap() {
             for hook in matcher["hooks"].as_array().unwrap() {
                 if let (Some(shell), Some(command)) = (
-                    hook_pinned_shell(hook),
+                    hook_pinned_shell_for(cli, hook),
                     hook.get("command").and_then(Value::as_str),
                 ) {
                     pinned.push((shell, command.to_string()));
@@ -649,7 +661,7 @@ fn hook_commands_are_shell_agnostic() {
         ("gemini", GEMINI_HOOKS_JSON),
         ("claude", CLAUDE_HOOKS_JSON),
     ] {
-        for command in shell_agnostic_commands(hooks) {
+        for command in shell_agnostic_commands(cli, hooks) {
             let expected = format!("wtcli.exe agent-hook --cli-source {cli} --event ");
             assert!(
                 command.starts_with(&expected),
@@ -762,7 +774,7 @@ fn bundled_hook_commands_run_in_every_shell() {
         ("gemini", GEMINI_HOOKS_JSON),
         ("claude", CLAUDE_HOOKS_JSON),
     ] {
-        for command in shell_agnostic_commands(hooks) {
+        for command in shell_agnostic_commands(cli, hooks) {
             for shell in HOOK_SHELLS {
                 let Some(out) = run_hook_command(shell, &command) else {
                     continue;
@@ -785,7 +797,7 @@ fn bundled_hook_commands_run_in_every_shell() {
         // they get the same "reaches wtcli, stays silent" check there. Handlers
         // that pin themselves with a `shell` field are checked the same way.
         let mut per_shell = hook_shell_variants(hooks);
-        per_shell.extend(pinned_shell_commands(hooks));
+        per_shell.extend(pinned_shell_commands(cli, hooks));
         for (shell, command) in per_shell {
             let Some(out) = run_hook_command(shell, &command) else {
                 continue;
@@ -826,9 +838,48 @@ fn bundled_hook_commands_run_in_every_shell() {
 /// Pinning matters. Claude defaults to bash but falls back to PowerShell when
 /// Git Bash is absent, and a guard written for the wrong shell is noisy even on
 /// the happy path — so the guard and the `shell` field have to agree.
+/// Gemini has neither Copilot's `powershell` / `bash` pair nor Claude's `shell`
+/// field — its `CommandHookConfig` carries only `command`. Writing
+/// PowerShell-specific syntax there is safe anyway because Gemini's
+/// `getShellConfiguration()` has no non-PowerShell branch on Windows: it tries
+/// a PowerShell `ComSpec`, then `pwsh.exe`, then falls back to
+/// `powershell.exe`, and all three return `shell: "powershell"`.
+///
+/// That single-shell guarantee is what this test pins. If Gemini ever grows a
+/// `cmd.exe` or bash path, `try {` stops parsing and the hook breaks even when
+/// the bridge is present — so the guard is asserted to be PowerShell-shaped and
+/// exercised under PowerShell with the bridge missing.
+#[test]
+fn gemini_hooks_exit_zero_when_the_bridge_is_missing() {
+    let commands = hook_command_strings(GEMINI_HOOKS_JSON);
+    for command in &commands {
+        assert!(
+            command.starts_with("try { wtcli.exe agent-hook ") && command.ends_with("} catch { }; exit 0"),
+            "gemini hook must wrap the bridge in a PowerShell guard: {command}"
+        );
+    }
+    for command in commands {
+        let uninstalled = command.replace("wtcli.exe", MISSING_BRIDGE);
+        let Some(out) = run_hook_command(HookShell::PowerShell, &uninstalled) else {
+            continue;
+        };
+        assert!(
+            out.status.success(),
+            "gemini hook must exit 0 with no bridge installed: {uninstalled}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.stdout.is_empty() && out.stderr.is_empty(),
+            "gemini hook must stay silent with no bridge installed: {uninstalled}\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 #[test]
 fn claude_hooks_exit_zero_when_the_bridge_is_missing() {
-    let pinned = pinned_shell_commands(CLAUDE_HOOKS_JSON);
+    let pinned = pinned_shell_commands("claude", CLAUDE_HOOKS_JSON);
     assert!(
         !pinned.is_empty(),
         "claude must pin its hook shell so its guard cannot run under the wrong one"

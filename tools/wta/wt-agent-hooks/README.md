@@ -238,15 +238,25 @@ noisy *even when the bridge is present* — measured both ways — so the guard 
 the `shell` field have to agree. bash is also the cheaper of the two to start
 (~62 ms versus ~380 ms for PowerShell).
 
-Codex and Gemini keep the bare spelling. Neither is fail-closed on a generic
-non-zero exit — Gemini explicitly classifies exit 1 as
-`EXIT_CODE_NON_BLOCKING_ERROR` and surfaces the text as a `systemMessage`, and
-none of the Codex events subscribed here can block — and neither documents a
-per-shell field: Gemini's `CommandHookConfig` carries only `command`, and
-Codex's plugin hook schema could not be established from its docs, its source,
-or a local probe. Adding shell-specific syntax on a guess would trade a harmless
-error message for a broken happy path, which is the failure mode this bundle has
-already hit twice.
+Gemini has neither field pair, but it does not need one: its
+`getShellConfiguration()` has no non-PowerShell branch on Windows — a
+PowerShell `ComSpec`, then `pwsh.exe`, then a `powershell.exe` fallback, all
+three returning `shell: "powershell"`. That single-shell guarantee makes it safe
+to write the PowerShell guard straight into `command`:
+
+```json
+{
+  "type": "command",
+  "command": "try { wtcli.exe agent-hook --cli-source gemini --event <topic> } catch { }; exit 0"
+}
+```
+
+Codex keeps the bare spelling, and does not need a guard for a different
+reason: its marketplace entry points directly at the package directory, so an
+uninstall takes the plugin with it and the hook never loads. Its hook shell also
+could not be established from its docs, its source, or a local probe, so writing
+shell-specific syntax there would be a guess — and a wrong guess breaks the
+working path, which is how this bundle broke twice already.
 
 Current state with the bridge missing:
 
@@ -254,9 +264,9 @@ Current state with the bridge missing:
 | --- | --- | --- |
 | Copilot | `powershell` / `bash` fields | exit 0, silent |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
+| Gemini | PowerShell guard in `command` | exit 0, silent |
 | OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |
-| Codex | none available | exit 1, `SessionStart hook (failed)` |
-| Gemini | none available | exit 1, error text shown as a `systemMessage` |
+| Codex | plugin is removed with the package | hook never loads |
 
 OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
 rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,
