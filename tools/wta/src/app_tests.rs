@@ -1138,15 +1138,18 @@ fn tab_renamed_noop_does_not_send_rename_session_request() {
     );
 
     app.tab_id = Some("AAAA".to_string());
+    app.owner_tab_id = Some("AAAA".to_string());
+    app.window_id = Some("1".to_string());
     app.tab_sessions
         .insert("AAAA".to_string(), TabSession::default());
 
     app.handle_event(AppEvent::TabRenamed {
         old_tab_id: "AAAA".to_string(),
         new_tab_id: "AAAA".to_string(),
-        new_window_id: None,
+        new_window_id: Some("2".to_string()),
     });
 
+    assert_eq!(app.window_id.as_deref(), Some("2"));
     assert!(
         rename_session_rx.try_recv().is_err(),
         "no-op rename must not send a RenameSessionRequest"

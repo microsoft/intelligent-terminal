@@ -404,8 +404,9 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::RichTabProviderPreferencesRoundtrip()
     {
         const auto settings = MakeSettings(
-            R"("richTabProviders": [{"id":"com.microsoft.intelligent-terminal.git-status"},{"id":"io.github.example.pr-status","enabled":false,"fields":["checks","pull-request"]},{"id":"future.provider","enabled":true,"fields":[]}])");
+            R"("richTabProviders": [{"id":"com.microsoft.intelligent-terminal.git-status"},{"id":"io.github.example.pr-status","enabled":false,"fields":["checks","pull-request"]},{"id":"future.provider","enabled":true,"fields":[]}],"richTabPrioritizeRecentlyUpdatedFields":true)");
         const auto& globals = settings->GlobalSettings();
+        VERIFY_IS_TRUE(globals.RichTabPrioritizeRecentlyUpdatedFields());
         const auto providers = globals.RichTabProviders();
         VERIFY_ARE_EQUAL(3u, providers.Size());
 
@@ -442,6 +443,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::string{ "checks" }, serializedProviders[1]["fields"][0].asString());
         VERIFY_IS_TRUE(serializedProviders[2]["fields"].isArray());
         VERIFY_ARE_EQUAL(Json::ArrayIndex{ 0 }, serializedProviders[2]["fields"].size());
+        VERIFY_IS_TRUE(serialized["richTabPrioritizeRecentlyUpdatedFields"].asBool());
     }
 
     void CustomAgentAndPolicyTests::CustomModelProviderContractNormalization()

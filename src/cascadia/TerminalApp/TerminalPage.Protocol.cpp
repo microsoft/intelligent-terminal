@@ -178,6 +178,7 @@ namespace winrt::TerminalApp::implementation
 
             Protocol::TabInfo info{};
             info.TabId = i;
+            info.StableId = tabImpl->StableId();
             info.Title = tab.Title();
             info.IsActive = focusedIdx.has_value() && (focusedIdx.value() == i);
             // Count terminal panes only (those with a SessionId).
@@ -194,6 +195,42 @@ namespace winrt::TerminalApp::implementation
         }
 
         co_return tabs;
+    }
+
+    IAsyncOperation<bool> TerminalPage::SetProtocolRichTabMetadata(
+        hstring tabId,
+        hstring text,
+        hstring tooltip,
+        hstring accessibilityText,
+        uint64_t ttlMilliseconds)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        if (const auto tab = _FindTabByStableId(tabId))
+        {
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation{
+                std::wstring{ text },
+                std::wstring{ tooltip },
+                std::wstring{ accessibilityText },
+            };
+            tab->SetRichTabMetadataOverride(
+                presentation,
+                std::chrono::milliseconds{ ttlMilliseconds });
+            co_return true;
+        }
+        co_return false;
+    }
+
+    IAsyncOperation<bool> TerminalPage::ClearProtocolRichTabMetadata(hstring tabId)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        if (const auto tab = _FindTabByStableId(tabId))
+        {
+            tab->ClearRichTabMetadataOverride();
+            co_return true;
+        }
+        co_return false;
     }
 
     IAsyncOperation<Windows::Foundation::Collections::IVector<Protocol::PaneInfo>> TerminalPage::GetProtocolPanes(uint32_t tabIdFilter)

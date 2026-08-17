@@ -22,6 +22,12 @@
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                    TextWrapping="Wrap" />
 
+        <local:SettingContainer x:Uid="RichTabs_PrioritizeRecentlyUpdatedFields"
+                                Margin="0,0,0,12">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PrioritizeRecentlyUpdatedFields, Mode=TwoWay}"
+                          Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+        </local:SettingContainer>
+
         <ItemsControl ItemsSource="{x:Bind ViewModel.Providers, Mode=OneWay}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="local:RichTabProviderViewModel">

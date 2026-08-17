@@ -587,6 +587,21 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _UpdateProviderMoveState();
     }
 
+    bool RichTabsViewModel::PrioritizeRecentlyUpdatedFields() const noexcept
+    {
+        return _globalSettings.RichTabPrioritizeRecentlyUpdatedFields();
+    }
+
+    void RichTabsViewModel::PrioritizeRecentlyUpdatedFields(const bool value)
+    {
+        if (_globalSettings.RichTabPrioritizeRecentlyUpdatedFields() != value)
+        {
+            _globalSettings.RichTabPrioritizeRecentlyUpdatedFields(value);
+            _NotifyChanges(L"PrioritizeRecentlyUpdatedFields");
+            PreferencesChanged.raise(*this, _globalSettings);
+        }
+    }
+
     void RichTabsViewModel::MoveProviderUp(const Editor::RichTabProviderViewModel& provider)
     {
         uint32_t index = 0;

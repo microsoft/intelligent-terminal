@@ -37,7 +37,8 @@ class WindowEmperor;
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
                                 Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>,
-                                ITerminalProtocol>
+                                ITerminalProtocol,
+                                IRichTabPublisher>
 {
     ~TerminalProtocolComServer();
 
@@ -61,6 +62,9 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
+
+    // ── IRichTabPublisher ──
+    STDMETHODIMP Invoke(BSTR requestJson, BSTR* resultJson) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

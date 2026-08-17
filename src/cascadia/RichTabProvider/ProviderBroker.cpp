@@ -9,6 +9,7 @@
 #include <winrt/base.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <thread>
 #include <unordered_set>
@@ -19,7 +20,25 @@ namespace Microsoft::Terminal::RichTab::Provider
     namespace
     {
         constexpr auto ProviderTimeout = std::chrono::seconds{ 5 };
+        constexpr auto PublishLeaseLifetime = std::chrono::seconds{ 10 };
         constexpr auto DetachedSessionRetention = std::chrono::seconds{ 30 };
+
+        std::optional<std::wstring> _EnvironmentValue(const wchar_t* name)
+        {
+            const auto required = GetEnvironmentVariableW(name, nullptr, 0);
+            if (required == 0)
+            {
+                return std::nullopt;
+            }
+            std::wstring value(required, L'\0');
+            const auto written = GetEnvironmentVariableW(name, value.data(), required);
+            if (written == 0 || written >= required)
+            {
+                return std::nullopt;
+            }
+            value.resize(written);
+            return value;
+        }
 
         bool _Handles(const Manifest& manifest, const ActivationEvent event)
         {
@@ -258,6 +277,115 @@ namespace Microsoft::Terminal::RichTab::Provider
         return _processEpoch;
     }
 
+    std::string ProviderBroker::_CreatePublishLeaseLocked(
+        const Registration& provider,
+        const Request& request,
+        const uint64_t generation)
+    {
+        constexpr char hex[] = "0123456789abcdef";
+        std::array<uint8_t, 32> bytes{};
+        for (;;)
+        {
+            const auto status = BCryptGenRandom(
+                nullptr,
+                bytes.data(),
+                static_cast<ULONG>(bytes.size()),
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+            if (status < 0)
+            {
+                return {};
+            }
+            std::string lease(bytes.size() * 2, '\0');
+            for (size_t i = 0; i < bytes.size(); ++i)
+            {
+                lease[i * 2] = hex[bytes[i] >> 4];
+                lease[i * 2 + 1] = hex[bytes[i] & 0x0f];
+            }
+            if (_publishLeases.emplace(
+                                   lease,
+                                   PublishLease{
+                                       provider,
+                                       request,
+                                       generation,
+                                       std::chrono::steady_clock::now() + PublishLeaseLifetime })
+                    .second)
+            {
+                return lease;
+            }
+        }
+    }
+
+    PublishResult ProviderBroker::Publish(
+        const std::string_view lease,
+        const std::string_view snapshotJson)
+    {
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto leaseEntry = _publishLeases.find(std::string{ lease });
+            if (leaseEntry == _publishLeases.end())
+            {
+                return { false, "publish lease is unknown or already consumed" };
+            }
+
+            auto binding = leaseEntry->second;
+            if (std::chrono::steady_clock::now() >= binding.expiresAt)
+            {
+                _publishLeases.erase(leaseEntry);
+                return { false, "publish lease has expired" };
+            }
+
+            const auto session = _sessions.find(binding.request.sessionId);
+            if (session == _sessions.end())
+            {
+                _publishLeases.erase(leaseEntry);
+                return { false, "publish session no longer exists" };
+            }
+            const auto providerState = session->second.providers.find(binding.provider.manifest.id);
+            if (providerState == session->second.providers.end() ||
+                !providerState->second.running ||
+                providerState->second.runningGeneration != binding.generation ||
+                providerState->second.generation != binding.generation ||
+                session->second.contextRevision != binding.request.contextRevision)
+            {
+                _publishLeases.erase(leaseEntry);
+                return { false, "publish lease is stale" };
+            }
+
+            _publishLeases.erase(leaseEntry);
+            const auto parsed = ParseSnapshot(
+                snapshotJson,
+                binding.provider.manifest,
+                binding.request.requestId);
+            if (!parsed)
+            {
+                return { false, parsed.errors.empty() ? "snapshot is invalid" : parsed.errors.front() };
+            }
+
+            UpdateFieldChangeSequences(
+                *parsed.value,
+                providerState->second.fieldBaseline,
+                providerState->second.fieldChangeSequences,
+                session->second.nextFieldChangeSequence);
+            providerState->second.snapshot = *parsed.value;
+            providerState->second.publishedGeneration = binding.generation;
+            ++session->second.updateSequence;
+            update = _UpdateFor(binding.request.sessionId, session->second);
+            callbacks.reserve(session->second.callbacks.size());
+            for (const auto& [_, callback] : session->second.callbacks)
+            {
+                callbacks.emplace_back(callback);
+            }
+        }
+
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
+        }
+        return { true, "snapshot committed" };
+    }
+
     uint64_t ProviderBroker::_RegistryStamp() const noexcept
     {
         const auto stamp = [&](const std::filesystem::path& path) {
@@ -418,6 +546,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                         provider.generation = _nextGeneration++;
                         provider.pending.reset();
                         provider.snapshot.reset();
+                        provider.fieldBaseline.reset();
+                        provider.fieldChangeSequences.clear();
                     }
                 }
 
@@ -524,7 +654,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
-    void ProviderBroker::ApplyPreferences(std::vector<ProviderPreference> preferences)
+    void ProviderBroker::ApplyPreferences(
+        std::vector<ProviderPreference> preferences,
+        const bool prioritizeRecentlyUpdatedFields)
     {
         preferences = _NormalizePreferences(std::move(preferences));
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
@@ -532,13 +664,15 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::unordered_set<std::string> refreshProviders;
         {
             std::lock_guard lock{ _mutex };
-            if (_preferences == preferences)
+            if (_preferences == preferences &&
+                _prioritizeRecentlyUpdatedFields == prioritizeRecentlyUpdatedFields)
             {
                 return;
             }
 
             const auto previous = _providers;
             _preferences = std::move(preferences);
+            _prioritizeRecentlyUpdatedFields = prioritizeRecentlyUpdatedFields;
             _providers = _EffectiveProvidersLocked();
             _UpdateCatalogEffectiveStateLocked();
             refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
@@ -552,6 +686,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                         provider.generation = _nextGeneration++;
                         provider.pending.reset();
                         provider.snapshot.reset();
+                        provider.fieldBaseline.reset();
+                        provider.fieldChangeSequences.clear();
                     }
                 }
 
@@ -684,7 +820,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 for (auto& [_, provider] : session.providers)
                 {
                     provider.snapshot.reset();
+                    provider.fieldBaseline.reset();
+                    provider.fieldChangeSequences.clear();
                 }
+                session.nextFieldChangeSequence = 0;
                 ++session.updateSequence;
             }
             session.callbacks.emplace(attachment, std::move(callback));
@@ -756,7 +895,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             for (auto& [_, provider] : session.providers)
             {
                 provider.snapshot.reset();
+                provider.fieldBaseline.reset();
+                provider.fieldChangeSequences.clear();
             }
+            session.nextFieldChangeSequence = 0;
             ++session.updateSequence;
             sessionId = session.context.sessionId;
             update = _UpdateFor(sessionId, session);
@@ -840,6 +982,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 Request request;
                 request.requestId =
                     std::to_string(_processEpoch) + "-" + std::to_string(_nextRequest++);
+                request.protocolVersion = (std::min)(CurrentProtocolVersion, provider.manifest.protocol.maximum);
                 request.providerId = provider.manifest.id;
                 request.processEpoch = _processEpoch;
                 request.sessionId = session.context.sessionId;
@@ -879,13 +1022,46 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::string> diagnostics;
         const auto serialized = SerializeRequest(request, provider.manifest);
         std::optional<Snapshot> snapshot;
+        std::optional<std::string> publishLease;
+        const auto publishProtocol = request.protocolVersion >= 2;
         if (!serialized)
         {
             diagnostics = serialized.errors;
         }
         else
         {
-            const auto command = _runner.Run(provider.manifest, *serialized.value, ProviderTimeout);
+            CommandRunner::Environment environment;
+            if (publishProtocol)
+            {
+                const auto clsid = _EnvironmentValue(L"WT_COM_CLSID");
+                const auto cli = _EnvironmentValue(L"WT_RICH_TAB_CLI");
+                if (!clsid || !cli)
+                {
+                    diagnostics.emplace_back("Rich Tab publish routing is unavailable");
+                }
+                else
+                {
+                    std::lock_guard lock{ _mutex };
+                    publishLease = _CreatePublishLeaseLocked(provider, request, generation);
+                    if (publishLease->empty())
+                    {
+                        publishLease.reset();
+                        diagnostics.emplace_back("Failed to create a secure Rich Tab publish lease");
+                    }
+                    else
+                    {
+                        environment = {
+                            { L"WT_COM_CLSID", *clsid },
+                            { L"WT_RICH_TAB_CLI", *cli },
+                            { L"WT_RICH_TAB_LEASE", std::wstring{ publishLease->begin(), publishLease->end() } },
+                        };
+                    }
+                }
+            }
+
+            const auto command = diagnostics.empty() ?
+                                     _runner.Run(provider.manifest, *serialized.value, ProviderTimeout, environment) :
+                                     CommandResult{};
             if (command.status != CommandResult::Status::Completed || command.exitCode != 0)
             {
                 diagnostics.emplace_back(
@@ -897,7 +1073,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                     diagnostics.emplace_back(command.standardError);
                 }
             }
-            else
+            else if (!publishProtocol)
             {
                 const auto parsed = ParseSnapshot(
                     command.standardOutput,
@@ -932,20 +1108,40 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return;
             }
             state->second.running = false;
+            if (publishLease)
+            {
+                _publishLeases.erase(*publishLease);
+            }
 
             if (state->second.generation == generation &&
                 session->second.contextRevision == request.contextRevision)
             {
-                if (snapshot)
+                if (publishProtocol && state->second.publishedGeneration == generation)
                 {
-                    state->second.snapshot = std::move(snapshot);
+                    // Publish already committed and notified callbacks.
                 }
-                ++session->second.updateSequence;
-                update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
-                callbacks.reserve(session->second.callbacks.size());
-                for (const auto& [_, callback] : session->second.callbacks)
+                else
                 {
-                    callbacks.emplace_back(callback);
+                    if (publishProtocol && diagnostics.empty())
+                    {
+                        diagnostics.emplace_back("Provider exited without publishing a Snapshot");
+                    }
+                    if (snapshot)
+                    {
+                        UpdateFieldChangeSequences(
+                            *snapshot,
+                            state->second.fieldBaseline,
+                            state->second.fieldChangeSequences,
+                            session->second.nextFieldChangeSequence);
+                        state->second.snapshot = std::move(snapshot);
+                    }
+                    ++session->second.updateSequence;
+                    update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
+                    callbacks.reserve(session->second.callbacks.size());
+                    for (const auto& [_, callback] : session->second.callbacks)
+                    {
+                        callbacks.emplace_back(callback);
+                    }
                 }
             }
 
@@ -991,18 +1187,28 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::string> diagnostics) const
     {
         std::unordered_map<std::string, Snapshot> snapshots;
+        FieldChangeSequences fieldChangeSequences;
         for (const auto& [id, provider] : state.providers)
         {
             if (provider.snapshot)
             {
                 snapshots.emplace(id, *provider.snapshot);
             }
+            if (!provider.fieldChangeSequences.empty())
+            {
+                fieldChangeSequences.emplace(id, provider.fieldChangeSequences);
+            }
         }
         return BrokerUpdate{
             sessionId,
             state.contextRevision,
             state.updateSequence,
-            ComposePresentation(_providers, snapshots, _preferences),
+            ComposePresentation(
+                _providers,
+                snapshots,
+                _preferences,
+                fieldChangeSequences,
+                _prioritizeRecentlyUpdatedFields),
             std::move(diagnostics)
         };
     }
@@ -1010,8 +1216,19 @@ namespace Microsoft::Terminal::RichTab::Provider
     std::optional<Presentation> ProviderBroker::ComposePresentation(
         const std::vector<Registration>& providers,
         const std::unordered_map<std::string, Snapshot>& snapshots,
-        const std::vector<ProviderPreference>& preferences)
+        const std::vector<ProviderPreference>& preferences,
+        const FieldChangeSequences& fieldChangeSequences,
+        const bool prioritizeRecentlyUpdatedFields)
     {
+        struct FieldCandidate
+        {
+            const std::string* providerId;
+            const Snapshot* snapshot;
+            const FieldValue* value;
+            uint64_t changeSequence{ 0 };
+        };
+
+        std::vector<FieldCandidate> candidates;
         Presentation result;
         for (const auto& provider : providers)
         {
@@ -1050,32 +1267,53 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
             }
 
-            const auto previousLength = result.text.size();
             for (const auto field : visibleFields)
             {
                 if (const auto value = snapshot->second.fields.find(field->id);
                     value != snapshot->second.fields.end())
                 {
-                    _Append(result.text, _ValueText(value->second), L" \u00b7 ");
+                    uint64_t changeSequence = 0;
+                    if (const auto providerChanges = fieldChangeSequences.find(provider.manifest.id);
+                        providerChanges != fieldChangeSequences.end())
+                    {
+                        if (const auto fieldChange = providerChanges->second.find(field->id);
+                            fieldChange != providerChanges->second.end())
+                        {
+                            changeSequence = fieldChange->second;
+                        }
+                    }
+                    candidates.emplace_back(FieldCandidate{
+                        &provider.manifest.id,
+                        &snapshot->second,
+                        &value->second,
+                        changeSequence,
+                    });
                 }
             }
-            if (result.text.size() == previousLength)
+        }
+
+        if (prioritizeRecentlyUpdatedFields)
+        {
+            std::stable_sort(candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
+                return left.changeSequence > right.changeSequence;
+            });
+        }
+
+        std::unordered_set<std::string> metadataAdded;
+        for (const auto& candidate : candidates)
+        {
+            _Append(result.text, _ValueText(*candidate.value), L" \u00b7 ");
+            if (!metadataAdded.emplace(*candidate.providerId).second)
             {
                 continue;
             }
-            if (snapshot->second.tooltip)
+            if (candidate.snapshot->tooltip)
             {
-                _Append(
-                    result.tooltip,
-                    _ToWide(*snapshot->second.tooltip),
-                    L"\n");
+                _Append(result.tooltip, _ToWide(*candidate.snapshot->tooltip), L"\n");
             }
-            if (snapshot->second.accessibilityText)
+            if (candidate.snapshot->accessibilityText)
             {
-                _Append(
-                    result.accessibilityText,
-                    _ToWide(*snapshot->second.accessibilityText),
-                    L", ");
+                _Append(result.accessibilityText, _ToWide(*candidate.snapshot->accessibilityText), L", ");
             }
         }
         if (result.text.empty())
@@ -1091,5 +1329,49 @@ namespace Microsoft::Terminal::RichTab::Provider
             result.accessibilityText = result.text;
         }
         return result;
+    }
+
+    bool ProviderBroker::UpdateFieldChangeSequences(
+        const Snapshot& snapshot,
+        std::optional<std::unordered_map<std::string, FieldValue>>& baseline,
+        std::unordered_map<std::string, uint64_t>& changeSequences,
+        uint64_t& nextChangeSequence)
+    {
+        if (!baseline)
+        {
+            baseline = snapshot.fields;
+            return false;
+        }
+
+        std::unordered_set<std::string> changedFields;
+        for (const auto& [id, value] : *baseline)
+        {
+            const auto current = snapshot.fields.find(id);
+            if (current == snapshot.fields.end() || current->second != value)
+            {
+                changedFields.emplace(id);
+            }
+        }
+        for (const auto& [id, value] : snapshot.fields)
+        {
+            const auto previous = baseline->find(id);
+            if (previous == baseline->end() || previous->second != value)
+            {
+                changedFields.emplace(id);
+            }
+        }
+
+        *baseline = snapshot.fields;
+        if (changedFields.empty())
+        {
+            return false;
+        }
+
+        const auto sequence = ++nextChangeSequence;
+        for (const auto& id : changedFields)
+        {
+            changeSequences[id] = sequence;
+        }
+        return true;
     }
 }

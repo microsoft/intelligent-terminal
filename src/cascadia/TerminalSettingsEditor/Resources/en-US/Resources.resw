@@ -737,6 +737,10 @@
     <value>Choose which providers contribute metadata to tabs, and select the fields shown by each provider. Changes take effect after you save settings.</value>
     <comment>Description of the Rich Tabs provider customization page.</comment>
   </data>
+  <data name="RichTabs_PrioritizeRecentlyUpdatedFields.Header" xml:space="preserve">
+    <value>Prioritize recently updated fields</value>
+    <comment>Label for a switch that moves changed Rich Tab fields to the front.</comment>
+  </data>
   <data name="RichTabs_MoveUp.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Move up</value>
     <comment>Tooltip for a button that moves a provider or field earlier in Rich Tab display order.</comment>

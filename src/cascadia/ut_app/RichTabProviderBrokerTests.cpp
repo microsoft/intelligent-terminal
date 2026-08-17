@@ -17,6 +17,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ComposesConfiguredFieldsInOrder);
         TEST_METHOD(ExplicitlyEmptyFieldsHideProviderMetadata);
         TEST_METHOD(EmptySnapshotsClearPresentation);
+        TEST_METHOD(PrioritizesOnlyChangedFields);
+        TEST_METHOD(TracksTypedFieldChangesAndAbsence);
         TEST_METHOD(CatalogEnforcesSourcePrecedenceAndConsent);
     };
 
@@ -125,6 +127,69 @@ namespace TerminalAppUnitTests
             { { provider.manifest.id, snapshot } });
 
         VERIFY_IS_FALSE(presentation.has_value());
+    }
+
+    void RichTabProviderBrokerTests::PrioritizesOnlyChangedFields()
+    {
+        Registration first;
+        first.manifest.id = "tests.first";
+        first.manifest.fields = {
+            FieldDeclaration{ "one", "One", FieldType::String, true },
+            FieldDeclaration{ "two", "Two", FieldType::String, true },
+        };
+        Registration second;
+        second.manifest.id = "tests.second";
+        second.manifest.fields = {
+            FieldDeclaration{ "three", "Three", FieldType::String, true },
+        };
+
+        Snapshot firstSnapshot;
+        firstSnapshot.fields.emplace("one", std::string{ "one" });
+        firstSnapshot.fields.emplace("two", std::string{ "two" });
+        Snapshot secondSnapshot;
+        secondSnapshot.fields.emplace("three", std::string{ "three" });
+
+        const FieldChangeSequences changes{
+            { first.manifest.id, { { "two", 4 } } },
+            { second.manifest.id, { { "three", 3 } } },
+        };
+        const auto presentation = ProviderBroker::ComposePresentation(
+            { first, second },
+            {
+                { first.manifest.id, firstSnapshot },
+                { second.manifest.id, secondSnapshot },
+            },
+            {},
+            changes,
+            true);
+
+        VERIFY_IS_TRUE(presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"two \u00b7 three \u00b7 one" }, presentation->text);
+    }
+
+    void RichTabProviderBrokerTests::TracksTypedFieldChangesAndAbsence()
+    {
+        std::optional<std::unordered_map<std::string, FieldValue>> baseline;
+        std::unordered_map<std::string, uint64_t> changes;
+        uint64_t nextSequence = 0;
+
+        Snapshot initial;
+        initial.fields.emplace("same-text", std::string{ "1" });
+        initial.fields.emplace("removed", true);
+        VERIFY_IS_FALSE(ProviderBroker::UpdateFieldChangeSequences(initial, baseline, changes, nextSequence));
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, nextSequence);
+
+        Snapshot changed;
+        changed.fields.emplace("same-text", int64_t{ 1 });
+        changed.fields.emplace("added", false);
+        VERIFY_IS_TRUE(ProviderBroker::UpdateFieldChangeSequences(changed, baseline, changes, nextSequence));
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, nextSequence);
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, changes.at("same-text"));
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, changes.at("removed"));
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, changes.at("added"));
+
+        VERIFY_IS_FALSE(ProviderBroker::UpdateFieldChangeSequences(changed, baseline, changes, nextSequence));
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, nextSequence);
     }
 
     void RichTabProviderBrokerTests::CatalogEnforcesSourcePrecedenceAndConsent()

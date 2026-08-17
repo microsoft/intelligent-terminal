@@ -26,6 +26,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesCompleteSnapshot);
         TEST_METHOD(RejectsUndeclaredOrMismatchedFields);
         TEST_METHOD(SerializesEpochScopedRequest);
+        TEST_METHOD(NegotiatesV2PublishContract);
         TEST_METHOD(QuotesWindowsArguments);
         TEST_METHOD(TimesOutProviderThatDoesNotReadStdin);
 
@@ -162,6 +163,32 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(serialized.value->find(R"("processEpoch":7)") != std::string::npos);
         VERIFY_IS_TRUE(serialized.value->find(R"("sessionId":"session-id")") != std::string::npos);
         VERIFY_IS_TRUE(serialized.value->find(R"("type":"pwsh")") != std::string::npos);
+    }
+
+    void RichTabProviderContractTests::NegotiatesV2PublishContract()
+    {
+        auto v2Manifest = std::string{ ValidManifest };
+        const auto range = v2Manifest.find(R"("minVersion": 1, "maxVersion": 1)");
+        v2Manifest.replace(range, std::string_view{ R"("minVersion": 1, "maxVersion": 1)" }.size(), R"("minVersion": 2, "maxVersion": 2)");
+        const auto manifest = ParseManifest(v2Manifest, LR"(C:\provider)");
+        VERIFY_IS_TRUE(manifest.value.has_value());
+
+        Request request;
+        request.protocolVersion = 2;
+        request.requestId = "request-v2";
+        request.providerId = manifest.value->id;
+        request.processEpoch = 7;
+        request.sessionId = "session-v2";
+        request.reason = ActivationEvent::ManualRefresh;
+        const auto serialized = SerializeRequest(request, *manifest.value);
+        VERIFY_IS_TRUE(serialized.value.has_value());
+        VERIFY_IS_TRUE(serialized.value->find(R"("protocolVersion":2)") != std::string::npos);
+
+        const auto snapshot = ParseSnapshot(
+            R"({"protocolVersion":2,"requestId":"request-v2","result":{"fields":{}}})",
+            *manifest.value,
+            request.requestId);
+        VERIFY_IS_TRUE(snapshot.value.has_value());
     }
 
     void RichTabProviderContractTests::QuotesWindowsArguments()

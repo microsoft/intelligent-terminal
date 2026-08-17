@@ -193,6 +193,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         using ViewModelHelper<RichTabsViewModel>::PropertyChanged;
 
         Windows::Foundation::Collections::IObservableVector<Editor::RichTabProviderViewModel> Providers() const noexcept { return _providers; }
+        bool PrioritizeRecentlyUpdatedFields() const noexcept;
+        void PrioritizeRecentlyUpdatedFields(bool value);
         void MoveProviderUp(const Editor::RichTabProviderViewModel& provider);
         void MoveProviderDown(const Editor::RichTabProviderViewModel& provider);
 

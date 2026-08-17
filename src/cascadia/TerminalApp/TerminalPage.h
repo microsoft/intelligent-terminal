@@ -251,6 +251,13 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<bool> SetProtocolRichTabMetadata(
+            hstring tabId,
+            hstring text,
+            hstring tooltip,
+            hstring accessibilityText,
+            uint64_t ttlMilliseconds);
+        Windows::Foundation::IAsyncOperation<bool> ClearProtocolRichTabMetadata(hstring tabId);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);

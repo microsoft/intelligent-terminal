@@ -5085,17 +5085,28 @@ impl App {
     /// re-projection so the bottom-bar autofix snapshot, agent-pane view,
     /// and pane_open flag are republished under the new identity.
     ///
-    /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
-    /// still updates `self.tab_id` when it pointed there — this defends
-    /// against a missed `tab_changed` race where WTA's view of the active
-    /// tab and tab_sessions disagree.
+    /// When `new_tab_id == old_tab_id`, only the helper's window binding is
+    /// refreshed. Stable tab IDs now survive cross-window moves, but the
+    /// helper still needs to follow the tab into its destination window.
     fn rename_tab_session(
         &mut self,
         old_tab_id: &str,
         new_tab_id: &str,
         new_window_id: Option<&str>,
     ) {
+        let owner_matched = self.owner_tab_id.as_deref() == Some(old_tab_id);
         if old_tab_id == new_tab_id {
+            if owner_matched {
+                if let Some(wid) = new_window_id {
+                    let old = self.window_id.replace(wid.to_string());
+                    tracing::info!(
+                        target: "helper",
+                        old_window_id = ?old,
+                        new_window_id = wid,
+                        "tab_renamed: updated self.window_id for stable-id move"
+                    );
+                }
+            }
             tracing::debug!(
                 target: "helper",
                 old_tab_id,
@@ -5131,7 +5142,6 @@ impl App {
         // C++'s _FindTabByStableId(old) misses (old tab is gone from the
         // source window, new id is in target), drops the event, and the
         // title bar / bottom bar never picks up the helper's state.
-        let owner_matched = self.owner_tab_id.as_deref() == Some(old_tab_id);
         if owner_matched {
             self.owner_tab_id = Some(new_tab_id.to_string());
             // This helper owns the dragged tab. The conpty/TermControl

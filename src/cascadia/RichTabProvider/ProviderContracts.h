@@ -15,7 +15,8 @@
 namespace Microsoft::Terminal::RichTab::Provider
 {
     inline constexpr uint32_t CurrentManifestSchemaVersion{ 1 };
-    inline constexpr uint32_t CurrentProtocolVersion{ 1 };
+    inline constexpr uint32_t MinimumProtocolVersion{ 1 };
+    inline constexpr uint32_t CurrentProtocolVersion{ 2 };
     inline constexpr size_t MaximumManifestSize{ 64 * 1024 };
     inline constexpr size_t MaximumRequestPayloadSize{ 16 * 1024 };
     inline constexpr size_t MaximumResponseSize{ 16 * 1024 };
@@ -93,6 +94,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     struct Request
     {
+        uint32_t protocolVersion{ MinimumProtocolVersion };
         std::string requestId;
         std::string providerId;
         uint64_t processEpoch{ 0 };

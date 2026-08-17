@@ -16,6 +16,7 @@ namespace Microsoft.Terminal.Protocol
     struct TabInfo
     {
         UInt32 TabId;
+        String StableId;
         UInt64 WindowId;
         String Title;
         Boolean IsActive;

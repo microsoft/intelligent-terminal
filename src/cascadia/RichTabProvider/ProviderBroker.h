@@ -19,6 +19,8 @@
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
+    using FieldChangeSequences = std::unordered_map<std::string, std::unordered_map<std::string, uint64_t>>;
+
     struct ProviderPreference
     {
         std::string id;
@@ -74,6 +76,12 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<ProviderDescriptor> descriptors;
     };
 
+    struct PublishResult
+    {
+        bool succeeded{ false };
+        std::string message;
+    };
+
     class ProviderBroker
     {
     public:
@@ -92,7 +100,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
-        void ApplyPreferences(std::vector<ProviderPreference> preferences);
+        void ApplyPreferences(
+            std::vector<ProviderPreference> preferences,
+            bool prioritizeRecentlyUpdatedFields = false);
         std::vector<ProviderDescriptor> Catalog();
         RegistryResult<bool> SetProviderConsent(
             std::string_view id,
@@ -100,11 +110,19 @@ namespace Microsoft::Terminal::RichTab::Provider
             bool enabled);
 
         uint64_t ProcessEpoch() const noexcept;
+        PublishResult Publish(std::string_view lease, std::string_view snapshotJson);
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
             const std::unordered_map<std::string, Snapshot>& snapshots,
-            const std::vector<ProviderPreference>& preferences = {});
+            const std::vector<ProviderPreference>& preferences = {},
+            const FieldChangeSequences& fieldChangeSequences = {},
+            bool prioritizeRecentlyUpdatedFields = false);
+        static bool UpdateFieldChangeSequences(
+            const Snapshot& snapshot,
+            std::optional<std::unordered_map<std::string, FieldValue>>& baseline,
+            std::unordered_map<std::string, uint64_t>& changeSequences,
+            uint64_t& nextChangeSequence);
         static ProviderCatalogSnapshot BuildCatalog(
             std::vector<Registration> candidates);
 
@@ -123,6 +141,17 @@ namespace Microsoft::Terminal::RichTab::Provider
             bool running{ false };
             std::optional<PendingRequest> pending;
             std::optional<Snapshot> snapshot;
+            std::optional<std::unordered_map<std::string, FieldValue>> fieldBaseline;
+            std::unordered_map<std::string, uint64_t> fieldChangeSequences;
+            uint64_t publishedGeneration{ 0 };
+        };
+
+        struct PublishLease
+        {
+            Registration provider;
+            Request request;
+            uint64_t generation{ 0 };
+            std::chrono::steady_clock::time_point expiresAt;
         };
 
         struct SessionState
@@ -133,6 +162,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::optional<std::chrono::steady_clock::time_point> detachedAt;
             std::unordered_map<AttachmentId, Callback> callbacks;
             std::unordered_map<std::string, ProviderState> providers;
+            uint64_t nextFieldChangeSequence{ 0 };
         };
 
         ProviderBroker();
@@ -158,6 +188,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t _RegistryStamp() const noexcept;
         std::vector<Registration> _EffectiveProvidersLocked() const;
         void _UpdateCatalogEffectiveStateLocked();
+        std::string _CreatePublishLeaseLocked(
+            const Registration& provider,
+            const Request& request,
+            uint64_t generation);
 
         mutable std::mutex _mutex;
         std::mutex _reloadMutex;
@@ -170,12 +204,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<Registration> _availableProviders;
         std::vector<Registration> _providers;
         std::vector<ProviderPreference> _preferences;
+        bool _prioritizeRecentlyUpdatedFields{ false };
         AppExtensionDiscoveryResult _appExtensionDiscovery;
         bool _appExtensionDiscoveryScheduled{ false };
         bool _appExtensionDiscoveryPending{ false };
         std::shared_ptr<void> _appExtensionWatcher;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
+        std::unordered_map<std::string, PublishLease> _publishLeases;
         uint64_t _processEpoch{ 0 };
         uint64_t _nextAttachment{ 1 };
         uint64_t _nextRequest{ 1 };

@@ -56,7 +56,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             return value;
         }
 
-        std::wstring _BuildEnvironment()
+        std::wstring _BuildEnvironment(const CommandRunner::Environment& extraEnvironment)
         {
             std::vector<std::pair<std::wstring, std::wstring>> variables;
             for (const auto name : environmentNames)
@@ -64,6 +64,14 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (const auto value = _ReadEnvironment(name))
                 {
                     variables.emplace_back(name, *value);
+                }
+            }
+            for (const auto& [name, value] : extraEnvironment)
+            {
+                if (!name.empty() && name.find(L'=') == std::wstring::npos &&
+                    value.find(L'\0') == std::wstring::npos)
+                {
+                    variables.emplace_back(name, value);
                 }
             }
             std::sort(variables.begin(), variables.end(), [](const auto& first, const auto& second) {
@@ -262,7 +270,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     CommandResult CommandRunner::Run(
         const Manifest& manifest,
         const std::string_view request,
-        const std::chrono::milliseconds timeout) const
+        const std::chrono::milliseconds timeout,
+        const Environment& extraEnvironment) const
     {
         CommandResult result;
         if (request.empty() ||
@@ -373,7 +382,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
 
-        auto environment = _BuildEnvironment();
+        auto environment = _BuildEnvironment(extraEnvironment);
         PROCESS_INFORMATION processInfo{};
         if (!CreateProcessW(
                 executable.c_str(),

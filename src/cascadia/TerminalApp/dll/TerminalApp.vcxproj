@@ -32,6 +32,7 @@
     <ClInclude Include="../AppLogic.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="../TerminalPage.h" />
+    <ClInclude Include="../RichTabPublisherBridge.h" />
     <ClInclude Include="../MinMaxCloseControl.h" />
     <ClInclude Include="../AppKeyBindings.h" />
     <ClInclude Include="../TitlebarControl.h" />
@@ -44,6 +45,7 @@
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="RichTabPublisherBridge.cpp" />
   </ItemGroup>
   <!-- ========================= idl Files ======================== -->
   <ItemGroup>

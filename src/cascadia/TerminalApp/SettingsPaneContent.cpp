@@ -82,7 +82,9 @@ namespace winrt::TerminalApp::implementation
             }
             preferences.emplace_back(std::move(preference));
         }
-        Provider::ProviderBroker::Instance().ApplyPreferences(std::move(preferences));
+        Provider::ProviderBroker::Instance().ApplyPreferences(
+            std::move(preferences),
+            globalSettings.RichTabPrioritizeRecentlyUpdatedFields());
     }
 
     void SettingsPaneContent::UpdateSettings(const CascadiaSettings& settings)

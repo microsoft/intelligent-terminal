@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
@@ -32,6 +33,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     class CommandRunner
     {
     public:
+        using Environment = std::vector<std::pair<std::wstring, std::wstring>>;
+
         static constexpr size_t MaximumRequestSize{ MaximumRequestPayloadSize };
         static constexpr size_t MaximumStandardOutputSize{ MaximumResponseSize };
         static constexpr size_t MaximumStandardErrorSize{ 64 * 1024 };
@@ -39,7 +42,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         CommandResult Run(
             const Manifest& manifest,
             std::string_view request,
-            std::chrono::milliseconds timeout) const;
+            std::chrono::milliseconds timeout,
+            const Environment& environment = {}) const;
 
         static std::optional<std::filesystem::path> ResolvePowerShell();
         static bool ResolveEntrypoint(

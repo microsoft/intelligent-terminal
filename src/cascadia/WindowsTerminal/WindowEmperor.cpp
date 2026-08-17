@@ -22,6 +22,8 @@
 #include "../../types/inc/utils.hpp"
 
 #include <bcrypt.h>
+#include <array>
+#include <filesystem>
 #include <fstream>
 #pragma comment(lib, "bcrypt.lib")
 
@@ -1757,6 +1759,15 @@ void WindowEmperor::_initializeProtocolServer()
         {
             _comClsid = clsidStr.get();
             SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
+
+            std::array<wchar_t, 32768> modulePath{};
+            const auto modulePathLength = GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
+            if (modulePathLength != 0 && modulePathLength < modulePath.size())
+            {
+                auto cliPath = std::filesystem::path{ std::wstring_view{ modulePath.data(), modulePathLength } };
+                cliPath.replace_filename(L"wtcli.exe");
+                SetEnvironmentVariableW(L"WT_RICH_TAB_CLI", cliPath.c_str());
+            }
         }
     }
 

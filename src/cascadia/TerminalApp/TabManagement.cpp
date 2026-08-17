@@ -19,6 +19,7 @@
 #include "AgentPaneContent.h"
 #include "AgentPaneLog.h"
 #include "SharedWta.h"
+#include "TabDragStash.h"
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
@@ -105,6 +106,39 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition, bool openInBackground)
     {
         newTabImpl->Initialize();
+
+        if (const auto rootPane = newTabImpl->GetRootPane())
+        {
+            if (auto state = TabDragStash::Take(rootPane->AttachedControlContentId()))
+            {
+                std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> metadataOverride;
+                std::chrono::milliseconds remainingTtl{ 0 };
+                if (state->metadataOverride)
+                {
+                    const auto& source = *state->metadataOverride;
+                    if (source.expiresAt)
+                    {
+                        const auto now = std::chrono::steady_clock::now();
+                        if (*source.expiresAt > now)
+                        {
+                            remainingTtl = std::chrono::duration_cast<std::chrono::milliseconds>(*source.expiresAt - now);
+                        }
+                    }
+                    if (!source.expiresAt || remainingTtl.count() > 0)
+                    {
+                        metadataOverride = ::Microsoft::Terminal::RichTab::Provider::Presentation{
+                            source.text,
+                            source.tooltip,
+                            source.accessibilityText,
+                        };
+                    }
+                }
+                newTabImpl->RestoreCrossWindowState(
+                    winrt::hstring{ state->stableId },
+                    std::move(metadataOverride),
+                    remainingTtl);
+            }
+        }
 
         // If insert position is not passed, calculate it
         if (insertPosition == -1)
@@ -311,12 +345,11 @@ namespace winrt::TerminalApp::implementation
                         tabImplCom->AgentSourceProfileGuid(*sourceProfileGuid);
                     }
                     const auto oldTabId = impl->TakePendingRenameFromTabId();
-                    if (oldTabId.empty() || oldTabId == newTabId)
+                    if (oldTabId.empty())
                     {
                         _agentPaneLog(
                             std::string{ "_InitializeTab(deferred): agent pane found but skipping tab_renamed (oldEmpty=" } +
-                            (oldTabId.empty() ? "true" : "false") + " sameAsNew=" +
-                            (oldTabId == newTabId ? "true" : "false") + " new=" +
+                            (oldTabId.empty() ? "true" : "false") + " new=" +
                             winrt::to_string(newTabId) + ")");
                         return;
                     }

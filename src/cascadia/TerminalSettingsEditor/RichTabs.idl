@@ -93,6 +93,7 @@ namespace Microsoft.Terminal.Settings.Editor
             Windows.Foundation.Collections.IVectorView<RichTabProviderDescriptor> descriptors);
 
         Windows.Foundation.Collections.IObservableVector<RichTabProviderViewModel> Providers { get; };
+        Boolean PrioritizeRecentlyUpdatedFields;
         void MoveProviderUp(RichTabProviderViewModel provider);
         void MoveProviderDown(RichTabProviderViewModel provider);
         event Windows.Foundation.TypedEventHandler<RichTabsViewModel, Microsoft.Terminal.Settings.Model.GlobalAppSettings> PreferencesChanged;

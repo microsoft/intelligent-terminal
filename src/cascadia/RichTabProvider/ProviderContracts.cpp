@@ -381,7 +381,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (manifest.protocol.minimum == 0 ||
                     manifest.protocol.minimum > manifest.protocol.maximum ||
                     CurrentProtocolVersion < manifest.protocol.minimum ||
-                    CurrentProtocolVersion > manifest.protocol.maximum)
+                    MinimumProtocolVersion > manifest.protocol.maximum)
                 {
                     result.errors.emplace_back("provider protocol range is invalid or incompatible with this host");
                 }
@@ -557,10 +557,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
 
         _RejectUnknownMembers(root, { "protocolVersion", "requestId", "result" }, "response", result.errors);
+        const auto expectedProtocolVersion = (std::min)(CurrentProtocolVersion, manifest.protocol.maximum);
         if (!root["protocolVersion"].isUInt() ||
-            root["protocolVersion"].asUInt() != CurrentProtocolVersion)
+            root["protocolVersion"].asUInt() != expectedProtocolVersion)
         {
-            result.errors.emplace_back("protocolVersion must be 1");
+            result.errors.emplace_back("protocolVersion does not match the negotiated version");
         }
 
         Snapshot snapshot;
@@ -673,6 +674,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         ParseResult<std::string> result;
         if (request.requestId.empty() || request.requestId.size() > 128 || !_IsValidUtf8(request.requestId))
             result.errors.emplace_back("requestId must be a bounded UTF-8 string");
+        if (request.protocolVersion < manifest.protocol.minimum ||
+            request.protocolVersion > manifest.protocol.maximum ||
+            request.protocolVersion < MinimumProtocolVersion ||
+            request.protocolVersion > CurrentProtocolVersion)
+            result.errors.emplace_back("protocolVersion is outside the negotiated range");
         if (request.providerId != manifest.id)
             result.errors.emplace_back("providerId does not match the manifest");
         if (request.processEpoch == 0)
@@ -705,7 +711,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
 
         Json::Value root;
-        root["protocolVersion"] = CurrentProtocolVersion;
+        root["protocolVersion"] = request.protocolVersion;
         root["requestId"] = request.requestId;
         root["providerId"] = request.providerId;
         root["method"] = "refresh";

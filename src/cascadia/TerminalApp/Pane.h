@@ -158,6 +158,8 @@ public:
     // Only leaf panes have IDs; parent panes have std::nullopt.
     // Separate from Id() which is per-tab and can be reassigned.
     std::optional<uint32_t> ContentId() const noexcept { return _contentId; }
+    uint64_t AttachedControlContentId() const noexcept { return _attachedControlContentId; }
+    void AttachedControlContentId(const uint64_t value) noexcept { _attachedControlContentId = value; }
     std::shared_ptr<Pane> FindPaneByContentId(const uint32_t contentId);
     std::shared_ptr<Pane> FindPaneBySessionId(const winrt::guid& sessionId);
 
@@ -285,6 +287,7 @@ private:
 
     std::optional<uint32_t> _id;
     std::optional<uint32_t> _contentId;
+    uint64_t _attachedControlContentId{ 0 };
     std::weak_ptr<Pane> _parentChildPath{};
     bool _lastActive{ false };
 

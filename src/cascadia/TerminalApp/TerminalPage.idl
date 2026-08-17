@@ -152,6 +152,8 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Boolean> CloseProtocolPane(Guid sessionId);
         Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(Guid sessionId, String text);
         Windows.Foundation.IAsyncOperation<Boolean> FocusProtocolPane(Guid sessionId);
+        Windows.Foundation.IAsyncOperation<Boolean> SetProtocolRichTabMetadata(String tabId, String text, String tooltip, String accessibilityText, UInt64 ttlMilliseconds);
+        Windows.Foundation.IAsyncOperation<Boolean> ClearProtocolRichTabMetadata(String tabId);
         event Windows.Foundation.TypedEventHandler<Object, String> ProtocolVtSequenceReceived;
 
         // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}

@@ -23,6 +23,7 @@
 #include <wil/resource.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -159,6 +160,93 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     return server;
 }
 
+static winrt::com_ptr<IRichTabPublisher> ConnectToRichTabPublisher()
+{
+    wchar_t clsid[128]{};
+    if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
+    {
+        fprintf(stderr, "[wtcli] WT_COM_CLSID not set.\n");
+        return nullptr;
+    }
+
+    CLSID cls{};
+    if (FAILED(CLSIDFromString(clsid, &cls)))
+    {
+        fprintf(stderr, "[wtcli] Invalid CLSID: %ls\n", clsid);
+        return nullptr;
+    }
+
+    winrt::com_ptr<IRichTabPublisher> publisher;
+    const auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(IRichTabPublisher), publisher.put_void());
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] Rich Tab publisher connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        return nullptr;
+    }
+    return publisher;
+}
+
+static bool InvokeRichTabPublisher(
+    IRichTabPublisher* publisher,
+    const Json::Value& request,
+    Json::Value& result)
+{
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const auto requestJson = winrt::to_hstring(Json::writeString(writer, request));
+    wil::unique_bstr requestBstr{ ::SysAllocString(requestJson.c_str()) };
+    if (!requestBstr)
+    {
+        fprintf(stderr, "[wtcli] Failed to allocate Rich Tab publisher request.\n");
+        return false;
+    }
+
+    BSTR rawResult = nullptr;
+    const auto hr = publisher->Invoke(requestBstr.get(), &rawResult);
+    wil::unique_bstr resultBstr{ rawResult };
+    if (FAILED(hr) || !resultBstr)
+    {
+        fprintf(stderr, "[wtcli] Rich Tab publisher call failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream{ winrt::to_string(winrt::hstring{ resultBstr.get() }) };
+    if (!Json::parseFromStream(reader, stream, &result, &errors) || !result.isObject())
+    {
+        fprintf(stderr, "[wtcli] Rich Tab publisher returned malformed JSON.\n");
+        return false;
+    }
+    return true;
+}
+
+static std::optional<std::string> ReadBoundedStdin(const size_t maximumSize)
+{
+    std::string input;
+    std::array<char, 4096> buffer{};
+    for (;;)
+    {
+        const auto read = fread(buffer.data(), 1, buffer.size(), stdin);
+        if (read != 0)
+        {
+            if (input.size() + read > maximumSize)
+            {
+                return std::nullopt;
+            }
+            input.append(buffer.data(), read);
+        }
+        if (read != buffer.size())
+        {
+            if (ferror(stdin))
+            {
+                return std::nullopt;
+            }
+            return input;
+        }
+    }
+}
+
 // Call a method that returns a JSON BSTR; parse into `out`. Returns the HRESULT.
 template<typename F>
 static HRESULT CallJson(F&& call, Json::Value& out)
@@ -274,6 +362,39 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
     if (ec != std::errc{} || ptr != last)
         return false;
     out = v;
+    return true;
+}
+
+static bool TryParseTtl(const std::string& value, uint64_t& milliseconds)
+{
+    if (value.size() < 2)
+    {
+        return false;
+    }
+    uint64_t multiplier = 0;
+    const auto suffix = value.back();
+    switch (suffix)
+    {
+    case 's':
+        multiplier = 1000;
+        break;
+    case 'm':
+        multiplier = 60 * 1000;
+        break;
+    case 'h':
+        multiplier = 60 * 60 * 1000;
+        break;
+    default:
+        return false;
+    }
+    uint64_t amount = 0;
+    if (!TryParseU64(value.substr(0, value.size() - 1), amount) ||
+        amount == 0 ||
+        amount > std::chrono::duration_cast<std::chrono::hours>(std::chrono::hours{ 24 * 7 }).count() * 60 * 60 / (multiplier / 1000))
+    {
+        return false;
+    }
+    milliseconds = amount * multiplier;
     return true;
 }
 
@@ -461,6 +582,134 @@ int main()
     // running Terminal or WT_COM_CLSID.
     auto* providerCmd = app.add_subcommand("provider", "Manage Rich Tab providers");
     providerCmd->require_subcommand(1, 1);
+    auto* providerPublishCmd = providerCmd->add_subcommand("publish", "Publish a Rich Tab Provider Snapshot");
+    bool providerPublishStdin = false;
+    providerPublishCmd->add_flag("--stdin", providerPublishStdin, "Read the Snapshot JSON from stdin")->required();
+    providerPublishCmd->callback([&]() {
+        const auto snapshotText = ReadBoundedStdin(Microsoft::Terminal::RichTab::Provider::MaximumResponseSize);
+        if (!snapshotText)
+        {
+            fprintf(stderr, "[wtcli] provider publish: stdin exceeds the size limit or could not be read\n");
+            exitCode = 1;
+            return;
+        }
+
+        Json::Value snapshot;
+        Json::CharReaderBuilder reader;
+        std::string errors;
+        std::istringstream stream{ *snapshotText };
+        if (!Json::parseFromStream(reader, stream, &snapshot, &errors) || !snapshot.isObject())
+        {
+            fprintf(stderr, "[wtcli] provider publish: stdin must contain one JSON object\n");
+            exitCode = 1;
+            return;
+        }
+
+        wchar_t lease[128]{};
+        if (!GetEnvironmentVariableW(L"WT_RICH_TAB_LEASE", lease, ARRAYSIZE(lease)))
+        {
+            fprintf(stderr, "[wtcli] provider publish: WT_RICH_TAB_LEASE is not set\n");
+            exitCode = 1;
+            return;
+        }
+        auto publisher = ConnectToRichTabPublisher();
+        if (!publisher)
+        {
+            exitCode = 1;
+            return;
+        }
+
+        Json::Value request;
+        request["operation"] = "publish";
+        request["lease"] = winrt::to_string(winrt::hstring{ lease });
+        request["snapshot"] = std::move(snapshot);
+        Json::Value result;
+        if (!InvokeRichTabPublisher(publisher.get(), request, result) || !result["ok"].asBool())
+        {
+            fprintf(stderr, "[wtcli] provider publish: %s\n", result["message"].asCString());
+            exitCode = 1;
+            return;
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        printf("%s\n", Json::writeString(writer, result).c_str());
+    });
+
+    auto* tabCmd = app.add_subcommand("tab", "Manage tabs");
+    tabCmd->require_subcommand(1, 1);
+    auto* tabMetadataCmd = tabCmd->add_subcommand("metadata", "Manage a tab's second-line metadata");
+    tabMetadataCmd->require_subcommand(1, 1);
+
+    std::string metadataSetTabId;
+    std::string metadataSetText;
+    std::string metadataSetTooltip;
+    std::string metadataSetAccessibilityText;
+    std::string metadataSetTtl;
+    auto* metadataSetCmd = tabMetadataCmd->add_subcommand("set", "Override the complete second line");
+    metadataSetCmd->add_option("--tab-id", metadataSetTabId, "Stable tab ID from list-tabs")->required();
+    metadataSetCmd->add_option("--text", metadataSetText, "Second-line text")->required();
+    metadataSetCmd->add_option("--tooltip", metadataSetTooltip, "Tooltip text");
+    metadataSetCmd->add_option("--accessibility-text", metadataSetAccessibilityText, "Accessibility text");
+    metadataSetCmd->add_option("--ttl", metadataSetTtl, "Expiry such as 30s, 5m, or 1h");
+    metadataSetCmd->callback([&]() {
+        if (metadataSetText.empty() ||
+            metadataSetText.size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize ||
+            metadataSetTooltip.size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize ||
+            metadataSetAccessibilityText.size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize)
+        {
+            fprintf(stderr, "[wtcli] tab metadata set: text values are empty or exceed the size limit\n");
+            exitCode = 1;
+            return;
+        }
+        uint64_t ttlMilliseconds = 0;
+        if (!metadataSetTtl.empty() && !TryParseTtl(metadataSetTtl, ttlMilliseconds))
+        {
+            fprintf(stderr, "[wtcli] tab metadata set: --ttl must be 1s..168h\n");
+            exitCode = 1;
+            return;
+        }
+        auto publisher = ConnectToRichTabPublisher();
+        if (!publisher)
+        {
+            exitCode = 1;
+            return;
+        }
+        Json::Value request;
+        request["operation"] = "metadata_set";
+        request["tab_id"] = metadataSetTabId;
+        request["text"] = metadataSetText;
+        request["tooltip"] = metadataSetTooltip.empty() ? metadataSetText : metadataSetTooltip;
+        request["accessibility_text"] = metadataSetAccessibilityText.empty() ? metadataSetText : metadataSetAccessibilityText;
+        request["ttl_milliseconds"] = Json::UInt64{ ttlMilliseconds };
+        Json::Value result;
+        if (!InvokeRichTabPublisher(publisher.get(), request, result) || !result["ok"].asBool())
+        {
+            fprintf(stderr, "[wtcli] tab metadata set: %s\n", result["message"].asCString());
+            exitCode = 1;
+        }
+    });
+
+    std::string metadataClearTabId;
+    auto* metadataClearCmd = tabMetadataCmd->add_subcommand("clear", "Clear the second-line override");
+    metadataClearCmd->add_option("--tab-id", metadataClearTabId, "Stable tab ID from list-tabs")->required();
+    metadataClearCmd->callback([&]() {
+        auto publisher = ConnectToRichTabPublisher();
+        if (!publisher)
+        {
+            exitCode = 1;
+            return;
+        }
+        Json::Value request;
+        request["operation"] = "metadata_clear";
+        request["tab_id"] = metadataClearTabId;
+        Json::Value result;
+        if (!InvokeRichTabPublisher(publisher.get(), request, result) || !result["ok"].asBool())
+        {
+            fprintf(stderr, "[wtcli] tab metadata clear: %s\n", result["message"].asCString());
+            exitCode = 1;
+        }
+    });
+
     std::string providerManifestPath;
     auto* providerValidateCmd = providerCmd->add_subcommand("validate", "Validate a provider manifest");
     providerValidateCmd->add_option("manifest", providerManifestPath, "Path to provider.json")->required();

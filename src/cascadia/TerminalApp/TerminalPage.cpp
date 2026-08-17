@@ -363,7 +363,9 @@ namespace winrt::TerminalApp::implementation
                 }
                 preferences.emplace_back(std::move(preference));
             }
-            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().ApplyPreferences(std::move(preferences));
+            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().ApplyPreferences(
+                std::move(preferences),
+                _settings.GlobalSettings().RichTabPrioritizeRecentlyUpdatedFields());
         }
 
         // Seed the agent-settings baseline on first load so that later
@@ -8713,6 +8715,7 @@ namespace winrt::TerminalApp::implementation
             const auto control = _AttachControlToContent(newTerminalArgs.ContentId());
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
+            resultPane->AttachedControlContentId(newTerminalArgs.ContentId());
 
             // Cross-window agent-pane drag: if the source tab stashed an
             // original StableId for this ContentId, the migrating pane was
@@ -8837,7 +8840,7 @@ namespace winrt::TerminalApp::implementation
                                 focusedTab->AgentSourceProfileGuid(*sourceProfileGuid);
                             }
                             const auto newTabId = focusedTab->StableId();
-                            if (!newTabId.empty() && newTabId != oldTabId)
+                            if (!newTabId.empty())
                             {
                                 Json::Value params;
                                 params["old_tab_id"] = winrt::to_string(oldTabId);

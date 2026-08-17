@@ -6,6 +6,7 @@
 #include "Tab.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
+#include "TabDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -565,6 +566,69 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void Tab::SetRichTabMetadataOverride(
+        const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation,
+        const std::chrono::milliseconds ttl)
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabMetadataOverrideTimer)
+        {
+            _richTabMetadataOverrideTimer.Stop();
+            _richTabMetadataOverrideTimer = nullptr;
+        }
+        _richTabMetadataOverrideExpiresAt.reset();
+        _richTabMetadataOverride = presentation;
+        _UpdateRichTabPresentation();
+
+        if (ttl.count() > 0)
+        {
+            _richTabMetadataOverrideExpiresAt = std::chrono::steady_clock::now() + ttl;
+            _richTabMetadataOverrideTimer = WUX::DispatcherTimer{};
+            _richTabMetadataOverrideTimer.Interval(ttl);
+            const auto weakThis = get_weak();
+            _richTabMetadataOverrideTimer.Tick([weakThis](const auto& sender, const auto&) {
+                sender.as<WUX::DispatcherTimer>().Stop();
+                if (const auto self = weakThis.get())
+                {
+                    self->_richTabMetadataOverrideTimer = nullptr;
+                    self->_richTabMetadataOverrideExpiresAt.reset();
+                    self->_richTabMetadataOverride.reset();
+                    self->_UpdateRichTabPresentation();
+                }
+            });
+            _richTabMetadataOverrideTimer.Start();
+        }
+    }
+
+    void Tab::ClearRichTabMetadataOverride()
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabMetadataOverrideTimer)
+        {
+            _richTabMetadataOverrideTimer.Stop();
+            _richTabMetadataOverrideTimer = nullptr;
+        }
+        _richTabMetadataOverrideExpiresAt.reset();
+        if (_richTabMetadataOverride)
+        {
+            _richTabMetadataOverride.reset();
+            _UpdateRichTabPresentation();
+        }
+    }
+
+    void Tab::RestoreCrossWindowState(
+        winrt::hstring stableId,
+        std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> metadataOverride,
+        const std::chrono::milliseconds remainingTtl)
+    {
+        ASSERT_UI_THREAD();
+        _stableId = std::move(stableId);
+        if (metadataOverride)
+        {
+            SetRichTabMetadataOverride(*metadataOverride, remainingTtl);
+        }
+    }
+
     void Tab::_UpdateRichTabPresentation()
     {
         if constexpr (!Feature_RichTabProviders::IsEnabled())
@@ -582,11 +646,13 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
-        if (_richTabPresentation)
+        const auto hasOverride = _richTabMetadataOverride.has_value();
+        const auto& presentation = hasOverride ? _richTabMetadataOverride : _richTabPresentation;
+        if (presentation)
         {
-            text = _richTabPresentation->text;
-            tooltip = _richTabPresentation->tooltip;
-            accessibilityText = _richTabPresentation->accessibilityText;
+            text = presentation->text;
+            tooltip = presentation->tooltip;
+            accessibilityText = presentation->accessibilityText;
         }
 
         const std::function<int(const std::shared_ptr<Pane>&)> countVisiblePanes =
@@ -602,7 +668,7 @@ namespace winrt::TerminalApp::implementation
             return countVisiblePanes(pane->_firstChild) + countVisiblePanes(pane->_secondChild);
         };
         const auto paneCount = countVisiblePanes(_rootPane);
-        if (paneCount > 1)
+        if (!hasOverride && paneCount > 1)
         {
             const auto paneCountText = fmt::format(FMT_COMPILE(L"{} panes"), paneCount);
             if (!text.empty())
@@ -721,6 +787,40 @@ namespace winrt::TerminalApp::implementation
                     sourceProfileGuid);
                 return false;
             });
+
+            std::vector<uint64_t> contentIds;
+            _rootPane->WalkTree([&contentIds](const auto& pane) {
+                if (!pane->_IsLeaf())
+                {
+                    return false;
+                }
+                if (const auto content = pane->GetContent())
+                {
+                    if (const auto terminalArgs = content.GetNewTerminalArgs(BuildStartupKind::Content).try_as<NewTerminalArgs>())
+                    {
+                        if (const auto contentId = terminalArgs.ContentId())
+                        {
+                            contentIds.emplace_back(contentId);
+                        }
+                    }
+                }
+                return false;
+            });
+
+            TabDragStash::Entry entry{
+                std::wstring{ _stableId },
+                std::nullopt,
+            };
+            if (_richTabMetadataOverride)
+            {
+                entry.metadataOverride = TabDragStash::MetadataOverride{
+                    _richTabMetadataOverride->text,
+                    _richTabMetadataOverride->tooltip,
+                    _richTabMetadataOverride->accessibilityText,
+                    _richTabMetadataOverrideExpiresAt,
+                };
+            }
+            TabDragStash::Stash(contentIds, std::move(entry));
         }
 
         // Give initial ids (0 for the child created with this tab,
