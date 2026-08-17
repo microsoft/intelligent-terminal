@@ -362,6 +362,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C264` `[new]` `[UT~]` `[E2E]` **Bundled hook runs inside its agent CLI:** A real agent CLI session executes the shipped hook command through its own shell and its events reach Terminal. _(#571; UT: `bundled_hook_commands_run_in_every_shell` runs each bundle's command line in that CLI's shell; E2E adds the CLI accepting the bundle.)_
 - [ ] `C265` `[new]` `[E2E]` **Hook failure never blocks the agent CLI:** When the protocol server is unreachable the hook fails silently and the agent CLI still completes its turn. _(#571.)_
 - [ ] `C266` `[new]` `[UT✓]` `[E2E]` **Uninstalling Terminal never blocks the agent CLI:** With `wtcli.exe` gone from `PATH` — the state an Intelligent Terminal uninstall leaves behind — a stale hook registration still exits 0, so Copilot's fail-closed `preToolUse` hook does not deny tool calls. _(UT: `copilot_hook_variants_exit_zero_when_the_bridge_is_missing` + `bare_hook_command_still_fails_when_the_bridge_is_missing`.)_
+- [ ] `C267` `[new]` `[E2E]` **Shipped hook guards do not swallow the happy path:** Every CLI bundle's shipped command, run in the shell that CLI dispatches hooks through, still delivers its event while the bridge is present. _(#571; the uninstall guards force exit 0 either way, so delivery — not exit status — is the only oracle that separates a working guard from one wrapped around a broken command.)_
 - [ ] `C172` `[E2E]` **Hook remove works:** Removing a hook disables future session tracking for that CLI.
 - [x] `C173` `[UT✓]` `[E2E]` **Disabled plugin is respected:** Disabled agent plugin is skipped and not force-enabled. _(UT: `decide_skip_when_disabled`.)_
 - [x] `C174` `[UT✓]` `[E2E]` **Hook auto-upgrade works:** After package upgrade, previously installed hooks are updated silently when bundle version changes. _(UT: `decide_upgrade` + `upgrade_state` round-trip.)_
@@ -390,7 +391,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C188` `[E2E]` **WTA logs are written:** WTA process logs are created in the expected package-private log directory.
 - [ ] `C189` `[E2E]` **C++ agent pane log is written:** Terminal-side agent pane log is created.
-- [ ] `C190` `[E2E]` **Native hook bridge publishes events:** `wtcli agent-hook` reads stdin, redacts prompt content, and publishes a pane-scoped hook event.
+- [ ] `C190` `[E2E]` **Native hook bridge publishes events:** `wtcli agent-hook` reads stdin, redacts prompt content, and publishes a pane-scoped hook event. _(Also asserts the full redaction set — `prompt`, `tool_result`, `transcript_path`, `messages`, `model` — since `BuildAgentHookEventJson` has no unit-test project, only a fuzzer.)_
+- [ ] `C268` `[new]` `[E2E]` **Hook payload keeps interactive tool input:** `tool_input` is dropped for ordinary tool calls but retained for `ask_user`, so the proposal UI still gets its question without publishing every shell command an agent runs. _(#571.)_
+- [ ] `C269` `[new]` `[E2E]` **Hook bridge ignores shells outside Terminal:** A hook fired without `WT_SESSION` exits 0 and publishes nothing, so an unrelated process cannot inject pane-attributed agent events. _(#571.)_
 - [ ] `C191` `[UT~]` `[E2E]` **Log version directory is correct:** Packaged builds write under the current package-version log directory. _(UT: `runtime_paths` resolution.)_
 - [ ] `C192` `[UT~]` `[E2E]` **Old log cleanup is safe:** Starting the new build does not delete logs from the currently running version. _(UT: housekeeping prune logic.)_
 - [ ] `C193` `[E2E]` **Bug report zip includes agent logs:** Diagnostic collection includes WTA, hook, and terminal-agent-pane logs.
