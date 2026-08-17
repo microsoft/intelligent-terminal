@@ -5,10 +5,6 @@
         <name>Feature_RichTabProviders</name>
         <description>Enables external Rich Tab providers and structured tab metadata.</description>
         <stage>AlwaysEnabled</stage>
-        <alwaysDisabledBrandingTokens>
-            <brandingToken>Release</brandingToken>
-            <brandingToken>WindowsInbox</brandingToken>
-        </alwaysDisabledBrandingTokens>
     </feature>
 
     <feature>
