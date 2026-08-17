@@ -661,7 +661,8 @@ mod tests {
 
         assert!(!built_prompt.contains("You assist from within Windows Terminal"));
         assert!(built_prompt.contains("Auto-Fix Instructions"));
-        assert!(built_prompt.contains("## User Request\nfix it"));
+        let user_request = format!("## User Request\n{}", "fix it");
+        assert!(built_prompt.contains(&user_request));
     }
 
     /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
