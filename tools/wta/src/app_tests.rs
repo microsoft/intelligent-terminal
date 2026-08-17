@@ -5624,6 +5624,31 @@ fn begin_user_input_test(app: &mut App) {
 }
 
 #[test]
+fn session_load_preserves_user_input_request() {
+    let mut app = test_app();
+    app.current_tab_mut().loading_session = true;
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "resume-clarification".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which goal should I resume?".into(),
+            choices: vec!["Build".into(), "Test".into()],
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert_eq!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "session load must not implicitly cancel a live clarification request"
+    );
+}
+
+#[test]
 fn user_input_choice_returns_selected_index() {
     let mut app = test_app();
     begin_user_input_test(&mut app);

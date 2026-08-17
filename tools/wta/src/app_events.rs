@@ -1075,7 +1075,7 @@ impl App {
                 responder,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                if !tab.turn.can_service_agent_request() {
+                if !tab.turn.can_service_agent_request() && !tab.loading_session {
                     return;
                 }
                 tab.user_input.push_back(UserInputState {
