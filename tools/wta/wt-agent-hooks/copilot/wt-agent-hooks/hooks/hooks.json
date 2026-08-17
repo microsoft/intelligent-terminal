@@ -60,30 +60,6 @@
         }]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [{
-          "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished",
-          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished } catch { }; exit 0",
-          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.finished; exit 0",
-          "timeoutSec": 5
-        }]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": ".*",
-        "hooks": [{
-          "type": "command",
-          "command": "wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed",
-          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed } catch { }; exit 0",
-          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.failed; exit 0",
-          "timeoutSec": 5
-        }]
-      }
-    ],
     "StopFailure": [
       {
         "matcher": ".*",

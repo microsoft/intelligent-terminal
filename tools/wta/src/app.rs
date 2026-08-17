@@ -569,8 +569,15 @@ where
         // request, with many tool pairs in between). So ignore tool completions
         // here and let `agent.stop` own the turn-end → Idle, mirroring the
         // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
-        // hook events at all, so this only affects Copilot/Gemini.
+        // ignore `tool.execution_complete`.
+        //
+        // Because these are dropped, no bundle subscribes them any more: each
+        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
+        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
+        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
+        // `tool.execute.after` were all removed. The arm stays so an older
+        // installed bundle that still emits them is ignored rather than
+        // mis-routed.
         "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
             return reg.take_dirty();
         }

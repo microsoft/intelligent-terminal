@@ -101,13 +101,6 @@ export const WtAgentHooks = async ({ directory }) => {
       })
     },
 
-    "tool.execute.after": async (input) => {
-      if (!isRootSession(input.sessionID)) return
-      emit("agent.tool.finished", input.sessionID, {
-        tool_name: input.tool,
-      })
-    },
-
     event: async ({ event }) => {
       const properties = event.properties || {}
 
