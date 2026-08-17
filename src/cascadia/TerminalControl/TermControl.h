@@ -427,6 +427,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void _hoveredHyperlinkChanged(const IInspectable& sender, const IInspectable& args);
         void _setCompletedTurnActionHover(CompletedTurnAction action);
         void _restoreCompletedTurnActionPointer();
+        void _reassertCompletedTurnActionPointer();
         safe_void_coroutine _updateSelectionMarkers(IInspectable sender, Control::UpdateSelectionMarkersEventArgs args);
 
         void _coreFontSizeChanged(const IInspectable& s, const Control::FontSizeChangedArgs& args);

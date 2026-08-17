@@ -2047,7 +2047,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                                                        TermControl::GetPointerUpdateKind(point),
                                                                        ControlKeyStates(args.KeyModifiers()),
                                                                        pixelPosition);
-            _setCompletedTurnActionHover(ParseCompletedTurnActionHyperlink(_core.HoveredUriText()));
+            _reassertCompletedTurnActionPointer();
 
             // GH#9109 - Only start an auto-scroll when the drag actually
             // started within our bounds. Otherwise, someone could start a drag
@@ -3602,6 +3602,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
         _completedTurnPriorPointerCursor = nullptr;
         _completedTurnActionHovered = false;
+    }
+
+    void TermControl::_reassertCompletedTurnActionPointer()
+    {
+        if (_completedTurnActionHovered)
+        {
+            if (const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread())
+            {
+                coreWindow.PointerCursor(Windows::UI::Core::CoreCursor{ Windows::UI::Core::CoreCursorType::Hand, 0 });
+            }
+        }
     }
 
     safe_void_coroutine TermControl::_updateSelectionMarkers(IInspectable /*sender*/, Control::UpdateSelectionMarkersEventArgs args)
