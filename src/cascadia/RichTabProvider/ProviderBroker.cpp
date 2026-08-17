@@ -21,6 +21,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         constexpr auto ProviderTimeout = std::chrono::seconds{ 5 };
         constexpr auto PublishLeaseLifetime = std::chrono::seconds{ 10 };
+        constexpr auto PersistentPublishLeaseLifetime = std::chrono::seconds{ 90 };
         constexpr auto DetachedSessionRetention = std::chrono::seconds{ 30 };
 
         std::optional<std::wstring> _EnvironmentValue(const wchar_t* name)
@@ -139,6 +140,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                    left.runtime.kind == right.runtime.kind &&
                    left.runtime.entrypoint == right.runtime.entrypoint &&
                    left.runtime.arguments == right.runtime.arguments &&
+                   left.hosting == right.hosting &&
                    left.activationEvents == right.activationEvents &&
                    sameFields &&
                    left.extensionRoot == right.extensionRoot &&
@@ -227,8 +229,8 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     ProviderBroker& ProviderBroker::Instance()
     {
-        static auto instance = new ProviderBroker{};
-        return *instance;
+        static ProviderBroker instance;
+        return instance;
     }
 
     ProviderBroker::ProviderBroker()
@@ -243,30 +245,86 @@ namespace Microsoft::Terminal::RichTab::Provider
             _processEpoch = (GetTickCount64() << 16) ^ GetCurrentProcessId();
         }
         constexpr size_t WorkerCount{ 4 };
+        _executorWorkers.reserve(WorkerCount);
         for (size_t index = 0; index < WorkerCount; ++index)
         {
-            std::thread{ [this]() {
+            _executorWorkers.emplace_back([this]() {
                 winrt::init_apartment(winrt::apartment_type::multi_threaded);
                 for (;;)
                 {
                     std::function<void()> work;
                     {
                         std::unique_lock lock{ _executorMutex };
-                        _executorCondition.wait(lock, [&]() { return !_executorQueue.empty(); });
+                        _executorCondition.wait(lock, [&]() {
+                            return _executorStopping || !_executorQueue.empty();
+                        });
+                        if (_executorStopping)
+                        {
+                            return;
+                        }
                         work = std::move(_executorQueue.front());
                         _executorQueue.pop_front();
                     }
                     work();
                 }
-            } }.detach();
+            });
         }
+        _persistentSupervisor.SetEventCallback([this](const auto& event) {
+            _OnPersistentProviderEvent(event);
+        });
+        _callbackLifetime = std::make_shared<CallbackLifetime>();
+        _callbackLifetime->owner = this;
+        _housekeepingThread = std::thread{ [this]() { _HousekeepingWorker(); } };
         ReloadProviders();
+    }
+
+    ProviderBroker::~ProviderBroker()
+    {
+        {
+            std::lock_guard lock{ _callbackLifetime->mutex };
+            _callbackLifetime->owner = nullptr;
+        }
+        {
+            std::lock_guard lock{ _reloadMutex };
+            _appExtensionWatcher.reset();
+        }
+
+        {
+            std::lock_guard lock{ _housekeepingMutex };
+            _housekeepingStopping = true;
+        }
+        _housekeepingCondition.notify_one();
+        if (_housekeepingThread.joinable())
+        {
+            _housekeepingThread.join();
+        }
+
+        _persistentSupervisor.SetEventCallback({});
+        _persistentSupervisor.Shutdown();
+
+        {
+            std::lock_guard lock{ _executorMutex };
+            _executorStopping = true;
+            _executorQueue.clear();
+        }
+        _executorCondition.notify_all();
+        for (auto& worker : _executorWorkers)
+        {
+            if (worker.joinable())
+            {
+                worker.join();
+            }
+        }
     }
 
     void ProviderBroker::_Enqueue(std::function<void()> work)
     {
         {
             std::lock_guard lock{ _executorMutex };
+            if (_executorStopping)
+            {
+                return;
+            }
             _executorQueue.emplace_back(std::move(work));
         }
         _executorCondition.notify_one();
@@ -280,7 +338,10 @@ namespace Microsoft::Terminal::RichTab::Provider
     std::string ProviderBroker::_CreatePublishLeaseLocked(
         const Registration& provider,
         const Request& request,
-        const uint64_t generation)
+        const uint64_t generation,
+        const std::chrono::steady_clock::duration lifetime,
+        const uint64_t instanceGeneration,
+        const bool persistent)
     {
         constexpr char hex[] = "0123456789abcdef";
         std::array<uint8_t, 32> bytes{};
@@ -302,12 +363,14 @@ namespace Microsoft::Terminal::RichTab::Provider
                 lease[i * 2 + 1] = hex[bytes[i] & 0x0f];
             }
             if (_publishLeases.emplace(
-                                   lease,
-                                   PublishLease{
-                                       provider,
-                                       request,
-                                       generation,
-                                       std::chrono::steady_clock::now() + PublishLeaseLifetime })
+                                  lease,
+                                  PublishLease{
+                                      provider,
+                                      request,
+                                      generation,
+                                      instanceGeneration,
+                                      persistent,
+                                      std::chrono::steady_clock::now() + lifetime })
                     .second)
             {
                 return lease;
@@ -315,12 +378,141 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
+    void ProviderBroker::_InvalidatePublishLeasesLocked(
+        const std::string_view sessionId,
+        const std::string_view providerId)
+    {
+        std::erase_if(_publishLeases, [&](const auto& item) {
+            const auto& binding = item.second;
+            return binding.request.sessionId == sessionId &&
+                   (providerId.empty() || binding.provider.manifest.id == providerId);
+        });
+    }
+
+    bool ProviderBroker::_ValidatePublishLeaseLocked(
+        const PublishLease& binding,
+        SessionState*& session,
+        ProviderState*& providerState)
+    {
+        if (binding.request.processEpoch != _processEpoch ||
+            binding.request.providerId != binding.provider.manifest.id ||
+            binding.request.sessionId.empty() ||
+            binding.request.requestId.empty() ||
+            binding.persistent !=
+                (binding.provider.manifest.hosting.kind == HostingKind::Persistent) ||
+            (binding.persistent && binding.instanceGeneration == 0))
+        {
+            return false;
+        }
+
+        const auto sessionEntry = _sessions.find(binding.request.sessionId);
+        if (sessionEntry == _sessions.end())
+        {
+            return false;
+        }
+        const auto stateEntry = sessionEntry->second.providers.find(binding.provider.manifest.id);
+        const auto currentProvider = _FindProvider(_providers, binding.provider.manifest.id);
+        if (stateEntry == sessionEntry->second.providers.end() ||
+            !currentProvider ||
+            !_SameProvider(*currentProvider, binding.provider) ||
+            !stateEntry->second.running ||
+            stateEntry->second.runningGeneration != binding.generation ||
+            stateEntry->second.generation != binding.generation ||
+            stateEntry->second.activeRequestId != binding.request.requestId ||
+            sessionEntry->second.contextRevision != binding.request.contextRevision ||
+            (binding.persistent &&
+             stateEntry->second.persistentInstanceGeneration != binding.instanceGeneration))
+        {
+            return false;
+        }
+
+        session = &sessionEntry->second;
+        providerState = &stateEntry->second;
+        return true;
+    }
+
+    std::optional<std::string> ProviderBroker::_CreatePersistentControlFrameLocked(
+        const Registration& provider,
+        const Request& request,
+        const uint64_t generation,
+        const uint64_t instanceGeneration,
+        const bool started)
+    {
+        const auto session = _sessions.find(request.sessionId);
+        if (session == _sessions.end() ||
+            session->second.contextRevision != request.contextRevision)
+        {
+            return std::nullopt;
+        }
+        const auto state = session->second.providers.find(provider.manifest.id);
+        const auto currentProvider = _FindProvider(_providers, provider.manifest.id);
+        if (state == session->second.providers.end() ||
+            state->second.generation != generation ||
+            state->second.activeRequestId != request.requestId ||
+            !currentProvider ||
+            !_SameProvider(*currentProvider, provider))
+        {
+            return std::nullopt;
+        }
+
+        _InvalidatePublishLeasesLocked(request.sessionId, provider.manifest.id);
+        std::vector<PublishGrant> grants;
+        std::vector<std::string> leases;
+        grants.reserve(2);
+        leases.reserve(2);
+        for (size_t index = 0; index < 2; ++index)
+        {
+            auto lease = _CreatePublishLeaseLocked(
+                provider,
+                request,
+                generation,
+                PersistentPublishLeaseLifetime,
+                instanceGeneration,
+                true);
+            if (lease.empty())
+            {
+                for (const auto& created : leases)
+                {
+                    _publishLeases.erase(created);
+                }
+                return std::nullopt;
+            }
+            grants.emplace_back(PublishGrant{
+                request.requestId,
+                lease,
+                static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        PersistentPublishLeaseLifetime)
+                        .count()),
+            });
+            leases.emplace_back(std::move(lease));
+        }
+
+        const auto frame = SerializeControlFrame(
+            started ? ControlMessageKind::Start : ControlMessageKind::Refresh,
+            request,
+            grants,
+            provider.manifest);
+        if (!frame)
+        {
+            for (const auto& lease : leases)
+            {
+                _publishLeases.erase(lease);
+            }
+            return std::nullopt;
+        }
+
+        state->second.running = true;
+        state->second.runningGeneration = generation;
+        state->second.persistentInstanceGeneration = instanceGeneration;
+        return frame.value;
+    }
+
     PublishResult ProviderBroker::Publish(
         const std::string_view lease,
         const std::string_view snapshotJson)
     {
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        PublishLease binding;
         {
             std::lock_guard lock{ _mutex };
             const auto leaseEntry = _publishLeases.find(std::string{ lease });
@@ -329,61 +521,162 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return { false, "publish lease is unknown or already consumed" };
             }
 
-            auto binding = leaseEntry->second;
+            binding = leaseEntry->second;
+            _publishLeases.erase(leaseEntry);
             if (std::chrono::steady_clock::now() >= binding.expiresAt)
             {
-                _publishLeases.erase(leaseEntry);
                 return { false, "publish lease has expired" };
             }
 
-            const auto session = _sessions.find(binding.request.sessionId);
-            if (session == _sessions.end())
+            SessionState* session = nullptr;
+            ProviderState* providerState = nullptr;
+            if (!_ValidatePublishLeaseLocked(binding, session, providerState))
             {
-                _publishLeases.erase(leaseEntry);
-                return { false, "publish session no longer exists" };
-            }
-            const auto providerState = session->second.providers.find(binding.provider.manifest.id);
-            if (providerState == session->second.providers.end() ||
-                !providerState->second.running ||
-                providerState->second.runningGeneration != binding.generation ||
-                providerState->second.generation != binding.generation ||
-                session->second.contextRevision != binding.request.contextRevision)
-            {
-                _publishLeases.erase(leaseEntry);
                 return { false, "publish lease is stale" };
             }
+        }
 
-            _publishLeases.erase(leaseEntry);
-            const auto parsed = ParseSnapshot(
-                snapshotJson,
-                binding.provider.manifest,
-                binding.request.requestId);
-            if (!parsed)
+        const auto parsed = ParseSnapshot(
+            snapshotJson,
+            binding.provider.manifest,
+            binding.request.requestId);
+        if (!parsed)
+        {
+            if (binding.persistent)
             {
-                return { false, parsed.errors.empty() ? "snapshot is invalid" : parsed.errors.front() };
+                _ReplenishPersistentGrants(binding);
+            }
+            return { false, parsed.errors.empty() ? "snapshot is invalid" : parsed.errors.front() };
+        }
+
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
+        {
+            std::lock_guard lock{ _mutex };
+            SessionState* session = nullptr;
+            ProviderState* providerState = nullptr;
+            if (!_ValidatePublishLeaseLocked(binding, session, providerState))
+            {
+                return { false, "publish lease is stale" };
             }
 
             UpdateFieldChangeSequences(
                 *parsed.value,
-                providerState->second.fieldBaseline,
-                providerState->second.fieldChangeSequences,
-                session->second.nextFieldChangeSequence);
-            providerState->second.snapshot = *parsed.value;
-            providerState->second.publishedGeneration = binding.generation;
-            ++session->second.updateSequence;
-            update = _UpdateFor(binding.request.sessionId, session->second);
-            callbacks.reserve(session->second.callbacks.size());
-            for (const auto& [_, callback] : session->second.callbacks)
+                providerState->fieldBaseline,
+                providerState->fieldChangeSequences,
+                session->nextFieldChangeSequence);
+            providerState->snapshot = *parsed.value;
+            providerState->publishedGeneration = binding.generation;
+            ++session->updateSequence;
+            update = _UpdateFor(binding.request.sessionId, *session);
+            callbacks.reserve(session->callbacks.size());
+            for (const auto& [_, callback] : session->callbacks)
             {
                 callbacks.emplace_back(callback);
             }
         }
 
+        if (binding.persistent)
+        {
+            _ReplenishPersistentGrants(binding);
+        }
         for (const auto& callback : callbacks)
         {
             callback(update);
         }
         return { true, "snapshot committed" };
+    }
+
+    void ProviderBroker::_ReplenishPersistentGrants(const PublishLease& binding)
+    {
+        std::optional<std::string> frame;
+        {
+            std::lock_guard lock{ _mutex };
+            SessionState* session = nullptr;
+            ProviderState* providerState = nullptr;
+            if (!binding.persistent ||
+                !_ValidatePublishLeaseLocked(binding, session, providerState))
+            {
+                return;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            std::erase_if(_publishLeases, [&](const auto& item) {
+                const auto& current = item.second;
+                return current.persistent &&
+                       current.request.sessionId == binding.request.sessionId &&
+                       current.provider.manifest.id == binding.provider.manifest.id &&
+                       current.expiresAt <= now;
+            });
+
+            size_t outstanding = 0;
+            for (const auto& [_, current] : _publishLeases)
+            {
+                if (current.persistent &&
+                    current.request.sessionId == binding.request.sessionId &&
+                    current.provider.manifest.id == binding.provider.manifest.id &&
+                    current.generation == binding.generation &&
+                    current.instanceGeneration == binding.instanceGeneration &&
+                    current.request.requestId == binding.request.requestId)
+                {
+                    ++outstanding;
+                }
+            }
+            if (outstanding >= 2)
+            {
+                return;
+            }
+
+            std::vector<PublishGrant> grants;
+            std::vector<std::string> leases;
+            for (; outstanding < 2; ++outstanding)
+            {
+                auto lease = _CreatePublishLeaseLocked(
+                    binding.provider,
+                    binding.request,
+                    binding.generation,
+                    PersistentPublishLeaseLifetime,
+                    binding.instanceGeneration,
+                    true);
+                if (lease.empty())
+                {
+                    break;
+                }
+                grants.emplace_back(PublishGrant{
+                    binding.request.requestId,
+                    lease,
+                    static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            PersistentPublishLeaseLifetime)
+                            .count()),
+                });
+                leases.emplace_back(std::move(lease));
+            }
+            if (grants.empty())
+            {
+                return;
+            }
+
+            const auto serialized = SerializeControlFrame(
+                ControlMessageKind::Lease,
+                std::nullopt,
+                grants,
+                binding.provider.manifest);
+            if (!serialized)
+            {
+                for (const auto& created : leases)
+                {
+                    _publishLeases.erase(created);
+                }
+                return;
+            }
+            frame = std::move(serialized.value);
+        }
+
+        _persistentSupervisor.SendLease(
+            { binding.provider.manifest.id, binding.request.sessionId },
+            binding.instanceGeneration,
+            std::move(*frame));
     }
 
     uint64_t ProviderBroker::_RegistryStamp() const noexcept
@@ -526,6 +819,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::vector<std::string> sessionsToRefresh;
         std::unordered_set<std::string> refreshProviders;
+        std::vector<PersistentProviderKey> persistentProvidersToStop;
         {
             std::lock_guard lock{ _mutex };
             const auto previous = _providers;
@@ -543,7 +837,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                     const auto newRegistration = _FindProvider(_providers, id);
                     if (!newRegistration || !oldRegistration || !_SameProvider(*oldRegistration, *newRegistration))
                     {
+                        if (oldRegistration &&
+                            oldRegistration->manifest.hosting.kind == HostingKind::Persistent)
+                        {
+                            persistentProvidersToStop.emplace_back(
+                                PersistentProviderKey{ id, sessionId });
+                        }
+                        _InvalidatePublishLeasesLocked(sessionId, id);
                         provider.generation = _nextGeneration++;
+                        provider.running = false;
+                        provider.runningGeneration = 0;
+                        provider.persistentInstanceGeneration = 0;
+                        provider.activeRequestId.clear();
                         provider.pending.reset();
                         provider.snapshot.reset();
                         provider.fieldBaseline.reset();
@@ -565,6 +870,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                     sessionsToRefresh.emplace_back(sessionId);
                 }
             }
+            for (const auto& key : persistentProvidersToStop)
+            {
+                _persistentSupervisor.Stop(key);
+            }
             _registryStamp = _RegistryStamp();
         }
 
@@ -574,7 +883,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         for (const auto& sessionId : sessionsToRefresh)
         {
-            _Refresh(sessionId, ActivationEvent::ManualRefresh, true, refreshProviders);
+            _Refresh(
+                sessionId,
+                ActivationEvent::ManualRefresh,
+                true,
+                refreshProviders,
+                false,
+                true);
         }
     }
 
@@ -590,8 +905,16 @@ namespace Microsoft::Terminal::RichTab::Provider
             _appExtensionDiscoveryScheduled = true;
         }
         _Enqueue([this]() {
-            auto watcher = AppExtensionProviderCatalog::WatchForChanges([this]() {
-                _ScheduleAppExtensionDiscovery();
+            const std::weak_ptr weakLifetime{ _callbackLifetime };
+            auto watcher = AppExtensionProviderCatalog::WatchForChanges([weakLifetime]() {
+                if (const auto lifetime = weakLifetime.lock())
+                {
+                    std::lock_guard lock{ lifetime->mutex };
+                    if (lifetime->owner)
+                    {
+                        lifetime->owner->_ScheduleAppExtensionDiscovery();
+                    }
+                }
             });
             auto discovery = AppExtensionProviderCatalog::DiscoverAsync().get();
             bool rediscover = false;
@@ -662,6 +985,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::vector<std::string> sessionsToRefresh;
         std::unordered_set<std::string> refreshProviders;
+        std::vector<PersistentProviderKey> persistentProvidersToStop;
         {
             std::lock_guard lock{ _mutex };
             if (_preferences == preferences &&
@@ -683,7 +1007,19 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     if (_FindProvider(previous, id) && !_FindProvider(_providers, id))
                     {
+                        const auto oldRegistration = _FindProvider(previous, id);
+                        if (oldRegistration &&
+                            oldRegistration->manifest.hosting.kind == HostingKind::Persistent)
+                        {
+                            persistentProvidersToStop.emplace_back(
+                                PersistentProviderKey{ id, sessionId });
+                        }
+                        _InvalidatePublishLeasesLocked(sessionId, id);
                         provider.generation = _nextGeneration++;
+                        provider.running = false;
+                        provider.runningGeneration = 0;
+                        provider.persistentInstanceGeneration = 0;
+                        provider.activeRequestId.clear();
                         provider.pending.reset();
                         provider.snapshot.reset();
                         provider.fieldBaseline.reset();
@@ -702,6 +1038,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                     sessionsToRefresh.emplace_back(sessionId);
                 }
             }
+            for (const auto& key : persistentProvidersToStop)
+            {
+                _persistentSupervisor.Stop(key);
+            }
         }
 
         for (const auto& [callback, update] : notifications)
@@ -710,7 +1050,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         for (const auto& sessionId : sessionsToRefresh)
         {
-            _Refresh(sessionId, ActivationEvent::ManualRefresh, true, refreshProviders);
+            _Refresh(
+                sessionId,
+                ActivationEvent::ManualRefresh,
+                true,
+                refreshProviders,
+                false,
+                true);
         }
     }
 
@@ -797,9 +1143,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<BrokerUpdate> existing;
         bool contextChanged = false;
         auto initialCallback = callback;
+        std::vector<std::string> prunedSessions;
         {
             std::lock_guard lock{ _mutex };
-            _PruneDetachedSessionsLocked();
+            prunedSessions = _PruneDetachedSessionsLocked();
+            for (const auto& sessionId : prunedSessions)
+            {
+                _persistentSupervisor.StopSession(sessionId);
+            }
             attachment = _nextAttachment++;
             auto& session = _sessions[context.sessionId];
             session.detachedAt.reset();
@@ -817,8 +1168,15 @@ namespace Microsoft::Terminal::RichTab::Provider
                 session.context.workingDirectoryAuthoritative = context.workingDirectoryAuthoritative;
                 session.context.shellType = std::move(context.shellType);
                 ++session.contextRevision;
+                _InvalidatePublishLeasesLocked(session.context.sessionId);
                 for (auto& [_, provider] : session.providers)
                 {
+                    provider.generation = _nextGeneration++;
+                    provider.running = false;
+                    provider.runningGeneration = 0;
+                    provider.persistentInstanceGeneration = 0;
+                    provider.activeRequestId.clear();
+                    provider.pending.reset();
                     provider.snapshot.reset();
                     provider.fieldBaseline.reset();
                     provider.fieldChangeSequences.clear();
@@ -831,37 +1189,61 @@ namespace Microsoft::Terminal::RichTab::Provider
             existing = _UpdateFor(session.context.sessionId, session);
         }
 
+        if (contextChanged)
+        {
+            _persistentSupervisor.StopSession(existing->sessionId);
+        }
         if (contextChanged || existing->presentation)
         {
             initialCallback(*existing);
         }
-        _Refresh(existing->sessionId, ActivationEvent::PaneConnected, true);
+        _Refresh(
+            existing->sessionId,
+            ActivationEvent::PaneConnected,
+            true,
+            {},
+            contextChanged,
+            true);
         return attachment;
     }
 
     void ProviderBroker::Detach(const AttachmentId attachment)
     {
-        std::lock_guard lock{ _mutex };
-        const auto attached = _attachmentSessions.find(attachment);
-        if (attached == _attachmentSessions.end())
+        std::vector<std::string> prunedSessions;
         {
-            return;
-        }
-        if (const auto session = _sessions.find(attached->second); session != _sessions.end())
-        {
-            session->second.callbacks.erase(attachment);
-            if (session->second.callbacks.empty())
+            std::lock_guard lock{ _mutex };
+            const auto attached = _attachmentSessions.find(attachment);
+            if (attached == _attachmentSessions.end())
             {
-                for (auto& [_, provider] : session->second.providers)
+                return;
+            }
+            if (const auto session = _sessions.find(attached->second); session != _sessions.end())
+            {
+                session->second.callbacks.erase(attachment);
+                if (session->second.callbacks.empty())
                 {
-                    provider.generation = _nextGeneration++;
-                    provider.pending.reset();
+                    for (auto& [id, provider] : session->second.providers)
+                    {
+                        const auto registration = _FindProvider(_providers, id);
+                        if (!registration ||
+                            registration->manifest.hosting.kind != HostingKind::Persistent)
+                        {
+                            provider.generation = _nextGeneration++;
+                            provider.activeRequestId.clear();
+                            provider.pending.reset();
+                        }
+                    }
+                    session->second.detachedAt = std::chrono::steady_clock::now();
                 }
-                session->second.detachedAt = std::chrono::steady_clock::now();
+            }
+            _attachmentSessions.erase(attached);
+            prunedSessions = _PruneDetachedSessionsLocked();
+            for (const auto& sessionId : prunedSessions)
+            {
+                _persistentSupervisor.StopSession(sessionId);
             }
         }
-        _attachmentSessions.erase(attached);
-        _PruneDetachedSessionsLocked();
+        _housekeepingCondition.notify_one();
     }
 
     void ProviderBroker::UpdateContext(
@@ -892,8 +1274,15 @@ namespace Microsoft::Terminal::RichTab::Provider
             session.context.workingDirectoryAuthoritative = authoritative;
             session.context.shellType = std::move(shellType);
             ++session.contextRevision;
+            _InvalidatePublishLeasesLocked(session.context.sessionId);
             for (auto& [_, provider] : session.providers)
             {
+                provider.generation = _nextGeneration++;
+                provider.running = false;
+                provider.runningGeneration = 0;
+                provider.persistentInstanceGeneration = 0;
+                provider.activeRequestId.clear();
+                provider.pending.reset();
                 provider.snapshot.reset();
                 provider.fieldBaseline.reset();
                 provider.fieldChangeSequences.clear();
@@ -908,11 +1297,18 @@ namespace Microsoft::Terminal::RichTab::Provider
                 callbacks.emplace_back(callback);
             }
         }
+        _persistentSupervisor.StopSession(sessionId);
         for (const auto& callback : callbacks)
         {
             callback(update);
         }
-        _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false);
+        _Refresh(
+            sessionId,
+            ActivationEvent::WorkingDirectoryChanged,
+            false,
+            {},
+            true,
+            true);
     }
 
     void ProviderBroker::Activate(const AttachmentId attachment)
@@ -935,7 +1331,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         if (!sessionId.empty())
         {
-            _Refresh(sessionId, reason, false);
+            _Refresh(
+                sessionId,
+                reason,
+                false,
+                {},
+                false,
+                reason == ActivationEvent::ManualRefresh);
         }
     }
 
@@ -943,7 +1345,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         const std::string& sessionId,
         const ActivationEvent reason,
         const bool initial,
-        const std::unordered_set<std::string>& providerIds)
+        const std::unordered_set<std::string>& providerIds,
+        const bool forcePersistentRestart,
+        const bool resetPersistentBackoff)
     {
         struct Pending
         {
@@ -952,6 +1356,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             uint64_t generation{ 0 };
         };
         std::vector<Pending> pending;
+        std::vector<Pending> persistent;
         {
             std::lock_guard lock{ _mutex };
             const auto found = _sessions.find(sessionId);
@@ -991,6 +1396,20 @@ namespace Microsoft::Terminal::RichTab::Provider
                 request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
                 request.contextRevision = session.contextRevision;
                 request.shellType = session.context.shellType;
+                providerState.activeRequestId = request.requestId;
+                providerState.lastActivation = activation;
+                if (provider.manifest.hosting.kind == HostingKind::Persistent)
+                {
+                    _InvalidatePublishLeasesLocked(
+                        session.context.sessionId,
+                        provider.manifest.id);
+                    providerState.running = false;
+                    providerState.runningGeneration = 0;
+                    providerState.persistentInstanceGeneration = 0;
+                    providerState.pending.reset();
+                    persistent.push_back(Pending{ provider, std::move(request), generation });
+                    continue;
+                }
                 if (providerState.running)
                 {
                     providerState.pending = PendingRequest{ provider, std::move(request), generation };
@@ -1002,6 +1421,15 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
 
+        for (auto& work : persistent)
+        {
+            _RunPersistentProvider(
+                std::move(work.provider),
+                std::move(work.request),
+                work.generation,
+                forcePersistentRestart,
+                resetPersistentBackoff);
+        }
         for (auto& work : pending)
         {
             _Enqueue(
@@ -1012,6 +1440,53 @@ namespace Microsoft::Terminal::RichTab::Provider
                     _RunProvider(std::move(provider), std::move(request), generation);
                 });
         }
+    }
+
+    void ProviderBroker::_RunPersistentProvider(
+        Registration provider,
+        Request request,
+        const uint64_t generation,
+        const bool forceRestart,
+        const bool resetBackoff)
+    {
+        const auto clsid = _EnvironmentValue(L"WT_COM_CLSID");
+        const auto cli = _EnvironmentValue(L"WT_RICH_TAB_CLI");
+        if (!clsid || !cli)
+        {
+            _OnPersistentProviderEvent(PersistentProviderEvent{
+                PersistentProviderEventKind::LaunchFailed,
+                { provider.manifest.id, request.sessionId },
+                0,
+                generation,
+                std::chrono::milliseconds{ 0 },
+                ERROR_ENVVAR_NOT_FOUND,
+                "Rich Tab publish routing is unavailable",
+            });
+            return;
+        }
+
+        _persistentSupervisor.StartOrRefresh(
+            { provider.manifest.id, request.sessionId },
+            provider.manifest,
+            {
+                { L"WT_COM_CLSID", *clsid },
+                { L"WT_RICH_TAB_CLI", *cli },
+            },
+            [this,
+             provider,
+             request,
+             generation](const uint64_t instanceGeneration, const bool started) -> std::optional<std::string> {
+                std::lock_guard lock{ _mutex };
+                return _CreatePersistentControlFrameLocked(
+                    provider,
+                    request,
+                    generation,
+                    instanceGeneration,
+                    started);
+            },
+            generation,
+            forceRestart,
+            resetBackoff);
     }
 
     void ProviderBroker::_RunProvider(
@@ -1042,7 +1517,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 else
                 {
                     std::lock_guard lock{ _mutex };
-                    publishLease = _CreatePublishLeaseLocked(provider, request, generation);
+                    publishLease = _CreatePublishLeaseLocked(
+                        provider,
+                        request,
+                        generation,
+                        PublishLeaseLifetime);
                     if (publishLease->empty())
                     {
                         publishLease.reset();
@@ -1170,15 +1649,182 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
-    void ProviderBroker::_PruneDetachedSessionsLocked()
+    void ProviderBroker::_OnPersistentProviderEvent(
+        const PersistentProviderEvent& event)
     {
+        if (event.kind == PersistentProviderEventKind::RestartRequested)
+        {
+            ActivationEvent reason{ ActivationEvent::ManualRefresh };
+            auto restart = false;
+            {
+                std::lock_guard lock{ _mutex };
+                const auto session = _sessions.find(event.key.sessionId);
+                if (session == _sessions.end() || session->second.callbacks.empty())
+                {
+                    return;
+                }
+                const auto state = session->second.providers.find(event.key.providerId);
+                const auto provider = _FindProvider(_providers, event.key.providerId);
+                if (state == session->second.providers.end() ||
+                    state->second.generation != event.requestGeneration ||
+                    !provider ||
+                    provider->manifest.hosting.kind != HostingKind::Persistent)
+                {
+                    return;
+                }
+                reason = state->second.lastActivation;
+                restart = true;
+            }
+            if (restart)
+            {
+                _Refresh(
+                    event.key.sessionId,
+                    reason,
+                    false,
+                    { event.key.providerId },
+                    false,
+                    false);
+            }
+            return;
+        }
+
+        std::vector<Callback> callbacks;
+        BrokerUpdate update;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto session = _sessions.find(event.key.sessionId);
+            if (session == _sessions.end())
+            {
+                return;
+            }
+            const auto state = session->second.providers.find(event.key.providerId);
+            if (state == session->second.providers.end() ||
+                state->second.generation != event.requestGeneration ||
+                (event.instanceGeneration != 0 &&
+                 state->second.persistentInstanceGeneration != 0 &&
+                 state->second.persistentInstanceGeneration != event.instanceGeneration))
+            {
+                return;
+            }
+
+            state->second.running = false;
+            state->second.runningGeneration = 0;
+            state->second.persistentInstanceGeneration = 0;
+            _InvalidatePublishLeasesLocked(
+                event.key.sessionId,
+                event.key.providerId);
+
+            std::string diagnostic =
+                "Persistent provider '" + event.key.providerId + "' failed";
+            if (event.win32Error != ERROR_SUCCESS)
+            {
+                diagnostic += " with Win32 error " + std::to_string(event.win32Error);
+            }
+            std::vector<std::string> diagnostics{ std::move(diagnostic) };
+            if (!event.standardError.empty())
+            {
+                diagnostics.emplace_back(event.standardError);
+            }
+            ++session->second.updateSequence;
+            update = _UpdateFor(
+                event.key.sessionId,
+                session->second,
+                std::move(diagnostics));
+            callbacks.reserve(session->second.callbacks.size());
+            for (const auto& [_, callback] : session->second.callbacks)
+            {
+                callbacks.emplace_back(callback);
+            }
+        }
+
+        for (const auto& callback : callbacks)
+        {
+            callback(update);
+        }
+    }
+
+    std::vector<std::string> ProviderBroker::_PruneDetachedSessionsLocked()
+    {
+        std::vector<std::string> removed;
         const auto oldestRetained = std::chrono::steady_clock::now() - DetachedSessionRetention;
-        std::erase_if(_sessions, [&](const auto& item) {
-            const auto& session = item.second;
-            return session.callbacks.empty() &&
-                   session.detachedAt &&
-                   *session.detachedAt <= oldestRetained;
-        });
+        for (auto current = _sessions.begin(); current != _sessions.end();)
+        {
+            const auto& session = current->second;
+            if (session.callbacks.empty() &&
+                session.detachedAt &&
+                *session.detachedAt <= oldestRetained)
+            {
+                _InvalidatePublishLeasesLocked(current->first);
+                removed.emplace_back(current->first);
+                current = _sessions.erase(current);
+            }
+            else
+            {
+                ++current;
+            }
+        }
+        return removed;
+    }
+
+    void ProviderBroker::_HousekeepingWorker()
+    {
+        for (;;)
+        {
+            {
+                std::unique_lock lock{ _housekeepingMutex };
+                _housekeepingCondition.wait_for(
+                    lock,
+                    std::chrono::seconds{ 1 },
+                    [&]() { return _housekeepingStopping; });
+                if (_housekeepingStopping)
+                {
+                    return;
+                }
+            }
+
+            std::vector<std::string> removed;
+            std::vector<PublishLease> grantsToRenew;
+            {
+                std::lock_guard lock{ _mutex };
+                removed = _PruneDetachedSessionsLocked();
+                for (const auto& sessionId : removed)
+                {
+                    _persistentSupervisor.StopSession(sessionId);
+                }
+
+                const auto now = std::chrono::steady_clock::now();
+                for (auto current = _publishLeases.begin(); current != _publishLeases.end();)
+                {
+                    const auto& binding = current->second;
+                    if (!binding.persistent || binding.expiresAt > now)
+                    {
+                        ++current;
+                        continue;
+                    }
+
+                    SessionState* session = nullptr;
+                    ProviderState* providerState = nullptr;
+                    if (_ValidatePublishLeaseLocked(binding, session, providerState) &&
+                        std::none_of(
+                            grantsToRenew.begin(),
+                            grantsToRenew.end(),
+                            [&](const auto& pending) {
+                                return pending.request.sessionId == binding.request.sessionId &&
+                                       pending.provider.manifest.id == binding.provider.manifest.id &&
+                                       pending.generation == binding.generation &&
+                                       pending.instanceGeneration == binding.instanceGeneration;
+                            }))
+                    {
+                        grantsToRenew.emplace_back(binding);
+                    }
+                    current = _publishLeases.erase(current);
+                }
+            }
+            for (const auto& binding : grantsToRenew)
+            {
+                _ReplenishPersistentGrants(binding);
+            }
+        }
     }
 
     BrokerUpdate ProviderBroker::_UpdateFor(

@@ -5,6 +5,7 @@
 
 #include "AppExtensionProviderCatalog.h"
 #include "CommandRunner.h"
+#include "PersistentProviderSupervisor.h"
 #include "ProviderRegistry.h"
 
 #include <chrono>
@@ -14,6 +15,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -144,6 +146,9 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::optional<std::unordered_map<std::string, FieldValue>> fieldBaseline;
             std::unordered_map<std::string, uint64_t> fieldChangeSequences;
             uint64_t publishedGeneration{ 0 };
+            uint64_t persistentInstanceGeneration{ 0 };
+            std::string activeRequestId;
+            ActivationEvent lastActivation{ ActivationEvent::ManualRefresh };
         };
 
         struct PublishLease
@@ -151,6 +156,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             Registration provider;
             Request request;
             uint64_t generation{ 0 };
+            uint64_t instanceGeneration{ 0 };
+            bool persistent{ false };
             std::chrono::steady_clock::time_point expiresAt;
         };
 
@@ -165,17 +172,33 @@ namespace Microsoft::Terminal::RichTab::Provider
             uint64_t nextFieldChangeSequence{ 0 };
         };
 
+        struct CallbackLifetime
+        {
+            std::mutex mutex;
+            ProviderBroker* owner{ nullptr };
+        };
+
         ProviderBroker();
+        ~ProviderBroker();
 
         void _Refresh(
             const std::string& sessionId,
             ActivationEvent reason,
             bool initial,
-            const std::unordered_set<std::string>& providerIds = {});
+            const std::unordered_set<std::string>& providerIds = {},
+            bool forcePersistentRestart = false,
+            bool resetPersistentBackoff = false);
         void _RunProvider(
             Registration provider,
             Request request,
             uint64_t generation);
+        void _RunPersistentProvider(
+            Registration provider,
+            Request request,
+            uint64_t generation,
+            bool forceRestart,
+            bool resetBackoff);
+        void _OnPersistentProviderEvent(const PersistentProviderEvent& event);
         BrokerUpdate _UpdateFor(
             const std::string& sessionId,
             const SessionState& state,
@@ -184,22 +207,47 @@ namespace Microsoft::Terminal::RichTab::Provider
         void _ReloadProvidersIfChanged();
         void _ReloadProvidersFromSources();
         void _ScheduleAppExtensionDiscovery();
-        void _PruneDetachedSessionsLocked();
+        std::vector<std::string> _PruneDetachedSessionsLocked();
+        void _HousekeepingWorker();
         uint64_t _RegistryStamp() const noexcept;
         std::vector<Registration> _EffectiveProvidersLocked() const;
         void _UpdateCatalogEffectiveStateLocked();
         std::string _CreatePublishLeaseLocked(
             const Registration& provider,
             const Request& request,
-            uint64_t generation);
+            uint64_t generation,
+            std::chrono::steady_clock::duration lifetime,
+            uint64_t instanceGeneration = 0,
+            bool persistent = false);
+        void _InvalidatePublishLeasesLocked(
+            std::string_view sessionId,
+            std::string_view providerId = {});
+        bool _ValidatePublishLeaseLocked(
+            const PublishLease& binding,
+            SessionState*& session,
+            ProviderState*& providerState);
+        std::optional<std::string> _CreatePersistentControlFrameLocked(
+            const Registration& provider,
+            const Request& request,
+            uint64_t generation,
+            uint64_t instanceGeneration,
+            bool started);
+        void _ReplenishPersistentGrants(const PublishLease& binding);
 
         mutable std::mutex _mutex;
         std::mutex _reloadMutex;
         std::mutex _executorMutex;
         std::condition_variable _executorCondition;
         std::deque<std::function<void()>> _executorQueue;
+        std::vector<std::thread> _executorWorkers;
+        bool _executorStopping{ false };
+        std::mutex _housekeepingMutex;
+        std::condition_variable _housekeepingCondition;
+        std::thread _housekeepingThread;
+        bool _housekeepingStopping{ false };
         ProviderRegistry _registry;
         CommandRunner _runner;
+        PersistentProviderSupervisor _persistentSupervisor;
         std::vector<ProviderDescriptor> _catalog;
         std::vector<Registration> _availableProviders;
         std::vector<Registration> _providers;
@@ -209,6 +257,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool _appExtensionDiscoveryScheduled{ false };
         bool _appExtensionDiscoveryPending{ false };
         std::shared_ptr<void> _appExtensionWatcher;
+        std::shared_ptr<CallbackLifetime> _callbackLifetime;
         std::unordered_map<std::string, SessionState> _sessions;
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         std::unordered_map<std::string, PublishLease> _publishLeases;

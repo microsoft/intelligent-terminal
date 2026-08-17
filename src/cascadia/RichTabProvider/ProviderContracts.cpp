@@ -6,6 +6,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <limits>
 #include <set>
@@ -252,6 +253,23 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return {};
             }
         }
+
+        std::string_view _ControlMessageKindToString(const ControlMessageKind value)
+        {
+            switch (value)
+            {
+            case ControlMessageKind::Start:
+                return "start";
+            case ControlMessageKind::Refresh:
+                return "refresh";
+            case ControlMessageKind::Lease:
+                return "lease";
+            case ControlMessageKind::Stop:
+                return "stop";
+            default:
+                return {};
+            }
+        }
     }
 
     bool IsCanonicalProviderId(const std::string_view id) noexcept
@@ -328,23 +346,35 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
 
-        _RejectUnknownMembers(
-            root,
-            { "schemaVersion", "id", "displayName", "publisher", "version", "protocol", "runtime", "activationEvents", "fields" },
-            "manifest",
-            result.errors);
-
         Manifest manifest;
         manifest.extensionRoot = extensionRoot;
 
         if (!root["schemaVersion"].isUInt() ||
-            root["schemaVersion"].asUInt() != CurrentManifestSchemaVersion)
+            root["schemaVersion"].asUInt() < MinimumManifestSchemaVersion ||
+            root["schemaVersion"].asUInt() > CurrentManifestSchemaVersion)
         {
-            result.errors.emplace_back("schemaVersion must be 1");
+            result.errors.emplace_back("schemaVersion must be 1 or 2");
         }
         else
         {
             manifest.schemaVersion = root["schemaVersion"].asUInt();
+        }
+
+        if (manifest.schemaVersion == 1)
+        {
+            _RejectUnknownMembers(
+                root,
+                { "schemaVersion", "id", "displayName", "publisher", "version", "protocol", "runtime", "activationEvents", "fields" },
+                "manifest",
+                result.errors);
+        }
+        else
+        {
+            _RejectUnknownMembers(
+                root,
+                { "schemaVersion", "id", "displayName", "publisher", "version", "protocol", "runtime", "hosting", "activationEvents", "fields" },
+                "manifest",
+                result.errors);
         }
 
         if (const auto id = _RequiredString(root, "id", 128, result.errors))
@@ -452,6 +482,54 @@ namespace Microsoft::Terminal::RichTab::Provider
                     }
                 }
             }
+        }
+
+        if (manifest.schemaVersion == 2)
+        {
+            const auto& hosting = root["hosting"];
+            if (!hosting.isObject())
+            {
+                result.errors.emplace_back("hosting must be an object for schemaVersion 2");
+            }
+            else
+            {
+                _RejectUnknownMembers(hosting, { "kind", "controlProtocolVersion" }, "hosting", result.errors);
+                if (const auto kind = _RequiredString(hosting, "kind", 32, result.errors))
+                {
+                    if (*kind == "oneShot")
+                    {
+                        manifest.hosting.kind = HostingKind::OneShot;
+                        if (!hosting["controlProtocolVersion"].isNull())
+                        {
+                            result.errors.emplace_back("oneShot hosting must not declare controlProtocolVersion");
+                        }
+                    }
+                    else if (*kind == "persistent")
+                    {
+                        manifest.hosting.kind = HostingKind::Persistent;
+                        if (!hosting["controlProtocolVersion"].isUInt() ||
+                            hosting["controlProtocolVersion"].asUInt() != CurrentControlProtocolVersion)
+                        {
+                            result.errors.emplace_back("persistent hosting controlProtocolVersion must be 1");
+                        }
+                        else
+                        {
+                            manifest.hosting.controlProtocolVersion = hosting["controlProtocolVersion"].asUInt();
+                        }
+                    }
+                    else
+                    {
+                        result.errors.emplace_back("hosting.kind must be oneShot or persistent");
+                    }
+                }
+            }
+        }
+
+        if (manifest.hosting.kind == HostingKind::Persistent &&
+            (manifest.protocol.minimum != CurrentProtocolVersion ||
+             manifest.protocol.maximum != CurrentProtocolVersion))
+        {
+            result.errors.emplace_back("persistent hosting requires protocol minVersion and maxVersion 2");
         }
 
         const auto& activationEvents = root["activationEvents"];
@@ -749,6 +827,123 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
         result.value = std::move(serialized);
+        return result;
+    }
+
+    ParseResult<std::string> SerializeControlFrame(
+        const ControlMessageKind kind,
+        const std::optional<Request>& request,
+        const std::vector<PublishGrant>& grants,
+        const Manifest& manifest)
+    {
+        ParseResult<std::string> result;
+        if (manifest.hosting.kind != HostingKind::Persistent ||
+            manifest.hosting.controlProtocolVersion != CurrentControlProtocolVersion)
+        {
+            result.errors.emplace_back("manifest does not declare supported persistent hosting");
+            return result;
+        }
+
+        const auto kindName = _ControlMessageKindToString(kind);
+        if (kindName.empty())
+        {
+            result.errors.emplace_back("control message kind is invalid");
+        }
+        const auto requiresRequest = kind == ControlMessageKind::Start || kind == ControlMessageKind::Refresh;
+        const auto requiresGrants = kind == ControlMessageKind::Start || kind == ControlMessageKind::Refresh || kind == ControlMessageKind::Lease;
+        if (requiresRequest != request.has_value())
+        {
+            result.errors.emplace_back(requiresRequest ?
+                                           "control message requires a request" :
+                                           "control message must not contain a request");
+        }
+        if (requiresGrants && grants.empty())
+        {
+            result.errors.emplace_back("control message requires at least one publish grant");
+        }
+        if (!requiresGrants && !grants.empty())
+        {
+            result.errors.emplace_back("stop control message must not contain publish grants");
+        }
+        if (grants.size() > 2)
+        {
+            result.errors.emplace_back("control message cannot contain more than two publish grants");
+        }
+
+        Json::Value requestRoot;
+        if (request)
+        {
+            const auto serialized = SerializeRequest(*request, manifest);
+            if (!serialized)
+            {
+                result.errors.insert(result.errors.end(), serialized.errors.begin(), serialized.errors.end());
+            }
+            else
+            {
+                std::string parseError;
+                if (!_ReadJson(*serialized.value, MaximumRequestPayloadSize, requestRoot, parseError))
+                {
+                    result.errors.emplace_back("could not encode the control request");
+                }
+            }
+        }
+
+        Json::Value grantValues{ Json::arrayValue };
+        for (const auto& grant : grants)
+        {
+            if (grant.requestId.empty() || grant.requestId.size() > 128 || !_IsValidUtf8(grant.requestId))
+            {
+                result.errors.emplace_back("publish grant requestId must be bounded UTF-8");
+            }
+            if (grant.lease.empty() || grant.lease.size() > 256 || !_IsValidUtf8(grant.lease))
+            {
+                result.errors.emplace_back("publish grant lease must be bounded UTF-8");
+            }
+            if (grant.expiresInMilliseconds == 0 ||
+                grant.expiresInMilliseconds > static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::minutes{ 5 }).count()))
+            {
+                result.errors.emplace_back("publish grant lifetime must be between 1 millisecond and 5 minutes");
+            }
+            if (request && grant.requestId != request->requestId)
+            {
+                result.errors.emplace_back("publish grant requestId does not match the control request");
+            }
+
+            Json::Value value;
+            value["requestId"] = grant.requestId;
+            value["lease"] = grant.lease;
+            value["expiresInMilliseconds"] = Json::UInt64{ grant.expiresInMilliseconds };
+            grantValues.append(std::move(value));
+        }
+
+        if (!result.errors.empty())
+        {
+            return result;
+        }
+
+        Json::Value root;
+        root["controlProtocolVersion"] = CurrentControlProtocolVersion;
+        root["kind"] = std::string{ kindName };
+        if (request)
+        {
+            root["request"] = std::move(requestRoot);
+        }
+        if (!grants.empty())
+        {
+            root["grants"] = std::move(grantValues);
+        }
+
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "";
+        const auto payload = Json::writeString(builder, root);
+        if (payload.size() > MaximumControlFrameSize)
+        {
+            result.errors.emplace_back("serialized control frame exceeds the transport size limit");
+            return result;
+        }
+
+        result.value =
+            "Content-Length: " + std::to_string(payload.size()) + "\r\n\r\n" + payload;
         return result;
     }
 }

@@ -14,11 +14,14 @@
 
 namespace Microsoft::Terminal::RichTab::Provider
 {
-    inline constexpr uint32_t CurrentManifestSchemaVersion{ 1 };
+    inline constexpr uint32_t MinimumManifestSchemaVersion{ 1 };
+    inline constexpr uint32_t CurrentManifestSchemaVersion{ 2 };
     inline constexpr uint32_t MinimumProtocolVersion{ 1 };
     inline constexpr uint32_t CurrentProtocolVersion{ 2 };
+    inline constexpr uint32_t CurrentControlProtocolVersion{ 1 };
     inline constexpr size_t MaximumManifestSize{ 64 * 1024 };
     inline constexpr size_t MaximumRequestPayloadSize{ 16 * 1024 };
+    inline constexpr size_t MaximumControlFrameSize{ 32 * 1024 };
     inline constexpr size_t MaximumResponseSize{ 16 * 1024 };
     inline constexpr size_t MaximumFieldCount{ 64 };
     inline constexpr size_t MaximumFieldValueSize{ 1024 };
@@ -28,6 +31,20 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         NativeV1,
         PowerShellV1,
+    };
+
+    enum class HostingKind
+    {
+        OneShot,
+        Persistent,
+    };
+
+    enum class ControlMessageKind
+    {
+        Start,
+        Refresh,
+        Lease,
+        Stop,
     };
 
     enum class ActivationEvent
@@ -60,6 +77,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::wstring> arguments;
     };
 
+    struct Hosting
+    {
+        HostingKind kind{ HostingKind::OneShot };
+        uint32_t controlProtocolVersion{ 0 };
+
+        bool operator==(const Hosting&) const = default;
+    };
+
     struct FieldDeclaration
     {
         std::string id;
@@ -77,6 +102,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string version;
         ProtocolRange protocol;
         CommandRuntime runtime;
+        Hosting hosting;
         std::vector<ActivationEvent> activationEvents;
         std::vector<FieldDeclaration> fields;
         std::filesystem::path extensionRoot;
@@ -108,6 +134,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<uint64_t> commandDurationMilliseconds;
     };
 
+    struct PublishGrant
+    {
+        std::string requestId;
+        std::string lease;
+        uint64_t expiresInMilliseconds{ 0 };
+    };
+
     template<typename T>
     struct ParseResult
     {
@@ -134,6 +167,12 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     ParseResult<std::string> SerializeRequest(
         const Request& request,
+        const Manifest& manifest);
+
+    ParseResult<std::string> SerializeControlFrame(
+        ControlMessageKind kind,
+        const std::optional<Request>& request,
+        const std::vector<PublishGrant>& grants,
         const Manifest& manifest);
 
     bool IsCanonicalProviderId(std::string_view id) noexcept;

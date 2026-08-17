@@ -79,8 +79,8 @@ struct EventSink : ITerminalProtocolEventSink
 // ── Helpers ──
 
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
-                                                          std::string* outVersion = nullptr,
-                                                          bool skipAuthenticate = false)
+                                                           std::string* outVersion = nullptr,
+                                                           bool skipAuthenticate = false)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -498,9 +498,9 @@ static void PrintRegistration(
 {
     namespace Provider = Microsoft::Terminal::RichTab::Provider;
     const auto source =
-        registration.sourceIdentity.kind == Provider::ProviderSourceKind::BuiltIn ? "built-in    " :
+        registration.sourceIdentity.kind == Provider::ProviderSourceKind::BuiltIn      ? "built-in    " :
         registration.sourceIdentity.kind == Provider::ProviderSourceKind::AppExtension ? "app-extension" :
-        registration.sourceIdentity.kind == Provider::ProviderSourceKind::Development ? "development " :
+        registration.sourceIdentity.kind == Provider::ProviderSourceKind::Development  ? "development " :
                                                                                          "legacy-managed";
     printf(
         "%s  %s  %s  %s\n",
@@ -594,17 +594,6 @@ int main()
             return;
         }
 
-        Json::Value snapshot;
-        Json::CharReaderBuilder reader;
-        std::string errors;
-        std::istringstream stream{ *snapshotText };
-        if (!Json::parseFromStream(reader, stream, &snapshot, &errors) || !snapshot.isObject())
-        {
-            fprintf(stderr, "[wtcli] provider publish: stdin must contain one JSON object\n");
-            exitCode = 1;
-            return;
-        }
-
         wchar_t lease[128]{};
         if (!GetEnvironmentVariableW(L"WT_RICH_TAB_LEASE", lease, ARRAYSIZE(lease)))
         {
@@ -622,7 +611,7 @@ int main()
         Json::Value request;
         request["operation"] = "publish";
         request["lease"] = winrt::to_string(winrt::hstring{ lease });
-        request["snapshot"] = std::move(snapshot);
+        request["snapshotJson"] = *snapshotText;
         Json::Value result;
         if (!InvokeRichTabPublisher(publisher.get(), request, result) || !result["ok"].asBool())
         {
@@ -1111,8 +1100,20 @@ int main()
             exitCode = 1;
             return;
         }
+        if (manifest.value->hosting.kind == Microsoft::Terminal::RichTab::Provider::HostingKind::Persistent)
+        {
+            fprintf(
+                stderr,
+                "[wtcli] provider test: persistent providers require a running Terminal broker; "
+                "register the provider with --dev and enable it for end-to-end testing\n");
+            exitCode = 1;
+            return;
+        }
 
         Microsoft::Terminal::RichTab::Provider::Request request;
+        request.protocolVersion = (std::min)(
+            Microsoft::Terminal::RichTab::Provider::CurrentProtocolVersion,
+            manifest.value->protocol.maximum);
         request.requestId = "wtcli-test-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
         request.providerId = manifest.value->id;
         request.processEpoch = 1;

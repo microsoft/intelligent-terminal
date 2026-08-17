@@ -56,40 +56,6 @@ namespace Microsoft::Terminal::RichTab::Provider
             return value;
         }
 
-        std::wstring _BuildEnvironment(const CommandRunner::Environment& extraEnvironment)
-        {
-            std::vector<std::pair<std::wstring, std::wstring>> variables;
-            for (const auto name : environmentNames)
-            {
-                if (const auto value = _ReadEnvironment(name))
-                {
-                    variables.emplace_back(name, *value);
-                }
-            }
-            for (const auto& [name, value] : extraEnvironment)
-            {
-                if (!name.empty() && name.find(L'=') == std::wstring::npos &&
-                    value.find(L'\0') == std::wstring::npos)
-                {
-                    variables.emplace_back(name, value);
-                }
-            }
-            std::sort(variables.begin(), variables.end(), [](const auto& first, const auto& second) {
-                return _wcsicmp(first.first.c_str(), second.first.c_str()) < 0;
-            });
-
-            std::wstring block;
-            for (const auto& [name, value] : variables)
-            {
-                block.append(name);
-                block.push_back(L'=');
-                block.append(value);
-                block.push_back(L'\0');
-            }
-            block.push_back(L'\0');
-            return block;
-        }
-
         bool _IsReparsePoint(const std::filesystem::path& path) noexcept
         {
             const auto attributes = GetFileAttributesW(path.c_str());
@@ -267,6 +233,86 @@ namespace Microsoft::Terminal::RichTab::Provider
         commandLine.push_back(L'"');
     }
 
+    bool CommandRunner::BuildLaunchInfo(
+        const Manifest& manifest,
+        LaunchInfo& launch,
+        uint32_t& error)
+    {
+        std::filesystem::path entrypoint;
+        if (!ResolveEntrypoint(manifest, entrypoint, error))
+        {
+            return false;
+        }
+
+        std::vector<std::wstring> arguments;
+        if (manifest.runtime.kind == RuntimeKind::PowerShellV1)
+        {
+            const auto powerShell = ResolvePowerShell();
+            if (!powerShell)
+            {
+                error = ERROR_FILE_NOT_FOUND;
+                return false;
+            }
+            launch.executable = *powerShell;
+            arguments = {
+                L"-NoLogo",
+                L"-NoProfile",
+                L"-NonInteractive",
+                L"-File",
+                entrypoint.native(),
+            };
+        }
+        else
+        {
+            launch.executable = entrypoint;
+        }
+        arguments.insert(arguments.end(), manifest.runtime.arguments.begin(), manifest.runtime.arguments.end());
+
+        launch.commandLine.clear();
+        QuoteArgument(launch.executable.native(), launch.commandLine);
+        for (const auto& argument : arguments)
+        {
+            launch.commandLine.push_back(L' ');
+            QuoteArgument(argument, launch.commandLine);
+        }
+        error = ERROR_SUCCESS;
+        return true;
+    }
+
+    std::wstring CommandRunner::BuildEnvironment(const Environment& extraEnvironment)
+    {
+        std::vector<std::pair<std::wstring, std::wstring>> variables;
+        for (const auto name : environmentNames)
+        {
+            if (const auto value = _ReadEnvironment(name))
+            {
+                variables.emplace_back(name, *value);
+            }
+        }
+        for (const auto& [name, value] : extraEnvironment)
+        {
+            if (!name.empty() && name.find(L'=') == std::wstring::npos &&
+                value.find(L'\0') == std::wstring::npos)
+            {
+                variables.emplace_back(name, value);
+            }
+        }
+        std::sort(variables.begin(), variables.end(), [](const auto& first, const auto& second) {
+            return _wcsicmp(first.first.c_str(), second.first.c_str()) < 0;
+        });
+
+        std::wstring block;
+        for (const auto& [name, value] : variables)
+        {
+            block.append(name);
+            block.push_back(L'=');
+            block.append(value);
+            block.push_back(L'\0');
+        }
+        block.push_back(L'\0');
+        return block;
+    }
+
     CommandResult CommandRunner::Run(
         const Manifest& manifest,
         const std::string_view request,
@@ -283,43 +329,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
 
-        std::filesystem::path entrypoint;
-        if (!ResolveEntrypoint(manifest, entrypoint, result.win32Error))
+        LaunchInfo launch;
+        if (!BuildLaunchInfo(manifest, launch, result.win32Error))
         {
             return result;
-        }
-
-        std::filesystem::path executable;
-        std::vector<std::wstring> arguments;
-        if (manifest.runtime.kind == RuntimeKind::PowerShellV1)
-        {
-            const auto powerShell = ResolvePowerShell();
-            if (!powerShell)
-            {
-                result.win32Error = ERROR_FILE_NOT_FOUND;
-                return result;
-            }
-            executable = *powerShell;
-            arguments = {
-                L"-NoLogo",
-                L"-NoProfile",
-                L"-NonInteractive",
-                L"-File",
-                entrypoint.native(),
-            };
-        }
-        else
-        {
-            executable = entrypoint;
-        }
-        arguments.insert(arguments.end(), manifest.runtime.arguments.begin(), manifest.runtime.arguments.end());
-
-        std::wstring commandLine;
-        QuoteArgument(executable.native(), commandLine);
-        for (const auto& argument : arguments)
-        {
-            commandLine.push_back(L' ');
-            QuoteArgument(argument, commandLine);
         }
 
         Pipe input;
@@ -382,11 +395,11 @@ namespace Microsoft::Terminal::RichTab::Provider
             return result;
         }
 
-        auto environment = _BuildEnvironment(extraEnvironment);
+        auto environment = BuildEnvironment(extraEnvironment);
         PROCESS_INFORMATION processInfo{};
         if (!CreateProcessW(
-                executable.c_str(),
-                commandLine.data(),
+                launch.executable.c_str(),
+                launch.commandLine.data(),
                 nullptr,
                 nullptr,
                 TRUE,

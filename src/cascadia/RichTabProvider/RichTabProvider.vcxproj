@@ -18,6 +18,7 @@
     <ClInclude Include="AppExtensionProviderCatalog.h" />
     <ClInclude Include="BuiltInProviderCatalog.h" />
     <ClInclude Include="CommandRunner.h" />
+    <ClInclude Include="PersistentProviderSupervisor.h" />
     <ClInclude Include="ProviderBroker.h" />
     <ClInclude Include="ProviderContracts.h" />
     <ClInclude Include="ProviderRegistry.h" />
@@ -27,6 +28,7 @@
     <ClCompile Include="AppExtensionProviderCatalog.cpp" />
     <ClCompile Include="BuiltInProviderCatalog.cpp" />
     <ClCompile Include="CommandRunner.cpp" />
+    <ClCompile Include="PersistentProviderSupervisor.cpp" />
     <ClCompile Include="ProviderBroker.cpp" />
     <ClCompile Include="ProviderContracts.cpp" />
     <ClCompile Include="ProviderRegistry.cpp" />

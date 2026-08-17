@@ -234,12 +234,21 @@ try
     const auto operation = request["operation"].asString();
     if (operation == "publish" &&
         request["lease"].isString() &&
-        request["snapshot"].isObject())
+        (request["snapshotJson"].isString() || request["snapshot"].isObject()))
     {
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
+        std::string snapshotJson;
+        if (request["snapshotJson"].isString())
+        {
+            snapshotJson = request["snapshotJson"].asString();
+        }
+        else
+        {
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            snapshotJson = Json::writeString(writer, request["snapshot"]);
+        }
         wil::unique_bstr lease{ SysAllocString(winrt::to_hstring(request["lease"].asString()).c_str()) };
-        wil::unique_bstr snapshot{ SysAllocString(winrt::to_hstring(Json::writeString(writer, request["snapshot"])).c_str()) };
+        wil::unique_bstr snapshot{ SysAllocString(winrt::to_hstring(snapshotJson).c_str()) };
         RETURN_IF_NULL_ALLOC(lease);
         RETURN_IF_NULL_ALLOC(snapshot);
         BOOL succeeded = FALSE;

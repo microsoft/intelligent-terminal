@@ -35,6 +35,12 @@ namespace Microsoft::Terminal::RichTab::Provider
     public:
         using Environment = std::vector<std::pair<std::wstring, std::wstring>>;
 
+        struct LaunchInfo
+        {
+            std::filesystem::path executable;
+            std::wstring commandLine;
+        };
+
         static constexpr size_t MaximumRequestSize{ MaximumRequestPayloadSize };
         static constexpr size_t MaximumStandardOutputSize{ MaximumResponseSize };
         static constexpr size_t MaximumStandardErrorSize{ 64 * 1024 };
@@ -50,6 +56,11 @@ namespace Microsoft::Terminal::RichTab::Provider
             const Manifest& manifest,
             std::filesystem::path& resolved,
             uint32_t& error) noexcept;
+        static bool BuildLaunchInfo(
+            const Manifest& manifest,
+            LaunchInfo& launch,
+            uint32_t& error);
+        static std::wstring BuildEnvironment(const Environment& extraEnvironment);
         static void QuoteArgument(std::wstring_view argument, std::wstring& commandLine);
     };
 }
