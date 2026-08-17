@@ -590,6 +590,57 @@ fn bundle_hooks_thread_cli_source() {
 /// to. Copilot layers documented `powershell` / `bash` fields on top of it —
 /// those are checked by `copilot_shell_variants_match_their_own_shell`, since
 /// each is dispatched only by the shell it names.
+/// The shell a hook handler pins itself to, when it declares one. Claude
+/// documents a `shell` field accepting `"bash"` or `"powershell"`; a handler
+/// that sets it opts out of the cross-shell contract and is validated only
+/// against the shell it names.
+fn hook_pinned_shell(hook: &Value) -> Option<HookShell> {
+    match hook.get("shell").and_then(Value::as_str) {
+        Some("bash") => Some(HookShell::Bash),
+        Some("powershell") => Some(HookShell::PowerShell),
+        _ => None,
+    }
+}
+
+/// `command` strings that must work in *every* shell, i.e. those from handlers
+/// that did not pin a shell.
+fn shell_agnostic_commands(hooks_json: &str) -> Vec<String> {
+    let doc: Value = serde_json::from_str(hooks_json).unwrap();
+    let mut commands = Vec::new();
+    for matchers in doc["hooks"].as_object().unwrap().values() {
+        for matcher in matchers.as_array().unwrap() {
+            for hook in matcher["hooks"].as_array().unwrap() {
+                if hook_pinned_shell(hook).is_some() {
+                    continue;
+                }
+                if let Some(command) = hook.get("command").and_then(Value::as_str) {
+                    commands.push(command.to_string());
+                }
+            }
+        }
+    }
+    commands
+}
+
+/// `command` strings from handlers that pinned a shell, paired with it.
+fn pinned_shell_commands(hooks_json: &str) -> Vec<(HookShell, String)> {
+    let doc: Value = serde_json::from_str(hooks_json).unwrap();
+    let mut pinned = Vec::new();
+    for matchers in doc["hooks"].as_object().unwrap().values() {
+        for matcher in matchers.as_array().unwrap() {
+            for hook in matcher["hooks"].as_array().unwrap() {
+                if let (Some(shell), Some(command)) = (
+                    hook_pinned_shell(hook),
+                    hook.get("command").and_then(Value::as_str),
+                ) {
+                    pinned.push((shell, command.to_string()));
+                }
+            }
+        }
+    }
+    pinned
+}
+
 #[test]
 fn hook_commands_are_shell_agnostic() {
     for (cli, hooks) in [
@@ -598,7 +649,7 @@ fn hook_commands_are_shell_agnostic() {
         ("gemini", GEMINI_HOOKS_JSON),
         ("claude", CLAUDE_HOOKS_JSON),
     ] {
-        for command in hook_command_strings(hooks) {
+        for command in shell_agnostic_commands(hooks) {
             let expected = format!("wtcli.exe agent-hook --cli-source {cli} --event ");
             assert!(
                 command.starts_with(&expected),
@@ -711,7 +762,7 @@ fn bundled_hook_commands_run_in_every_shell() {
         ("gemini", GEMINI_HOOKS_JSON),
         ("claude", CLAUDE_HOOKS_JSON),
     ] {
-        for command in hook_command_strings(hooks) {
+        for command in shell_agnostic_commands(hooks) {
             for shell in HOOK_SHELLS {
                 let Some(out) = run_hook_command(shell, &command) else {
                     continue;
@@ -731,8 +782,11 @@ fn bundled_hook_commands_run_in_every_shell() {
         }
 
         // The per-shell variants are dispatched only by their own shell, so
-        // they get the same "reaches wtcli, stays silent" check there.
-        for (shell, command) in hook_shell_variants(hooks) {
+        // they get the same "reaches wtcli, stays silent" check there. Handlers
+        // that pin themselves with a `shell` field are checked the same way.
+        let mut per_shell = hook_shell_variants(hooks);
+        per_shell.extend(pinned_shell_commands(hooks));
+        for (shell, command) in per_shell {
             let Some(out) = run_hook_command(shell, &command) else {
                 continue;
             };
@@ -764,6 +818,40 @@ fn bundled_hook_commands_run_in_every_shell() {
 /// in that shell's own syntax and still exit 0. Substituting a name that cannot
 /// resolve keeps the check deterministic on machines where Terminal *is*
 /// installed.
+/// Claude has no `powershell` / `bash` field pair, but it does document a
+/// `shell` field — so it pins bash and guards inside `command` instead. Same
+/// contract as Copilot's variants: an uninstalled Terminal must not turn every
+/// hook into a failure the user has to diagnose.
+///
+/// Pinning matters. Claude defaults to bash but falls back to PowerShell when
+/// Git Bash is absent, and a guard written for the wrong shell is noisy even on
+/// the happy path — so the guard and the `shell` field have to agree.
+#[test]
+fn claude_hooks_exit_zero_when_the_bridge_is_missing() {
+    let pinned = pinned_shell_commands(CLAUDE_HOOKS_JSON);
+    assert!(
+        !pinned.is_empty(),
+        "claude must pin its hook shell so its guard cannot run under the wrong one"
+    );
+    for (shell, command) in pinned {
+        let uninstalled = command.replace("wtcli.exe", MISSING_BRIDGE);
+        let Some(out) = run_hook_command(shell, &uninstalled) else {
+            continue;
+        };
+        assert!(
+            out.status.success(),
+            "claude {shell:?} hook must exit 0 with no bridge installed: {uninstalled}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.stdout.is_empty() && out.stderr.is_empty(),
+            "claude {shell:?} hook must stay silent with no bridge installed: {uninstalled}\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 #[test]
 fn copilot_hook_variants_exit_zero_when_the_bridge_is_missing() {
     let variants = hook_shell_variants(COPILOT_HOOKS_JSON);
@@ -985,7 +1073,11 @@ fn claude_and_copilot_carry_full_event_catalog() {
         "StopFailure",
         "Stop",
     ];
-    const COPILOT_EXTRA_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUseFailure"];
+    // Only `PreToolUse` remains: it drives Working plus the user-input-tool
+    // Attention path. The completion events were dropped because `app.rs`
+    // discards them — `agent.stop` owns the turn-end — so each one was a shell
+    // spawn and a COM round trip per tool call for nothing.
+    const COPILOT_EXTRA_EVENTS: &[&str] = &["PreToolUse"];
     for (label, hooks) in [
         ("claude", CLAUDE_HOOKS_JSON),
         ("copilot", COPILOT_HOOKS_JSON),
@@ -1032,19 +1124,24 @@ fn normalize_hook_commands(value: &mut Value) {
 /// Drops the fields only Copilot's hook schema understands, so the parity
 /// check below compares the shared event structure instead of failing on
 /// Copilot's per-shell resilience layer.
-fn strip_copilot_only_hook_fields(value: &mut Value) {
+/// Drops the fields that carry each CLI's own uninstall-resilience layer, so
+/// the parity check below compares the shared event structure rather than
+/// failing on plumbing that is necessarily per-CLI: Copilot expresses it with
+/// `powershell` / `bash` / `timeoutSec`, Claude by pinning `shell` and guarding
+/// inside `command`.
+fn strip_per_cli_hook_fields(value: &mut Value) {
     match value {
         Value::Array(values) => {
             for value in values {
-                strip_copilot_only_hook_fields(value);
+                strip_per_cli_hook_fields(value);
             }
         }
         Value::Object(values) => {
-            for field in ["powershell", "bash", "timeoutSec"] {
+            for field in ["powershell", "bash", "timeoutSec", "shell"] {
                 values.remove(field);
             }
             for value in values.values_mut() {
-                strip_copilot_only_hook_fields(value);
+                strip_per_cli_hook_fields(value);
             }
         }
         _ => {}
@@ -1062,13 +1159,14 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
     let mut normalized_copilot: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
     normalize_hook_commands(&mut normalized_claude);
     normalize_hook_commands(&mut normalized_copilot);
-    strip_copilot_only_hook_fields(&mut normalized_copilot);
+    strip_per_cli_hook_fields(&mut normalized_claude);
+    strip_per_cli_hook_fields(&mut normalized_copilot);
 
     let copilot_hooks = normalized_copilot
         .get_mut("hooks")
         .and_then(Value::as_object_mut)
         .unwrap();
-    for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+    for event in ["PreToolUse"] {
         copilot_hooks.remove(event);
     }
     assert_eq!(

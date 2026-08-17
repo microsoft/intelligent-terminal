@@ -103,9 +103,7 @@ names. Event vocabularies differ per CLI:
 | `agent.session.end`     | `SessionEnd`           | `SessionEnd`           | `SessionEnd`     |
 | `agent.notification`    | `Notification`         | `Notification`         | `Notification`   |
 | `agent.prompt.submit`   | `UserPromptSubmit`     | `UserPromptSubmit`     | `BeforeAgent`    |
-| `agent.tool.starting`   | `PreToolUse`           | `PreToolUse`           | `BeforeTool`     |
-| `agent.tool.finished`   | `PostToolUse`          | `PostToolUse`          | `AfterTool`      |
-| `agent.tool.failed`     | `PostToolUseFailure`   | `PostToolUseFailure`   | *(not emitted)*  |
+| `agent.tool.starting`   | *(not subscribed)*     | `PreToolUse`           | `BeforeTool`     |
 | `agent.error`           | `StopFailure`          | `StopFailure`          | *(not emitted)*  |
 | `agent.stop`            | `Stop`                 | `Stop`                 | `AfterAgent`     |
 | `agent.subagent.stop`   | `SubagentStop`         | `SubagentStop`         | *(not emitted)*  |
@@ -116,8 +114,17 @@ error" — earlier wta builds shipped an undocumented `ErrorOccurred` name
 which is no longer used. Gemini's manifest has no native equivalents for
 the failure topics, so those rows are silent on Gemini.
 
+**Tool-completion events are deliberately not subscribed.** `app.rs` discards
+`agent.tool.finished` / `agent.tool.failed`: tool completion does not end a
+turn, so `agent.stop` owns the transition back to Idle. Subscribing them cost a
+shell spawn (~400 ms under PowerShell) plus a COM round trip *per tool call*,
+only to be dropped — so Copilot's `PostToolUse` / `PostToolUseFailure`,
+Gemini's `AfterTool`, and OpenCode's `tool.execute.after` were removed. The
+routing arm remains so an older installed bundle that still emits them is
+ignored rather than mis-routed.
+
 OpenCode uses its V1 plugin API rather than a hook manifest. The plugin maps
-`session.created/updated`, `chat.message`, `tool.execute.before/after`,
+`session.created/updated`, `chat.message`, `tool.execute.before`,
 `permission.*`, `question.*`, `session.idle/error/deleted`, and `dispose` to
 the same WTA topics. Child sessions with `parentID` are ignored so OpenCode's
 internal subagents do not create extra rows.
@@ -213,10 +220,43 @@ is ignored whenever `powershell` is present. `timeoutSec: 5` bounds the other
 fail-closed edge — a hung COM call — and a hook *timeout* was measured to be
 fail-open, so shortening it only reduces the stall.
 
-Claude, Codex, and Gemini keep the bare spelling. None of them is fail-closed on
-a generic non-zero exit (Claude blocks on exit 2 only), and none documents
-per-shell command fields, so adding shell-specific syntax there would trade a
-harmless error for the guessing game described above.
+Claude has no `powershell` / `bash` field pair, but it does document a `shell`
+field accepting `"bash"` or `"powershell"`, so it pins the shell and guards
+inside `command` instead:
+
+```json
+{
+  "type": "command",
+  "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event <topic>; exit 0",
+  "shell": "bash"
+}
+```
+
+Pinning is what makes this safe. Claude defaults to bash but falls back to
+PowerShell when Git Bash is absent, and a guard written for the wrong shell is
+noisy *even when the bridge is present* — measured both ways — so the guard and
+the `shell` field have to agree. bash is also the cheaper of the two to start
+(~62 ms versus ~380 ms for PowerShell).
+
+Codex and Gemini keep the bare spelling. Neither is fail-closed on a generic
+non-zero exit — Gemini explicitly classifies exit 1 as
+`EXIT_CODE_NON_BLOCKING_ERROR` and surfaces the text as a `systemMessage`, and
+none of the Codex events subscribed here can block — and neither documents a
+per-shell field: Gemini's `CommandHookConfig` carries only `command`, and
+Codex's plugin hook schema could not be established from its docs, its source,
+or a local probe. Adding shell-specific syntax on a guess would trade a harmless
+error message for a broken happy path, which is the failure mode this bundle has
+already hit twice.
+
+Current state with the bridge missing:
+
+| CLI | Mechanism | Result |
+| --- | --- | --- |
+| Copilot | `powershell` / `bash` fields | exit 0, silent |
+| Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
+| OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |
+| Codex | none available | exit 1, `SessionStart hook (failed)` |
+| Gemini | none available | exit 1, error text shown as a `systemMessage` |
 
 OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
 rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,
