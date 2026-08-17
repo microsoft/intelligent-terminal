@@ -116,6 +116,16 @@ impl TurnState {
         }
     }
 
+    /// True while an Agent request can still be attributed to this turn.
+    ///
+    /// A surfaced turn may have released its UI busy gate before a follow-up
+    /// permission or clarification request reaches the App event loop. The
+    /// request itself proves the Agent is still waiting; only `Idle` means
+    /// there is no turn left to service.
+    pub fn can_service_agent_request(&self) -> bool {
+        !matches!(self, TurnState::Idle)
+    }
+
     /// The surfaced recommendation set, if the outcome is a card.
     pub fn recommendations(&self) -> Option<&RecommendationSet> {
         match self {
@@ -323,5 +333,18 @@ mod tests {
     #[test]
     fn idle_has_no_autofix_generation() {
         assert_eq!(TurnState::Idle.autofix_generation(), None);
+    }
+
+    #[test]
+    fn surfaced_turn_can_service_late_agent_request() {
+        let state = TurnState::Surfaced {
+            prompt: prompt(),
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: false,
+        };
+
+        assert!(!state.is_in_flight());
+        assert!(state.can_service_agent_request());
+        assert!(!TurnState::Idle.can_service_agent_request());
     }
 }

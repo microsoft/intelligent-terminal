@@ -560,16 +560,32 @@ mod tests {
             "the autofix prompt should evaluate diagnostic suggestions without obeying them"
         );
         assert!(
-            built_prompt.contains("Inspect only directly referenced local artifacts"),
-            "the autofix prompt must bound read-only investigation"
+            built_prompt.contains("Infer the user's intended outcome"),
+            "the autofix prompt must diagnose the user's goal"
         );
         assert!(
-            built_prompt.contains("Read-only investigation may precede the fix"),
-            "the autofix prompt must distinguish investigation from the proposed mutation"
+            built_prompt.contains("use `request_user_input` before acting"),
+            "the autofix prompt must clarify materially ambiguous intent"
         );
         assert!(
-            built_prompt.contains("single-line shell submission"),
-            "the autofix prompt must constrain the proposed mutation to one shell submission"
+            built_prompt.contains("normal tools and capabilities"),
+            "the autofix prompt must allow ordinary agent investigation"
+        );
+        assert!(
+            built_prompt.contains("including multi-step work"),
+            "the autofix prompt must allow remediation before proposing the correction"
+        );
+        assert!(
+            built_prompt.contains("ordinary permission and safety model"),
+            "the autofix prompt must preserve the agent's normal permission controls"
+        );
+        assert!(
+            built_prompt.contains("corrected command that completes the user's intended outcome"),
+            "the autofix prompt must propose the goal-oriented corrected command"
+        );
+        assert!(
+            built_prompt.contains("user can accept the suggestion before it runs"),
+            "the autofix prompt must require acceptance before running the corrected command"
         );
         assert!(
             !built_prompt
