@@ -1,10 +1,10 @@
 # ACP v1 Support Completion Plan
 
-**Status**: Implementation in progress; Phase 1 core tool details are on `main`;
-Phase 4 select-option support is implemented locally
+**Status**: Implementation in progress; Phase 1 core tool details and Phase 4
+select-option support are on `main`; Phase 4 Agent Commands are implemented locally
 **Scope**: `tools/wta`, the agent-pane TUI, and the helper/master ACP bridge  
 **Baseline**: ACP wire `protocolVersion: 1`  
-**Last updated**: 2026-08-12
+**Last updated**: 2026-08-14
 
 ## Summary
 
@@ -56,7 +56,7 @@ additional ACP v1 work after PR #601.
 | Client Terminals | Commands can run in a WT pane or local subprocess. | `outputByteLimit`, retained-output semantics, accurate truncation, final output after kill, and display retention after release. |
 | Session lifecycle | New, load, cancel, and partial list flows exist. | Capability-gated resume, close, delete, list pagination/filtering, and `session_info_update`. |
 | Session config | Model select options are extracted. | Generic select options, boolean options, mode/reasoning/model-config categories, ordering, and dependent option updates. |
-| Agent commands | WTA has its own slash commands. | `available_commands_update` is ignored instead of contributing session-scoped Agent commands. |
+| Agent commands | Session-scoped Agent commands are merged into the slash-command popup. | No remaining stable ACP v1 gap in the current unstructured command surface. |
 | Authentication | CLI-specific login plus first-method post-login authenticate. | Auth-method selection, standard logout, and clearer capability-driven state. |
 | Cancellation | `session/cancel` stops the active prompt locally and notifies the Agent. | Stable request-ID `$/cancel_request` and consistent cancellation of pending reverse requests. |
 | Structured input | Permission cards handle approval choices. | Stable ACP elicitation form and URL modes. |
@@ -203,11 +203,14 @@ not currently have a safe file-handler selection model.
 
 ### Phase 4: Generic config options and Agent commands
 
-**Implementation status**: The first Config Options slice is implemented
-locally. WTA preserves ordered select options per Session, replaces complete
+**Implementation status**: The first Config Options slice is on `main`. WTA
+preserves ordered select options per Session, replaces complete
 snapshots from new/load/update/set responses, exposes a generic `/config`
 two-level picker, and routes `/model` through the standard model option when
-one exists. Boolean options and Agent commands remain follow-ups.
+one exists. Agent Commands are implemented locally: complete Session-scoped
+snapshots are merged after WTA-reserved commands, reserved-name collisions stay
+client-owned, and commands removed by later snapshots disappear. Boolean
+options remain a follow-up.
 
 1. Store the complete ordered `configOptions` collection per session.
 2. Render all supported select options, not only the `model` category.

@@ -742,6 +742,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         pane_context: None,
         submitted_at_unix_s: 0.0,
         autofix_text_kind: is_autofix.then_some(AutofixTextKind::UserRequest),
+        agent_command: false,
         images: Vec::new(),
     }
 }
@@ -881,6 +882,51 @@ async fn dispatch_prompt_round_trips_through_agent() {
             assert!(
                 in_flight.lock().unwrap().is_empty(),
                 "single-flight slot must be released when the turn completes"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_agent_command_reaches_agent_verbatim() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut prompt = test_prompt(1, "/usage", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let _ = next_agent_chunk(&mut h.event_rx).await;
+            assert_eq!(
+                h.seen_prompts.lock().unwrap().as_slice(),
+                ["/usage"],
+                "Agent commands must bypass terminal templates and runtime context"
             );
         })
         .await;
@@ -2687,6 +2733,53 @@ async fn session_notification_routes_plan_with_status_mapping() {
             );
         }
         _ => panic!("expected Plan"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_routes_complete_available_command_snapshot() {
+    let (client, mut rx) = bare_client();
+    let commands = vec![
+        acp::schema::v1::AvailableCommand::new("plan", "Build a plan"),
+        acp::schema::v1::AvailableCommand::new("review", "Review changes").input(
+            acp::schema::v1::AvailableCommandInput::Unstructured(
+                acp::schema::v1::UnstructuredCommandInput::new("focus area"),
+            ),
+        ),
+    ];
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::AvailableCommandsUpdate(
+                acp::schema::v1::AvailableCommandsUpdate::new(commands),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::SessionCommandsUpdated {
+            session_id,
+            commands,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(
+                commands,
+                vec![
+                    crate::app_contracts::AcpSessionCommand {
+                        name: "plan".into(),
+                        description: "Build a plan".into(),
+                        input_hint: None,
+                    },
+                    crate::app_contracts::AcpSessionCommand {
+                        name: "review".into(),
+                        description: "Review changes".into(),
+                        input_hint: Some("focus area".into()),
+                    },
+                ]
+            );
+        }
+        _ => panic!("expected SessionCommandsUpdated"),
     }
 }
 
