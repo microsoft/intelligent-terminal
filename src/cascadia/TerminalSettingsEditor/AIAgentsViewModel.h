@@ -66,6 +66,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring Id() const { return _provider.Id(); }
         winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
         winrt::hstring ModelsDisplayText() const;
+        bool IsApiKeyMissing() const noexcept { return _isApiKeyMissing; }
         winrt::hstring RemovalErrorMessage() const { return _removalErrorMessage; }
         bool HasRemovalError() const noexcept { return !_removalErrorMessage.empty(); }
         void Remove();
@@ -75,6 +76,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     private:
         Model::CustomModelProvider _provider;
         std::function<void()> _remove;
+        bool _isApiKeyMissing{ false };
         winrt::hstring _removalErrorMessage;
     };
 

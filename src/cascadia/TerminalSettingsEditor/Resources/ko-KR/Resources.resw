@@ -3001,6 +3001,10 @@
     <value>{0}은(는) OpenAI 호환 사용자 지정 Chat Completions 공급자를 지원하지 않습니다. 저장된 공급자는 GitHub Copilot 또는 OpenCode로 전환하면 계속 사용할 수 있습니다.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>API 키가 없습니다. 이 공급자를 제거한 후 다시 추가하세요.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
     <value>Windows 자격 증명 관리자에서 저장된 API 키를 제거할 수 없습니다. "{0}"이라는 일반 자격 증명을 수동으로 제거한 후 다시 시도하세요.</value>
     <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>

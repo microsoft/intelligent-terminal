@@ -28,6 +28,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _provider{ std::move(provider) },
         _remove{ std::move(remove) }
     {
+        if (_provider.ApiKeyRequired() &&
+            ::Microsoft::Terminal::CustomModels::ResolvedLocation(_provider) == L"cloud")
+        {
+            try
+            {
+                _isApiKeyMissing = !::Microsoft::Terminal::CustomModels::HasApiKey(_provider.ApiKeyCredential());
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        }
     }
 
     winrt::hstring CustomModelProviderEntry::ModelsDisplayText() const

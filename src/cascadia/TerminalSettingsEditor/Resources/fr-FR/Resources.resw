@@ -2942,6 +2942,10 @@
     <value>{0} ne prend pas en charge les fournisseurs Chat Completions personnalisés compatibles avec OpenAI. Les fournisseurs enregistrés restent disponibles lorsque vous passez à GitHub Copilot ou OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>Clé API manquante. Supprimez et ajoutez à nouveau ce fournisseur.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
     <value>Impossible de supprimer la clé API enregistrée du Gestionnaire d’informations d’identification Windows. Supprimez manuellement l’information d’identification générique nommée « {0} », puis réessayez.</value>
     <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>

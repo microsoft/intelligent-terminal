@@ -207,6 +207,17 @@
                                                        Opacity="0.6"
                                                        Text="{x:Bind BaseUrl, Mode=OneWay}"
                                                        TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="6"
+                                                        Visibility="{x:Bind IsApiKeyMissing, Mode=OneWay}">
+                                                <FontIcon FontSize="12"
+                                                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                          Glyph="&#xE814;" />
+                                                <TextBlock x:Uid="AIAgents_CustomProviderApiKeyMissing"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
                                         </StackPanel>
                                         <Button Grid.Column="1"
                                                 x:Uid="AIAgents_CustomProviderRemove"
