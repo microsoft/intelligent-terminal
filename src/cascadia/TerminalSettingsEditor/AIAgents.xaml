@@ -230,7 +230,8 @@
                                                       IsClosable="False"
                                                       IsOpen="{x:Bind HasRemovalError, Mode=OneWay}"
                                                       Message="{x:Bind RemovalErrorMessage, Mode=OneWay}"
-                                                      Severity="Error" />
+                                                      Severity="Error"
+                                                      Visibility="{x:Bind HasRemovalError, Mode=OneWay}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
