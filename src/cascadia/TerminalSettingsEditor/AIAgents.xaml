@@ -190,7 +190,7 @@
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
                                 <Border BorderThickness="0,1,0,0"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        Padding="0,16,0,16">
+                                        Padding="0,8">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
