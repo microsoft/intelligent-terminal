@@ -31,9 +31,26 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
     }
 
+    fn input_dialog_at(&self, column: u16, row: u16) -> bool {
+        let tab = self.current_tab();
+        let Some(area) = self.input_dialog_area else {
+            return false;
+        };
+        self.mode == AppMode::Chat
+            && tab.current_view == View::Chat
+            && tab.input_can_receive_nav_focus()
+            && !self.help_overlay_visible
+            && !self.command_popup_visible()
+            && column >= area.x
+            && column < area.x.saturating_add(area.width)
+            && row >= area.y
+            && row < area.y.saturating_add(area.height)
+    }
+
     fn cancel_completed_turn_click(&mut self) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
     }
 
     fn restore_completed_turn_click(&mut self, column: u16, row: u16) {
@@ -130,6 +147,11 @@ impl App {
                         return;
                     }
                     self.last_completed_turn_click = None;
+                    if self.input_dialog_at(mouse.column, mouse.row) {
+                        self.pressed_input_dialog_tab = Some(self.active_mouse_tab_id());
+                        self.pressed_completed_turn = None;
+                        return;
+                    }
                     self.pressed_completed_turn = self
                         .completed_turn_hit_at(mouse.column, mouse.row)
                         .map(|hit| PressedCompletedTurn {
@@ -142,9 +164,19 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                 }
                 crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                    let active_tab_id = self.active_mouse_tab_id();
+                    let input_pressed = self.pressed_input_dialog_tab.take();
+                    if input_pressed.as_deref() == Some(active_tab_id.as_str())
+                        && self.input_dialog_at(mouse.column, mouse.row)
+                    {
+                        self.pressed_completed_turn = None;
+                        self.last_completed_turn_click = None;
+                        self.text_selection.clear();
+                        self.current_tab_mut().clear_completed_turn_selection();
+                        return;
+                    }
                     let pressed = self.pressed_completed_turn.take();
                     let released = self.completed_turn_hit_at(mouse.column, mouse.row);
-                    let active_tab_id = self.active_mouse_tab_id();
                     self.text_selection.handle_mouse(mouse);
                     if let Some(pressed) = pressed.filter(|pressed| {
                         pressed.tab_id == active_tab_id

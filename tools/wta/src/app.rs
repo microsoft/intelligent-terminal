@@ -963,6 +963,10 @@ pub struct App {
     pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) pressed_input_dialog_tab: Option<String>,
+    pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
+    pub(crate) painted_completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1261,6 +1265,10 @@ impl App {
             completed_turn_hits: Vec::new(),
             pressed_completed_turn: None,
             last_completed_turn_click: None,
+            input_dialog_area: None,
+            pressed_input_dialog_tab: None,
+            completed_turn_action_links: Vec::new(),
+            painted_completed_turn_action_links: Vec::new(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -3753,6 +3761,11 @@ impl App {
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         self.text_selection.snapshot_and_render(frame.buffer_mut());
+        let action_overlay = crate::action_links::build_overlay(
+            frame.buffer_mut(),
+            &self.painted_completed_turn_action_links,
+            &self.completed_turn_action_links,
+        );
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`
@@ -3770,6 +3783,10 @@ impl App {
         });
 
         terminal.swap_buffers();
+
+        crate::action_links::paint(terminal.backend_mut(), &action_overlay)?;
+        self.painted_completed_turn_action_links
+            .clone_from(&self.completed_turn_action_links);
 
         let backend_flush_started = std::time::Instant::now();
         terminal.backend_mut().flush()?;
@@ -5010,6 +5027,7 @@ impl App {
     fn switch_tab_session(&mut self, new_tab_id: String) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(

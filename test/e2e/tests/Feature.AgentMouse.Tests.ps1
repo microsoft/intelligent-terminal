@@ -233,10 +233,20 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
 
         $prefixColumn = $triangleColumn + 2
         $promptColumn = $triangleColumn + 4
+        $rowEndColumn = $promptRows[0].Text.IndexOf($prompt) + $prompt.Length + 8
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column $rowEndColumn -Row $promptRows[0].Row | Out-Null
+        $rowEndCollapsed = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -notmatch $replyPattern
+        }
+        $rowEndCollapsed | Should -BeTrue -Because 'clicking unused space at the end of a prompt row must collapse the turn'
+
         Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
             -Column $prefixColumn -Row $promptRows[0].Row | Out-Null
-        (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
-            Should -Match $replyPattern -Because 'clicking the prompt prefix must not collapse the turn'
+        $prefixReexpanded = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -match $replyPattern
+        }
+        $prefixReexpanded | Should -BeTrue -Because 'clicking the prompt prefix must re-expand the same turn'
 
         Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane `
             -Kind Down -Column $triangleColumn -Row $promptRows[0].Row | Out-Null
@@ -317,5 +327,45 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-prompt-enter.txt') -Value $afterEnter -Encoding utf8NoBOM
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-prompt-enter.png') | Out-Null
         $reexpanded | Should -BeTrue -Because 'Enter must re-expand the completed turn selected by its prompt click'
+
+        $afterEnterLines = $afterEnter -split "`r?`n"
+        $reexpandedFirstRow = @(
+            for ($row = 0; $row -lt $afterEnterLines.Count; $row++) {
+                if ($afterEnterLines[$row] -match ('>\s*' + [regex]::Escape($lineOne))) {
+                    [pscustomobject]@{ Row = $row; Text = $afterEnterLines[$row] }
+                }
+            }
+        )
+        $reexpandedFirstRow.Count | Should -Be 1
+        $rowEndColumn = $reexpandedFirstRow[0].Text.IndexOf($lineOne) + $lineOne.Length + 8
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane `
+            -Column $rowEndColumn -Row $reexpandedFirstRow[0].Row | Out-Null
+        $collapsedAgain = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -notmatch $replyPattern
+        }
+        $collapsedAgain | Should -BeTrue -Because 'row-end whitespace must select and collapse the turn before input focus recovery'
+
+        $collapsedCapture = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        $collapsedLines = $collapsedCapture -split "`r?`n"
+        $inputRows = @(
+            for ($row = 0; $row -lt $collapsedLines.Count; $row++) {
+                if ($collapsedLines[$row] -match $readyPattern) {
+                    [pscustomobject]@{ Row = $row; Text = $collapsedLines[$row] }
+                }
+            }
+        )
+        $inputRows.Count | Should -Be 1 -Because 'the connected input dialog must expose one visible placeholder row'
+        Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPane -Column 8 -Row $inputRows[0].Row | Out-Null
+
+        $draft = "INPUT_FOCUS_DRAFT_$id"
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $draft -NoSubmit | Out-Null
+        $inputFocused = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+            $text -match ('(?m)^.*>\s*' + [regex]::Escape($draft)) -and $text -notmatch $replyPattern
+        }
+        $afterInputFocus = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-input-focus.txt') -Value $afterInputFocus -Encoding utf8NoBOM
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-input-focus.png') | Out-Null
+        $inputFocused | Should -BeTrue -Because 'clicking the input dialog must clear completed-turn selection and route typing to the current draft'
     }
 }

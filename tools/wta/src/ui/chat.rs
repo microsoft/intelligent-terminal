@@ -472,7 +472,6 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let mut completed_turn_hits = Vec::new();
     let buffer = frame.buffer_mut();
-    let alignment = crate::rtl::text_alignment();
     for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
         let Some(header_row) = header_from_top.checked_sub(scroll) else {
@@ -502,21 +501,11 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             else {
                 continue;
             };
-            if visible_row >= visible_height || prompt_row.body_width == 0 {
+            if visible_row >= visible_height {
                 continue;
             }
-            let line_width = prompt_row.line_width.min(inner_area.width as usize);
-            let line_offset = match alignment {
-                Alignment::Left => 0,
-                Alignment::Center => (inner_area.width as usize).saturating_sub(line_width) / 2,
-                Alignment::Right => (inner_area.width as usize).saturating_sub(line_width),
-            };
-            let start = inner_area.x as usize
-                + line_offset
-                + prompt_row.body_start.min(line_width);
-            let end = start
-                .saturating_add(prompt_row.body_width)
-                .min(inner_area.x.saturating_add(inner_area.width) as usize);
+            let start = inner_area.x as usize;
+            let end = inner_area.x.saturating_add(inner_area.width) as usize;
             if start < end {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
                     start_column: start as u16,
@@ -525,6 +514,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                     turn_index,
                     kind: crate::app::CompletedTurnHitKind::UserInput,
                 });
+                app.completed_turn_action_links.push(
+                    crate::action_links::CompletedTurnActionLink {
+                        start_column: start as u16,
+                        end_column: end as u16,
+                        row: inner_area.y.saturating_add(visible_row as u16),
+                        action: if expanded {
+                            crate::action_links::CompletedTurnAction::Collapse
+                        } else {
+                            crate::action_links::CompletedTurnAction::Expand
+                        },
+                    },
+                );
             }
         }
     }

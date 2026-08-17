@@ -467,8 +467,11 @@ impl TabSession {
 
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && (self.turn.recommendations().is_none()
+        self.selected_completed_turn_idx.is_none() && self.input_can_receive_nav_focus()
+    }
+
+    pub fn input_can_receive_nav_focus(&self) -> bool {
+        (self.turn.recommendations().is_none()
                 || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && self.user_input.is_empty()

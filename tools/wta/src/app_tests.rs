@@ -2228,10 +2228,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(
-        app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4")
-    );
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Notice {
@@ -2240,10 +2237,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         })
     ));
     match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-            session_id,
-            model,
-        } => {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
         }
@@ -5260,8 +5254,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5327,8 +5321,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5798,8 +5792,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5879,8 +5873,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -6008,16 +6002,12 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
     });
 
     let details = &app.current_tab().completed_turns[0].details;
-    assert!(
-        matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file.")
-    );
+    assert!(matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file."));
     assert!(matches!(
         &details[1],
         ChatMessage::ToolCall { title, .. } if title == "apply_patch"
     ));
-    assert!(
-        matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
-    );
+    assert!(matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete."));
 }
 
 #[test]
@@ -6380,9 +6370,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -6391,13 +6381,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -7623,18 +7613,19 @@ fn completed_turn_user_input_hits_follow_rendered_text_boundaries() {
     let first_line = rendered.lines().nth(first_row as usize).expect("first row");
     let prefix_byte = first_line.find('>').expect("prompt prefix");
     let prefix_column = unicode_width::UnicodeWidthStr::width(&first_line[..prefix_byte]) as u16;
-    assert!(
-        !regions
-            .iter()
-            .any(|hit| hit.contains(prefix_column, first_row)),
-        "prefix at ({prefix_column}, {first_row}) overlapped {regions:?}; rendered:\n{rendered}",
-    );
+    assert!(regions
+        .iter()
+        .any(|hit| hit.contains(prefix_column, first_row)));
     assert!(!regions
         .iter()
         .any(|hit| hit.contains(detail_column, detail_row)));
     for hit in &regions {
+        assert_eq!(hit.start_column, 1);
+        assert_eq!(hit.end_column, 23);
+        assert!(hit.contains(hit.end_column - 1, hit.row));
         assert!(!hit.contains(hit.end_column, hit.row));
     }
+    assert!(regions.iter().any(|hit| hit.row == last_row - 1));
 
     let click = |app: &mut App, row, column| {
         for kind in [
@@ -7660,6 +7651,67 @@ fn completed_turn_user_input_hits_follow_rendered_text_boundaries() {
         .expect("collapsed summary must expose its rendered prompt text");
     click(&mut app, summary_hit.row, summary_hit.start_column);
     assert!(app.current_tab().completed_turns[0].expanded);
+}
+
+#[test]
+fn clicking_input_dialog_restores_input_navigation_after_mouse_turn_selection() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "INPUT_FOCUS_PROMPT".into(),
+        details: vec![ChatMessage::Agent("INPUT_FOCUS_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (prompt_row, _) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("INPUT_FOCUS_PROMPT")
+                .map(|column| (row as u16, column))
+        })
+        .expect("completed prompt must be visible");
+    let input_row = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| line.contains("Ask anything").then_some(row as u16))
+        .expect("input placeholder must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: 70,
+            row: prompt_row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+    assert!(!app.current_tab().completed_turns[0].expanded);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: 8,
+            row: input_row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "x");
 }
 
 #[test]
@@ -7729,7 +7781,7 @@ fn completed_turn_user_input_multiclick_preserves_turn_state_and_text_selection(
 }
 
 #[test]
-fn completed_turn_user_input_hit_uses_terminal_cell_width() {
+fn completed_turn_user_input_hit_spans_full_row_with_wide_cells() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().completed_turns.push(CompletedTurn {
@@ -7745,11 +7797,54 @@ fn completed_turn_user_input_hit_uses_terminal_cell_width() {
         .copied()
         .find(|hit| hit.kind == CompletedTurnHitKind::UserInput)
         .expect("wide prompt must have a user-input hit range");
-    assert_eq!(hit.end_column - hit.start_column, 4);
+    assert_eq!(hit.start_column, 1);
+    assert_eq!(hit.end_column, 79);
     for column in hit.start_column..hit.end_column {
         assert!(hit.contains(column, hit.row));
     }
     assert!(!hit.contains(hit.end_column, hit.row));
+}
+
+#[test]
+fn completed_turn_prompt_rows_expose_state_aware_action_links() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "ACTION_LINK_FIRST\nACTION_LINK_SECOND".into(),
+        details: vec![ChatMessage::Agent("ACTION_LINK_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    render_to_text(&mut app, 80, 16);
+    let prompt_rows = app
+        .completed_turn_hits
+        .iter()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .count();
+    assert_eq!(app.completed_turn_action_links.len(), prompt_rows);
+    assert!(app
+        .completed_turn_action_links
+        .iter()
+        .all(|link| link.action == crate::action_links::CompletedTurnAction::Collapse));
+    let triangle = app
+        .completed_turn_hits
+        .iter()
+        .find(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .expect("completed-turn triangle must be visible");
+    assert!(app.completed_turn_action_links.iter().any(|link| {
+        link.row == triangle.row
+            && link.start_column <= triangle.start_column
+            && link.end_column > triangle.start_column
+    }));
+
+    app.current_tab_mut().completed_turns[0].expanded = false;
+    render_to_text(&mut app, 80, 16);
+    assert_eq!(app.completed_turn_action_links.len(), 1);
+    assert_eq!(
+        app.completed_turn_action_links[0].action,
+        crate::action_links::CompletedTurnAction::Expand,
+    );
 }
 
 #[test]
@@ -7781,6 +7876,7 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
         .expect("completed turn must be visible");
     let prefix_column = triangle_column + 2;
     let prompt_column = triangle_column + 4;
+    let row_end_column = 78;
 
     let send_mouse = |app: &mut App, kind, column| {
         app.handle_event(AppEvent::Mouse(MouseEvent {
@@ -7801,17 +7897,18 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
         MouseEventKind::Up(MouseButton::Left),
         prefix_column,
     );
-    assert!(app.current_tab().completed_turns[0].expanded);
+    assert!(!app.current_tab().completed_turns[0].expanded);
 
+    render_to_text(&mut app, 80, 16);
     send_mouse(
         &mut app,
         MouseEventKind::Down(MouseButton::Left),
-        triangle_column,
+        row_end_column,
     );
     send_mouse(
         &mut app,
         MouseEventKind::Up(MouseButton::Left),
-        prefix_column,
+        row_end_column,
     );
     assert!(app.current_tab().completed_turns[0].expanded);
 
@@ -7834,6 +7931,8 @@ fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
 
     app.current_tab_mut().current_view = View::Agents;
     render_to_text(&mut app, 80, 16);
+    assert!(app.completed_turn_action_links.is_empty());
+    assert!(app.input_dialog_area.is_none());
     send_mouse(
         &mut app,
         MouseEventKind::Down(MouseButton::Left),
@@ -7974,7 +8073,9 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
     for index in 0..12 {
         app.current_tab_mut().completed_turns.push(CompletedTurn {
             prompt: format!("MOUSE_VISIBLE_TURN_{index:02}"),
-            details: vec![ChatMessage::Agent(format!("MOUSE_VISIBLE_DETAIL_{index:02}"))],
+            details: vec![ChatMessage::Agent(format!(
+                "MOUSE_VISIBLE_DETAIL_{index:02}"
+            ))],
             expanded: false,
             trailing_marker: None,
         });
@@ -8208,10 +8309,7 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    install_recs(
-        &mut app,
-        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
-    );
+    install_recs(&mut app, vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")]);
 
     let text = render_to_text(&mut app, 80, 7);
     assert!(
@@ -8757,7 +8855,10 @@ fn expanded_tool_call_renders_typed_details() {
         "TERM_TYPED_OUTPUT",
         "image/png",
     ] {
-        assert!(text.contains(needle), "missing {needle:?}; rendered:\n{text}");
+        assert!(
+            text.contains(needle),
+            "missing {needle:?}; rendered:\n{text}"
+        );
     }
 }
 
@@ -9046,8 +9147,7 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        source:
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -9775,17 +9875,13 @@ fn empty_completed_turn_navigation_clears_pending_visibility() {
         .completed_turn_selection_visible_pending = true;
     app.current_tab_mut().select_older_completed_turn();
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-    assert!(!app
-        .current_tab()
-        .completed_turn_selection_visible_pending);
+    assert!(!app.current_tab().completed_turn_selection_visible_pending);
 
     app.current_tab_mut()
         .completed_turn_selection_visible_pending = true;
     app.current_tab_mut().select_newer_completed_turn();
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-    assert!(!app
-        .current_tab()
-        .completed_turn_selection_visible_pending);
+    assert!(!app.current_tab().completed_turn_selection_visible_pending);
 }
 
 #[test]
@@ -9924,7 +10020,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -10143,9 +10239,7 @@ fn typing_returns_to_input_after_clearing_selection() {
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
     assert!(
-        !app
-            .current_tab()
-            .completed_turn_selection_visible_pending,
+        !app.current_tab().completed_turn_selection_visible_pending,
         "clearing selection must also clear its pending visibility request",
     );
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
@@ -10346,10 +10440,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -10367,21 +10461,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },

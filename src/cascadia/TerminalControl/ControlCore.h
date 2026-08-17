@@ -56,6 +56,26 @@ public:                                                      \
 
 namespace winrt::Microsoft::Terminal::Control::implementation
 {
+    enum class CompletedTurnAction
+    {
+        None,
+        Collapse,
+        Expand,
+    };
+
+    constexpr CompletedTurnAction ParseCompletedTurnActionHyperlink(const std::wstring_view uri) noexcept
+    {
+        if (uri == L"wta-action://collapse")
+        {
+            return CompletedTurnAction::Collapse;
+        }
+        if (uri == L"wta-action://expand")
+        {
+            return CompletedTurnAction::Expand;
+        }
+        return CompletedTurnAction::None;
+    }
+
     struct SelectionColor : SelectionColorT<SelectionColor>
     {
         TextColor AsTextColor() const noexcept;
@@ -144,6 +164,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         void SetHoveredCell(Core::Point terminalPosition);
         void ClearHoveredCell();
+        void RefreshHoveredCell();
         winrt::hstring GetHyperlink(const Core::Point position) const;
         winrt::hstring HoveredUriText() const;
         Windows::Foundation::IReference<Core::Point> HoveredCell() const;

@@ -76,6 +76,8 @@ namespace Microsoft::Console::Render
         void UpdateHyperlinkHoveredId(uint16_t id) noexcept;
         void UpdateLastHoveredInterval(const std::optional<interval_tree::IntervalTree<til::point, size_t>::interval>& newInterval);
 
+        static bool ShouldUnderlineHyperlink(std::wstring_view uri) noexcept;
+
     private:
         struct TimerRoutine
         {
@@ -124,6 +126,7 @@ namespace Microsoft::Console::Render
         ROW* _PaintBufferOutputComposition(TextBuffer& buffer, const ROW& r, const Composition& activeComposition);
         void _PaintBufferOutputHelper(_In_ IRenderEngine* const pEngine, TextBufferCellIterator it, const til::point target);
         void _PaintBufferOutputGridLineHelper(_In_ IRenderEngine* const pEngine, const TextAttribute textAttribute, const size_t cchLine, const til::point coordTarget);
+        bool _shouldSuppressHyperlinkUnderline(const TextAttribute& textAttribute) const noexcept;
         bool _isHoveredHyperlink(const TextAttribute& textAttribute) const noexcept;
         void _PaintSelection(_In_ IRenderEngine* const pEngine);
         void _PaintCursor(_In_ IRenderEngine* const pEngine);
