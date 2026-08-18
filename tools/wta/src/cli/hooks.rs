@@ -38,11 +38,21 @@ pub(crate) fn run_install(cli: HooksCliFilter) -> Result<()> {
         .collect();
 
     if spawn_failures.is_empty() && missing.is_empty() {
-        let installed: Vec<&str> = report
+        // The version rides inside the interpolated CLI list rather than in its
+        // own placeholder, so adding it costs no re-translation across the
+        // locale set — "name (vX.Y.Z)" reads the same in every language.
+        let installed: Vec<String> = report
             .clis
             .iter()
             .filter(|c| c.binary_on_path && c.plugin_installed)
-            .map(|c| c.name)
+            .map(
+                |c| match crate::agent_hooks_installer::installed_plugin_version(c.name) {
+                    Some(v) => format!("{} (v{v})", c.name),
+                    // A CLI whose version can't be read still installed fine;
+                    // saying so beats omitting it or inventing a number.
+                    None => c.name.to_string(),
+                },
+            )
             .collect();
         // Name the CLIs: with `--cli <x>` it confirms the scope took effect,
         // and without it, it distinguishes "installed everywhere" from
@@ -88,17 +98,6 @@ fn format_install_failure(
                 "\n  {name}: install reported no error but no hooks are registered"
             ));
         }
-    }
-    // A held plugin directory is the most common cause and the least guessable
-    // from the raw OS error, so say what to do about it.
-    if spawn_failures
-        .iter()
-        .any(|f| f.reason.contains("os error 5") || f.reason.contains("Access is denied"))
-    {
-        out.push_str(
-            "\n  hint: close any running agent CLI sessions and retry — a running CLI holds \
-             its plugin directory open, which blocks the install from replacing it",
-        );
     }
     out
 }
@@ -249,26 +248,6 @@ mod tests {
         assert!(
             message.contains("Access is denied"),
             "the underlying reason must survive: {message}"
-        );
-    }
-
-    /// A raw `os error 5` tells the user nothing actionable, so the hint is the
-    /// part that turns this message into something they can act on.
-    #[test]
-    fn lock_hint_is_added_for_access_denied() {
-        let failures = [failure("copilot", "install failed: os error 5")];
-        assert!(
-            format_install_failure(&failures, &[]).contains("close any running agent CLI sessions"),
-            "an access-denied failure must explain the lock"
-        );
-    }
-
-    #[test]
-    fn lock_hint_is_omitted_for_unrelated_failures() {
-        let failures = [failure("gemini", "gemini extensions install failed: timed out")];
-        assert!(
-            !format_install_failure(&failures, &[]).contains("close any running agent CLI"),
-            "an unrelated failure must not blame the plugin directory"
         );
     }
 

@@ -4075,9 +4075,30 @@ pub fn upgrade_installed_hooks() {
     }
 }
 
-/// Per-CLI upgrade entry: read installed state, decide, dispatch.
-fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
-    let probe = match cli {
+/// Read the version of the hook plugin a CLI currently has installed.
+///
+/// Returns `None` when nothing is installed, the CLI name is unknown, or the
+/// version can't be determined; callers treat that as "unknown", never as an
+/// error.
+///
+/// Used by `wta hooks install` to report the version it actually verified.
+/// Reading it back from the CLI rather than printing the bundle version is
+/// deliberate: the bundle version is what we *tried* to install, and asserting
+/// that without checking is the same class of claim that made a failed install
+/// look successful.
+pub fn installed_plugin_version(cli_name: &str) -> Option<String> {
+    let home = home_dir()?;
+    let cli = CliKind::ALL.iter().find(|k| k.name() == cli_name)?;
+    probe_installed(*cli, &home)
+        .ok()
+        .flatten()
+        .and_then(|info| info.version)
+        .map(|v| v.to_string())
+}
+
+/// Per-CLI dispatch for reading installed-plugin state.
+fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
+    match cli {
         CliKind::Copilot => read_installed_copilot(home),
         CliKind::Claude => {
             // `claude plugin list --json` requires the CLI on PATH; if
@@ -4095,7 +4116,12 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         }
         CliKind::Gemini => read_installed_gemini(home),
         CliKind::OpenCode => read_installed_opencode(home),
-    };
+    }
+}
+
+/// Per-CLI upgrade entry: read installed state, decide, dispatch.
+fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
+    let probe = probe_installed(cli, home);
     let installed = match probe {
         Ok(installed) => installed,
         Err(error) => {
