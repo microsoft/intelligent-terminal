@@ -200,25 +200,55 @@ every later session is denied:
 ```
 
 The fix does not require guessing a shell after all. Copilot's command hooks
-take **`powershell` and `bash` fields that override `command` on their own
-platform**, so each spelling only has to be valid in the one shell that runs it:
+take **`powershell` and `bash` fields**, and measurement shows the field name
+*selects* the interpreter rather than merely matching a fixed one: with only
+`bash` present the events still arrive on Windows, which could not happen if
+Copilot always used PowerShell — `command -v` short-circuits there and the
+bridge would never run. Each spelling therefore only has to be valid in the one
+shell that names it:
 
 | Field | Command |
 | --- | --- |
 | `powershell` | `try { wtcli.exe agent-hook --cli-source copilot --event <topic> } catch { }; exit 0` |
 | `bash` | `command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event <topic>; exit 0` |
-| `command` | unchanged bare spelling — the fallback for a CLI that does not read the per-shell fields |
+| `command` | **not shipped** — see below |
 
 `try`/`catch` is what makes the PowerShell form work: a missing native command
 raises a catchable `CommandNotFoundException`, and the trailing `exit 0`
 overrides a non-zero exit from the bridge itself. Both keep passing the hook
 JSON on stdin, since PowerShell hands its own stdin to the native child.
 
+### Why Copilot ships no `command` at all
+
+A portable `command` cannot be guarded: no single spelling both runs in every
+shell and survives a missing bridge (the `cmd /c "… & exit 0"` form is
+self-guarding but is destroyed by bash's MSYS path conversion, which rewrites
+`/c` into a Windows path so `cmd.exe` starts interactively and never runs the
+bridge — and that happens whether or not the bridge exists). Shipping an
+unguarded fallback next to a **fail-closed** `preToolUse` hook leaves a path
+that only has to be taken once to deny every tool call for the rest of a
+session.
+
+Measured on Copilot CLI 1.0.81-0, one field at a time, with delivery as the
+oracle:
+
+| Fields present | Events delivered | Tool calls denied |
+| --- | --- | --- |
+| `powershell` only | 5 | no |
+| `bash` only | 5 | no |
+| `command` only | 5 | no |
+| none | **0** | **no** |
+
+The last row is the one that decides it: a handler with nothing runnable is a
+silent no-op, not an error. So dropping `command` costs nothing today — the
+per-shell fields deliver exactly as before — and if a future Copilot ever stops
+honouring those fields, the hook degrades fail-**open** (no events) instead of
+fail-closed (no tools).
+
 Verified against Copilot CLI 1.0.81-0: the bare spelling denies tool calls once
-the bridge is missing, the `powershell` field does not, and the `command` field
-is ignored whenever `powershell` is present. `timeoutSec: 5` bounds the other
-fail-closed edge — a hung COM call — and a hook *timeout* was measured to be
-fail-open, so shortening it only reduces the stall.
+the bridge is missing, and the per-shell fields do not. `timeoutSec: 5` bounds
+the other fail-closed edge — a hung COM call — and a hook *timeout* was measured
+to be fail-open, so shortening it only reduces the stall.
 
 Claude has no `powershell` / `bash` field pair, but it does document a `shell`
 field accepting `"bash"` or `"powershell"`, so it pins the shell and guards
@@ -262,7 +292,7 @@ Current state with the bridge missing:
 
 | CLI | Mechanism | Result |
 | --- | --- | --- |
-| Copilot | `powershell` / `bash` fields | exit 0, silent |
+| Copilot | `powershell` / `bash` fields, no bare `command` | exit 0, silent |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
 | Gemini | PowerShell guard in `command` | exit 0, silent |
 | OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |

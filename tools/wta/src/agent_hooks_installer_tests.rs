@@ -655,13 +655,26 @@ fn pinned_shell_commands(cli: &str, hooks_json: &str) -> Vec<(HookShell, String)
 
 #[test]
 fn hook_commands_are_shell_agnostic() {
-    for (cli, hooks) in [
-        ("copilot", COPILOT_HOOKS_JSON),
-        ("codex", CODEX_HOOKS_JSON),
-        ("gemini", GEMINI_HOOKS_JSON),
-        ("claude", CLAUDE_HOOKS_JSON),
+    // Whether a bundle is expected to carry a portable `command` at all.
+    // claude and gemini pin a shell, so their command is deliberately written
+    // for that one shell and `shell_agnostic_commands` skips them. Copilot
+    // ships only per-shell handlers, so it has no fallback to be portable.
+    // Codex is the last bundle whose command really does have to run anywhere.
+    for (cli, hooks, portable) in [
+        ("copilot", COPILOT_HOOKS_JSON, false),
+        ("codex", CODEX_HOOKS_JSON, true),
+        ("gemini", GEMINI_HOOKS_JSON, false),
+        ("claude", CLAUDE_HOOKS_JSON, false),
     ] {
-        for command in shell_agnostic_commands(cli, hooks) {
+        let commands = shell_agnostic_commands(cli, hooks);
+        // Stated both ways so a bundle that loses its commands by accident
+        // fails here instead of turning the loop below into a silent no-op.
+        assert_eq!(
+            !commands.is_empty(),
+            portable,
+            "{cli}: portable-command expectation does not match the bundle: {commands:?}"
+        );
+        for command in commands {
             let expected = format!("wtcli.exe agent-hook --cli-source {cli} --event ");
             assert!(
                 command.starts_with(&expected),
@@ -675,6 +688,41 @@ fn hook_commands_are_shell_agnostic() {
                 powershell_parses(&command),
                 "{cli} hook command must parse under PowerShell: {command}"
             );
+        }
+    }
+}
+
+/// Copilot's `preToolUse` is fail-closed: a hook that exits non-zero denies
+/// every tool call for the rest of the session. A portable `command` cannot be
+/// guarded — no single spelling both runs everywhere and survives a missing
+/// bridge — so shipping one would leave an unguarded path that only has to be
+/// taken once to brick a session.
+///
+/// Measured on Copilot CLI 1.0.81-0: each of `powershell`, `bash` and `command`
+/// delivers events when it is the only field present, and a handler with none
+/// of them is a silent no-op that does NOT deny. So dropping `command` costs
+/// nothing today and degrades fail-open if the per-shell fields ever stop being
+/// honoured.
+#[test]
+fn copilot_ships_no_unguarded_fallback_command() {
+    let doc: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
+    for matchers in doc["hooks"].as_object().unwrap().values() {
+        for matcher in matchers.as_array().unwrap() {
+            for hook in matcher["hooks"].as_array().unwrap() {
+                assert!(
+                    hook.get("command").is_none(),
+                    "copilot must not ship a bare `command`: {hook}"
+                );
+                for field in ["powershell", "bash"] {
+                    let guarded = hook.get(field).and_then(Value::as_str).unwrap_or_else(|| {
+                        panic!("copilot handler is missing its `{field}` command: {hook}")
+                    });
+                    assert!(
+                        guarded.ends_with("exit 0"),
+                        "copilot `{field}` command must force a zero exit: {guarded}"
+                    );
+                }
+            }
         }
     }
 }
@@ -929,16 +977,18 @@ fn copilot_hook_variants_exit_zero_when_the_bridge_is_missing() {
     }
 }
 
-/// Negative control for the test above: the cross-platform `command` spelling
-/// is what a CLI falls back to when it does not understand the per-shell
-/// fields, and it is exactly what fails once the bridge is gone. Pinning that
-/// documented failure proves the per-shell variants are what fixes the denial,
-/// not some property the bare spelling already had.
+/// Negative control for the test above, and the reason Copilot ships no bare
+/// `command` at all: the unguarded spelling is exactly what fails once the
+/// bridge is gone. Pinning that documented failure proves the guards are what
+/// prevents the denial, not some property the bare spelling already had.
+///
+/// The string is built here rather than read from the bundle. Reading it back
+/// would tie this control to a field Copilot no longer ships, and a control
+/// that quietly stops running is worse than no control.
 #[test]
 fn bare_hook_command_still_fails_when_the_bridge_is_missing() {
-    let command = hook_command_strings(COPILOT_HOOKS_JSON)
-        .swap_remove(0)
-        .replace("wtcli.exe", MISSING_BRIDGE);
+    let command =
+        format!("{MISSING_BRIDGE} agent-hook --cli-source copilot --event agent.session.start");
     let out = run_hook_command(HookShell::PowerShell, &command)
         .expect("PowerShell is always available on Windows");
     assert!(
@@ -1152,34 +1202,11 @@ fn claude_and_copilot_carry_full_event_catalog() {
     }
 }
 
-fn normalize_hook_commands(value: &mut Value) {
-    match value {
-        Value::Array(values) => {
-            for value in values {
-                normalize_hook_commands(value);
-            }
-        }
-        Value::Object(values) => {
-            for (key, value) in values {
-                if key == "command" {
-                    *value = Value::String("<bridge>".into());
-                } else {
-                    normalize_hook_commands(value);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Drops the fields only Copilot's hook schema understands, so the parity
-/// check below compares the shared event structure instead of failing on
-/// Copilot's per-shell resilience layer.
 /// Drops the fields that carry each CLI's own uninstall-resilience layer, so
 /// the parity check below compares the shared event structure rather than
 /// failing on plumbing that is necessarily per-CLI: Copilot expresses it with
-/// `powershell` / `bash` / `timeoutSec`, Claude by pinning `shell` and guarding
-/// inside `command`.
+/// `powershell` / `bash` / `timeoutSec` and ships no portable `command` at all,
+/// Claude by pinning `shell` and guarding inside `command`.
 fn strip_per_cli_hook_fields(value: &mut Value) {
     match value {
         Value::Array(values) => {
@@ -1188,7 +1215,7 @@ fn strip_per_cli_hook_fields(value: &mut Value) {
             }
         }
         Value::Object(values) => {
-            for field in ["powershell", "bash", "timeoutSec", "shell"] {
+            for field in ["command", "powershell", "bash", "timeoutSec", "shell"] {
                 values.remove(field);
             }
             for value in values.values_mut() {
@@ -1208,8 +1235,6 @@ fn strip_per_cli_hook_fields(value: &mut Value) {
 fn claude_and_copilot_hooks_json_are_parity_identical() {
     let mut normalized_claude: Value = serde_json::from_str(CLAUDE_HOOKS_JSON).unwrap();
     let mut normalized_copilot: Value = serde_json::from_str(COPILOT_HOOKS_JSON).unwrap();
-    normalize_hook_commands(&mut normalized_claude);
-    normalize_hook_commands(&mut normalized_copilot);
     strip_per_cli_hook_fields(&mut normalized_claude);
     strip_per_cli_hook_fields(&mut normalized_copilot);
 
