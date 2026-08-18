@@ -127,4 +127,43 @@ namespace IntelligentTerminal
         const auto version = PackageVersionDir();
         return version.empty() ? root : (root / version);
     }
+
+    // Absolute path to the `wtcli.exe` that ships beside this process, or an
+    // empty path when it cannot be found.
+    //
+    // Hook integrations normally invoke `wtcli.exe` off PATH, where it is
+    // supplied by the MSIX app-execution alias. That alias is a zero-byte
+    // reparse point, which `CreateProcess` resolves but a launcher doing its
+    // own PATH lookup does not: OpenCode's plugin spawns an argv array through
+    // Bun, whose resolver rejects it with "Executable not found in $PATH", and
+    // the plugin's catch-all swallows the failure. Handing out the real path
+    // lets such a launcher skip PATH resolution entirely.
+    //
+    // Resolved at run time rather than recorded at install time because the
+    // packaged path carries the version (…\WindowsApps\<name>_<version>_…), so
+    // anything persisted goes stale on the next upgrade — and the mechanism
+    // that would refresh it is the hook auto-upgrade, which is exactly what
+    // cannot be relied on when a CLI holds its plugin directory open.
+    inline std::filesystem::path BridgeExecutable()
+    {
+        std::wstring buffer(MAX_PATH, L'\0');
+        for (;;)
+        {
+            const auto written = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+            if (written == 0)
+            {
+                return {};
+            }
+            if (written < buffer.size())
+            {
+                buffer.resize(written);
+                break;
+            }
+            buffer.resize(buffer.size() * 2);
+        }
+
+        std::error_code ec;
+        auto candidate = std::filesystem::path{ buffer }.parent_path() / L"wtcli.exe";
+        return std::filesystem::exists(candidate, ec) ? candidate : std::filesystem::path{};
+    }
 }

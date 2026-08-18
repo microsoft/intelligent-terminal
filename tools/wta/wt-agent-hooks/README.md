@@ -357,6 +357,6 @@ Gemini has no marketplace concept and reads the extension folder directly.
   upgrade, which is why `agent_hooks_installer` re-runs marketplace
   registration on every wta startup and strips stale entries before
   reinstalling.
-- **Codex must re-trust the 0.1.6 commands once.** Codex hashes each hook
+- **Codex must re-trust the 0.1.7 commands once.** Codex hashes each hook
   command for trust, so replacing the PowerShell command with
   `wtcli agent-hook` requires reviewing the updated plugin through `/hooks`.

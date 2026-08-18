@@ -1,5 +1,7 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 
+import { appendFileSync } from "node:fs"
+
 function eventMessage(value) {
   if (typeof value === "string") return value
   if (value && typeof value === "object") {
@@ -8,6 +10,34 @@ function eventMessage(value) {
     if (typeof value.name === "string") return value.name
   }
   return ""
+}
+
+// Every other CLI reaches the bridge through a shell, so `CreateProcess`
+// resolves the `wtcli.exe` on PATH — which is the MSIX app-execution alias, a
+// zero-byte reparse point. This plugin spawns an argv array instead, and Bun
+// does its own PATH lookup, which rejects the alias outright ("Executable not
+// found in $PATH"). Terminal injects the real path for exactly this case;
+// falling back to the bare name keeps unpackaged dev builds working, where the
+// name resolves to an ordinary file.
+function bridgeCommand() {
+  const injected = process.env.WTCLI_PATH
+  return injected && injected.length > 0 ? injected : "wtcli.exe"
+}
+
+// A spawn failure here must never disturb OpenCode, but it must not be
+// invisible either: this exact failure shipped once and left no trace anywhere,
+// because the handler was empty. Terminal already injects the hook log
+// directory, so record it there and carry on.
+function noteBridgeFailure(topic, error) {
+  try {
+    const dir = process.env.WTA_HOOK_LOG_DIR
+    if (!dir) return
+    const message = error && error.message ? error.message : String(error)
+    const line = `${new Date().toISOString()} opencode bridge spawn failed topic=${topic} cmd=${bridgeCommand()} err=${message}\n`
+    appendFileSync(`${dir}\\hook-trace.log`, line)
+  } catch {
+    // Diagnostics are best effort; never let them become the failure.
+  }
 }
 
 export const WtAgentHooks = async ({ directory }) => {
@@ -24,7 +54,7 @@ export const WtAgentHooks = async ({ directory }) => {
     try {
       const child = Bun.spawn({
         cmd: [
-          "wtcli.exe",
+          bridgeCommand(),
           "agent-hook",
           "--cli-source",
           "opencode",
@@ -43,8 +73,9 @@ export const WtAgentHooks = async ({ directory }) => {
         windowsHide: true,
       })
       void child.exited.catch(() => {})
-    } catch {
+    } catch (error) {
       // Session tracking must never affect OpenCode's own execution.
+      noteBridgeFailure(topic, error)
     }
   }
 

@@ -157,7 +157,6 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
         }
         Write-ItLog -Level INFO -Message "HookBridgeCli: $($script:Cli) is running the packaged bundle ($($activeHash.Substring(0,12)))"
     }
-
     AfterAll {
         if ($script:WeInstalled -and $script:app) {
             try { Invoke-Wta -App $script:app -Arguments @('hooks', 'uninstall', '--cli', $script:Cli) -TimeoutSec 180 -Raw | Out-Null } catch { }

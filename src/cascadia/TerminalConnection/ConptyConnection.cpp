@@ -94,6 +94,26 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                     environment.as_map().insert_or_assign(L"WTA_HOOK_LOG_DIR", wtaLogDir.wstring());
             }
 
+            // Absolute path to the hook bridge, for integrations that cannot use
+            // the `wtcli.exe` on PATH. That PATH entry is the MSIX
+            // app-execution alias — a zero-byte reparse point — which
+            // `CreateProcess` resolves but a launcher performing its own PATH
+            // lookup does not. OpenCode's plugin spawns an argv array through
+            // Bun and fails with "Executable not found in $PATH", silently,
+            // because the plugin swallows spawn errors by design.
+            //
+            // Injected rather than baked into the plugin at install time: the
+            // packaged path is version-stamped, so a recorded copy breaks on
+            // every upgrade, and the mechanism that would refresh it is the
+            // hook auto-upgrade — which cannot run while a CLI holds its plugin
+            // directory open. Consumers fall back to plain `wtcli.exe` when the
+            // variable is absent, which is what unpackaged dev builds want.
+            {
+                const auto bridge = ::IntelligentTerminal::BridgeExecutable();
+                if (!bridge.empty())
+                    environment.as_map().insert_or_assign(L"WTCLI_PATH", bridge.wstring());
+            }
+
             // WSLENV is a colon-delimited list of environment variables (+flags) that should appear inside WSL
             // https://devblogs.microsoft.com/commandline/share-environment-vars-between-wsl-and-windows/
 
