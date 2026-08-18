@@ -897,14 +897,32 @@ int main()
             }
             const auto paneId = GuidToString(paneGuid);
 
-            std::ostringstream input;
-            input << std::cin.rdbuf();
+            // Read a bounded amount. `BuildAgentHookEventJson` caps what goes
+            // on the wire, but that happens *after* the whole of stdin is in
+            // memory and parsed, so an oversized hook payload still costs
+            // memory and parse time first. The ceiling is deliberately far
+            // above the event budget rather than equal to it: payloads larger
+            // than the budget are normal and still produce a useful event
+            // (truncated body, routing fields intact), so capping at the
+            // budget would drop events that work today.
+            constexpr std::streamsize kMaxHookStdinChars = 1024 * 1024;
+            std::string input(static_cast<size_t>(kMaxHookStdinChars) + 1, '\0');
+            std::cin.read(input.data(), static_cast<std::streamsize>(input.size()));
+            const auto readChars = std::cin.gcount();
+            if (readChars > kMaxHookStdinChars)
+            {
+                // Anything this large is a broken or hostile producer, not a
+                // hook. Drop it rather than parse it; the callback still exits
+                // 0 so a fail-closed CLI is unaffected.
+                return;
+            }
+            input.resize(static_cast<size_t>(readChars));
 
             Json::Value event;
             if (!wtcli::BuildAgentHookEventJson(
                     agentHookEventType,
                     agentHookCliSource,
-                    input.str(),
+                    input,
                     paneId,
                     AgentSessionIdFromEnvironment(agentHookCliSource),
                     event))

@@ -239,6 +239,58 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
+    It 'Hook events stay inside their broadcast budget (an oversized routing field cannot escape the cap)' {
+        # The bridge caps the SERIALIZED envelope, not just the payload, because
+        # every subscriber has to budget a queue for whatever arrives. Truncation
+        # only ever rewrites `payload`, so an oversized routing field — and
+        # `agent_session_id` is read straight out of the hook JSON on stdin — is
+        # not something payload truncation can fix. Either the whole envelope
+        # comes in under budget, or nothing is published.
+        $paneId = (Get-ActivePane -App $script:app).session_id
+        $marker = "boundprobe-$([guid]::NewGuid())"
+        # Far past the 8192-char budget, and oversized in the one field
+        # truncation cannot reach.
+        $oversizedId = $marker + ('S' * 200000)
+        $payload = script:Write-HookPayload -Name 'oversized-routing' -Dir $TestDrive -Json (@{
+                session_id = $oversizedId
+                cwd        = 'C:\bound-test'
+            } | ConvertTo-Json -Compress)
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
+            '"BOUND" + "_EXIT=$LASTEXITCODE"'
+            $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 20
+            $out | Should -Match 'BOUND_EXIT=0' -Because 'the bridge must never fail its CLI, whatever it decides to publish'
+
+            # A control event proves the listener was live, so "no oversized
+            # event arrived" means it was dropped rather than merely missed.
+            $controlId = "bound-control-$([guid]::NewGuid())"
+            $control = script:Write-HookPayload -Name 'bound-control' -Dir $TestDrive -Json (@{ session_id = $controlId } | ConvertTo-Json -Compress)
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 `
+                -Command "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start" | Out-Null
+            $controlEvent = $null
+            try {
+                $controlEvent = Wait-WtEvent -Listener $listener -TimeoutSec 30 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $controlId
+                }
+            }
+            catch { }
+            $controlEvent | Should -Not -BeNullOrEmpty -Because 'the listener must be live, or the assertion below proves nothing'
+
+            $oversized = @(Get-WtEvents -Listener $listener -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.agent_session_id -like "$marker*"
+                })
+            foreach ($e in $oversized) {
+                ($e | ConvertTo-Json -Depth 20 -Compress).Length |
+                    Should -BeLessOrEqual 8192 -Because 'a published envelope must fit the budget its own truncation promises'
+            }
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+    }
+
     It 'Shipped hook guards do not swallow the happy path (every CLI bundle still delivers with the bridge present)' {
         # Each CLI wraps the bridge call in a guard so an uninstalled Terminal cannot break
         # it: PowerShell try/catch (copilot, gemini), bash `command -v` (copilot, claude),

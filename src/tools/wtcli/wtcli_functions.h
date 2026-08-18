@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -429,6 +430,19 @@ namespace wtcli
                 marker["_truncated"] = true;
                 marker["_original_size"] = Json::UInt64{ serialized.size() };
                 event["params"]["payload"] = std::move(marker);
+
+                // Emptying the payload cannot save an envelope whose *routing*
+                // fields are themselves over budget, and those are read out of
+                // the hook JSON on stdin. Measured before this check: a 200 KB
+                // `session_id` rode a 200 KB envelope onto the COM broadcast
+                // while reporting `_truncated`. Publishing nothing is the only
+                // answer that keeps the promise made just above; the caller
+                // drops the event and the hook still exits 0, so a fail-closed
+                // CLI is unaffected.
+                if (Json::writeString(writer, event).size() > kMaxHookEventChars)
+                {
+                    return false;
+                }
             }
         }
 
