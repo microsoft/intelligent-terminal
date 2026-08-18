@@ -822,6 +822,14 @@ int main()
     });
 
     // ── send-event ──
+    //
+    // Also the transport every hook bundle installed before the native
+    // `agent-hook` bridge still uses. Those bundles live in each CLI's own
+    // plugin cache, which a Terminal upgrade never rewrites and whose
+    // auto-refresh can fail outright, so they keep calling this subcommand
+    // indefinitely. Removing it as superseded would silently stop tracking
+    // every user whose hooks never refreshed.
+    // Guarded by Feature.LegacyHookBundle.Tests.ps1 (C270).
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
     sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
