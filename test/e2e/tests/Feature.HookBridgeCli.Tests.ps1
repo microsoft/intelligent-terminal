@@ -28,7 +28,6 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
 
         $script:Cli = 'copilot'
-        $script:DoneMarker = 'IT-HOOK-BRIDGE-DONE'
         # Signature of the fail-closed regression this suite exists to catch.
         $script:DenyPattern = 'Denied by preToolUse hook'
 
@@ -55,6 +54,52 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
             catch { return $false }
         }
 
+        # Every assertion in this suite reads the CLI's own output from a FILE,
+        # never from the pane capture. The capture echoes the command being typed,
+        # so any literal used as evidence matches its own setup line: a done marker
+        # makes the completion wait return before the CLI has even started, and a
+        # negative check fires on the command that arranged it. Both happened here
+        # — the first real run of this suite had two cases passing vacuously and a
+        # third failing on its own echo.
+        #
+        # The done marker still travels through the capture, so it is assembled at
+        # runtime and never appears whole in the typed line.
+        function script:Invoke-CliInPane {
+            <#
+            .SYNOPSIS
+                Run the agent CLI in a pane and return what IT printed, plus its exit code.
+            .PARAMETER Prelude
+                Statements to run before the CLI, e.g. breaking the bridge. The CLI is
+                always resolved to an absolute path BEFORE the prelude runs, so a prelude
+                that scrubs PATH cannot take the agent down with it.
+            #>
+            param(
+                [string]$PaneId,
+                [string]$Prompt,
+                [string]$Prelude = '',
+                [string]$Tag,
+                [int]$TimeoutSec = 240
+            )
+            $outFile = Join-Path ([System.IO.Path]::GetTempPath()) "ithookbridge-$Tag-$([guid]::NewGuid().ToString('N').Substring(0,6)).txt"
+            $doneExpr = '"IT-HOOK" + "-DONE=$LASTEXITCODE"'
+            $command = "`$c=(Get-Command $($script:Cli)).Source; $Prelude" +
+            "& `$c -p '$Prompt' --allow-all-tools *> '$outFile'; $doneExpr"
+
+            Send-WtInput -App $script:app -SessionId $PaneId -Text $command
+            Send-WtKeys  -App $script:app -SessionId $PaneId -Keys @('Enter')
+            $finished = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 2 -Quiet -Condition {
+                (Get-WtCapture -App $script:app -SessionId $PaneId -MaxLines 200) -match 'IT-HOOK-DONE=(-?\d+)'
+            }
+            $capture = Get-WtCapture -App $script:app -SessionId $PaneId -MaxLines 200
+            $text = Get-Content -Raw -LiteralPath $outFile -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+            [pscustomobject]@{
+                Finished = [bool]$finished
+                ExitCode = if ($capture -match 'IT-HOOK-DONE=(-?\d+)') { [int]$Matches[1] } else { $null }
+                Output   = if ($text) { $text } else { '' }
+            }
+        }
+
         # Install the hooks the same way FRE/Settings do, so this exercises the SHIPPED bundle
         # rather than whatever the developer happens to have installed. Anything we install is
         # removed again in AfterAll: restoring only the CLI config would leave the plugin files
@@ -62,8 +107,10 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
         # still break the next install.
         $preinstalled = script:Get-HookInstallState
         $script:configBackup = Backup-CopilotConfig
+        $installExit = $null
         try {
-            Invoke-Wta -App $script:app -Arguments @('hooks', 'install', '--cli', $script:Cli) -TimeoutSec 180 -Raw | Out-Null
+            $install = Invoke-Wta -App $script:app -Arguments @('hooks', 'install', '--cli', $script:Cli) -TimeoutSec 180 -Raw
+            $installExit = $install.ExitCode
             $script:WeInstalled = -not $preinstalled
         }
         catch {
@@ -73,7 +120,42 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
 
         if (-not (script:Get-HookInstallState)) {
             $script:SkipReason = "wt-agent-hooks is not reported installed for $($script:Cli) after install"
+            return
         }
+
+        # `plugin_installed` only says SOME wt-agent-hooks is registered, which a
+        # plugin left over from an earlier build satisfies just as well as the one
+        # we meant to install. `<cli> plugin install` replaces the whole plugin
+        # directory and Windows denies that while a CLI process holds it open, so
+        # a failed install plus a stale plugin is a state this machine reaches
+        # routinely — and it silently turns every case below into a test of code
+        # that is not in this branch. It cost two days of believing the native
+        # bridge was under test while Copilot still ran the pre-#571 spelling.
+        #
+        # Compare what the CLI actually has against what the package ships. A
+        # mismatch is reported as a skip rather than a pass, because the honest
+        # answer is "not tested", not "works".
+        $shipped = Join-Path $script:app.InstallLocation 'wt-agent-hooks\copilot\wt-agent-hooks\hooks\hooks.json'
+        $active = Join-Path $HOME '.copilot\installed-plugins\wt-local\wt-agent-hooks\hooks\hooks.json'
+        if (-not (Test-Path $shipped)) {
+            $script:SkipReason = "packaged $($script:Cli) bundle not found at $shipped"
+            return
+        }
+        if (-not (Test-Path $active)) {
+            $script:SkipReason = "$($script:Cli) reports the plugin installed but its hooks.json is missing at $active"
+            return
+        }
+        $shippedHash = (Get-FileHash -LiteralPath $shipped).Hash
+        $activeHash = (Get-FileHash -LiteralPath $active).Hash
+        if ($shippedHash -ne $activeHash) {
+            $script:SkipReason = "$($script:Cli) is running a different bundle than the package ships " +
+            "(installed=$($activeHash.Substring(0,12)) shipped=$($shippedHash.Substring(0,12)); " +
+            "`wta hooks install` exited $installExit). Close every running $($script:Cli) session and reinstall — " +
+            'a running CLI holds its plugin directory open, which blocks the install from replacing it.'
+            Write-ItLog -Level WARN -Message $script:SkipReason
+            return
+        }
+        Write-ItLog -Level INFO -Message "HookBridgeCli: $($script:Cli) is running the packaged bundle ($($activeHash.Substring(0,12)))"
     }
 
     AfterAll {
@@ -91,31 +173,32 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
     It 'Bundled hook runs inside its agent CLI (a real CLI session delivers hook events to Terminal)' {
         # Fresh tab so the CLI runs in a pane with a known, unshared WT_SESSION binding.
         $paneId = (New-WtTab -App $script:app).session_id
-        $prompt = 'Reply with only the token READY.'
-        $command = "$($script:Cli) -p '$prompt' --allow-all-tools; echo $($script:DoneMarker)"
+        # The prompt has to force a TOOL CALL. `preToolUse` is the only fail-closed
+        # hook, so a prompt the model can answer from memory never reaches the hook
+        # that can deny anything, and "was not denied" would prove nothing.
+        $token = 'IT-HOOK-TOOL-RAN'
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            Send-WtInput -App $script:app -SessionId $paneId -Text $command
-            Send-WtKeys  -App $script:app -SessionId $paneId -Keys @('Enter')
+            $run = script:Invoke-CliInPane -PaneId $paneId -Tag 'delivers' -Prompt "Run the shell command: echo $token"
 
-            # The real contract: a hook fired by the CLI itself reaches Terminal, tagged with the
-            # pane it came from. SessionStart/UserPromptSubmit fire before any model work, so this
-            # resolves quickly and never depends on the model calling a tool.
-            $event = Wait-WtEvent -Listener $listener -TimeoutSec 120 -Predicate {
-                $_.method -eq 'agent_event' -and
-                $_.params.pane_id -eq $paneId -and
-                $_.params.cli_source -eq $script:Cli
+            # The real contract: a hook fired by the CLI itself reaches Terminal,
+            # tagged with the pane it came from.
+            $event = $null
+            try {
+                $event = Wait-WtEvent -Listener $listener -TimeoutSec 120 -Predicate {
+                    $_.method -eq 'agent_event' -and
+                    $_.params.pane_id -eq $paneId -and
+                    $_.params.cli_source -eq $script:Cli
+                }
             }
+            catch { }
+            $event | Should -Not -BeNullOrEmpty -Because 'a hook fired by the CLI itself must reach Terminal'
             $event.params.event | Should -Match '^agent\.' -Because 'the bridge must publish a normalised WTA topic'
 
-            # And the fail-closed half: the hook must not have denied the CLI's own tool calls.
-            $doneRe = [regex]::Escape($script:DoneMarker)
-            Wait-Until -TimeoutSec 240 -IntervalSec 2 -Because "$($script:Cli) to finish" -Condition {
-                (Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200) -match $doneRe
-            } | Out-Null
-            $out = Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200
-            $out | Should -Not -Match $script:DenyPattern -Because 'a hook error must never deny the agent its tools'
+            $run.Finished | Should -BeTrue -Because "$($script:Cli) must run to completion"
+            $run.Output | Should -Match ([regex]::Escape($token)) -Because 'the tool call must actually have run, or the fail-closed hook was never exercised'
+            $run.Output | Should -Not -Match $script:DenyPattern -Because 'a hook error must never deny the agent its tools'
         }
         finally {
             Stop-WtEventListener -Listener $listener
@@ -128,30 +211,23 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
         # Terminal. Its exit-0 contract is the only thing standing between that
         # failure and a dead agent session.
         $paneId = (New-WtTab -App $script:app).session_id
-        $prompt = 'Reply with only the token READY.'
-        $command = "`$env:WT_COM_CLSID='{00000000-0000-0000-0000-000000000000}'; " +
-                   "$($script:Cli) -p '$prompt' --allow-all-tools; echo $($script:DoneMarker)"
+        $token = 'IT-HOOK-TOOL-RAN'
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            Send-WtInput -App $script:app -SessionId $paneId -Text $command
-            Send-WtKeys  -App $script:app -SessionId $paneId -Keys @('Enter')
+            $run = script:Invoke-CliInPane -PaneId $paneId -Tag 'broken-clsid' `
+                -Prompt "Run the shell command: echo $token" `
+                -Prelude "`$env:WT_COM_CLSID='{00000000-0000-0000-0000-000000000000}'; "
 
-            # Prove the action completed before asserting the absence of anything.
-            $doneRe = [regex]::Escape($script:DoneMarker)
-            Wait-Until -TimeoutSec 240 -IntervalSec 2 -Because "$($script:Cli) to finish" -Condition {
-                (Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200) -match $doneRe
-            } | Out-Null
-
-            $out = Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200
-            $out | Should -Match $doneRe -Because 'the CLI must run to completion despite the broken hook bridge'
-            $out | Should -Not -Match $script:DenyPattern -Because 'a broken hook bridge must not deny the agent its tools'
+            $run.Finished | Should -BeTrue -Because 'the CLI must run to completion despite the broken hook bridge'
+            $run.Output | Should -Match ([regex]::Escape($token)) -Because 'tool calls must still run when the bridge cannot reach Terminal'
+            $run.Output | Should -Not -Match $script:DenyPattern -Because 'a broken hook bridge must not deny the agent its tools'
 
             # Bounded negative window: no event may arrive from this pane, confirming the bridge
             # really was broken and this case is not silently passing on a working one.
             @(Get-WtEvents -Listener $listener -Predicate {
-                $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
-            }).Count | Should -Be 0 -Because 'the hook could not reach Terminal, so it must publish nothing'
+                    $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
+                }).Count | Should -Be 0 -Because 'the hook could not reach Terminal, so it must publish nothing'
         }
         finally {
             Stop-WtEventListener -Listener $listener
@@ -166,37 +242,34 @@ Describe 'Feature §8 hook bundle runs inside a real agent CLI' -Tag 'Feature' -
         # fail-closed PreToolUse hook turns into a denial of every tool call.
         #
         # Scrubbing every PATH entry that supplies wtcli.exe reproduces that state without
-        # uninstalling Terminal. The CLI is resolved to an absolute path first, so the scrub cannot
-        # take the agent itself down with it (Copilot may live in an alias directory too).
+        # uninstalling Terminal.
         $paneId = (New-WtTab -App $script:app).session_id
-        $prompt = 'Run the shell command: echo IT-HOOK-TOOL-RAN'
-        $onPathMarker = 'IT-HOOK-BRIDGE-STILL-ON-PATH'
-        $command = "`$c=(Get-Command $($script:Cli)).Source; " +
-                   "`$env:PATH=((`$env:PATH -split ';') | Where-Object { `$_ -and -not (Test-Path (Join-Path `$_ 'wtcli.exe')) }) -join ';'; " +
-                   "if (Get-Command wtcli.exe -ErrorAction SilentlyContinue) { echo $onPathMarker }; " +
-                   "& `$c -p '$prompt' --allow-all-tools; echo $($script:DoneMarker)"
+        $token = 'IT-HOOK-TOOL-RAN'
+        # The scrub's own result goes to a file for the same reason the CLI's output
+        # does: a marker echoed in the command line would match itself.
+        $probeFile = Join-Path ([System.IO.Path]::GetTempPath()) "ithookbridge-scrub-$([guid]::NewGuid().ToString('N').Substring(0,6)).txt"
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            Send-WtInput -App $script:app -SessionId $paneId -Text $command
-            Send-WtKeys  -App $script:app -SessionId $paneId -Keys @('Enter')
+            $prelude = "`$env:PATH=((`$env:PATH -split ';') | Where-Object { `$_ -and -not (Test-Path (Join-Path `$_ 'wtcli.exe')) }) -join ';'; " +
+            "(`$null -ne (Get-Command wtcli.exe -ErrorAction SilentlyContinue)) | Out-File -LiteralPath '$probeFile' -Encoding utf8; "
+            $run = script:Invoke-CliInPane -PaneId $paneId -Tag 'no-bridge' `
+                -Prompt "Run the shell command: echo $token" -Prelude $prelude
 
-            $doneRe = [regex]::Escape($script:DoneMarker)
-            Wait-Until -TimeoutSec 240 -IntervalSec 2 -Because "$($script:Cli) to finish" -Condition {
-                (Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200) -match $doneRe
-            } | Out-Null
+            (Get-Content -Raw -LiteralPath $probeFile -ErrorAction SilentlyContinue) |
+                Should -Match 'False' -Because 'the scrub must actually remove wtcli.exe, or this case passes on a working bridge'
 
-            $out = Get-WtCapture -App $script:app -SessionId $paneId -MaxLines 200
-            $out | Should -Match $doneRe -Because 'the CLI must run to completion with no bridge on PATH'
-            $out | Should -Not -Match ([regex]::Escape($onPathMarker)) -Because 'the scrub must actually remove wtcli.exe, or this case passes on a working bridge'
-            $out | Should -Not -Match $script:DenyPattern -Because 'an uninstalled bridge must not deny the agent its tools'
+            $run.Finished | Should -BeTrue -Because 'the CLI must run to completion with no bridge on PATH'
+            $run.Output | Should -Match ([regex]::Escape($token)) -Because 'tool calls must still run once the bridge is gone'
+            $run.Output | Should -Not -Match $script:DenyPattern -Because 'an uninstalled bridge must not deny the agent its tools'
 
             # Same bounded negative window as the broken-CLSID case: nothing can have been published.
             @(Get-WtEvents -Listener $listener -Predicate {
-                $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
-            }).Count | Should -Be 0 -Because 'the bridge was not on PATH, so it must publish nothing'
+                    $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId
+                }).Count | Should -Be 0 -Because 'the bridge was not on PATH, so it must publish nothing'
         }
         finally {
+            Remove-Item -LiteralPath $probeFile -Force -ErrorAction SilentlyContinue
             Stop-WtEventListener -Listener $listener
             try { Close-WtPane -App $script:app -SessionId $paneId } catch { }
         }
