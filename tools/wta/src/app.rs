@@ -366,6 +366,15 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "error",
 ];
 
+/// Members of `payload.tool_input` the routing function reads when the tool is
+/// a user-input tool.
+///
+/// The producer projects `tool_input` down to exactly these when an event
+/// overflows its wire budget (`ReduceOversizedHookPayload` in
+/// `src/tools/wtcli/wtcli_functions.h`), so a name missing here is dropped
+/// from the degraded payload and the notification loses its question text.
+pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the

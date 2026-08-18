@@ -153,6 +153,38 @@ mod tests {
         );
     }
 
+    /// When an event overflows its wire budget the producer rebuilds the
+    /// payload from `kConsumedPayloadKeys` alone. A member the consumer reads
+    /// but that list omits survives normal events and vanishes only on
+    /// oversized ones — the least reproducible failure shape available.
+    #[test]
+    fn oversize_reduction_keeps_every_payload_key_wta_reads() {
+        let retained = cpp_string_array(&header_source(), "kConsumedPayloadKeys");
+        let consumed = rust_set(crate::app::CONSUMED_PAYLOAD_KEYS);
+        assert_eq!(
+            retained, consumed,
+            "`kConsumedPayloadKeys` in {HEADER_REL} and app::CONSUMED_PAYLOAD_KEYS \
+             disagree. The producer keeps only its own list when an event exceeds \
+             kMaxHookEventChars, so anything missing there is dropped from \
+             oversized events while working fine on normal ones."
+        );
+    }
+
+    /// Same contract one level down: `tool_input` is projected to these before
+    /// an oversized event is published.
+    #[test]
+    fn oversize_reduction_keeps_every_tool_input_key_wta_reads() {
+        let retained = cpp_string_array(&header_source(), "kConsumedToolInputKeys");
+        let consumed = rust_set(crate::app::CONSUMED_TOOL_INPUT_KEYS);
+        assert_eq!(
+            retained, consumed,
+            "`kConsumedToolInputKeys` in {HEADER_REL} and \
+             app::CONSUMED_TOOL_INPUT_KEYS disagree. The producer projects \
+             `tool_input` down to its own list on oversized events, so a name \
+             missing there costs the user-input notification its question text."
+        );
+    }
+
     /// The producer lowercases `tool_name` before comparing, so a mixed-case
     /// entry on either side can never match anything.
     #[test]

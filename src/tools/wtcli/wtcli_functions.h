@@ -142,6 +142,115 @@ namespace wtcli
         return true;
     }
 
+    // ── Hook event wire budget ──
+    //
+    // `agent_event` is broadcast: `TerminalProtocolComServer::SendEvent` routes
+    // it to `s_NotifyEventToComClients`, which copies the serialized string into
+    // *every* connected subscriber's bounded queue (one per agent-pane helper,
+    // one for wta-master, plus any `wtcli listen`). That queue holds
+    // `s_maxQueuedEvents = 4096` entries with drop-oldest back-pressure, and a
+    // subscriber that stops draining (the documented case: wta not reading
+    // wtcli's stdout) backs its queue up to the full 4096.
+    //
+    // So the limit is a *memory* bound, not a latency one — the producer never
+    // blocks on delivery. Budgeting ~32 MB per stalled subscriber gives
+    // 32 MB / 4096 = 8 KB per event.
+    //
+    // This replaces a 25000 limit inherited from the PowerShell bridge, where
+    // the hook JSON travelled as a `CreateProcess` argv and the real ceiling was
+    // Windows' ~32768-char command line (25000 left room for worst-case
+    // `CommandLineToArgvW` backslash doubling). That constraint disappeared when
+    // the payload moved to stdin; nothing on this path reads an argv anymore.
+    inline constexpr size_t kMaxHookEventChars = 8192;
+
+    // Per-field ceiling applied when an event overflows `kMaxHookEventChars`.
+    // Sized so the reduced payload is always well under budget even if every
+    // retained member is at its limit (6 strings + 3 nested = 4.5 KB of values).
+    inline constexpr size_t kMaxRetainedFieldChars = 512;
+
+    // Members of the hook payload that WTA reads, and the members it reads out
+    // of `tool_input`. These mirror `app::CONSUMED_PAYLOAD_KEYS` and
+    // `app::CONSUMED_TOOL_INPUT_KEYS`; `hook_contract_tests` on the Rust side
+    // fails if they drift.
+    inline constexpr const char* kConsumedPayloadKeys[] = {
+        "cwd",
+        "tool_name",
+        "toolName",
+        "tool_input",
+        "message",
+        "reason",
+        "error",
+    };
+    inline constexpr const char* kConsumedToolInputKeys[] = {
+        "question",
+        "prompt",
+        "message",
+    };
+
+    // Trim to at most `limit` bytes without splitting a UTF-8 sequence — the
+    // result is handed to `winrt::to_hstring`, which needs well-formed UTF-8.
+    inline std::string ClampUtf8(const std::string& value, const size_t limit)
+    {
+        if (value.size() <= limit)
+        {
+            return value;
+        }
+        auto end = limit;
+        while (end > 0 && (static_cast<unsigned char>(value[end]) & 0xC0) == 0x80)
+        {
+            --end;
+        }
+        return value.substr(0, end);
+    }
+
+    // Degrade an oversized hook payload while keeping what WTA actually reads.
+    //
+    // The former behavior replaced the entire payload with a bare marker, which
+    // threw away precisely the members the consumer needs (`cwd` for the session
+    // row, `message` for a notification, `error` for a failure). That trade made
+    // sense when the alternative was the event failing to spawn at all; now that
+    // the cap only bounds the broadcast queue, keep the consumed members —
+    // clamped — and drop the rest.
+    inline Json::Value ReduceOversizedHookPayload(const Json::Value& payload, const size_t originalSize)
+    {
+        Json::Value reduced{ Json::objectValue };
+        reduced["_truncated"] = true;
+        reduced["_original_size"] = Json::UInt64{ originalSize };
+        if (!payload.isObject())
+        {
+            return reduced;
+        }
+
+        for (const auto* key : kConsumedPayloadKeys)
+        {
+            const auto member = payload.get(key, Json::Value{});
+            if (member.isString())
+            {
+                reduced[key] = ClampUtf8(member.asString(), kMaxRetainedFieldChars);
+            }
+            else if (member.isObject())
+            {
+                // `tool_input` is the only structurally-consumed member; project
+                // it to the sub-members WTA reads so a large `choices` array or
+                // an unknown sibling field can't blow the budget on its own.
+                Json::Value projected{ Json::objectValue };
+                for (const auto* nested : kConsumedToolInputKeys)
+                {
+                    const auto value = member.get(nested, Json::Value{});
+                    if (value.isString())
+                    {
+                        projected[nested] = ClampUtf8(value.asString(), kMaxRetainedFieldChars);
+                    }
+                }
+                if (!projected.empty())
+                {
+                    reduced[key] = std::move(projected);
+                }
+            }
+        }
+        return reduced;
+    }
+
     // Build an agent hook event directly from the hook JSON delivered on stdin.
     // This is the native equivalent of the former PowerShell bridge.
     //
@@ -303,21 +412,24 @@ namespace wtcli
 
         // Bound what actually goes on the wire. The routing fields are attached
         // *before* measuring so the limit applies to the serialized envelope
-        // rather than a subset of it. The remaining reason to cap at all is the
-        // COM SendEvent broadcast, which marshals this string to every
-        // subscriber; the original limit guarded a CreateProcess argv cap that
-        // no longer exists on this path (stdin replaced the argv hand-off), so
-        // the value below is inherited and worth re-deriving.
+        // rather than a subset of it. See `kMaxHookEventChars` for the budget.
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "";
-        constexpr size_t maxEventChars = 25000;
         const auto serialized = Json::writeString(writer, event);
-        if (serialized.size() > maxEventChars)
+        if (serialized.size() > kMaxHookEventChars)
         {
-            Json::Value truncated;
-            truncated["_truncated"] = true;
-            truncated["_original_size"] = Json::UInt64{ serialized.size() };
-            event["params"]["payload"] = std::move(truncated);
+            event["params"]["payload"] = ReduceOversizedHookPayload(payload, serialized.size());
+            // The reduction is bounded by construction, but the routing fields
+            // (`agent_session_id` in particular) come from the CLI and are not.
+            // Fall back to the bare marker so the function always returns an
+            // envelope that a subscriber's queue can budget for.
+            if (Json::writeString(writer, event).size() > kMaxHookEventChars)
+            {
+                Json::Value marker{ Json::objectValue };
+                marker["_truncated"] = true;
+                marker["_original_size"] = Json::UInt64{ serialized.size() };
+                event["params"]["payload"] = std::move(marker);
+            }
         }
 
         outEvt = std::move(event);
