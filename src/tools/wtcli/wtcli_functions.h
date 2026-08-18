@@ -147,7 +147,9 @@ namespace wtcli
     //
     // Returns false for malformed JSON or missing routing metadata and leaves
     // outEvt untouched. Empty or whitespace-only stdin is accepted as a null
-    // payload because some lifecycle hooks do not provide a body.
+    // payload because some lifecycle hooks do not provide a body. A body that
+    // parses but is not a JSON object is reduced to null — see the redaction
+    // note below.
     inline bool BuildAgentHookEventJson(
         const std::string& eventType,
         const std::string& cliSource,
@@ -176,12 +178,26 @@ namespace wtcli
             }
         }
 
+        // The redaction below can only inspect and remove *object members*, so a
+        // body that parses as an array, string, or number would skip it entirely
+        // and reach the COM broadcast verbatim. Redaction here is a disclosure
+        // control (see "Event broadcast disclosure" in doc/security-model.md), so
+        // it has to fail closed. WTA reads nothing but object members out of the
+        // payload, so discarding a non-object body costs no functionality.
+        if (!payload.isNull() && !payload.isObject())
+        {
+            payload = Json::Value{ Json::nullValue };
+        }
+
         std::string agentSessionId = environmentSessionId;
         if (payload.isObject())
         {
             for (const auto* key : { "session_id", "sessionId" })
             {
-                const auto& value = payload[key];
+                // get() rather than operator[]: jsoncpp's non-const operator[]
+                // *creates* a null member for every key it misses, which would
+                // then ride the broadcast as noise on every event.
+                const auto value = payload.get(key, Json::Value{});
                 if (value.isString())
                 {
                     agentSessionId = value.asString();
@@ -235,7 +251,8 @@ namespace wtcli
             std::string toolName;
             for (const auto* key : { "tool_name", "toolName" })
             {
-                const auto& value = payload[key];
+                // Non-mutating lookup, same reason as the session id above.
+                const auto value = payload.get(key, Json::Value{});
                 if (value.isString())
                 {
                     toolName = value.asString();
@@ -252,6 +269,8 @@ namespace wtcli
                 "ask-user",
                 "ask_question",
                 "askquestion",
+                "askuserquestion",
+                "ask_user_question",
                 "ask_for_clarification",
                 "request_input",
                 "request_user_input",
@@ -273,27 +292,34 @@ namespace wtcli
         Json::Value params;
         params["cli_source"] = cliSource;
         params["agent_session_id"] = agentSessionId;
-        params["payload"] = payload;
-
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        const auto serialized = Json::writeString(writer, params);
-        constexpr size_t maxPayloadChars = 25000;
-        if (serialized.size() > maxPayloadChars)
-        {
-            Json::Value truncated;
-            truncated["_truncated"] = true;
-            truncated["_original_size"] = Json::UInt64{ serialized.size() };
-            params["payload"] = std::move(truncated);
-        }
-
         params["event"] = eventType;
         params["pane_id"] = paneId;
+        params["payload"] = payload;
 
         Json::Value event;
         event["type"] = "event";
         event["method"] = "agent_event";
         event["params"] = std::move(params);
+
+        // Bound what actually goes on the wire. The routing fields are attached
+        // *before* measuring so the limit applies to the serialized envelope
+        // rather than a subset of it. The remaining reason to cap at all is the
+        // COM SendEvent broadcast, which marshals this string to every
+        // subscriber; the original limit guarded a CreateProcess argv cap that
+        // no longer exists on this path (stdin replaced the argv hand-off), so
+        // the value below is inherited and worth re-deriving.
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        constexpr size_t maxEventChars = 25000;
+        const auto serialized = Json::writeString(writer, event);
+        if (serialized.size() > maxEventChars)
+        {
+            Json::Value truncated;
+            truncated["_truncated"] = true;
+            truncated["_original_size"] = Json::UInt64{ serialized.size() };
+            event["params"]["payload"] = std::move(truncated);
+        }
+
         outEvt = std::move(event);
         return true;
     }

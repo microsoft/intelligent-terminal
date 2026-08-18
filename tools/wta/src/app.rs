@@ -342,6 +342,30 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
     crate::win32::open_url_in_default_browser(url)
 }
 
+/// Members of `params.payload` that [`route_agent_event_to_registry_with_hook_sink`]
+/// actually reads.
+///
+/// This is the other half of the cross-language contract described on
+/// [`crate::agent_sessions::USER_INPUT_TOOL_NAMES`]. The hook producer
+/// (`BuildAgentHookEventJson` in `src/tools/wtcli/wtcli_functions.h`) redacts
+/// the payload with a denylist before broadcasting it, so a key that lands in
+/// that denylist while still being read here goes silently empty — no error,
+/// no log, just a blank cwd or a lost notification message.
+/// `hook_contract_tests` asserts the denylist and this list stay disjoint.
+///
+/// Nested lookups (`tool_input.question` / `.prompt` / `.message`) are covered
+/// by their `tool_input` parent, which the producer strips only for tools
+/// outside `USER_INPUT_TOOL_NAMES`.
+pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
+    "cwd",
+    "tool_name",
+    "toolName",
+    "tool_input",
+    "message",
+    "reason",
+    "error",
+];
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
