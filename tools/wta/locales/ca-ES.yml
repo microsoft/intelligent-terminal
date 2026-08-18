@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ ruta de la botiga obsoleta"
 hooks.installed_but_disabled: "⚠ instal·lat però desactivat"
 hooks.not_installed: "✗ no instal·lat"
 hooks.uninstall_skipped: "s'ha omès (CLI no està al PATH)"
-hooks.install_attempted: "S'ha intentat instal·lar wt-agent-hooks (idempotent). Executeu `wta hooks status` per inspeccionar el resultat. Registre de traça: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instal·lat per a %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "ara mateix"

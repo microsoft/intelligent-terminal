@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ luma na ang marketplace path"
 hooks.installed_but_disabled: "⚠ naka-install pero naka-disable"
 hooks.not_installed: "✗ hindi naka-install"
 hooks.uninstall_skipped: "nilaktawan (wala ang CLI sa PATH)"
-hooks.install_attempted: "Sinubukang i-install ang wt-agent-hooks (idempotent). Patakbuhin ang `wta hooks status` para suriin ang resulta. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Naka-install ang wt-agent-hooks para sa %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ngayon lang"

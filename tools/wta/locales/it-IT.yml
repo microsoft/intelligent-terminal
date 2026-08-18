@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ Percorso del marketplace obsoleto"
 hooks.installed_but_disabled: "⚠ Installato ma disabilitato"
 hooks.not_installed: "✗ Non installato"
 hooks.uninstall_skipped: "Ignorato (CLI non nel PATH)"
-hooks.install_attempted: "Installazione di wt-agent-hooks tentata (idempotente). Esegui `wta hooks status` per ispezionare il risultato. Log di traccia: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installato per %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "proprio ora"

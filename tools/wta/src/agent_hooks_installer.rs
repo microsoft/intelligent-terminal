@@ -572,34 +572,82 @@ mod bundle {
 // Public install entry points
 // ---------------------------------------------------------------------------
 
+/// What one CLI's install attempt actually did.
+///
+/// The three states matter because "nothing happened" and "something went
+/// wrong" are not the same answer, and the previous `bool` return conflated
+/// them: a CLI that simply isn't on the machine reported `false`, exactly like
+/// a plugin install that failed. Callers that surface failures to the user need
+/// to tell those apart, or every machine without Gemini installed would report
+/// a Gemini install error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallOutcome {
+    /// The install commands ran and reported success.
+    Installed,
+    /// Nothing was attempted — the CLI isn't present, or no bundle resolved.
+    Skipped,
+    /// An install command ran and failed. Carries a user-facing reason.
+    Failed(String),
+}
+
+impl InstallOutcome {
+    /// True only when the install actually landed. Preserves the meaning the
+    /// old `bool` return carried at its call sites.
+    fn installed(&self) -> bool {
+        matches!(self, InstallOutcome::Installed)
+    }
+}
+
+/// A per-CLI install failure, ready to show the user.
+#[derive(Debug, Clone)]
+pub struct InstallFailure {
+    pub cli: &'static str,
+    pub reason: String,
+}
+
 /// Top-level entry point. Run once at wta startup. Idempotent and silent on
 /// failure: if a CLI isn't installed, we skip it; if its settings.json is
 /// malformed, we leave it alone.
 pub fn ensure_installed() {
-    ensure_installed_scoped(CliScope::All);
+    let _ = ensure_installed_scoped(CliScope::All);
 }
 
 /// Install hooks for the specified scope (all CLIs or a single one).
-pub fn ensure_installed_scoped(scope: CliScope) {
+///
+/// Returns the CLIs whose install actively failed. Startup callers ignore it —
+/// a failed hook install must never block wta from starting — but the
+/// `wta hooks install` command reports it, because an install that failed
+/// silently is indistinguishable from one that worked.
+pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
-        return;
+        return Vec::new();
+    };
+    let mut failures = Vec::new();
+    let mut record = |cli: CliKind, outcome: InstallOutcome| {
+        if let InstallOutcome::Failed(reason) = outcome {
+            failures.push(InstallFailure {
+                cli: cli.name(),
+                reason,
+            });
+        }
     };
     if scope.includes(CliKind::Claude) {
-        install_for_claude(&home);
+        record(CliKind::Claude, install_for_claude(&home));
     }
     if scope.includes(CliKind::Copilot) {
-        install_for_copilot(&home);
+        record(CliKind::Copilot, install_for_copilot(&home));
     }
     if scope.includes(CliKind::Gemini) {
-        install_for_gemini(&home);
+        record(CliKind::Gemini, install_for_gemini(&home));
     }
     if scope.includes(CliKind::Codex) {
-        install_for_codex(&home);
+        record(CliKind::Codex, install_for_codex(&home));
     }
     if scope.includes(CliKind::OpenCode) {
-        install_for_opencode(&home);
+        record(CliKind::OpenCode, install_for_opencode(&home));
     }
+    failures
 }
 
 /// Run the installer against a specific home directory. Split out from
@@ -660,13 +708,13 @@ fn cli_binary_on_path(cli: CliKind) -> bool {
 ///   2. Resolve the static `claude/` bundle directory.
 ///   3. Spawn `claude plugin marketplace add <bundle>/claude`.
 ///   4. Spawn `claude plugin install wt-agent-hooks@wt-local`.
-fn install_for_claude(home: &Path) {
+fn install_for_claude(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Claude) {
         tracing::debug!(
             target: "agent_hooks",
             "claude not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return InstallOutcome::Skipped;
     }
     // `~/.claude` may not exist yet on a freshly installed Claude Code
     // that the user hasn't launched. The downstream `claude plugin
@@ -699,7 +747,7 @@ fn install_for_claude(home: &Path) {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Claude plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -738,7 +786,7 @@ fn install_for_claude(home: &Path) {
             err = %e,
             "claude plugin marketplace add failed; aborting plugin install",
         );
-        return;
+        return InstallOutcome::Failed(format!("claude plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
@@ -754,7 +802,9 @@ fn install_for_claude(home: &Path) {
             plugin = %plugin_ref,
             "claude plugin install failed",
         );
+        return InstallOutcome::Failed(format!("claude plugin install {plugin_ref} failed: {e}"));
     }
+    InstallOutcome::Installed
 }
 
 /// Install hooks for Codex CLI by spawning `codex plugin marketplace add`
@@ -769,13 +819,13 @@ fn install_for_claude(home: &Path) {
 /// Trust step: after install, the user must run `/hooks` inside Codex
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
-fn install_for_codex(_home: &Path) -> bool {
+fn install_for_codex(_home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Codex) {
         tracing::debug!(
             target: "agent_hooks",
             "codex not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
     // Intentionally no `~/.codex` existence check: a freshly installed
     // Codex CLI may not have populated that dir yet, and `codex plugin
@@ -789,7 +839,7 @@ fn install_for_codex(_home: &Path) -> bool {
                 "no wt-agent-hooks/codex bundle found next to wta.exe or in dev tree; \
                  skipping Codex plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return false;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -811,7 +861,7 @@ fn install_for_codex(_home: &Path) -> bool {
             err = %e,
             "codex plugin marketplace add failed; aborting plugin install",
         );
-        return false;
+        return InstallOutcome::Failed(format!("codex plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
@@ -821,7 +871,7 @@ fn install_for_codex(_home: &Path) -> bool {
         "agent_hooks",
         &[],
     ) {
-        Ok(()) => true,
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "agent_hooks",
@@ -829,7 +879,7 @@ fn install_for_codex(_home: &Path) -> bool {
                 plugin = %plugin_ref,
                 "codex plugin add failed",
             );
-            false
+            InstallOutcome::Failed(format!("codex plugin add {plugin_ref} failed: {e}"))
         }
     }
 }
@@ -867,13 +917,13 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
 }
 
 /// Install hooks for Copilot CLI by spawning `copilot plugin install`.
-fn install_for_copilot(home: &Path) {
+fn install_for_copilot(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Copilot) {
         tracing::debug!(
             target: "copilot_hooks",
             "copilot not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return InstallOutcome::Skipped;
     }
     // `~/.copilot` may not exist yet on a freshly installed Copilot CLI
     // that the user hasn't launched. `copilot plugin install` creates
@@ -891,7 +941,7 @@ fn install_for_copilot(home: &Path) {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Copilot plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -929,7 +979,7 @@ fn install_for_copilot(home: &Path) {
             err = %e,
             "copilot plugin marketplace add failed; aborting plugin install",
         );
-        return;
+        return InstallOutcome::Failed(format!("copilot plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
@@ -945,7 +995,7 @@ fn install_for_copilot(home: &Path) {
             plugin = %plugin_ref,
             "copilot plugin install failed",
         );
-        return;
+        return InstallOutcome::Failed(format!("copilot plugin install {plugin_ref} failed: {e}"));
     }
 
     // Round-7 cleanup: a previous wta wrote files to `_direct/` (which
@@ -968,16 +1018,17 @@ fn install_for_copilot(home: &Path) {
             );
         }
     }
+    InstallOutcome::Installed
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
-fn install_for_gemini(_home: &Path) -> bool {
+fn install_for_gemini(_home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Gemini) {
         tracing::debug!(
             target: "gemini_hooks",
             "gemini not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
 
     // Intentionally no `~/.gemini` existence check: a freshly installed
@@ -992,7 +1043,7 @@ fn install_for_gemini(_home: &Path) -> bool {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Gemini extension install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return false;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -1039,14 +1090,14 @@ fn install_for_gemini(_home: &Path) -> bool {
         "gemini_hooks",
         &["already installed", "installed successfully and enabled"],
     ) {
-        Ok(()) => true,
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "gemini_hooks",
                 err = %e,
                 "gemini extensions install failed",
             );
-            false
+            InstallOutcome::Failed(format!("gemini extensions install failed: {e}"))
         }
     }
 }
@@ -1149,23 +1200,23 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     copy_result
 }
 
-fn install_for_opencode(home: &Path) -> bool {
+fn install_for_opencode(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::OpenCode) {
         tracing::debug!(
             target: "agent_hooks",
             "opencode not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
     let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::OpenCode) else {
         tracing::warn!(
             target: "agent_hooks",
             "no wt-agent-hooks/opencode bundle found; skipping OpenCode plugin install",
         );
-        return false;
+        return InstallOutcome::Skipped;
     };
     match copy_opencode_bundle(&bundle_dir, home) {
-        Ok(()) => true,
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "agent_hooks",
@@ -1173,7 +1224,7 @@ fn install_for_opencode(home: &Path) -> bool {
                 source = %bundle_dir.display(),
                 "OpenCode plugin install failed",
             );
-            false
+            InstallOutcome::Failed(format!("OpenCode plugin file copy failed: {e}"))
         }
     }
 }
@@ -4121,7 +4172,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         UpgradeAction::CodexReinstall => upgrade_codex(home),
         UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
-        UpgradeAction::OpenCodeCopy => install_for_opencode(home),
+        UpgradeAction::OpenCodeCopy => install_for_opencode(home).installed(),
     }
 }
 
@@ -4229,7 +4280,7 @@ fn upgrade_codex(home: &Path) -> bool {
     // 2. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the WindowsApps staging
     //    and `already registered` tolerance handling.
-    install_for_codex(home)
+    install_for_codex(home).installed()
 }
 
 fn upgrade_gemini_in_place() -> bool {
@@ -4301,7 +4352,7 @@ fn upgrade_gemini_reinstall(home: &Path) -> bool {
     // 3. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the same staging /
     //    consent / libuv-crash tolerances.
-    let install_succeeded = install_for_gemini(home);
+    let install_succeeded = install_for_gemini(home).installed();
 
     // 4. Restore disabled state if needed.
     let state_restored = if !was_enabled {

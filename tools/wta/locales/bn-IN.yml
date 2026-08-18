@@ -192,7 +192,7 @@ hooks.marketplace_path_stale: "⚠ মার্কেটপ্লেস পা�
 hooks.installed_but_disabled: "⚠ ইনস্টল আছে কিন্তু নিষ্ক্রিয়"
 hooks.not_installed: "✗ ইনস্টল নেই"
 hooks.uninstall_skipped: "এড়িয়ে যাওয়া হয়েছে (CLI PATH-এ নেই)"
-hooks.install_attempted: "wt-agent-hooks ইনস্টলের চেষ্টা করা হয়েছে (আইডেম্পোটেন্ট)। ফলাফল পরীক্ষা করতে `wta hooks status` চালান। ট্রেস লগ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis}-এর জন্য wt-agent-hooks ইনস্টল করা হয়েছে"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "এইমাত্র"

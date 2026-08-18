@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ merkatu-bidea zaharkitua"
 hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
 hooks.not_installed: "✗ instalatu gabe"
 hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
-hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalatuta %{clis}(r)entzat"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "oraintxe"

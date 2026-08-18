@@ -206,7 +206,7 @@ hooks.marketplace_path_stale: "⚠ marketplace ճանապարհը հնացած �
 hooks.installed_but_disabled: "⚠ տեղադրված է, բայց անջատված է"
 hooks.not_installed: "✗ տեղադրված չէ"
 hooks.uninstall_skipped: "բաց թողվեց (CLI-ն PATH-ում չէ)"
-hooks.install_attempted: "wt-agent-hooks տեղադրման փորձ կատարվեց (իդեմպոտենտ)։ Գործարկեք `wta hooks status` արդյունքը ստուգելու համար։ Հետագծման մատյան՝ %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks-ը տեղադրված է %{clis}-ի համար"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "հենց նոր"
 time.minute_singular: "1 րոպե առաջ"

@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ llwybr marchnadfa yn hen"
 hooks.installed_but_disabled: "⚠ wedi'i osod ond wedi'i analluogi"
 hooks.not_installed: "✗ heb ei osod"
 hooks.uninstall_skipped: "wedi'i hepgor (CLI ddim ar PATH)"
-hooks.install_attempted: "Ceisiwyd gosod wt-agent-hooks (idempotent). Rhedwch `wta hooks status` i archwilio'r canlyniad. Log olrhain: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks wedi'i osod ar gyfer %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "newydd ddigwydd"
 time.minute_singular: "%{count} munud yn ôl"

@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ Marketplace-pad verouderd"
 hooks.installed_but_disabled: "⚠ Geïnstalleerd maar uitgeschakeld"
 hooks.not_installed: "✗ Niet geïnstalleerd"
 hooks.uninstall_skipped: "Overgeslagen (CLI niet in PATH)"
-hooks.install_attempted: "wt-agent-hooks-installatie geprobeerd (idempotent). Voer `wta hooks status` uit om het resultaat te bekijken. Traceerlogboek: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks geïnstalleerd voor %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "zojuist"

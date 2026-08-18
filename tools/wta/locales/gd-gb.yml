@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ slighe margaidh seann-fhasanta"
 hooks.installed_but_disabled: "⚠ air a stàladh ach air a chur à comas"
 hooks.not_installed: "✗ gun stàladh"
 hooks.uninstall_skipped: "air a leum seachad (CLI chan eil air PATH)"
-hooks.install_attempted: "Chaidh feuchainn ri wt-agent-hooks a stàladh (idempotent). Ruith `wta hooks status` gus an toradh a sgrùdadh. Loga lorg: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Chaidh wt-agent-hooks a stàladh airson %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "an-dràsta fhèin"
 time.minute_singular: "%{count} mhionaid air ais"

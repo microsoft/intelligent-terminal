@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ markpad verouderd"
 hooks.installed_but_disabled: "⚠ geïnstalleer maar gedeaktiveer"
 hooks.not_installed: "✗ nie geïnstalleer nie"
 hooks.uninstall_skipped: "oorgeslaan (CLI nie op PATH nie)"
-hooks.install_attempted: "wt-agent-hooks-installasie probeer (idempotent). Voer `wta hooks status` uit om die resultaat te ondersoek. Spoerlog: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks geïnstalleer vir %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "nou net"
 time.minute_singular: "%{count} minuut gelede"

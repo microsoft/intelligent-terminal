@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ �
 hooks.installed_but_disabled: "⚠ इन्स्टॉल आसा पूण निश्क्रिय"
 hooks.not_installed: "✗ इन्स्टॉल ना"
 hooks.uninstall_skipped: "सोडलें (CLI PATH चेर ना)"
-hooks.install_attempted: "wt-agent-hooks इन्स्टॉल यत्न केलो (आइडेम्पोटेंट). निकाल तपासपाक `wta hooks status` चलयात. ट्रेस लॉग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} खातीर इन्स्टॉल आसा"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "आतांच"

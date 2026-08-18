@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ conair mhargaidh as feidhm"
 hooks.installed_but_disabled: "⚠ suiteáilte ach díchumasaithe"
 hooks.not_installed: "✗ níl suiteáilte"
 hooks.uninstall_skipped: "léimthe (CLI níl ar PATH)"
-hooks.install_attempted: "Rinneadh iarracht wt-agent-hooks a shuiteáil (iompóiteach). Rith `wta hooks status` chun an toradh a iniúchadh. Loga rianaithe: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks suiteáilte do %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "anois díreach"
 time.minute_singular: "%{count} nóiméad ó shin"

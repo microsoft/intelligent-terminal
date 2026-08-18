@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ சந்தைப் பாதை கால�
 hooks.installed_but_disabled: "⚠ நிறுவப்பட்டுள்ளது ஆனால் முடக்கப்பட்டுள்ளது"
 hooks.not_installed: "✗ நிறுவப்படவில்லை"
 hooks.uninstall_skipped: "தவிர்க்கப்பட்டது (CLI PATH-ல் இல்லை)"
-hooks.install_attempted: "wt-agent-hooks நிறுவல் முயற்சிக்கப்பட்டது (இடம்போடென்ட்). முடிவை ஆய்வு செய்ய `wta hooks status` இயக்கவும். தடயப் பதிவு: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis} க்காக wt-agent-hooks நிறுவப்பட்டுள்ளது"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "இப்போதுதான்"

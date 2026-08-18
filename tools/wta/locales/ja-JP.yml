@@ -173,7 +173,7 @@ hooks.marketplace_path_stale: "⚠ マーケットプレース パスが古く�
 hooks.installed_but_disabled: "⚠ インストール済みですが無効になっています"
 hooks.not_installed: "✗ 未インストール"
 hooks.uninstall_skipped: "スキップ (CLI が PATH 上にありません)"
-hooks.install_attempted: "wt-agent-hooks のインストールを試行しました (べき等)。結果を確認するには `wta hooks status` を実行してください。トレース ログ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks は %{clis} 用にインストール済みです"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "たった今"
 time.minute_singular: "%{count} 分前"

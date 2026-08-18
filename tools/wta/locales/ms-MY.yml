@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ laluan marketplace sudah lapuk"
 hooks.installed_but_disabled: "⚠ dipasang tetapi dinyahdayakan"
 hooks.not_installed: "✗ belum dipasang"
 hooks.uninstall_skipped: "dilangkau (CLI tiada dalam PATH)"
-hooks.install_attempted: "Pemasangan wt-agent-hooks dicuba (idempotent). Jalankan `wta hooks status` untuk memeriksa keputusan. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks dipasang untuk %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "baru sahaja"

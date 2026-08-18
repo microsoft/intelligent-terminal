@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "[!!_⚠ marketplace path stale_!!]"
 hooks.installed_but_disabled: "[!!_⚠ installed but disabled_!!]"
 hooks.not_installed: "[!!_✗ not installed_!!]"
 hooks.uninstall_skipped: "[!!_skipped (CLI not on PATH)_!!]"
-hooks.install_attempted: "[!!_wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log_!!]"
+hooks.install_succeeded: "[!!_✓ wt-agent-hooks installed for %{clis}_!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "[!!_just now_!!]"
 time.minute_singular: "[!!_%{count} minute ago_!!]"
