@@ -457,7 +457,11 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         const auto first = std::hash<std::string>{}(key.providerId);
         const auto second = std::hash<std::string>{}(key.sessionId);
-        return first ^ (second + 0x9e3779b97f4a7c15ull + (first << 6) + (first >> 2));
+        constexpr auto hashCombineConstant = static_cast<size_t>(
+            sizeof(size_t) == sizeof(uint64_t) ?
+                0x9e3779b97f4a7c15ull :
+                0x9e3779b9ull);
+        return first ^ (second + hashCombineConstant + (first << 6) + (first >> 2));
     }
 
     std::chrono::milliseconds PersistentProviderSupervisor::BackoffForFailure(
