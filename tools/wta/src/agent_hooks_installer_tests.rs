@@ -515,7 +515,7 @@ const OPENCODE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/opencode/plugin.json");
 
 /// Every manifest-driven CLI invokes the native wtcli bridge directly; no
-/// PowerShell script and no batch launcher sits in between any more. Copilot
+/// PowerShell script and no batch launcher sits in between anymore. Copilot
 /// additionally *names* a shell — its `powershell` / `bash` command fields —
 /// but that is a routing declaration, not a second process: the field value
 /// still runs `wtcli.exe` inside the shell the CLI already started.
@@ -658,7 +658,7 @@ fn hook_commands_are_shell_agnostic() {
     // Whether a bundle is expected to carry a portable `command` at all.
     // claude and gemini pin a shell, so their command is deliberately written
     // for that one shell and `shell_agnostic_commands` skips them. Copilot
-    // ships only per-shell handlers, so it has no fallback to be portable.
+    // ships only per-shell handlers, so it has no portable fallback at all.
     // Codex is the last bundle whose command really does have to run anywhere.
     for (cli, hooks, portable) in [
         ("copilot", COPILOT_HOOKS_JSON, false),
