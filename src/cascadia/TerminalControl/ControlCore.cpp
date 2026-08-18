@@ -625,7 +625,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 if (const auto uri = _terminal->GetHyperlinkAtBufferPosition(_terminal->GetSelectionAnchor()); !uri.empty())
                 {
                     lock.unlock();
-                    OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ uri }));
+                    if (ParseCompletedTurnActionHyperlink(uri) == CompletedTurnAction::None)
+                    {
+                        OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ uri }));
+                    }
                 }
                 else
                 {
@@ -848,6 +851,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlCore::ClearHoveredCell()
     {
         _updateHoveredCell(std::nullopt);
+    }
+
+    void ControlCore::RefreshHoveredCell()
+    {
+        _refreshHoveredCell();
     }
 
     void ControlCore::_refreshHoveredCell()
