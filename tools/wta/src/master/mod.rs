@@ -3255,19 +3255,114 @@ fn resolve_agent_selection(
     )
 }
 
-/// Get the agent CLI for `agent_cmd`, spawning + initializing it on
-/// first use and reusing it thereafter. Two helpers racing the same
-/// new agent serialize on the per-key `OnceCell`; helpers for different
-/// agents spawn in parallel because the outer map lock is held only
-/// long enough to get/insert the cell, never across the spawn.
-async fn get_or_spawn_agent(
+/// Why a [`spawn_one_agent`] attempt failed, for callers that must decide
+/// whether a retry could plausibly succeed.
+enum SpawnFailure {
+    /// The CLI process exited before answering `initialize`. Retrying once
+    /// is worthwhile — see [`spawn_agent_with_cold_start_retry`].
+    ExitedBeforeInitialize(anyhow::Error),
+    /// The process never started, answered `initialize` with a protocol
+    /// error, or stopped responding until the timeout elapsed. In each case
+    /// the failure is deterministic (or already cost the user a full
+    /// timeout), so retrying only doubles the wait.
+    Fatal(anyhow::Error),
+}
+
+impl From<anyhow::Error> for SpawnFailure {
+    fn from(error: anyhow::Error) -> Self {
+        Self::Fatal(error)
+    }
+}
+
+impl SpawnFailure {
+    fn into_error(self) -> anyhow::Error {
+        match self {
+            Self::ExitedBeforeInitialize(error) | Self::Fatal(error) => error,
+        }
+    }
+}
+
+/// Spawn the agent CLI, retrying once if the first attempt exited before
+/// answering `initialize`.
+///
+/// npx-launched adapters download and unpack their package into the npm cache
+/// on first use. When that unpack is incomplete at the moment node starts —
+/// npm reports partial extraction as `TAR_ENTRY_ERROR` *warnings* and still
+/// launches the adapter — the adapter dies with `ERR_MODULE_NOT_FOUND` and
+/// master only sees its ACP transport close before `initialize` returns. The
+/// cache is complete by that point, so a second attempt connects in seconds.
+/// Without this retry the first pane opened after switching agents surfaces a
+/// spurious "agent CLI unavailable" and the user has to restart it by hand.
+///
+/// Deliberately scoped to *this* failure shape: a CLI that is missing, denied,
+/// or unresponsive fails the same way twice, and retrying a timeout would
+/// double an already-long wait.
+///
+/// The retry re-enters [`spawn_into_pool_cell`] rather than reusing the first
+/// attempt's cell: that attempt's reaper may have already evicted it, and
+/// racing it would publish a live CLI into a cell no longer in the pool.
+async fn spawn_agent_with_cold_start_retry(
     state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
-    let key = agent_cmd_key(agent_cmd, agent_id, source);
+    let error = match spawn_into_pool_cell(
+        state,
+        key,
+        agent_cmd,
+        agent_id,
+        source,
+        supplied_cloud_models.clone(),
+    )
+    .await
+    {
+        Ok(agent) => return Ok(agent),
+        Err(SpawnFailure::Fatal(error)) => return Err(error),
+        Err(SpawnFailure::ExitedBeforeInitialize(error)) => error,
+    };
+
+    tracing::warn!(
+        target: "master",
+        agent = %key,
+        error = %format!("{error:#}"),
+        "agent CLI exited before answering initialize; retrying once (npx cold start)"
+    );
+
+    spawn_into_pool_cell(
+        state,
+        key,
+        agent_cmd,
+        agent_id,
+        source,
+        supplied_cloud_models,
+    )
+    .await
+    .map_err(SpawnFailure::into_error)
+    .with_context(|| format!("agent CLI failed to start twice: {agent_cmd}"))
+}
+
+/// Resolve `key`'s pool cell and initialize it with a freshly spawned agent
+/// CLI, or return the agent a concurrent caller already put there.
+///
+/// Two helpers racing the same new agent serialize on the per-key `OnceCell`;
+/// helpers for different agents spawn in parallel because the outer map lock
+/// is held only long enough to get/insert the cell, never across the spawn.
+///
+/// On spawn/init failure the cell stays uninitialized and `spawn_one_agent`
+/// kills its child, whose closing stdio ends the I/O task that then
+/// `reap_agent`s this key out of the map — so the next caller gets a fresh
+/// cell (no lingering dead slot, no leaked subprocess).
+async fn spawn_into_pool_cell(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
+) -> Result<Arc<AgentCli>, SpawnFailure> {
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -3276,17 +3371,12 @@ async fn get_or_spawn_agent(
                 .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
         )
     };
-    // On spawn/init failure the `OnceCell` stays uninitialized and
-    // `spawn_one_agent` kills its child, whose closing stdio ends the I/O
-    // task that then `reap_agent`s this key out of the map — so a later
-    // helper requesting the same agent gets a fresh cell and retries
-    // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
         .get_or_try_init(|| async {
             spawn_one_agent(
                 state,
                 &cell,
-                &key,
+                key,
                 agent_cmd,
                 agent_id,
                 source,
@@ -3296,6 +3386,27 @@ async fn get_or_spawn_agent(
         })
         .await?;
     Ok(Arc::clone(agent))
+}
+
+/// Get the agent CLI for `agent_cmd`, spawning + initializing it on
+/// first use and reusing it thereafter.
+async fn get_or_spawn_agent(
+    state: &Arc<MasterStateInner>,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
+) -> Result<Arc<AgentCli>> {
+    let key = agent_cmd_key(agent_cmd, agent_id, source);
+    spawn_agent_with_cold_start_retry(
+        state,
+        &key,
+        agent_cmd,
+        agent_id,
+        source,
+        supplied_cloud_models,
+    )
+    .await
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -3311,7 +3422,7 @@ async fn spawn_one_agent(
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
-) -> Result<Arc<AgentCli>> {
+) -> Result<Arc<AgentCli>, SpawnFailure> {
     let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
@@ -3512,21 +3623,40 @@ async fn spawn_one_agent(
             resp
         }
         Ok(Err(e)) => {
+            // Classify BEFORE `finish_failed_startup` kills the child: an
+            // already-exited process means the CLI died on us rather than
+            // rejecting the handshake, which is the retryable cold-start
+            // shape (see `spawn_agent_with_cold_start_retry`). A CLI that is
+            // still running answered with a real protocol error, so retrying
+            // would just repeat it.
+            let exit_status = child.try_wait().ok().flatten();
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
             stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
-            return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
+            let error = anyhow!("ACP initialize failed for '{agent_cmd}': {e}");
+            return Err(match exit_status {
+                Some(status) => {
+                    tracing::warn!(
+                        target: "master",
+                        agent = %key,
+                        ?status,
+                        "agent CLI exited before answering initialize"
+                    );
+                    SpawnFailure::ExitedBeforeInitialize(error)
+                }
+                None => SpawnFailure::Fatal(error),
+            });
         }
         Err(_) => {
             stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
-            return Err(anyhow!(
+            return Err(SpawnFailure::Fatal(anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
-            ));
+            )));
         }
     };
 
@@ -3616,10 +3746,19 @@ async fn reap_agent(
 ) {
     let removed = {
         let mut agents = state.agents.lock().await;
-        if agents
+        let is_current_entry = agents
             .get(key)
-            .is_some_and(|current| Arc::ptr_eq(current, cell))
-        {
+            .is_some_and(|current| Arc::ptr_eq(current, cell));
+        // The cell can already hold a *different* CLI instance than the one
+        // this reaper owns: a cold-start retry (`spawn_agent_with_cold_start_retry`)
+        // republishes into the same cell that the failed attempt's reaper is
+        // racing. Evicting then would strand a live CLI outside the pool and
+        // make the next helper spawn a duplicate. An empty cell means no
+        // replacement has landed yet, so it is still ours to clear.
+        let owns_cell_contents = cell
+            .get()
+            .is_none_or(|agent| agent.instance_id == instance_id);
+        if is_current_entry && owns_cell_contents {
             agents.remove(key);
             true
         } else {

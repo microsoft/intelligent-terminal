@@ -2919,6 +2919,110 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
     );
 }
 
+/// A cold-start retry (`spawn_agent_with_cold_start_retry`) can republish into
+/// the same pool cell that the failed attempt's reaper is still racing. That
+/// reaper must not evict the recovered CLI, or the pool would lose a live
+/// agent and the next helper would spawn a duplicate.
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_preserves_cell_republished_by_cold_start_retry() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "npx -y @agentclientprotocol/claude-agent-acp".to_string();
+            let dead_instance = AgentInstanceId::new_v4();
+            let cell: AgentCell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(
+                cell.set(test_agent_cli(AgentInstanceId::new_v4(), &key))
+                    .is_ok(),
+                "the retry initializes the cell before the stale reaper runs"
+            );
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&cell));
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(key.clone())
+                .or_default()
+                .insert(SessionId::new("retry-sess"));
+
+            reap_agent(&state, &key, &cell, dead_instance).await;
+
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|current| Arc::ptr_eq(current, &cell)),
+                "the retry's CLI must stay in the pool"
+            );
+            assert!(
+                state.orphaned_sessions.lock().await.contains_key(&key),
+                "the retry's orphan set must survive the previous attempt's reaper"
+            );
+        })
+        .await;
+}
+
+/// The instance guard must not weaken ordinary eviction: when the cell still
+/// holds the very CLI that died, its reaper removes the pool entry.
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_evicts_cell_holding_its_own_instance() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let instance = AgentInstanceId::new_v4();
+            let cell: AgentCell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(test_agent_cli(instance, &key)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&cell));
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(key.clone())
+                .or_default()
+                .insert(SessionId::new("dead-sess"));
+
+            reap_agent(&state, &key, &cell, instance).await;
+
+            assert!(
+                !state.agents.lock().await.contains_key(&key),
+                "the dead CLI's pool entry must be removed"
+            );
+            assert!(
+                !state.orphaned_sessions.lock().await.contains_key(&key),
+                "the dead CLI's orphan set must be dropped"
+            );
+        })
+        .await;
+}
+
+/// Minimal `AgentCli` for pool-bookkeeping tests. Its connection is never
+/// driven — only `instance_id` and `cmd_key` matter here.
+fn test_agent_cli(instance_id: AgentInstanceId, cmd_key: &str) -> Arc<AgentCli> {
+    Arc::new(AgentCli {
+        instance_id,
+        conn: client_connection_to_pending_new_session_agent(),
+        cached_init_resp: acp::schema::v1::InitializeResponse::new(
+            acp::schema::ProtocolVersion::V1,
+        ),
+        cli_source: None,
+        source: crate::agent_source::AgentSource::Host,
+        cmd_key: cmd_key.to_string(),
+        cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+        bound_helpers: Mutex::new(HashSet::new()),
+    })
+}
+
 /// Regression for the reentrant-permission deadlock: a `prompt` in flight
 /// must NOT block the master's helper-side ACP dispatch loop. If it does, a
 /// `request_permission` the agent issues *mid-turn* deadlocks the shared
