@@ -10,6 +10,9 @@ namespace TerminalApp
     {
         String Title { get; set; };
         Double RenamerMaxWidth { get; set; };
+        String MetadataText { get; set; };
+        String MetadataAutomationName { get; set; };
+        Boolean IsMetadataVisible { get; set; };
 
         TabHeaderControl();
         void BeginRename();

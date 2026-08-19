@@ -18,6 +18,8 @@ namespace winrt::TerminalApp::implementation
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         bool InRename();
+        bool IsMetadataVisible() const noexcept;
+        void IsMetadataVisible(bool value);
 
         til::event<TerminalApp::TitleChangeRequestedArgs> TitleChangeRequested;
         til::typed_event<> RenameEnded;
@@ -25,13 +27,17 @@ namespace winrt::TerminalApp::implementation
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataAutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, PropertyChanged.raise);
 
     private:
         bool _receivedKeyDown{ false };
         bool _renameCancelled{ false };
+        bool _isMetadataVisible{ false };
 
         void _CloseRenameBox();
+        void _UpdateMetadataVisibility();
     };
 }
 

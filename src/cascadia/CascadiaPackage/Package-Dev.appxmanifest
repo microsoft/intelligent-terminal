@@ -171,6 +171,7 @@
         <uap3:Extension Category="windows.appExtensionHost">
               <uap3:AppExtensionHost>
                 <uap3:Name>com.microsoft.windows.terminal.settings</uap3:Name>
+                <uap3:Name>com.microsoft.intelligent-terminal.rich-tab-provider</uap3:Name>
               </uap3:AppExtensionHost>
         </uap3:Extension>
         <uap3:Extension Category="windows.appExtension">
@@ -203,6 +204,7 @@
                 <com:Interface Id="746E6BC0-AB05-4E38-AB14-71E86763141F" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/>
                 <com:Interface Id="9C7E2A14-3B5D-4F8A-A2C9-1E4F6B8D0A3C" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalProtocol (classic) -->
                 <com:Interface Id="3D8F4B26-5C7E-4A9B-B1D0-2F5A7C9E1B4D" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- ITerminalProtocolEventSink (classic) -->
+                <com:Interface Id="8E2D4A61-7C93-4F50-B1D8-6A0E2F4C9B73" ProxyStubClsid="DEC4804D-56D1-4F73-9FBE-6828E7C85C56"/> <!-- IRichTabPublisher (classic) -->
             </com:ComInterface>
         </com:Extension>
         <com:Extension Category="windows.comServer">

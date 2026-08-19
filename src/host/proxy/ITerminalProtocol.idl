@@ -28,6 +28,18 @@ import "unknwn.idl";
     HRESULT OnEvent([in] BSTR eventJson);
 };
 
+// Rich Tab Provider result channel. This is deliberately separate from
+// ITerminalProtocol so adding Provider operations never changes its vtable.
+// Operations and results use versioned JSON envelopes.
+[
+    object,
+    uuid(8E2D4A61-7C93-4F50-B1D8-6A0E2F4C9B73),
+    pointer_default(unique)
+] interface IRichTabPublisher : IUnknown
+{
+    HRESULT Invoke([in] BSTR requestJson, [out, retval] BSTR* resultJson);
+};
+
 // Terminal protocol — implemented by WindowsTerminal.exe, activated by the
 // client via CoCreateInstance(CLSCTX_LOCAL_SERVER) under the existing
 // per-branding CLSID (discovered through the WT_COM_CLSID env var).

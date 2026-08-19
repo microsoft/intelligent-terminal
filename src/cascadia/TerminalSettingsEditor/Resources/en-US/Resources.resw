@@ -729,6 +729,102 @@
     <value>Agents</value>
     <comment>Header for the "Agents" menu item. This navigates to a page that lets you configure AI agent integration settings.</comment>
   </data>
+  <data name="Nav_RichTabs.Content" xml:space="preserve">
+    <value>Rich tabs</value>
+    <comment>Header for the settings page that controls Rich Tab providers and fields.</comment>
+  </data>
+  <data name="RichTabs_Description.Text" xml:space="preserve">
+    <value>Choose which providers contribute metadata to tabs, and select the fields shown by each provider. Changes take effect after you save settings.</value>
+    <comment>Description of the Rich Tabs provider customization page.</comment>
+  </data>
+  <data name="RichTabs_PrioritizeRecentlyUpdatedFields.Header" xml:space="preserve">
+    <value>Prioritize recently updated fields</value>
+    <comment>Label for a switch that moves changed Rich Tab fields to the front.</comment>
+  </data>
+  <data name="RichTabs_MoveUp.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Move up</value>
+    <comment>Tooltip for a button that moves a provider or field earlier in Rich Tab display order.</comment>
+  </data>
+  <data name="RichTabs_MoveUp.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Move up</value>
+    <comment>Accessible name for a button that moves a provider or field earlier in Rich Tab display order.</comment>
+  </data>
+  <data name="RichTabs_MoveDown.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Move down</value>
+    <comment>Tooltip for a button that moves a provider or field later in Rich Tab display order.</comment>
+  </data>
+  <data name="RichTabs_MoveDown.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Move down</value>
+    <comment>Accessible name for a button that moves a provider or field later in Rich Tab display order.</comment>
+  </data>
+  <data name="RichTabs_ProviderEnabled.OnContent" xml:space="preserve">
+    <value>On</value>
+    <comment>Label shown when a Rich Tab provider is enabled.</comment>
+  </data>
+  <data name="RichTabs_ProviderEnabled.OffContent" xml:space="preserve">
+    <value>Off</value>
+    <comment>Label shown when a Rich Tab provider is disabled.</comment>
+  </data>
+  <data name="RichTabs_ProviderEnabled.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Provider enabled</value>
+    <comment>Accessible name for a switch that enables or disables a Rich Tab provider.</comment>
+  </data>
+  <data name="RichTabs_SourceBuiltIn" xml:space="preserve">
+    <value>Built in</value>
+    <comment>Source label for a provider distributed with Intelligent Terminal.</comment>
+  </data>
+  <data name="RichTabs_SourceAppExtension" xml:space="preserve">
+    <value>MSIX extension</value>
+    <comment>Source label for a provider discovered from an installed MSIX App Extension.</comment>
+  </data>
+  <data name="RichTabs_SourceLegacyManaged" xml:space="preserve">
+    <value>Legacy installed extension</value>
+    <comment>Source label for a provider installed through the legacy managed-copy registry.</comment>
+  </data>
+  <data name="RichTabs_SourceDevelopment" xml:space="preserve">
+    <value>Development extension</value>
+    <comment>Source label for a third-party provider registered from a development directory.</comment>
+  </data>
+  <data name="RichTabs_StatusEnabled" xml:space="preserve">
+    <value>Enabled</value>
+    <comment>Status label for an enabled Rich Tab provider.</comment>
+  </data>
+  <data name="RichTabs_StatusDisabled" xml:space="preserve">
+    <value>Disabled</value>
+    <comment>Status label for a disabled Rich Tab provider.</comment>
+  </data>
+  <data name="RichTabs_StatusConsentRequired" xml:space="preserve">
+    <value>Consent required before this provider can run</value>
+    <comment>Status for a third-party provider that has not received code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogTitle" xml:space="preserve">
+    <value>Allow this provider to run?</value>
+    <comment>Title for the Rich Tab provider code execution consent dialog.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogMessage" xml:space="preserve">
+    <value>This provider will run code with your user permissions. Only continue if you trust its publisher and installation source.</value>
+    <comment>Security warning shown before granting a Rich Tab provider code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogAccept" xml:space="preserve">
+    <value>Allow and enable</value>
+    <comment>Primary button that grants Rich Tab provider code execution consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogCancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>Button that dismisses a Rich Tab provider consent dialog without granting consent.</comment>
+  </data>
+  <data name="RichTabs_ConsentDialogFailureTitle" xml:space="preserve">
+    <value>Could not enable provider</value>
+    <comment>Title shown when Rich Tab provider consent could not be persisted.</comment>
+  </data>
+  <data name="RichTabs_StatusIntegrityInvalid" xml:space="preserve">
+    <value>Provider files failed integrity validation</value>
+    <comment>Status for a provider whose installed files no longer match its registration.</comment>
+  </data>
+  <data name="RichTabs_StatusShadowed" xml:space="preserve">
+    <value>Unavailable because a built-in provider uses this ID</value>
+    <comment>Status for a third-party provider whose identifier conflicts with a built-in provider.</comment>
+  </data>
   <data name="AIAgents_PageSubtitle.Text" xml:space="preserve">
     <value>Configure how agents work across your terminal experience</value>
     <comment>DEPRECATED — do not translate. Superseded by AIAgents_PageSubtitlePrefix + AIAgents_PageSubtitlePrivacyLink. Kept in en-US only as a neutral fallback for the not-yet-updated translations in the other locale resw files (without it, PRI263 warns about a missing neutral resource). Safe to delete once those translations are cleaned up.</comment>

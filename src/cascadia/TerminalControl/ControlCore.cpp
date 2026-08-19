@@ -109,7 +109,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         });
 
         // GH#8969: pre-seed working directory to prevent potential races
-        _terminal->SetWorkingDirectory(_settings.StartingDirectory());
+        _terminal->SetInitialWorkingDirectory(_settings.StartingDirectory());
 
         _terminal->SetCopyToClipboardCallback([this](wil::zwstring_view wstr) {
             WriteToClipboard.raise(*this, winrt::make<WriteToClipboardEventArgs>(winrt::hstring{ std::wstring_view{ wstr } }, std::string{}, std::string{}));
@@ -326,6 +326,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // revoke ALL old handlers immediately
 
         _closeConnection();
+
+        {
+            const auto lock = _terminal->LockForWriting();
+            _terminal->ResetShellIntegrationState();
+        }
 
         _connection = newConnection;
         if (_connection)
@@ -1547,6 +1552,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         const auto lock = _terminal->LockForReading();
         return hstring{ _terminal->GetWorkingDirectory() };
+    }
+
+    bool ControlCore::WorkingDirectoryReportedByShell() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsWorkingDirectoryReportedByShell();
     }
 
     hstring ControlCore::ShellName() const

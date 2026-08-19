@@ -6,6 +6,8 @@
 #include "TerminalProtocolComServer.h"
 #include "WindowEmperor.h"
 #include "AppHost.h"
+#include "../TerminalApp/RichTabPublisherBridge.h"
+#include "../RichTabProvider/ProviderContracts.h"
 
 #include <json/json.h>
 #include <til/io.h>
@@ -213,6 +215,107 @@ static BSTR _bstrFromJson(const Json::Value& v)
     return _bstr(Json::writeString(wb, v));
 }
 
+STDMETHODIMP TerminalProtocolComServer::Invoke(BSTR requestJson, BSTR* resultJson)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, requestJson);
+    RETURN_HR_IF_NULL(E_POINTER, resultJson);
+    *resultJson = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    Json::Value request;
+    if (!_parseJson(winrt::to_string(winrt::hstring{ requestJson }), request) ||
+        !request.isObject())
+    {
+        return E_INVALIDARG;
+    }
+
+    Json::Value result;
+    const auto operation = request["operation"].asString();
+    if (operation == "publish" &&
+        request["lease"].isString() &&
+        (request["snapshotJson"].isString() || request["snapshot"].isObject()))
+    {
+        std::string snapshotJson;
+        if (request["snapshotJson"].isString())
+        {
+            snapshotJson = request["snapshotJson"].asString();
+        }
+        else
+        {
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            snapshotJson = Json::writeString(writer, request["snapshot"]);
+        }
+        wil::unique_bstr lease{ SysAllocString(winrt::to_hstring(request["lease"].asString()).c_str()) };
+        wil::unique_bstr snapshot{ SysAllocString(winrt::to_hstring(snapshotJson).c_str()) };
+        RETURN_IF_NULL_ALLOC(lease);
+        RETURN_IF_NULL_ALLOC(snapshot);
+        BOOL succeeded = FALSE;
+        wil::unique_bstr message;
+        RETURN_IF_FAILED(RichTabPublishSnapshot(
+            lease.get(),
+            snapshot.get(),
+            &succeeded,
+            message.put()));
+        result["ok"] = succeeded != FALSE;
+        result["operation"] = "publish";
+        result["message"] = message ? winrt::to_string(winrt::hstring{ message.get() }) : std::string{};
+    }
+    else if ((operation == "metadata_set" || operation == "metadata_clear") &&
+             request["tab_id"].isString())
+    {
+        const auto tabId = winrt::to_hstring(request["tab_id"].asString());
+        bool found = false;
+        if (operation == "metadata_set")
+        {
+            if (!request["text"].isString() ||
+                !request["tooltip"].isString() ||
+                !request["accessibility_text"].isString() ||
+                !request["ttl_milliseconds"].isUInt64() ||
+                request["text"].asString().empty() ||
+                request["text"].asString().size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize ||
+                request["tooltip"].asString().size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize ||
+                request["accessibility_text"].asString().size() > Microsoft::Terminal::RichTab::Provider::MaximumPresentationTextSize ||
+                request["ttl_milliseconds"].asUInt64() > static_cast<Json::UInt64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours{ 24 * 7 }).count()))
+            {
+                return E_INVALIDARG;
+            }
+            const auto text = winrt::to_hstring(request["text"].asString());
+            const auto tooltip = winrt::to_hstring(request["tooltip"].asString());
+            const auto accessibilityText = winrt::to_hstring(request["accessibility_text"].asString());
+            const auto ttl = request["ttl_milliseconds"].asUInt64();
+            for (const auto& host : s_emperor->GetWindows())
+            {
+                if (const auto page = _getPage(host.get()))
+                {
+                    found = page.SetProtocolRichTabMetadata(tabId, text, tooltip, accessibilityText, ttl).get() || found;
+                }
+            }
+        }
+        else
+        {
+            for (const auto& host : s_emperor->GetWindows())
+            {
+                if (const auto page = _getPage(host.get()))
+                {
+                    found = page.ClearProtocolRichTabMetadata(tabId).get() || found;
+                }
+            }
+        }
+        result["ok"] = found;
+        result["operation"] = operation;
+        result["message"] = found ? "metadata updated" : "tab was not found";
+    }
+    else
+    {
+        return E_INVALIDARG;
+    }
+    *resultJson = _bstrFromJson(result);
+    return S_OK;
+}
+CATCH_RETURN()
+
 static Json::Value _toJson(const Protocol::WindowInfo& w)
 {
     Json::Value v;
@@ -227,6 +330,7 @@ static Json::Value _toJson(const Protocol::TabInfo& t)
 {
     Json::Value v;
     v["tab_id"] = static_cast<Json::UInt>(t.TabId);
+    v["stable_id"] = winrt::to_string(t.StableId);
     v["window_id"] = static_cast<Json::UInt64>(t.WindowId);
     v["title"] = winrt::to_string(t.Title);
     v["is_active"] = static_cast<bool>(t.IsActive);

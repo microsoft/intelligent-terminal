@@ -1,0 +1,108 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+#include "ViewModelHelpers.idl.h"
+
+namespace Microsoft.Terminal.Settings.Editor
+{
+    enum RichTabProviderSourceKind
+    {
+        BuiltIn = 0,
+        AppExtension = 1,
+        Development = 2,
+        LegacyManaged = 3
+    };
+
+    runtimeclass RichTabFieldDescriptor
+    {
+        RichTabFieldDescriptor(String id, String displayName, Boolean defaultVisible);
+        String Id { get; };
+        String DisplayName { get; };
+        Boolean DefaultVisible { get; };
+    }
+
+    runtimeclass RichTabProviderDescriptor
+    {
+        RichTabProviderDescriptor(
+            String id,
+            String displayName,
+            RichTabProviderSourceKind source,
+            Boolean consentEnabled,
+            Boolean integrityValid,
+            Boolean eligible,
+            Boolean effectiveEnabled,
+            Boolean shadowed,
+            String consentKey,
+            Windows.Foundation.Collections.IVectorView<RichTabFieldDescriptor> fields);
+
+        String Id { get; };
+        String DisplayName { get; };
+        RichTabProviderSourceKind Source { get; };
+        Boolean ConsentEnabled { get; };
+        Boolean IntegrityValid { get; };
+        Boolean Eligible { get; };
+        Boolean EffectiveEnabled { get; };
+        Boolean Shadowed { get; };
+        String ConsentKey { get; };
+        Windows.Foundation.Collections.IVectorView<RichTabFieldDescriptor> Fields { get; };
+    }
+
+    runtimeclass RichTabFieldViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        String Id { get; };
+        String DisplayName { get; };
+        Boolean IsVisible;
+        Boolean CanEdit { get; };
+        Boolean CanMoveUp { get; };
+        Boolean CanMoveDown { get; };
+        void MoveUp();
+        void MoveDown();
+    }
+
+    runtimeclass RichTabConsentRequest
+    {
+        RichTabConsentRequest(String providerId, String consentKey, Boolean enabled);
+        String ProviderId { get; };
+        String ConsentKey { get; };
+        Boolean Enabled { get; };
+        Boolean Approved;
+        String Error;
+    }
+
+    runtimeclass RichTabProviderViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        String Id { get; };
+        String DisplayName { get; };
+        String SourceLabel { get; };
+        String StatusLabel { get; };
+        Boolean IsEnabled;
+        Boolean NeedsConsent { get; };
+        Boolean CanToggle { get; };
+        Boolean CanMoveUp { get; };
+        Boolean CanMoveDown { get; };
+        Windows.Foundation.Collections.IObservableVector<RichTabFieldViewModel> Fields { get; };
+        void MoveFieldUp(RichTabFieldViewModel field);
+        void MoveFieldDown(RichTabFieldViewModel field);
+        String RequestConsent(Boolean enabled);
+    }
+
+    runtimeclass RichTabsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        RichTabsViewModel(
+            Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings,
+            Windows.Foundation.Collections.IVectorView<RichTabProviderDescriptor> descriptors);
+
+        Windows.Foundation.Collections.IObservableVector<RichTabProviderViewModel> Providers { get; };
+        Boolean PrioritizeRecentlyUpdatedFields;
+        void MoveProviderUp(RichTabProviderViewModel provider);
+        void MoveProviderDown(RichTabProviderViewModel provider);
+        event Windows.Foundation.TypedEventHandler<RichTabsViewModel, Microsoft.Terminal.Settings.Model.GlobalAppSettings> PreferencesChanged;
+        event Windows.Foundation.TypedEventHandler<RichTabsViewModel, RichTabConsentRequest> ConsentRequested;
+    }
+
+    [default_interface] runtimeclass RichTabs : Windows.UI.Xaml.Controls.Page
+    {
+        RichTabs();
+        RichTabsViewModel ViewModel { get; };
+    }
+}

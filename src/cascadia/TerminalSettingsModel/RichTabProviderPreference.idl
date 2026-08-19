@@ -1,0 +1,13 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Microsoft.Terminal.Settings.Model
+{
+    runtimeclass RichTabProviderPreference
+    {
+        RichTabProviderPreference(String id);
+        String Id;
+        Windows.Foundation.IReference<Boolean> Enabled;
+        Windows.Foundation.Collections.IVector<String> Fields;
+    }
+}

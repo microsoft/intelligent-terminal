@@ -26,6 +26,36 @@
 
 namespace IntelligentTerminal
 {
+    // Resolve persistent Intelligent Terminal state:
+    //
+    //   * Packaged:   %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\IntelligentTerminal
+    //   * Unpackaged: %LOCALAPPDATA%\IntelligentTerminal
+    //
+    // Provider registrations, trust decisions, and managed provider payloads
+    // live here. Packaged and unpackaged installations intentionally do not
+    // share executable extension state.
+    inline std::filesystem::path StateRoot()
+    {
+        wchar_t localAppData[MAX_PATH];
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        {
+            return {};
+        }
+        std::filesystem::path base{ std::wstring(localAppData) };
+
+        UINT32 length = 0;
+        if (GetCurrentPackageFamilyName(&length, nullptr) == ERROR_INSUFFICIENT_BUFFER && length != 0)
+        {
+            std::wstring family(length, L'\0');
+            if (GetCurrentPackageFamilyName(&length, family.data()) == ERROR_SUCCESS)
+            {
+                family.resize(::wcslen(family.c_str()));
+                return base / L"Packages" / family / L"LocalState" / L"IntelligentTerminal";
+            }
+        }
+        return base / L"IntelligentTerminal";
+    }
+
     // Resolve the WTA log directory:
     //
     //   * Packaged:   %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\IntelligentTerminal\logs

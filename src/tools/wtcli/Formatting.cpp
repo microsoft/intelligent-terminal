@@ -38,11 +38,12 @@ void FormatTabsHuman(const Json::Value& tabs)
         printf("No tabs found.\n");
         return;
     }
-    printf("%-10s %-30s %s\n", "TAB_ID", "TITLE", "FOCUSED");
+    printf("%-10s %-38s %-30s %s\n", "TAB_ID", "STABLE_ID", "TITLE", "FOCUSED");
     for (const auto& t : tabs)
     {
-        printf("%-10u %-30s %s\n",
+        printf("%-10u %-38s %-30s %s\n",
                t["tab_id"].asUInt(),
+               t["stable_id"].asString().c_str(),
                t["title"].asString().c_str(),
                t["is_active"].asBool() ? "*" : "");
     }

@@ -1,0 +1,117 @@
+<!-- Copyright (c) Microsoft Corporation. Licensed under the MIT license. -->
+<Page x:Class="Microsoft.Terminal.Settings.Editor.RichTabs"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:local="using:Microsoft.Terminal.Settings.Editor"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+      mc:Ignorable="d">
+
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CommonResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
+
+    <StackPanel Style="{StaticResource SettingsStackStyle}">
+        <TextBlock x:Uid="RichTabs_Description"
+                   Margin="0,0,0,16"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap" />
+
+        <local:SettingContainer x:Uid="RichTabs_PrioritizeRecentlyUpdatedFields"
+                                Margin="0,0,0,12">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PrioritizeRecentlyUpdatedFields, Mode=TwoWay}"
+                          Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+        </local:SettingContainer>
+
+        <ItemsControl ItemsSource="{x:Bind ViewModel.Providers, Mode=OneWay}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:RichTabProviderViewModel">
+                    <muxc:Expander Margin="0,4,0,0"
+                                   HorizontalAlignment="Stretch"
+                                   IsExpanded="False">
+                        <muxc:Expander.Header>
+                            <Grid MinHeight="56"
+                                  ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource SettingsPageItemHeaderStyle}"
+                                               Text="{x:Bind DisplayName}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="{x:Bind SourceLabel}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="{x:Bind StatusLabel, Mode=OneWay}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        x:Uid="RichTabs_MoveUp"
+                                        IsEnabled="{x:Bind CanMoveUp, Mode=OneWay}"
+                                        Tag="{x:Bind}"
+                                        Click="MoveProviderUp_Click">
+                                    <FontIcon Glyph="&#xE74A;" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        x:Uid="RichTabs_MoveDown"
+                                        IsEnabled="{x:Bind CanMoveDown, Mode=OneWay}"
+                                        Tag="{x:Bind}"
+                                        Click="MoveProviderDown_Click">
+                                    <FontIcon Glyph="&#xE74B;" />
+                                </Button>
+                                <ToggleSwitch Grid.Column="3"
+                                              x:Uid="RichTabs_ProviderEnabled"
+                                              IsEnabled="{x:Bind CanToggle}"
+                                              IsOn="{x:Bind IsEnabled, Mode=OneWay}"
+                                              Tag="{x:Bind}"
+                                              Toggled="ProviderEnabled_Toggled" />
+                            </Grid>
+                        </muxc:Expander.Header>
+
+                        <ItemsControl Margin="16,0,0,12"
+                                      ItemsSource="{x:Bind Fields}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:RichTabFieldViewModel">
+                                    <Grid MinHeight="44"
+                                          ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox VerticalAlignment="Center"
+                                                  Content="{x:Bind DisplayName}"
+                                                  IsChecked="{x:Bind IsVisible, Mode=OneWay}"
+                                                  IsEnabled="{x:Bind CanEdit}"
+                                                  Tag="{x:Bind}"
+                                                  Click="FieldVisibility_Click" />
+                                        <Button Grid.Column="1"
+                                                x:Uid="RichTabs_MoveUp"
+                                                IsEnabled="{x:Bind CanMoveUp, Mode=OneWay}"
+                                                Tag="{x:Bind}"
+                                                Click="MoveFieldUp_Click">
+                                            <FontIcon Glyph="&#xE74A;" />
+                                        </Button>
+                                        <Button Grid.Column="2"
+                                                x:Uid="RichTabs_MoveDown"
+                                                IsEnabled="{x:Bind CanMoveDown, Mode=OneWay}"
+                                                Tag="{x:Bind}"
+                                                Click="MoveFieldDown_Click">
+                                            <FontIcon Glyph="&#xE74B;" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </muxc:Expander>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</Page>

@@ -6,6 +6,7 @@
 #include "Tab.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
+#include "TabDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -278,6 +279,14 @@ namespace winrt::TerminalApp::implementation
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
+        if (!_richTabTooltipText.empty())
+        {
+            auto metadataRun = WUX::Documents::Run();
+            metadataRun.Text(_richTabTooltipText);
+            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+            textBlock.Inlines().Append(metadataRun);
+        }
+
         if (!_keyChord.empty())
         {
             auto keyChordRun = WUX::Documents::Run();
@@ -543,8 +552,160 @@ namespace winrt::TerminalApp::implementation
 
         // Update the control to reflect the changed title
         _headerControl.Title(activeTitle);
-        Automation::AutomationProperties::SetName(TabViewItem(), activeTitle);
+        _UpdateRichTabPresentation();
+    }
+
+    void Tab::SetRichTabPresentation(
+        const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabPresentation != presentation)
+        {
+            _richTabPresentation = presentation;
+            _UpdateRichTabPresentation();
+        }
+    }
+
+    void Tab::SetRichTabMetadataOverride(
+        const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation,
+        const std::chrono::milliseconds ttl)
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabMetadataOverrideTimer)
+        {
+            _richTabMetadataOverrideTimer.Stop();
+            _richTabMetadataOverrideTimer = nullptr;
+        }
+        _richTabMetadataOverrideExpiresAt.reset();
+        _richTabMetadataOverride = presentation;
+        _UpdateRichTabPresentation();
+
+        if (ttl.count() > 0)
+        {
+            _richTabMetadataOverrideExpiresAt = std::chrono::steady_clock::now() + ttl;
+            _richTabMetadataOverrideTimer = WUX::DispatcherTimer{};
+            _richTabMetadataOverrideTimer.Interval(ttl);
+            const auto weakThis = get_weak();
+            _richTabMetadataOverrideTimer.Tick([weakThis](const auto& sender, const auto&) {
+                sender.as<WUX::DispatcherTimer>().Stop();
+                if (const auto self = weakThis.get())
+                {
+                    self->_richTabMetadataOverrideTimer = nullptr;
+                    self->_richTabMetadataOverrideExpiresAt.reset();
+                    self->_richTabMetadataOverride.reset();
+                    self->_UpdateRichTabPresentation();
+                }
+            });
+            _richTabMetadataOverrideTimer.Start();
+        }
+    }
+
+    void Tab::ClearRichTabMetadataOverride()
+    {
+        ASSERT_UI_THREAD();
+        if (_richTabMetadataOverrideTimer)
+        {
+            _richTabMetadataOverrideTimer.Stop();
+            _richTabMetadataOverrideTimer = nullptr;
+        }
+        _richTabMetadataOverrideExpiresAt.reset();
+        if (_richTabMetadataOverride)
+        {
+            _richTabMetadataOverride.reset();
+            _UpdateRichTabPresentation();
+        }
+    }
+
+    void Tab::RestoreCrossWindowState(
+        winrt::hstring stableId,
+        std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> metadataOverride,
+        const std::chrono::milliseconds remainingTtl)
+    {
+        ASSERT_UI_THREAD();
+        _stableId = std::move(stableId);
+        if (metadataOverride)
+        {
+            SetRichTabMetadataOverride(*metadataOverride, remainingTtl);
+        }
+    }
+
+    void Tab::_UpdateRichTabPresentation()
+    {
+        if constexpr (!Feature_RichTabProviders::IsEnabled())
+        {
+            _richTabTooltipText = {};
+            _richTabAccessibilityText = {};
+            _headerControl.MetadataText({});
+            _headerControl.MetadataAutomationName({});
+            _headerControl.IsMetadataVisible(false);
+            _UpdateAutomationName();
+            _UpdateToolTip();
+            return;
+        }
+
+        std::wstring text;
+        std::wstring tooltip;
+        std::wstring accessibilityText;
+        const auto hasOverride = _richTabMetadataOverride.has_value();
+        const auto& presentation = hasOverride ? _richTabMetadataOverride : _richTabPresentation;
+        if (presentation)
+        {
+            text = presentation->text;
+            tooltip = presentation->tooltip;
+            accessibilityText = presentation->accessibilityText;
+        }
+
+        const std::function<int(const std::shared_ptr<Pane>&)> countVisiblePanes =
+            [&](const std::shared_ptr<Pane>& pane) -> int {
+            if (!pane || pane->IsHidden())
+            {
+                return 0;
+            }
+            if (pane->_IsLeaf())
+            {
+                return 1;
+            }
+            return countVisiblePanes(pane->_firstChild) + countVisiblePanes(pane->_secondChild);
+        };
+        const auto paneCount = countVisiblePanes(_rootPane);
+        if (!hasOverride && paneCount > 1)
+        {
+            const auto paneCountText = fmt::format(FMT_COMPILE(L"{} panes"), paneCount);
+            if (!text.empty())
+            {
+                text += L" \u00b7 ";
+            }
+            text += paneCountText;
+            if (!tooltip.empty())
+            {
+                tooltip += L"\n";
+            }
+            tooltip += paneCountText;
+            if (!accessibilityText.empty())
+            {
+                accessibilityText += L", ";
+            }
+            accessibilityText += paneCountText;
+        }
+
+        _richTabTooltipText = tooltip;
+        _richTabAccessibilityText = accessibilityText;
+        _headerControl.MetadataText(text);
+        _headerControl.MetadataAutomationName(_richTabAccessibilityText);
+        _headerControl.IsMetadataVisible(!text.empty());
+        _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::_UpdateAutomationName()
+    {
+        auto name = std::wstring{ Title() };
+        if (!_richTabAccessibilityText.empty())
+        {
+            name += L", ";
+            name += _richTabAccessibilityText;
+        }
+        Automation::AutomationProperties::SetName(TabViewItem(), name);
     }
 
     // Method Description:
@@ -626,6 +787,40 @@ namespace winrt::TerminalApp::implementation
                     sourceProfileGuid);
                 return false;
             });
+
+            std::vector<uint64_t> contentIds;
+            _rootPane->WalkTree([&contentIds](const auto& pane) {
+                if (!pane->_IsLeaf())
+                {
+                    return false;
+                }
+                if (const auto content = pane->GetContent())
+                {
+                    if (const auto terminalArgs = content.GetNewTerminalArgs(BuildStartupKind::Content).try_as<NewTerminalArgs>())
+                    {
+                        if (const auto contentId = terminalArgs.ContentId())
+                        {
+                            contentIds.emplace_back(contentId);
+                        }
+                    }
+                }
+                return false;
+            });
+
+            TabDragStash::Entry entry{
+                std::wstring{ _stableId },
+                std::nullopt,
+            };
+            if (_richTabMetadataOverride)
+            {
+                entry.metadataOverride = TabDragStash::MetadataOverride{
+                    _richTabMetadataOverride->text,
+                    _richTabMetadataOverride->tooltip,
+                    _richTabMetadataOverride->accessibilityText,
+                    _richTabMetadataOverrideExpiresAt,
+                };
+            }
+            TabDragStash::Stash(contentIds, std::move(entry));
         }
 
         // Give initial ids (0 for the child created with this tab,
@@ -761,6 +956,7 @@ namespace winrt::TerminalApp::implementation
         // possible that the focus events won't propagate immediately. Updating
         // the focus here will give the same effect though.
         _UpdateActivePane(newPane);
+        _UpdateRichTabPresentation();
 
         return { original, newPane };
     }
@@ -835,6 +1031,7 @@ namespace winrt::TerminalApp::implementation
 
         // After split, Close Pane Menu Item should be visible
         _closePaneMenuItem.Visibility(WUX::Visibility::Visible);
+        _UpdateRichTabPresentation();
 
         return { originalTree, pane };
     }
@@ -862,6 +1059,7 @@ namespace winrt::TerminalApp::implementation
         {
             // Just make sure that the remaining pane is marked active
             _UpdateActivePane(_rootPane->GetActivePane());
+            _UpdateRichTabPresentation();
 
             return pane;
         }
@@ -945,6 +1143,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(focus);
         }
+        _UpdateRichTabPresentation();
     }
 
     // Method Description:
@@ -2346,6 +2545,7 @@ namespace winrt::TerminalApp::implementation
             _UpdateActivePane(focusTarget);
             focusTarget->SetActive();
         }
+        _UpdateRichTabPresentation();
     }
 
     // Method Description:
@@ -2371,6 +2571,7 @@ namespace winrt::TerminalApp::implementation
         // Restore the pane in the XAML tree.
         parent->RestorePane(_hiddenPane);
         _hiddenPane = nullptr;
+        _UpdateRichTabPresentation();
     }
 
     bool Tab::HasHiddenPane()
@@ -2588,6 +2789,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
+            _UpdateRichTabPresentation();
         }
     }
 
@@ -2633,6 +2835,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(agentPane);
         }
+        _UpdateRichTabPresentation();
 
         // CRITICAL: synchronous Focus(Programmatic) is unreliable on
         // freshly-re-parented or freshly-spawned TermControls. The element

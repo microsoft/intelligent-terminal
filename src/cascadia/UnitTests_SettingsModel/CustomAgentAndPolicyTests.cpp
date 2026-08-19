@@ -76,6 +76,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
         TEST_METHOD(CustomModelProvidersRoundtrip);
+        TEST_METHOD(RichTabProviderPreferencesRoundtrip);
         TEST_METHOD(CustomModelProviderContractNormalization);
         TEST_METHOD(CustomModelProviderContractFiltering);
         TEST_METHOD(CustomModelProviderSelectionPreservesUnsupportedContract);
@@ -398,6 +399,51 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::string{ "provider-added" }, serializedProviders[0]["id"].asString());
         VERIFY_ARE_EQUAL(std::string{ "openai-compatible" }, serializedProviders[0]["apiContract"].asString());
         VERIFY_IS_TRUE(serializedProviders[0]["apiKeyRequired"].asBool());
+    }
+
+    void CustomAgentAndPolicyTests::RichTabProviderPreferencesRoundtrip()
+    {
+        const auto settings = MakeSettings(
+            R"("richTabProviders": [{"id":"com.microsoft.intelligent-terminal.git-status"},{"id":"io.github.example.pr-status","enabled":false,"fields":["checks","pull-request"]},{"id":"future.provider","enabled":true,"fields":[]}],"richTabPrioritizeRecentlyUpdatedFields":true)");
+        const auto& globals = settings->GlobalSettings();
+        VERIFY_IS_TRUE(globals.RichTabPrioritizeRecentlyUpdatedFields());
+        const auto providers = globals.RichTabProviders();
+        VERIFY_ARE_EQUAL(3u, providers.Size());
+
+        const auto defaults = providers.GetAt(0);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"com.microsoft.intelligent-terminal.git-status" }, defaults.Id());
+        VERIFY_IS_NULL(defaults.Enabled());
+        VERIFY_IS_NULL(defaults.Fields());
+
+        const auto customized = providers.GetAt(1);
+        VERIFY_IS_NOT_NULL(customized.Enabled());
+        VERIFY_IS_FALSE(customized.Enabled().Value());
+        VERIFY_IS_NOT_NULL(customized.Fields());
+        VERIFY_ARE_EQUAL(2u, customized.Fields().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"checks" }, customized.Fields().GetAt(0));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"pull-request" }, customized.Fields().GetAt(1));
+
+        const auto explicitlyEmpty = providers.GetAt(2);
+        VERIFY_IS_TRUE(explicitlyEmpty.Enabled().Value());
+        VERIFY_IS_NOT_NULL(explicitlyEmpty.Fields());
+        VERIFY_ARE_EQUAL(0u, explicitlyEmpty.Fields().Size());
+
+        const auto copy = settings->Copy();
+        const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
+        copyImpl->GlobalSettings().RichTabProviders().GetAt(1).Fields().Append(L"review");
+        VERIFY_ARE_EQUAL(2u, customized.Fields().Size());
+
+        const auto serialized = settings->ToJson();
+        const auto& serializedProviders = serialized["richTabProviders"];
+        VERIFY_IS_TRUE(serializedProviders.isArray());
+        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 3 }, serializedProviders.size());
+        VERIFY_IS_FALSE(serializedProviders[0].isMember("enabled"));
+        VERIFY_IS_FALSE(serializedProviders[0].isMember("fields"));
+        VERIFY_IS_FALSE(serializedProviders[1]["enabled"].asBool());
+        VERIFY_ARE_EQUAL(std::string{ "checks" }, serializedProviders[1]["fields"][0].asString());
+        VERIFY_IS_TRUE(serializedProviders[2]["fields"].isArray());
+        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 0 }, serializedProviders[2]["fields"].size());
+        VERIFY_IS_TRUE(serialized["richTabPrioritizeRecentlyUpdatedFields"].asBool());
     }
 
     void CustomAgentAndPolicyTests::CustomModelProviderContractNormalization()

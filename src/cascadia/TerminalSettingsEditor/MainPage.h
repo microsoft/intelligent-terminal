@@ -49,6 +49,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         MainPage(const Model::CascadiaSettings& settings);
 
         void UpdateSettings(const Model::CascadiaSettings& settings);
+        void UpdateRichTabProviderCatalog(const Windows::Foundation::Collections::IVectorView<Editor::RichTabProviderDescriptor>& descriptors);
 
         safe_void_coroutine SettingsSearchBox_TextChanged(const Windows::UI::Xaml::Controls::AutoSuggestBox& sender, const Windows::UI::Xaml::Controls::AutoSuggestBoxTextChangedEventArgs& args);
         void SettingsSearchBox_QuerySubmitted(const Windows::UI::Xaml::Controls::AutoSuggestBox& sender, const Windows::UI::Xaml::Controls::AutoSuggestBoxQuerySubmittedEventArgs& args);
@@ -76,6 +77,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         til::typed_event<Windows::Foundation::IInspectable, Model::SettingsTarget> OpenJson;
         til::typed_event<Windows::Foundation::IInspectable, Windows::Foundation::Collections::IVectorView<Model::SettingsLoadWarnings>> ShowLoadWarningsDialog;
         til::typed_event<Windows::Foundation::IInspectable, Model::ShellIntegrationTarget> InitShellIntegrationRequested;
+        til::typed_event<Windows::Foundation::IInspectable, Model::GlobalAppSettings> RichTabPreferencesChanged;
+        til::typed_event<Windows::Foundation::IInspectable, Editor::RichTabConsentRequest> RichTabConsentRequested;
 
     private:
         Windows::Foundation::Collections::IObservableVector<IInspectable> _breadcrumbs;
@@ -84,6 +87,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         Model::CascadiaSettings _settingsSource;
         Model::CascadiaSettings _settingsClone;
+        Windows::Foundation::Collections::IVectorView<Editor::RichTabProviderDescriptor> _richTabProviderCatalog{ nullptr };
 
         std::optional<HWND> _hostingHwnd;
 

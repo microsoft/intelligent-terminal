@@ -103,6 +103,14 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_CustomModelProviders->Append(get_self<CustomModelProvider>(provider)->Copy());
         }
     }
+    if (_RichTabProviders)
+    {
+        globals->_RichTabProviders = winrt::single_threaded_vector<Model::RichTabProviderPreference>();
+        for (const auto& provider : *_RichTabProviders)
+        {
+            globals->_RichTabProviders->Append(get_self<RichTabProviderPreference>(provider)->Copy());
+        }
+    }
     if (_DisabledProfileSources)
     {
         globals->_DisabledProfileSources = winrt::single_threaded_vector<hstring>();
