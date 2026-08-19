@@ -286,6 +286,16 @@ function Start-Terminal {
     }
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
+    # Wait until shell activation has created the first real window before probing COM.
+    # An immediate COM activation while the process exists but has no HWND races startup
+    # and can create a second logical window in the same WindowsTerminal process.
+    $hwnd = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Quiet -Because "WT window HWND" -Condition {
+        $w = Get-WtWindowHwnds -App $app | Where-Object { [int]$_.pid -eq [int]$app.Pid } | Select-Object -First 1
+        if ($w) { $w.hwnd } else { $null }
+    }
+    if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
+    else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
+
     # Bring COM online and resolve the brand CLSID. Best-effort while the FRE overlay is up
     # (the overlay replaces the window content, so the COM tab/pane surface may not be ready).
     if ($ShowFre) {
@@ -295,14 +305,6 @@ function Start-Terminal {
     else {
         Resolve-WtComClsid -App $app -TimeoutSec $TimeoutSec | Out-Null
     }
-
-    # Resolve the window HWND for this pid (for winapp ui targeting).
-    $hwnd = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Quiet -Because "WT window HWND" -Condition {
-        $w = Get-WtWindowHwnds -App $app | Where-Object { [int]$_.pid -eq [int]$app.Pid } | Select-Object -First 1
-        if ($w) { $w.hwnd } else { $null }
-    }
-    if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
-    else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
 
     # Capture the WT logical window id (informational; agent panes are XAML chrome and never
     # appear in list-panes, so window scoping of the agent pane itself relies on the
