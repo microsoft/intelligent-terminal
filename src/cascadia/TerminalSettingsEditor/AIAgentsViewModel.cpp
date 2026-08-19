@@ -1112,6 +1112,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
     }
 
+    // ── Yolo mode (global auto-approve) ─────────────────────────────────
+
+    bool AIAgentsViewModel::AgentPaneYoloMode() const
+    {
+        return _GlobalSettings.EffectiveAgentPaneYoloMode();
+    }
+
+    void AIAgentsViewModel::AgentPaneYoloMode(bool value)
+    {
+        // Reject writes when org policy blocks yolo mode (the toggle is
+        // disabled in that case, but guard against races).
+        if (_GlobalSettings.IsYoloModePolicyLocked())
+        {
+            return;
+        }
+        if (_GlobalSettings.AgentPaneYoloMode() == value) return;
+        _GlobalSettings.AgentPaneYoloMode(value);
+        _NotifyChanges(L"HasAgentPaneYoloMode", L"AgentPaneYoloMode");
+    }
+
+    bool AIAgentsViewModel::HasAgentPaneYoloMode() const
+    {
+        return _GlobalSettings.HasAgentPaneYoloMode();
+    }
+
     // ── Pane position ────────────────────────────────────────────────────
 
     IObservableVector<Editor::EnumEntry> AIAgentsViewModel::AgentPanePositionList()

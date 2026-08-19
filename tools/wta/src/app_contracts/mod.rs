@@ -11,6 +11,7 @@ mod model;
 mod permission;
 mod plan;
 mod preflight;
+mod yolo;
 
 pub use agent::AvailableAgent;
 pub use config::{AcpSessionConfigOption, AcpSessionConfigValue};
@@ -20,3 +21,4 @@ pub use model::AcpModelInfo;
 pub use permission::PermOption;
 pub use plan::{PlanEntry, PlanEntryStatus};
 pub use preflight::{CheckStatus, PreflightResult};
+pub use yolo::{SharedYoloState, YoloState};

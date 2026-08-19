@@ -156,11 +156,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         bool CanSuggestErrors() const;
 
+        bool AgentPaneYoloMode() const;
+        void AgentPaneYoloMode(bool value);
+        bool HasAgentPaneYoloMode() const;
+
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
         bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
         bool IsAutoFixPolicyLocked() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
         bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
+        bool IsYoloModePolicyLocked() const { return _GlobalSettings.IsYoloModePolicyLocked(); }
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> AgentPanePositionList();
         winrt::Windows::Foundation::IInspectable CurrentAgentPanePosition();

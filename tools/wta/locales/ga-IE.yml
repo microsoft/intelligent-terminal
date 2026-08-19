@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Ní féidir seisiún %{agent} %{session_
 system.cannot_resume_phantom_via_load: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} don lódáil. An ró á bhaint."
 system.fallback.this_agent: "an gníomhaire seo"
 system.fallback.connected_agent: "an gníomhaire ceangailte"
+system.yolo_blocked_by_policy: "Tá mód yolo díchumasaithe ag polasaí d’eagraíochta."
+
 
 # ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────
 output.no_windows: "Níor aimsíodh aon fhuinneoga."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Níl athrú gníomhaire ar fáil lasmuigh de c
 commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
 commands.config.summary: "Cumfiguraigh an seisiún gníomhaire seo"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bog pána gníomhaire an chluaisín seo (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Uathcheadaigh glaonna uirlise don seisiún seo amháin (go dtí /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}

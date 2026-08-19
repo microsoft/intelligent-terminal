@@ -639,6 +639,7 @@ fn agent_cmd_key(
 /// this agent.
 struct AgentCli {
     instance_id: AgentInstanceId,
+    resolved_agent_id: String,
     /// Master is the ACP *client* of this CLI. Every helper request for
     /// a session owned by this agent forwards onto this connection.
     conn: conn::ClientLink,
@@ -778,15 +779,14 @@ async fn initialize_response_for_agent(
 ) -> Result<acp::schema::v1::InitializeResponse, serde_json::Error> {
     let mut response = agent.cached_init_resp.clone();
     inject_ready_cloud_catalog(agent, &mut response.meta).await?;
-    if session_mcp_available {
-        crate::session_registry::inject_wta_meta(
-            &mut response.meta,
-            &crate::session_registry::WtaMeta {
-                proposal_mcp: Some("http-v1".to_string()),
-                ..Default::default()
-            },
-        );
-    }
+    crate::session_registry::inject_wta_meta(
+        &mut response.meta,
+        &crate::session_registry::WtaMeta {
+            resolved_agent_id: Some(agent.resolved_agent_id.clone()),
+            proposal_mcp: session_mcp_available.then(|| "http-v1".to_string()),
+            ..Default::default()
+        },
+    );
     Ok(response)
 }
 
@@ -3582,6 +3582,7 @@ async fn spawn_one_agent(
         prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
     let agent = Arc::new(AgentCli {
         instance_id,
+        resolved_agent_id: resolved_agent_id.clone(),
         conn,
         cached_init_resp: init_resp,
         cli_source,

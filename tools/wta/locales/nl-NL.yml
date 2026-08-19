@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Kan %{agent}-sessie %{session_id} niet h
 system.cannot_resume_phantom_via_load: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} het laden zou weigeren. Rij wordt verwijderd."
 system.fallback.this_agent: "deze agent"
 system.fallback.connected_agent: "de verbonden agent"
+system.yolo_blocked_by_policy: "Yolo-modus is uitgeschakeld door het beleid van uw organisatie."
+
 
 # ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Geen vensters gevonden."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Schakelen tussen agents is niet beschikbaar bu
 commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
 commands.config.summary: "Deze agentsessie configureren"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Het agentdeelvenster van dit tabblad verplaatsen (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Toolaanroepen alleen voor deze sessie automatisch goedkeuren (tot /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}

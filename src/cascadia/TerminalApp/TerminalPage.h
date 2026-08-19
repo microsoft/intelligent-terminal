@@ -447,7 +447,7 @@ namespace winrt::TerminalApp::implementation
         // running wta-helper(s) so they update in place — no agent-pane
         // teardown/restart. This is the unified dispatch point for every
         // agent setting that can be hot-reloaded (autofix gate, delegate
-        // agent/model, credential-free model catalogs).
+        // agent/model, credential-free model catalogs, YOLO default/policy).
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
@@ -457,6 +457,8 @@ namespace winrt::TerminalApp::implementation
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
+            bool yoloEnabled{ false };
+            bool yoloCommandBlocked{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };

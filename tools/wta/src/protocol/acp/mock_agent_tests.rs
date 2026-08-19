@@ -207,8 +207,8 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -222,8 +222,8 @@ impl MockAgent {
                                 sid.clone(),
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -233,9 +233,9 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCallUpdate(
                                     acp::schema::v1::ToolCallUpdate::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    acp::schema::v1::ToolCallUpdateFields::new()
-                                        .status(acp::schema::v1::ToolCallStatus::Completed),
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        acp::schema::v1::ToolCallUpdateFields::new()
+                                            .status(acp::schema::v1::ToolCallStatus::Completed),
                                     ),
                                 ),
                             ))
@@ -249,16 +249,16 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(
                                     vec![
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step one",
-                                        acp::schema::v1::PlanEntryPriority::Medium,
-                                        acp::schema::v1::PlanEntryStatus::InProgress,
-                                    ),
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step two",
-                                        acp::schema::v1::PlanEntryPriority::Low,
-                                        acp::schema::v1::PlanEntryStatus::Pending,
-                                    ),
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step one",
+                                            acp::schema::v1::PlanEntryPriority::Medium,
+                                            acp::schema::v1::PlanEntryStatus::InProgress,
+                                        ),
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step two",
+                                            acp::schema::v1::PlanEntryPriority::Low,
+                                            acp::schema::v1::PlanEntryStatus::Pending,
+                                        ),
                                     ],
                                 )),
                             ))
@@ -327,6 +327,12 @@ fn connect_with(
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
+        permission_select: Arc::new(
+            crate::protocol::acp::permission_select::PermissionSelectState::new(),
+        ),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::new(
@@ -375,8 +381,8 @@ fn spawn_mock_pair(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -405,8 +411,8 @@ fn spawn_mock_pair(
                                 responder,
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
                     }
                 }
             },
@@ -421,7 +427,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
                             let _ = c.session_notification(n).await;
                         }
-            Ok(())
+                        Ok(())
                     }
                 }
             },
@@ -442,7 +448,7 @@ fn spawn_mock_pair(
                     let m = m.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-            match req {
+                        match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 m.initialize(a).await.map(R::InitializeResponse),
@@ -463,16 +469,16 @@ fn spawn_mock_pair(
                                 responder,
                                 m.prompt(a).await.map(R::PromptResponse),
                             ),
-                Q::ExtMethodRequest(_) => conn::respond_enum(
-                    responder,
-                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                            Q::ExtMethodRequest(_) => conn::respond_enum(
+                                responder,
+                                Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
                                     serde_json::value::to_raw_value(&serde_json::Value::Null)
                                         .unwrap()
                                         .into(),
-                    ))),
-                ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
+                                ))),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
                     }
                 }
             },
@@ -487,7 +493,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
                             let _ = m.cancel(n).await;
                         }
-            Ok(())
+                        Ok(())
                     }
                 }
             },
@@ -668,13 +674,18 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
-    let proposal_channels = Arc::new(
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
-    );
+    let proposal_channels =
+        Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
+        permission_select: Arc::new(
+            crate::protocol::acp::permission_select::PermissionSelectState::new(),
+        ),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
@@ -1339,6 +1350,7 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 &memo,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 "Test",
@@ -1389,6 +1401,7 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
                 &memo,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 "Test",
@@ -1448,6 +1461,7 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 &memo,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 "Test",
@@ -1500,6 +1514,7 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 &tab_to_session,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 std::time::Duration::from_secs(5),
@@ -1550,6 +1565,7 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 &tab_to_session,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 std::time::Duration::from_secs(5),
@@ -1606,6 +1622,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 &tab_to_session,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 true,
                 std::time::Duration::from_secs(5),
@@ -1657,6 +1674,7 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 &tab_to_session,
                 &cancel_signals,
                 &h.event_tx,
+                Arc::clone(&h.client.state),
                 false,
                 false,
                 std::time::Duration::from_millis(50),
@@ -1703,6 +1721,7 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,
+                Arc::clone(&h.client.state),
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1740,6 +1759,7 @@ async fn dispatch_master_ext_session_focus_completes() {
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,
+                Arc::clone(&h.client.state),
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
@@ -1760,11 +1780,31 @@ async fn dispatch_master_ext_session_focus_completes() {
 /// directly and assert the `SessionUpdate → AppEvent` translation without
 /// spinning up the ACP I/O loop.
 fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
+    bare_client_with_yolo(false, &[])
+}
+
+/// Like [`bare_client`], but lets tests configure the yolo-mode auto-approve
+/// state exercised by `request_permission`: `global` mirrors the
+/// `--auto-approve-tools` helper flag, and `yolo_session_ids` seeds the
+/// per-session `/yolo` override set (as if `/yolo` had already been run in
+/// those sessions).
+fn bare_client_with_yolo(
+    global: bool,
+    yolo_session_ids: &[&str],
+) -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let mut yolo = crate::app_contracts::YoloState::new(global, false);
+    for session_id in yolo_session_ids {
+        yolo.set_session_override((*session_id).to_string(), !global);
+    }
     let state = Arc::new(ClientState {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        yolo_state: Arc::new(Mutex::new(yolo)),
+        permission_select: Arc::new(
+            crate::protocol::acp::permission_select::PermissionSelectState::new(),
+        ),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::new(
@@ -1936,9 +1976,7 @@ async fn session_notification_routes_provider_reported_zero_size() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(
-                acp::schema::v1::UsageUpdate::new(1, 0),
-            ),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(1, 0)),
         ))
         .await
         .expect("provider-owned capacity must not be rejected by the client");
@@ -1957,7 +1995,9 @@ async fn notification_dispatch_routes_over_capacity_usage_and_keeps_chat_flow() 
     client
         .dispatch_session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(101, 100)),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(
+                101, 100,
+            )),
         ))
         .await;
 
@@ -2131,9 +2171,9 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
         .session_notification(notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
-                    acp::schema::v1::ToolCallId::new("proposal-tool"),
-                    acp::schema::v1::ToolCallUpdateFields::new()
-                        .status(acp::schema::v1::ToolCallStatus::Completed),
+                acp::schema::v1::ToolCallId::new("proposal-tool"),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -2969,6 +3009,185 @@ async fn request_permission_cancelled_when_responder_dropped() {
             assert!(matches!(
                 resp.outcome,
                 acp::schema::v1::RequestPermissionOutcome::Cancelled
+            ));
+        })
+        .await;
+}
+// ── yolo mode (auto-approve tool calls) ──────────────────────────────────
+
+/// Global `--auto-approve-tools` yolo mode: `request_permission` must
+/// resolve immediately with the offered `AllowOnce` option, without ever
+/// emitting a `PermissionRequest` event (i.e. no UI prompt at all).
+#[tokio::test]
+async fn request_permission_global_yolo_auto_approves_without_prompt() {
+    let (client, mut rx) = bare_client_with_yolo(true, &[]);
+    let resp = client
+        .request_permission(permission_request("s1"))
+        .await
+        .unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
+            assert_eq!(sel.option_id.to_string(), "allow-once");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+    // Auto-approval is silent — no chat notification, no PermissionRequest.
+    assert!(
+        rx.try_recv().is_err(),
+        "no event should ever be sent in yolo mode"
+    );
+}
+
+/// Per-session `/yolo`: a session_id present in `yolo_sessions` is
+/// auto-approved even when the global flag is off; a session_id NOT in the
+/// set still goes through the normal interactive `PermissionRequest` flow.
+#[tokio::test]
+async fn request_permission_session_yolo_is_scoped_to_that_session_only() {
+    let (client, mut rx) = bare_client_with_yolo(false, &["s1"]);
+
+    // s1 is in the yolo set → auto-approved, no prompt.
+    let resp = client
+        .request_permission(permission_request("s1"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        resp.outcome,
+        acp::schema::v1::RequestPermissionOutcome::Selected(_)
+    ));
+    // Silent auto-approval — no chat notification sent for s1.
+    assert!(rx.try_recv().is_err());
+
+    // s2 is NOT in the yolo set → falls back to the normal blocking prompt.
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s2")).await
+            });
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    session_id,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(session_id, "s2");
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                other => panic!(
+                    "expected PermissionRequest for the non-yolo session, got is_some={}",
+                    other.is_some()
+                ),
+            }
+            let resp = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                resp.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(_)
+            ));
+        })
+        .await;
+}
+
+/// A per-session `/yolo` toggle can opt one session out when global yolo is
+/// enabled. The request must return to the normal interactive prompt path.
+#[tokio::test]
+async fn request_permission_session_yolo_can_override_global_on() {
+    let (client, mut rx) = bare_client_with_yolo(true, &["s1"]);
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s1")).await
+            });
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    session_id,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(session_id, "s1");
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                other => panic!(
+                    "expected PermissionRequest for the session-level opt-out, got is_some={}",
+                    other.is_some()
+                ),
+            }
+            let resp = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                resp.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(_)
+            ));
+        })
+        .await;
+}
+
+/// Fallback YOLO must choose `allow_once` even when `allow_always` is offered,
+/// because the latter cannot be revoked by `/yolo off`.
+#[tokio::test]
+async fn request_permission_yolo_uses_reversible_allow_once() {
+    let (client, _rx) = bare_client_with_yolo(true, &[]);
+    let req = acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
+        ),
+        vec![
+            acp::schema::v1::PermissionOption::new(
+                acp::schema::v1::PermissionOptionId::new("allow-once"),
+                "Allow once",
+                acp::schema::v1::PermissionOptionKind::AllowOnce,
+            ),
+            acp::schema::v1::PermissionOption::new(
+                acp::schema::v1::PermissionOptionId::new("allow-always"),
+                "Allow always",
+                acp::schema::v1::PermissionOptionKind::AllowAlways,
+            ),
+        ],
+    );
+    let resp = client.request_permission(req).await.unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
+            assert_eq!(sel.option_id.to_string(), "allow-once");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+}
+
+#[tokio::test]
+async fn request_permission_yolo_prompts_when_only_allow_always_exists() {
+    let (client, mut rx) = bare_client_with_yolo(true, &[]);
+    let req = acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
+        ),
+        vec![acp::schema::v1::PermissionOption::new(
+            acp::schema::v1::PermissionOptionId::new("allow-always"),
+            "Allow always",
+            acp::schema::v1::PermissionOptionKind::AllowAlways,
+        )],
+    );
+
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async move {
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => {
+                    responder.send("allow-always".to_string()).unwrap();
+                }
+                other => panic!(
+                    "expected interactive PermissionRequest, got is_some={}",
+                    other.is_some()
+                ),
+            }
+            let response = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                response.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(_)
             ));
         })
         .await;

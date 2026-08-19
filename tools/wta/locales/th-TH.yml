@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "ไม่สามารถดำเน�
 system.cannot_resume_phantom_via_load: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} จะปฏิเสธการโหลด กำลังลบแถว"
 system.fallback.this_agent: "เอเจนต์นี้"
 system.fallback.connected_agent: "เอเจนต์ที่เชื่อมต่ออยู่"
+system.yolo_blocked_by_policy: "โหมด yolo ถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ไม่พบหน้าต่าง"
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "การสลับตัวแทนจะ�
 commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
 commands.config.summary: "กำหนดค่าเซสชันตัวแทนนี้"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ย้ายแผงเอเจนต์ของแท็บนี้ (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "อนุมัติการเรียกใช้เครื่องมืออัตโนมัติสำหรับเซสชันนี้เท่านั้น (จนถึง /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}

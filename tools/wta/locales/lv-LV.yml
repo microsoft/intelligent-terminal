@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Nevar atsākt %{agent} sesiju %{session_
 system.cannot_resume_phantom_via_load: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc %{agent} noraidītu ielādi. Rinda tiek noņemta."
 system.fallback.this_agent: "šis aģents"
 system.fallback.connected_agent: "pievienotais aģents"
+system.yolo_blocked_by_policy: "Yolo režīmu ir atspējojusi jūsu organizācijas politika."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Logi nav atrasti."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Aģenta pārslēgšana nav pieejama ārpus Win
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigurēt šo aģenta sesiju"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Pārvietot šīs cilnes aģenta paneli (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Automātiski apstiprināt rīku izsaukumus tikai šai sesijai (līdz /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}

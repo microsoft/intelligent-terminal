@@ -186,7 +186,8 @@ impl App {
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;
-                        let previous_expanded = tab.completed_turns[pressed.hit.turn_index].expanded;
+                        let previous_expanded =
+                            tab.completed_turns[pressed.hit.turn_index].expanded;
                         if tab.select_completed_turn(pressed.hit.turn_index)
                             && tab.toggle_completed_turn(pressed.hit.turn_index)
                             && pressed.hit.kind == CompletedTurnHitKind::UserInput
@@ -395,6 +396,11 @@ impl App {
                 for replaced_session_id in replaced_session_ids {
                     self.session_to_tab.remove(&replaced_session_id);
                     self.session_model_configs.remove(&replaced_session_id);
+                    self.yolo_state
+                        .lock()
+                        .unwrap()
+                        .remove_session(&replaced_session_id);
+                    self.pending_yolo_changes.remove(&replaced_session_id);
                     self.session_config_options.remove(&replaced_session_id);
                 }
                 self.session_to_tab
@@ -489,6 +495,28 @@ impl App {
                     self.publish_agent_status();
                 }
             }
+            AppEvent::YoloModeChangeCompleted {
+                session_id,
+                enabled,
+                result,
+            } => {
+                self.complete_yolo_change(session_id, enabled, result);
+            }
+            AppEvent::RuntimeYoloReconcileCompleted {
+                fail_closed,
+                result,
+            } => {
+                if fail_closed && result.is_err() {
+                    tracing::error!(
+                        target: "yolo",
+                        error = %result.unwrap_err(),
+                        "cannot disable native allow-all; restarting agent stack fail-closed"
+                    );
+                    let _ = self
+                        .restart_tx
+                        .send(crate::protocol::acp::client::RestartRequest { agent_cmd: None });
+                }
+            }
             AppEvent::SessionConfigUpdated {
                 session_id,
                 options,
@@ -524,10 +552,7 @@ impl App {
                     .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
                     .map(|option| {
                         option.current_value = value.clone();
-                        (
-                            option.name.clone(),
-                            option.current_value_name().to_string(),
-                        )
+                        (option.name.clone(), option.current_value_name().to_string())
                     })
                     .unwrap_or_else(|| (config_id.clone(), value.clone()));
                 let target_tab = self.bound_tab_for_session(&session_id);
@@ -1591,6 +1616,11 @@ impl App {
                         self.autofix_enabled = enabled;
                     }
 
+                    self.apply_runtime_yolo_config(
+                        params.get("yolo_enabled").and_then(|v| v.as_bool()),
+                        params.get("yolo_command_blocked").and_then(|v| v.as_bool()),
+                    );
+
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
@@ -1615,7 +1645,7 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                        tracing::info!(
+                            tracing::info!(
                             target: "autofix",
                             model = raw,
                                 target_agent_id,
@@ -1645,10 +1675,10 @@ impl App {
                                 Ok(models) => self.set_cloud_models(models),
                                 Err(error) => {
                                     tracing::error!(
-                                        target: "cloud_models",
-                                        %error,
-                                        "invalid cloud model catalog in agent_config_changed"
-                        );
+                                                    target: "cloud_models",
+                                                    %error,
+                                                    "invalid cloud model catalog in agent_config_changed"
+                                    );
                                     return;
                                 }
                             }

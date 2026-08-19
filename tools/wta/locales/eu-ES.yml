@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} ber
 system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
 system.fallback.this_agent: "agente hau"
 system.fallback.connected_agent: "konektatutako agentea"
+system.yolo_blocked_by_policy: "Yolo modua desgaituta dago zure erakundearen politikagatik."
+
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ez da leihorik aurkitu."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Agente-aldaketa ez dago erabilgarri Windows Te
 commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfiguratu agentearen saio hau"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mugitu fitxa honen agente-panela (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Auto-onartu tresna-deiak saio honetarako bakarrik (/new arte)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}

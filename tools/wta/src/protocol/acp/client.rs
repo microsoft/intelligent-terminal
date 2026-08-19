@@ -15,7 +15,9 @@ use std::sync::{
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus};
+use crate::app_contracts::{
+    AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus, SharedYoloState,
+};
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
@@ -171,6 +173,21 @@ pub enum MasterExtRequest {
     SetSessionModel {
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
+    },
+    /// Retroactively apply the agent-native allow-all permission config
+    /// (see `permission_select`) to an *already-connected* session, for the
+    /// `/yolo on|off` slash command. The result is acknowledged through
+    /// `YoloModeChangeCompleted`; `App` only commits its local fallback state
+    /// after native allow-all has changed successfully. Agents without a
+    /// native config return success because client-side interception is
+    /// sufficient for them.
+    SetSessionAllowAll {
+        session_id: acp::schema::v1::SessionId,
+        enabled: bool,
+    },
+    ReconcileSessionAllowAll {
+        sessions: Vec<(acp::schema::v1::SessionId, bool)>,
+        fail_closed: bool,
     },
     SetSessionConfigOption {
         session_id: acp::schema::v1::SessionId,
@@ -401,6 +418,8 @@ struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
+    yolo_state: SharedYoloState,
+    permission_select: Arc<super::permission_select::PermissionSelectState>,
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
@@ -444,6 +463,15 @@ impl ProviderProbeCapture {
 #[derive(Clone)]
 struct WtaClient {
     state: Arc<ClientState>,
+}
+
+/// Auto-approval must remain reversible within the ACP session. Selecting
+/// `AllowAlways` lets an agent suppress future permission requests, which
+/// `/yolo off` cannot revoke for fallback agents, so only `AllowOnce` is safe.
+fn pick_allow_option(options: &[PermOption]) -> Option<&PermOption> {
+    options
+        .iter()
+        .find(|o| o.kind.eq_ignore_ascii_case("AllowOnce"))
 }
 
 struct UserInputUiGuard {
@@ -491,8 +519,8 @@ const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
 const TOOL_CALL_OUTPUT_MAX_CHARS: usize = 4000;
 
 fn tool_call_kind(kind: acp::schema::v1::ToolKind) -> crate::app::ToolCallKind {
-    use acp::schema::v1::ToolKind;
     use crate::app::ToolCallKind as AppKind;
+    use acp::schema::v1::ToolKind;
 
     match kind {
         ToolKind::Read => AppKind::Read,
@@ -566,8 +594,8 @@ fn bounded_tool_output(text: &str) -> crate::app::ToolCallOutput {
 fn tool_call_content(
     content: &[acp::schema::v1::ToolCallContent],
 ) -> Vec<crate::app::ToolCallContent> {
-    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
     use crate::app::ToolCallContent as AppContent;
+    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
 
     content
         .iter()
@@ -598,10 +626,10 @@ fn tool_call_content(
                     }
                     EmbeddedResourceResource::BlobResourceContents(resource) => {
                         AppContent::Attachment {
-                            label: resource.mime_type.as_deref().map_or_else(
-                                || resource.uri.clone(),
-                                str::to_string,
-                            ),
+                            label: resource
+                                .mime_type
+                                .as_deref()
+                                .map_or_else(|| resource.uri.clone(), str::to_string),
                             uri: resource.mime_type.as_ref().map(|_| resource.uri.clone()),
                         }
                     }
@@ -1001,7 +1029,7 @@ impl WtaClient {
     async fn dispatch_session_notification(&self, args: acp::schema::v1::SessionNotification) {
         let usage_session_id =
             matches!(&args.update, acp::schema::v1::SessionUpdate::UsageUpdate(_))
-        .then(|| args.session_id.0.to_string());
+                .then(|| args.session_id.0.to_string());
 
         if self.session_notification(args).await.is_err() {
             if let Some(session_id) = usage_session_id {
@@ -1227,6 +1255,30 @@ impl WtaClient {
             })
             .collect();
 
+        let is_yolo = self.state.yolo_state.lock().unwrap().effective(&session_id);
+        if is_yolo {
+            if let Some(option) = pick_allow_option(&options) {
+                acp_log(&format!(
+                    "request_permission auto-approved via yolo mode: session={} option={}",
+                    session_id, option.id
+                ));
+                self.state
+                    .prompt_timing
+                    .permission_resolved(&session_id, "auto_approved");
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    acp::schema::v1::RequestPermissionOutcome::Selected(
+                        acp::schema::v1::SelectedPermissionOutcome::new(option.id.clone()),
+                    ),
+                ));
+            }
+            // No allow-shaped option offered (unexpected) — fall through to
+            // the normal interactive flow rather than silently rejecting.
+            acp_log(&format!(
+                "request_permission: yolo mode active but no allow option found for session={}, falling back to prompt",
+                session_id
+            ));
+        }
+
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
         let (target, target_is_command) = match target_hint {
@@ -1413,7 +1465,9 @@ impl WtaClient {
                         .map(str::trim)
                         .filter(|message| !message.is_empty());
                     match reason {
-                        Some(message) if matches!(status, acp::schema::v1::ToolCallStatus::Failed) => {
+                        Some(message)
+                            if matches!(status, acp::schema::v1::ToolCallStatus::Failed) =>
+                        {
                             format!("{:?}: {}", status, message)
                         }
                         _ => format!("{:?}", status),
@@ -1425,9 +1479,7 @@ impl WtaClient {
                 let output = if let Some(content) = &update.fields.content {
                     Some(
                         tool_call_content_text(content)
-                            .or_else(|| {
-                                update.fields.raw_output.as_ref().and_then(raw_output_text)
-                            })
+                            .or_else(|| update.fields.raw_output.as_ref().and_then(raw_output_text))
                             .unwrap_or(crate::app::ToolCallOutput {
                                 text: String::new(),
                                 truncated: false,
@@ -1514,6 +1566,9 @@ impl WtaClient {
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
+                self.state
+                    .permission_select
+                    .record_config_options(Some(&update.config_options));
                 let (available_models, current_model_id) =
                     crate::protocol::acp::model_select::models_from_config_options(
                         &sid,
@@ -1706,8 +1761,9 @@ impl WtaClient {
                 ))
             })?;
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
-            acp::Error::internal_error()
-                .data(format!("failed to encode terminal action arguments: {error}"))
+            acp::Error::internal_error().data(format!(
+                "failed to encode terminal action arguments: {error}"
+            ))
         })?;
         if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
             let response = ProposalValidationResponse {
@@ -1761,24 +1817,20 @@ impl WtaClient {
                 .reject_validation(&proposal_id, false);
             return Err(acp::Error::internal_error().data("Helper UI is unavailable"));
         }
-        let decision = match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            validation_rx,
-        )
-        .await
-        {
-            Ok(Ok(decision)) => decision,
-            Ok(Err(_)) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper dropped the validation response".to_string()),
-                retryable: false,
-            },
-            Err(_) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper validation timed out".to_string()),
-                retryable: false,
-            },
-        };
+        let decision =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), validation_rx).await {
+                Ok(Ok(decision)) => decision,
+                Ok(Err(_)) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper dropped the validation response".to_string()),
+                    retryable: false,
+                },
+                Err(_) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper validation timed out".to_string()),
+                    retryable: false,
+                },
+            };
         if decision.status != ProposalValidationStatus::Accepted {
             let retryable = self
                 .state
@@ -2134,10 +2186,7 @@ fn helper_owner_tab_id() -> Option<String> {
 /// No-op for whichever fields are unavailable: `pane_session_id` when
 /// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
 /// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
-fn inject_wta_pane_meta(
-    meta: &mut Option<acp::schema::v1::Meta>,
-    proposal_mcp_enabled: bool,
-) {
+fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>, proposal_mcp_enabled: bool) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
     let pane_session_id = {
         let normalized = wt_session
@@ -2219,6 +2268,70 @@ fn log_acp_new_session_result(
     );
 }
 
+/// After a `new_session` response, records whether this agent advertises a
+/// native allow-all permission config (`permission_select`), and — if this
+/// brand-new session is already in yolo mode (global toggle, or a `/yolo`
+/// that raced ahead of session creation) — proactively applies it so the
+/// agent never sends `session/request_permission` for this session at all.
+/// Best-effort: on failure (agent doesn't actually support the call despite
+/// advertising it, transient error, etc.) this just logs a warning — the
+/// existing client-side `request_permission` auto-approve in `client.rs`
+/// still catches everything as a fallback.
+async fn maybe_apply_native_allow_all(
+    conn: &conn::ClientLink,
+    resp: &acp::schema::v1::NewSessionResponse,
+    session_id: &acp::schema::v1::SessionId,
+    state: &ClientState,
+) {
+    state.permission_select.record_from_new_session(resp);
+    if state
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective(&session_id.to_string())
+    {
+        match state
+            .permission_select
+            .set_native_allow_all(conn, session_id.clone(), true)
+            .await
+        {
+            Ok(true) => tracing::info!(
+                target: "acp",
+                session_id = %session_id,
+                "native allow-all applied to new yolo session"
+            ),
+            Ok(false) => {} // agent has no native channel; request_permission fallback covers it
+            Err(e) => tracing::warn!(
+                target: "acp",
+                session_id = %session_id,
+                error = ?e,
+                "native allow-all apply failed for new yolo session; \
+                 falling back to request_permission interception"
+            ),
+        }
+    }
+}
+
+async fn apply_native_allow_all_checked(
+    conn: &conn::ClientLink,
+    state: &ClientState,
+    session_id: acp::schema::v1::SessionId,
+    enabled: bool,
+) -> std::result::Result<bool, String> {
+    let applied = state
+        .permission_select
+        .set_native_allow_all(conn, session_id, enabled)
+        .await
+        .map_err(|error| error.to_string())?;
+    if !enabled && !applied && state.permission_select.copilot_requires_native_disable() {
+        return Err(
+            "Copilot did not advertise the verified allow_all selector; native disable could not be confirmed"
+                .to_string(),
+        );
+    }
+    Ok(applied)
+}
+
 /// Handle a `session/load` failure (Err or timeout) in the
 /// `load_session_rx` arm of `run_acp_client_over_pipe`.
 ///
@@ -2239,10 +2352,9 @@ async fn handle_load_failure(
     tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     error_message: String,
-    _proposal_channels: Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    client_state: Arc<ClientState>,
 ) {
     if let Some(old) = old_sid {
         // Mid-life session management load failure path: restore prior binding.
@@ -2294,6 +2406,7 @@ async fn handle_load_failure(
             crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&resp);
+            maybe_apply_native_allow_all(&conn, &resp, &new_sid, &client_state).await;
             let _ = event_tx.send(AppEvent::SessionAttached {
                 tab_id,
                 session_id: new_sid.to_string(),
@@ -2345,6 +2458,7 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
+    yolo_state: SharedYoloState,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<()> {
     let startup_probe = StartupProbe::new();
@@ -2446,16 +2560,18 @@ pub async fn run_acp_client_over_pipe(
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
 
+    let permission_select = Arc::new(super::permission_select::PermissionSelectState::new());
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        yolo_state,
+        permission_select,
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
-
     let client = WtaClient {
         state: state.clone(),
     };
@@ -2469,8 +2585,8 @@ pub async fn run_acp_client_over_pipe(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -2548,15 +2664,15 @@ pub async fn run_acp_client_over_pipe(
                 move |notif: acp::schema::v1::AgentNotification, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::AgentNotification as N;
-            match notif {
-                N::SessionNotification(n) => c.dispatch_session_notification(n).await,
+                        use acp::schema::v1::AgentNotification as N;
+                        match notif {
+                            N::SessionNotification(n) => c.dispatch_session_notification(n).await,
                             N::ExtNotification(n) => {
                                 let _ = c.ext_notification(n).await;
                             }
-                _ => {}
-            }
-            Ok(())
+                            _ => {}
+                        }
+                        Ok(())
                     }
                 }
             },
@@ -2701,8 +2817,10 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    let cloud_catalog =
-        crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+    state
+        .permission_select
+        .set_resolved_agent_id(wta_meta.resolved_agent_id.as_deref());
+    let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
     {
@@ -2878,8 +2996,7 @@ pub async fn run_acp_client_over_pipe(
             .unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
     let (session_id, mut available_models, mut current_model_id, mut session_config, has_bootstrap) =
-        if let Some(load_sid) = initial_load_session_id.as_deref()
-        {
+        if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
             // sid as a placeholder so the App flips to Connected (and
             // binds session_id → owner_tab in `session_to_tab` early,
@@ -2978,6 +3095,7 @@ pub async fn run_acp_client_over_pipe(
 
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&session);
+            maybe_apply_native_allow_all(&conn, &session, &session_id, &state).await;
             let session_config = session
                 .config_options
                 .as_deref()
@@ -3151,7 +3269,13 @@ pub async fn run_acp_client_over_pipe(
                 });
             }
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
+                dispatch_master_ext_request(
+                    req,
+                    &conn,
+                    &event_tx,
+                    &tab_to_session,
+                    Arc::clone(&state),
+                );
             }
             Some(req) = restart_rx.recv() => {
                 // Helper can't restart the agent CLI in-process — master owns
@@ -3191,6 +3315,7 @@ pub async fn run_acp_client_over_pipe(
                     &template_memo,
                     &cancel_signals,
                     &event_tx,
+                    Arc::clone(&state),
                     is_agent_pane,
                     true,
                     "HelperPipeNewSessionForTab",
@@ -3205,6 +3330,7 @@ pub async fn run_acp_client_over_pipe(
                     &tab_to_session,
                     &cancel_signals,
                     &event_tx,
+                    Arc::clone(&state),
                     true,
                     true,
                     std::time::Duration::from_secs(60),
@@ -3255,6 +3381,7 @@ fn dispatch_master_ext_request(
     conn: &conn::ClientLink,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+    client_state: Arc<ClientState>,
 ) {
     let conn = conn.clone();
     let event_tx = event_tx.clone();
@@ -3456,6 +3583,82 @@ fn dispatch_master_ext_request(
                     }
                 }
             }
+            MasterExtRequest::SetSessionAllowAll {
+                session_id,
+                enabled,
+            } => {
+                let result = match apply_native_allow_all_checked(
+                    &conn,
+                    &client_state,
+                    session_id.clone(),
+                    enabled,
+                )
+                .await
+                {
+                    Ok(true) => {
+                        tracing::info!(
+                            target: "acp",
+                            session_id = %session_id.0,
+                            enabled,
+                            "native allow-all hot-updated for live /yolo session"
+                        );
+                        Ok(())
+                    }
+                    Ok(false) => {
+                        tracing::debug!(
+                            target: "acp",
+                            session_id = %session_id.0,
+                            "agent has no native allow-all channel; \
+                             request_permission interception covers this /yolo session"
+                        );
+                        Ok(())
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "acp",
+                            session_id = %session_id.0,
+                            error = ?err,
+                            enabled,
+                            "native allow-all hot-update failed"
+                        );
+                        Err(err)
+                    }
+                };
+                let _ = event_tx.send(AppEvent::YoloModeChangeCompleted {
+                    session_id: session_id.to_string(),
+                    enabled,
+                    result,
+                });
+            }
+            MasterExtRequest::ReconcileSessionAllowAll {
+                sessions,
+                fail_closed,
+            } => {
+                let mut failure = None;
+                for (session_id, enabled) in sessions {
+                    if let Err(error) = apply_native_allow_all_checked(
+                        &conn,
+                        &client_state,
+                        session_id.clone(),
+                        enabled,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            target: "acp",
+                            session_id = %session_id.0,
+                            enabled,
+                            error = %error,
+                            "native allow-all runtime reconciliation failed"
+                        );
+                        failure.get_or_insert_with(|| error.to_string());
+                    }
+                }
+                let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                    fail_closed,
+                    result: failure.map_or(Ok(()), Err),
+                });
+            }
             MasterExtRequest::SetSessionConfigOption {
                 session_id,
                 config_id,
@@ -3563,12 +3766,11 @@ fn dispatch_load_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    client_state: Arc<ClientState>,
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
     timeout: std::time::Duration,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -3653,6 +3855,33 @@ fn dispatch_load_session(
                 {
                     crate::protocol::acp::model_select::forget_session(old.0.as_ref());
                 }
+                client_state
+                    .permission_select
+                    .record_from_load_session(&resp);
+                let yolo_enabled = client_state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .effective(session_id.0.as_ref());
+                if let Err(error) = apply_native_allow_all_checked(
+                    &conn,
+                    &client_state,
+                    session_id.clone(),
+                    yolo_enabled,
+                )
+                .await
+                {
+                    tracing::error!(
+                        target: "yolo",
+                        session_id = %session_id,
+                        %error,
+                        "loaded session native allow-all reconciliation failed"
+                    );
+                    let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                        fail_closed: !yolo_enabled,
+                        result: Err(error),
+                    });
+                }
                 // The agent replays past content via session/update
                 // notifications that route through the existing
                 // session_to_tab map. SessionAttached primes that mapping.
@@ -3702,6 +3931,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    Arc::clone(&client_state),
                 )
                 .await;
             }
@@ -3732,6 +3962,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    Arc::clone(&client_state),
                 )
                 .await;
             }
@@ -3753,10 +3984,9 @@ async fn dispatch_load_failure(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     message: String,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    client_state: Arc<ClientState>,
 ) {
     if use_load_failure_handler {
         handle_load_failure(
@@ -3769,6 +3999,7 @@ async fn dispatch_load_failure(
             message,
             Arc::clone(proposal_channels),
             proposal_mcp_enabled,
+            client_state,
         )
         .await;
     } else {
@@ -3801,12 +4032,11 @@ fn dispatch_new_session(
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    client_state: Arc<ClientState>,
     is_agent_pane: bool,
     inject_pane_meta: bool,
     log_label: &'static str,
-    _proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -3885,6 +4115,7 @@ fn dispatch_new_session(
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
+        maybe_apply_native_allow_all(&conn, &new_session, &new_sid, &client_state).await;
         {
             let mut g = tab_to_session.lock().await;
             g.insert(req.tab_id.clone(), new_sid.clone());
@@ -4167,6 +4398,8 @@ async fn dispatch_prompt_body(
             }
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
+            maybe_apply_native_allow_all(&conn_task, &new_session, &new_sid, &client_task.state)
+                .await;
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: tab_key_task.clone(),
                 session_id: new_sid.to_string(),
@@ -4366,9 +4599,9 @@ mod tests {
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
-        post_login_authenticate_error, session_mcp_tool_from_title, SessionMcpTool,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
-        PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
+        post_login_authenticate_error, session_mcp_tool_from_title, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4379,9 +4612,8 @@ mod tests {
 
     #[test]
     fn acp_error_detail_prefers_actionable_data() {
-        let error = acp::Error::internal_error().data(
-            "The saved API key was not found in Windows Credential Manager.",
-        );
+        let error = acp::Error::internal_error()
+            .data("The saved API key was not found in Windows Credential Manager.");
 
         assert_eq!(
             acp_error_detail(&error),
@@ -4475,6 +4707,12 @@ mod tests {
             event_tx,
             shell_mgr: Arc::new(ShellManager::new()),
             prompt_timing: Arc::new(PromptTimingState::default()),
+            yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                false, false,
+            ))),
+            permission_select: Arc::new(
+                crate::protocol::acp::permission_select::PermissionSelectState::new(),
+            ),
             provider_probe_capture: super::ProviderProbeCapture::default(),
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
@@ -5160,8 +5398,8 @@ mod tests {
 
         // Outer future elapsed → Timeout, no ACP code.
         let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
-        .await
-        .expect_err("a zero-duration timeout over a pending future must elapse");
+            .await
+            .expect_err("a zero-duration timeout over a pending future must elapse");
         let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }
@@ -5244,7 +5482,7 @@ mod tests {
         use crate::shell::ShellManager;
         use agent_client_protocol::{self as acp};
         use std::path::PathBuf;
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
         use tokio::sync::mpsc;
 
         fn make_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
@@ -5253,6 +5491,12 @@ mod tests {
                 event_tx: tx,
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
+                yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                    false, false,
+                ))),
+                permission_select: Arc::new(
+                    crate::protocol::acp::permission_select::PermissionSelectState::new(),
+                ),
                 provider_probe_capture: super::super::ProviderProbeCapture::default(),
                 standard_usage_sessions: std::sync::Mutex::new(std::collections::HashSet::new()),
                 proposal_channels: Arc::new(

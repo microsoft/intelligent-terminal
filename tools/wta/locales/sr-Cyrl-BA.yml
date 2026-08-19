@@ -150,6 +150,8 @@ system.cannot_resume_phantom_via_flag: "Није могуће наставити
 system.cannot_resume_phantom_via_load: "Није могуће наставити сесију агента %{agent} %{session_id}: покренута је, али никада није прикупила разговор, па би %{agent} одбио учитавање. Ред се уклања."
 system.fallback.this_agent: "овај агент"
 system.fallback.connected_agent: "повезани агент"
+system.yolo_blocked_by_policy: "Yolo режим је онемогућен политиком ваше организације."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Нису пронађени прозори."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Промена агента није дост�
 commands.model.summary: "Изаберите модел за ово окно (/model <id> за директно пребацивање)"  # {Locked="/model","<id>"}
 commands.config.summary: "Конфигуришите ову сесију агента"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Преместите панел агента за ову картицу (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Аутоматски одобравај позиве алатки само за ову сесију (до /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Изаберите модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Повезани агент није огласио ниједан модел који се може изабрати."
 system.model_set: "Модел за ово окно је подешен на %{model}."  # {Locked="%{model}"}

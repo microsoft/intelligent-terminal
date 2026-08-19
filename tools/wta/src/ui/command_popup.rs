@@ -12,7 +12,7 @@ use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use super::popup;
 use crate::app::{App, AvailableAgent};
-use crate::commands::{CommandSpec, MovePositionSpec, REGISTRY};
+use crate::commands::{CommandSpec, MovePositionSpec, YoloOptionSpec, REGISTRY};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
@@ -36,6 +36,7 @@ pub struct PopupState<'a> {
 pub enum PopupCandidates<'a> {
     Commands(Cow<'a, [&'static CommandSpec]>),
     MovePositions(&'a [&'static MovePositionSpec]),
+    YoloOptions(&'a [&'static YoloOptionSpec]),
     Agents(Vec<&'a AvailableAgent>),
 }
 
@@ -47,6 +48,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     let candidate_count = match &state.candidates {
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
+        PopupCandidates::YoloOptions(candidates) => candidates.len(),
         PopupCandidates::Agents(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
@@ -85,6 +87,15 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                     ),
                     Span::styled(format!("({})", position.alias), theme::DIM),
                 ]))
+            })
+            .collect(),
+        PopupCandidates::YoloOptions(candidates) => candidates
+            .iter()
+            .map(|option| {
+                ListItem::new(Line::from(Span::styled(
+                    format!(" /yolo {} ", option.name),
+                    theme::INPUT_TEXT,
+                )))
             })
             .collect(),
         PopupCandidates::Agents(candidates) => candidates

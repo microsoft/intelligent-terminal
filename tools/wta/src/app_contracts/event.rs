@@ -45,6 +45,15 @@ pub enum AppEvent {
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
+    YoloModeChangeCompleted {
+        session_id: String,
+        enabled: bool,
+        result: Result<(), String>,
+    },
+    RuntimeYoloReconcileCompleted {
+        fail_closed: bool,
+        result: Result<(), String>,
+    },
     SessionConfigUpdated {
         session_id: String,
         options: Vec<AcpSessionConfigOption>,

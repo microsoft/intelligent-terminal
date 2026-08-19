@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::commands::{self, CommandSpec, MovePositionSpec};
+use crate::commands::{self, CommandSpec, MovePositionSpec, YoloOptionSpec};
 
 use super::tab_state::TabSession;
 
@@ -77,8 +77,7 @@ impl TabSession {
         }
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
-        self.attachments
-            .on_text_deleted(previous..self.cursor_pos);
+        self.attachments.on_text_deleted(previous..self.cursor_pos);
         self.cursor_pos = previous;
         self.refresh_command_popup();
     }
@@ -89,9 +88,9 @@ impl TabSession {
             return;
         }
         self.reset_input_history_navigation();
-        let range = self
-            .attachments
-            .expand_deletion_range(prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos);
+        let range = self.attachments.expand_deletion_range(
+            prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
+        );
         self.input.replace_range(range.clone(), "");
         self.attachments.on_text_deleted(range.clone());
         self.cursor_pos = range.start;
@@ -114,8 +113,7 @@ impl TabSession {
         }
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
-        self.attachments
-            .on_text_deleted(self.cursor_pos..next);
+        self.attachments.on_text_deleted(self.cursor_pos..next);
         self.refresh_command_popup();
     }
 
@@ -200,6 +198,7 @@ impl TabSession {
         self.cursor_pos = self.input.len();
         self.command_popup_candidates.clear();
         self.move_position_candidates.clear();
+        self.yolo_option_candidates.clear();
         self.command_popup_selected = 0;
     }
 
@@ -221,6 +220,7 @@ impl TabSession {
             self.cursor_pos = self.input.len();
             self.command_popup_candidates.clear();
             self.move_position_candidates.clear();
+            self.yolo_option_candidates.clear();
             self.command_popup_selected = 0;
         }
         if self.input_history.selected.is_none() {
@@ -246,6 +246,11 @@ impl TabSession {
         if let Some(prefix) = commands::move_position_prefix(&self.input) {
             self.command_popup_candidates.clear();
             self.move_position_candidates = commands::match_move_positions(prefix);
+            self.yolo_option_candidates.clear();
+        } else if let Some(prefix) = commands::yolo_option_prefix(&self.input) {
+            self.command_popup_candidates.clear();
+            self.move_position_candidates.clear();
+            self.yolo_option_candidates = commands::match_yolo_options(prefix);
         } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // name query. `is_command_prefix` already guarantees the
@@ -254,12 +259,15 @@ impl TabSession {
             let name = trimmed.strip_prefix('/').unwrap_or("");
             self.command_popup_candidates = commands::matches(name);
             self.move_position_candidates.clear();
+            self.yolo_option_candidates.clear();
         } else {
             self.command_popup_candidates.clear();
             self.move_position_candidates.clear();
+            self.yolo_option_candidates.clear();
         }
-        let candidate_count =
-            self.command_popup_candidates.len() + self.move_position_candidates.len();
+        let candidate_count = self.command_popup_candidates.len()
+            + self.move_position_candidates.len()
+            + self.yolo_option_candidates.len();
         if candidate_count == 0 {
             self.command_popup_selected = 0;
         } else if self.command_popup_selected >= candidate_count {
@@ -268,7 +276,9 @@ impl TabSession {
     }
 
     pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty() || !self.move_position_candidates.is_empty()
+        !self.command_popup_candidates.is_empty()
+            || !self.move_position_candidates.is_empty()
+            || !self.yolo_option_candidates.is_empty()
     }
 
     pub fn command_popup_up(&mut self) {
@@ -289,6 +299,11 @@ impl TabSession {
             .copied()
     }
 
+    pub fn selected_yolo_option(&self) -> Option<&'static YoloOptionSpec> {
+        self.yolo_option_candidates
+            .get(self.command_popup_selected)
+            .copied()
+    }
 }
 
 pub(super) fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {

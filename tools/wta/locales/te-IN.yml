@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} సెషన్ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} load ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
 system.fallback.this_agent: "ఈ agent"
 system.fallback.connected_agent: "కనెక్ట్ అయిన agent"
+system.yolo_blocked_by_policy: "మీ సంస్థ విధానం వల్ల yolo mode నిలిపివేయబడింది."
+
 
 # ── రన్‌టైమ్ CLI అవుట్‌పుట్ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "విండోలు కనుగొనబడలేదు."
@@ -218,6 +220,8 @@ system.agent_switch_unavailable: "Windows Terminal ట్యాబ్ వెల�
 commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ఈ ఏజెంట్ సెషన్‌ను కాన్ఫిගర్ చేయండి"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ఈ ట్యాబ్ యొక్క ఏజెంట్ పేన్‌ను తరలించండి (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "ఈ session‌కు మాత్రమే tool call‌లను auto-approve చేయండి (/new వరకు)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
 system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}

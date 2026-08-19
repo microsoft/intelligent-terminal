@@ -56,6 +56,11 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Enable "yolo mode" (auto-approve tool calls) for this tab's *current*
+    /// ACP session. Bare `/yolo` means on; `/yolo on|off` keeps the state
+    /// explicit. Does not persist across `/new` and is refused when the
+    /// `AllowYoloMode` admin policy blocks it. See `App::cmd_yolo`.
+    Yolo,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -137,6 +142,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
     },
+    CommandSpec {
+        name: "yolo",
+        summary_key: "commands.yolo.summary",
+        kind: CommandKind::Yolo,
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +176,23 @@ pub const MOVE_POSITIONS: &[MovePositionSpec] = &[
         name: "down",
         alias: "d",
         pane_position: "bottom",
+    },
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct YoloOptionSpec {
+    pub name: &'static str,
+    pub enabled: bool,
+}
+
+pub const YOLO_OPTIONS: &[YoloOptionSpec] = &[
+    YoloOptionSpec {
+        name: "on",
+        enabled: true,
+    },
+    YoloOptionSpec {
+        name: "off",
+        enabled: false,
     },
 ];
 
@@ -293,7 +320,7 @@ pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
     MOVE_POSITIONS.iter().find(|position| {
         position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
-        })
+    })
 }
 
 /// Prefix-match `/move` positions by full name or one-letter alias.
@@ -304,6 +331,21 @@ pub fn match_move_positions(prefix: &str) -> Vec<&'static MovePositionSpec> {
         .filter(|position| {
             position.name.starts_with(&needle) || position.alias.starts_with(&needle)
         })
+        .collect()
+}
+
+pub fn lookup_yolo_option(value: &str) -> Option<&'static YoloOptionSpec> {
+    let value = value.trim();
+    YOLO_OPTIONS
+        .iter()
+        .find(|option| option.name.eq_ignore_ascii_case(value))
+}
+
+pub fn match_yolo_options(prefix: &str) -> Vec<&'static YoloOptionSpec> {
+    let needle = prefix.trim().to_ascii_lowercase();
+    YOLO_OPTIONS
+        .iter()
+        .filter(|option| option.name.starts_with(&needle))
         .collect()
 }
 
@@ -321,6 +363,14 @@ pub fn agent_id_prefix(input: &str) -> Option<&str> {
 /// argument hides the popup because `/move` accepts exactly one position.
 pub fn move_position_prefix(input: &str) -> Option<&str> {
     single_argument_prefix(input, "move")
+}
+
+pub fn yolo_option_prefix(input: &str) -> Option<&str> {
+    let trimmed = input.trim_start();
+    if trimmed.eq_ignore_ascii_case("/yolo") {
+        return Some("");
+    }
+    single_argument_prefix(input, "yolo")
 }
 
 fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {

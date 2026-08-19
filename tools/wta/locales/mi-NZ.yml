@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Kāore e taea te tīmata anō i te wāha
 system.cannot_resume_phantom_via_load: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} e whakakore te load. E tango ana i te rārangi."
 system.fallback.this_agent: "tēnei agent"
 system.fallback.connected_agent: "te agent kua hono"
+system.yolo_blocked_by_policy: "Kua monokia te aratau yolo e te kaupapa here a tō whakahaere."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Karekau he matapihi i kitea."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Kāore i te wātea te whakawhiti māngai i wah
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
 commands.config.summary: "Whirihorahia tēnei teho māngai"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Neke i te papa agent o tēnei ripa (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Whakaae aunoa i ngā waea taputapu mō tēnei wāhanga anake (tae noa ki /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}

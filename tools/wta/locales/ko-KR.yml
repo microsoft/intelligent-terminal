@@ -137,6 +137,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} 세션 %{session_id}을(를) �
 system.cannot_resume_phantom_via_load: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent}이(가) 로드를 거부합니다. 행을 제거합니다."
 system.fallback.this_agent: "이 에이전트"
 system.fallback.connected_agent: "연결된 에이전트"
+system.yolo_blocked_by_policy: "조직의 정책으로 인해 yolo 모드가 비활성화되어 있습니다."
+
 
 # ── 런타임 CLI 출력 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "창을 찾을 수 없습니다."
@@ -212,6 +214,8 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
 commands.config.summary: "이 에이전트 세션 구성"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "이 세션에서만 도구 호출을 자동 승인 (/new 전까지)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}

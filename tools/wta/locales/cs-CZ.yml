@@ -152,6 +152,8 @@ system.cannot_resume_phantom_via_flag: "Nelze obnovit relaci %{agent} %{session_
 system.cannot_resume_phantom_via_load: "Nelze obnovit relaci %{agent} %{session_id}: byla spuštěna, ale nikdy neshromáždila žádnou konverzaci, takže %{agent} by načtení odmítl. Řádek se odebírá."
 system.fallback.this_agent: "tento agent"
 system.fallback.connected_agent: "připojený agent"
+system.yolo_blocked_by_policy: "Režim yolo je zakázán zásadami vaší organizace."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nebyla nalezena žádná okna."
@@ -219,6 +221,8 @@ system.agent_switch_unavailable: "Přepínání agentů není mimo kartu Windows
 commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
 commands.config.summary: "Nakonfigurujte tuto relaci agenta"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Přesunout panel agenta pro tuto kartu (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Automaticky schvalovat volání nástrojů jen pro tuto relaci (do /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Připojený agent neohlásil žádné dostupné modely."
 system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}

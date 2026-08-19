@@ -87,6 +87,9 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
+        TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
+        TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
+        TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
 
         TEST_CLASS_CLEANUP(ClassCleanup)
         {
@@ -124,11 +127,13 @@ namespace SettingsModelUnitTests
 
         static std::shared_ptr<AgentPolicy::PolicySnapshot> MakePolicy(
             std::optional<std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>> allowedAgents = std::nullopt,
-            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured)
+            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState yoloMode = AgentPolicy::PolicyState::NotConfigured)
         {
             auto snap = std::make_shared<AgentPolicy::PolicySnapshot>();
             snap->allowedAgents = std::move(allowedAgents);
             snap->customAgents = customAgents;
+            snap->yoloMode = yoloMode;
             return snap;
         }
 
@@ -645,5 +650,50 @@ namespace SettingsModelUnitTests
             R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
         SetPolicy(MakePolicy());
         VERIFY_IS_TRUE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
+    }
+
+    void CustomAgentAndPolicyTests::AgentPaneYoloModeRoundtripsAndDefaults()
+    {
+        // Explicit value survives load, and the underlying setting is
+        // readable independent of policy (policy NotConfigured → allowed).
+        const auto settings = MakeSettings(R"("agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy());
+        VERIFY_IS_TRUE(settings->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_TRUE(settings->GlobalSettings().EffectiveAgentPaneYoloMode());
+
+        // Absent → falls back to the `false` default (MTSMSettings.h).
+        const auto defaulted = MakeSettings({});
+        SetPolicy(MakePolicy());
+        VERIFY_IS_FALSE(defaulted->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(defaulted->GlobalSettings().EffectiveAgentPaneYoloMode());
+    }
+
+    void CustomAgentAndPolicyTests::EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked()
+    {
+        // The AllowYoloMode admin policy overrides the user's toggle: even
+        // with the setting on, a Blocked policy must force the effective
+        // value to false, matching the AutoFix policy-gate pattern above.
+        const auto settings = MakeSettings(R"("agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy(/*allowedAgents*/ std::nullopt,
+                              /*customAgents*/ AgentPolicy::PolicyState::NotConfigured,
+                              /*yoloMode*/ AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_FALSE(settings->GlobalSettings().EffectiveAgentPaneYoloMode());
+        // The raw (non-effective) setting still reflects the user's choice —
+        // only the effective/gated accessor is policy-clamped.
+        VERIFY_IS_TRUE(settings->GlobalSettings().AgentPaneYoloMode());
+    }
+
+    void CustomAgentAndPolicyTests::IsYoloModePolicyLockedTracksBlocked()
+    {
+        const auto settings = MakeSettings({});
+
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::NotConfigured, AgentPolicy::PolicyState::NotConfigured));
+        VERIFY_IS_FALSE(settings->GlobalSettings().IsYoloModePolicyLocked());
+
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::NotConfigured, AgentPolicy::PolicyState::Allowed));
+        VERIFY_IS_FALSE(settings->GlobalSettings().IsYoloModePolicyLocked());
+
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::NotConfigured, AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_TRUE(settings->GlobalSettings().IsYoloModePolicyLocked());
     }
 }

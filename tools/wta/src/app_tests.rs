@@ -8,6 +8,7 @@ use super::*;
 use crate::app::tab_state::collapsed_prompt_preview;
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
+use std::sync::Mutex;
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
 /// `custom:*` id, the preflight must NOT gate the TUI into Setup mode.
@@ -75,6 +76,9 @@ pub(super) fn test_app() -> App {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
     )
 }
 
@@ -845,6 +849,9 @@ pub(super) fn test_app_with_master_rx() -> (
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
     );
     (app, master_rx)
 }
@@ -1077,6 +1084,9 @@ fn tab_renamed_sends_rename_session_request_to_acp_client() {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
     );
 
     app.tab_id = Some("AAAA".to_string());
@@ -1135,6 +1145,9 @@ fn tab_renamed_noop_does_not_send_rename_session_request() {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
     );
 
     app.tab_id = Some("AAAA".to_string());
@@ -1225,6 +1238,9 @@ fn make_app_with_load_session_channel() -> (
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
     );
     (app, load_session_rx)
 }

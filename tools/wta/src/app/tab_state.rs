@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::app_contracts::{PermOption, PlanEntry};
-use crate::commands::{CommandSpec, MovePositionSpec};
+use crate::commands::{CommandSpec, MovePositionSpec, YoloOptionSpec};
 
 use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
@@ -76,6 +76,8 @@ pub enum ChatMessage {
     Agent(String),
     /// Legacy untyped system message retained for persisted chat compatibility.
     System(String),
+    /// Low-emphasis inline status rendered in the pane's normal foreground.
+    Status(String),
     Notice {
         kind: NoticeKind,
         text: String,
@@ -477,6 +479,8 @@ pub struct TabSession {
     pub command_popup_candidates: Vec<&'static CommandSpec>,
     /// Position candidates shown after `/move `.
     pub move_position_candidates: Vec<&'static MovePositionSpec>,
+    /// Explicit state candidates shown for `/yolo`.
+    pub yolo_option_candidates: Vec<&'static YoloOptionSpec>,
     /// Index into whichever popup candidate list is active.
     pub command_popup_selected: usize,
 

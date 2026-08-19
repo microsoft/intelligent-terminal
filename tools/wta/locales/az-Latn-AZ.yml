@@ -156,6 +156,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} sessiyası %{session_id} bərpa
 system.cannot_resume_phantom_via_load: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} yükləməni rədd edəcək. Sətir silinir."
 system.fallback.this_agent: "bu agent"
 system.fallback.connected_agent: "qoşulmuş agent"
+system.yolo_blocked_by_policy: "Yolo rejimi təşkilatınızın siyasəti ilə deaktiv edilib."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pəncərə tapılmadı."
@@ -219,6 +221,8 @@ system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kəna
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "Bu agent sessiyasını konfiqurasiya edin"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu tabın agent panelini köçür (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Alət çağırışlarını yalnız bu sessiya üçün avtomatik təsdiqlə (/new olana qədər)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}

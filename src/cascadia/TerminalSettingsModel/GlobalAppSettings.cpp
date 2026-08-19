@@ -661,6 +661,20 @@ bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
     return AgentPolicy::GetAgentSessionHooksPolicy() == AgentPolicy::PolicyState::Blocked;
 }
 
+bool GlobalAppSettings::EffectiveAgentPaneYoloMode() const
+{
+    if (!AgentPolicy::IsYoloModeAllowed())
+    {
+        return false;
+    }
+    return AgentPaneYoloMode();
+}
+
+bool GlobalAppSettings::IsYoloModePolicyLocked() const
+{
+    return AgentPolicy::GetYoloModePolicy() == AgentPolicy::PolicyState::Blocked;
+}
+
 // ── Test-only hooks ─────────────────────────────────────────────────
 // Defined here so the body executes inside SettingsModel.dll, which
 // guarantees we patch the same AgentPolicy::s_snapshot that

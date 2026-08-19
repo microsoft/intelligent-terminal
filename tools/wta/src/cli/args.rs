@@ -115,6 +115,16 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Auto-approve all agent tool-call permission requests for the lifetime
+    /// of this helper process. Hidden because Terminal owns this setting.
+    #[arg(long, hide = true)]
+    pub(crate) auto_approve_tools: bool,
+
+    /// Refuse per-session `/yolo` changes when organization policy blocks
+    /// auto-approve. Hidden because Terminal supplies the policy result.
+    #[arg(long, hide = true)]
+    pub(crate) yolo_command_blocked: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]

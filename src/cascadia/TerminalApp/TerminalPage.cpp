@@ -1696,6 +1696,8 @@ namespace winrt::TerminalApp::implementation
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
             globals.EffectiveAutoFixEnabled(),
+            globals.EffectiveAgentPaneYoloMode(),
+            globals.IsYoloModePolicyLocked(),
         };
     }
 
@@ -1708,6 +1710,8 @@ namespace winrt::TerminalApp::implementation
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
+    //   - yolo_enabled + yolo_command_blocked : the policy-aware global
+    //     default and administrative gate.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -1730,8 +1734,10 @@ namespace winrt::TerminalApp::implementation
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
+        const bool yoloChanged = last.yoloEnabled != current.yoloEnabled ||
+                                 last.yoloCommandBlocked != current.yoloCommandBlocked;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
         {
             return;
         }
@@ -1751,6 +1757,11 @@ namespace winrt::TerminalApp::implementation
             params["custom_model_selection"] = winrt::to_string(current.customModelSelection);
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
+        }
+        if (yoloChanged)
+        {
+            params["yolo_enabled"] = current.yoloEnabled;
+            params["yolo_command_blocked"] = current.yoloCommandBlocked;
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -2426,6 +2437,26 @@ namespace winrt::TerminalApp::implementation
         if (!globals.EffectiveAutoFixEnabled())
         {
             helperCmd.append(L" --no-autofix");
+        }
+        // Global "Yolo mode" — auto-approve every ACP permission request on
+        // this pane without prompting. Policy-gated via
+        // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
+        // a GPO-blocked org never spawns a helper with this flag set even if
+        // the user's settings.json has agentPane.yoloMode: true. This is
+        // independent from the per-session `/yolo` slash command, which the
+        // helper enforces itself at runtime against the same policy.
+        if (globals.EffectiveAgentPaneYoloMode())
+        {
+            helperCmd.append(L" --auto-approve-tools");
+        }
+        // Independent of the global toggle above: tell the helper whether
+        // org policy blocks yolo mode outright, so its own `/yolo` slash
+        // command (a per-session override the user can flip at runtime) can
+        // refuse and explain why, instead of silently enabling unattended
+        // tool-call approval in a GPO-managed environment.
+        if (globals.IsYoloModePolicyLocked())
+        {
+            helperCmd.append(L" --yolo-command-blocked");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {

@@ -45,13 +45,19 @@ pub struct WtaMeta {
     /// only for diagnostics / back-compat; helpers no longer set it.
     pub agent_cmd: Option<String>,
     /// Canonical agent id (`copilot` / `claude` / `gemini` / …) the
-    /// helper's tab wants. **This is the authoritative selector**: the
-    /// master reconstructs the agent command internally from this id
+    /// helper's tab requests. The master validates this selection and
+    /// reconstructs the agent command internally from this id
     /// (`agent_registry::build_acp_command`) and never executes a string
     /// supplied over the pipe. Also stamps the per-session `cli_source`
     /// so the F2 view labels each row with its real CLI. `None` on older
-    /// helpers — master then falls back to its own `--agent` default.
+    /// helpers — master then falls back to its own `--agent` default. This
+    /// request is not trusted for agent-specific permission behavior; the
+    /// helper uses `resolved_agent_id` returned by the master.
     pub agent_id: Option<String>,
+    /// Canonical agent id selected by the master after allowlist validation
+    /// and fallback resolution. Returned only in the initialize response so
+    /// helper-side agent-specific behavior never trusts its own request.
+    pub resolved_agent_id: Option<String>,
     /// Model override the tab wants (e.g. `gpt-5`). Folded into the
     /// reconstructed command by `build_acp_command` for agents that
     /// take a `--model` flag (adapter agents ignore it and receive the
@@ -95,6 +101,7 @@ impl WtaMeta {
         blank(&self.pane_session_id)
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
+            && blank(&self.resolved_agent_id)
             && blank(&self.model)
             && blank(&self.agent_source)
             && blank(&self.wsl_distro)
@@ -144,6 +151,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         pane_session_id: str_field("pane_session_id"),
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
+        resolved_agent_id: str_field("resolved_agent_id"),
         model: str_field("model"),
         agent_source: str_field("agent_source"),
         wsl_distro: str_field("wsl_distro"),
@@ -183,6 +191,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("pane_session_id", &wta.pane_session_id);
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
+    put("resolved_agent_id", &wta.resolved_agent_id);
     put("model", &wta.model);
     put("agent_source", &wta.agent_source);
     put("wsl_distro", &wta.wsl_distro);
@@ -3700,6 +3709,7 @@ mod tests {
         let original = WtaMeta {
             agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string()),
             agent_id: Some("gemini".to_string()),
+            resolved_agent_id: Some("copilot".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
             agent_source: Some("wsl".to_string()),
             wsl_distro: Some("Ubuntu".to_string()),
@@ -3754,6 +3764,7 @@ mod tests {
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
+                resolved_agent_id: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),
@@ -3794,6 +3805,7 @@ mod tests {
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
+                resolved_agent_id: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),

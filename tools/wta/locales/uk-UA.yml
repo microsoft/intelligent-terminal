@@ -150,6 +150,8 @@ system.cannot_resume_phantom_via_flag: "Не вдається відновити
 system.cannot_resume_phantom_via_load: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому %{agent} відхилив би завантаження. Рядок видаляється."
 system.fallback.this_agent: "цей агент"
 system.fallback.connected_agent: "підключений агент"
+system.yolo_blocked_by_policy: "Режим yolo вимкнено політикою вашої організації."
+
 
 # ── Вивід CLI під час виконання (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Вікна не знайдено."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Перемикання агентів недо
 commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
 commands.config.summary: "Налаштувати цей сеанс агента"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Перемістити панель агента цієї вкладки (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Автоматично схвалювати виклики інструментів лише для цього сеансу (до /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}

@@ -6,8 +6,9 @@
 //! of the crate root, so it can reach `App`'s private dispatch methods —
 //! exactly like the inline `app::tests` module it borrows `test_app` from.
 
-use super::tests::test_app;
+use super::tests::{test_app, test_app_with_master_rx};
 use super::*;
+use crate::protocol::acp::client::MasterExtRequest;
 
 /// Dispatch a zero-arg slash command by name through the real
 /// `handle_slash_command` path, the way the Enter handler does.
@@ -17,6 +18,28 @@ fn run_slash(app: &mut App, name: &str) {
         kind: spec.kind,
         spec,
         rest: String::new(),
+    });
+}
+
+fn complete_yolo_request(
+    app: &mut App,
+    master_rx: &mut tokio::sync::mpsc::UnboundedReceiver<
+        crate::protocol::acp::client::MasterExtRequest,
+    >,
+    result: Result<(), &str>,
+) {
+    let request = master_rx.try_recv().expect("a yolo request was queued");
+    let crate::protocol::acp::client::MasterExtRequest::SetSessionAllowAll {
+        session_id,
+        enabled,
+    } = request
+    else {
+        panic!("expected SetSessionAllowAll");
+    };
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        session_id: session_id.to_string(),
+        enabled,
+        result: result.map_err(str::to_string),
     });
 }
 
@@ -136,6 +159,213 @@ fn slash_new_when_idle_resets_session() {
 
     assert_eq!(app.current_tab().session_id, None);
     assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn slash_yolo_sets_current_session_and_uses_low_emphasis_status() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("sid-yolo".into());
+
+    run_slash_args(&mut app, "yolo", "on");
+
+    assert!(!app.yolo_state.lock().unwrap().effective("sid-yolo"));
+    complete_yolo_request(&mut app, &mut master_rx, Ok(()));
+    assert!(app.yolo_state.lock().unwrap().effective("sid-yolo"));
+    assert_eq!(
+        app.current_tab().messages.last(),
+        Some(&ChatMessage::Status("● /yolo on".to_string())),
+        "/yolo must confirm that auto-approval was enabled for the current session"
+    );
+
+    run_slash_args(&mut app, "yolo", "off");
+
+    assert!(app.yolo_state.lock().unwrap().effective("sid-yolo"));
+    complete_yolo_request(&mut app, &mut master_rx, Ok(()));
+    assert!(!app.yolo_state.lock().unwrap().effective("sid-yolo"));
+    assert_eq!(
+        app.current_tab().messages.last(),
+        Some(&ChatMessage::Status("○ /yolo off".to_string())),
+        "/yolo off must disable auto-approval for the current session"
+    );
+}
+
+#[test]
+fn slash_yolo_can_disable_a_globally_enabled_session() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .update_runtime(true, false);
+    app.current_tab_mut().session_id = Some("sid-global-yolo".into());
+
+    run_slash_args(&mut app, "yolo", "off");
+
+    assert!(app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective("sid-global-yolo"));
+    complete_yolo_request(&mut app, &mut master_rx, Ok(()));
+    assert!(!app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective("sid-global-yolo"));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Status(message)) if message == "○ /yolo off"
+    ));
+}
+
+#[test]
+fn slash_yolo_without_state_enables_current_session() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("sid-bare-yolo".into());
+
+    run_slash(&mut app, "yolo");
+
+    complete_yolo_request(&mut app, &mut master_rx, Ok(()));
+    assert!(app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective("sid-bare-yolo"));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Status(message)) if message == "● /yolo on"
+    ));
+}
+
+#[test]
+fn slash_yolo_off_failure_keeps_local_state_enabled() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("sid-yolo".into());
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .set_session_override("sid-yolo".into(), true);
+
+    run_slash_args(&mut app, "yolo", "off");
+    complete_yolo_request(
+        &mut app,
+        &mut master_rx,
+        Err("session/set_config_option failed"),
+    );
+
+    assert!(app.yolo_state.lock().unwrap().effective("sid-yolo"));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message))
+            if message == "/yolo off: session/set_config_option failed"
+    ));
+}
+
+#[test]
+fn runtime_global_change_reconciles_live_sessions_and_preserves_override() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.session_to_tab
+        .insert("follows-global".into(), DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert("explicit-off".into(), DEFAULT_TAB_ID.into());
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .set_session_override("explicit-off".into(), false);
+
+    app.apply_runtime_yolo_config(Some(true), Some(false));
+
+    let request = master_rx.try_recv().expect("reconcile request");
+    let MasterExtRequest::ReconcileSessionAllowAll {
+        sessions,
+        fail_closed,
+    } = request
+    else {
+        panic!("expected ReconcileSessionAllowAll");
+    };
+    assert!(fail_closed, "the explicit off session must fail closed");
+    assert!(sessions
+        .iter()
+        .any(|(session, enabled)| session.0.as_ref() == "follows-global" && *enabled));
+    assert!(sessions
+        .iter()
+        .any(|(session, enabled)| session.0.as_ref() == "explicit-off" && !*enabled));
+}
+
+#[test]
+fn runtime_policy_block_forces_off_and_clears_session_override() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.session_to_tab
+        .insert("session".into(), DEFAULT_TAB_ID.into());
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .set_session_override("session".into(), true);
+
+    app.apply_runtime_yolo_config(Some(false), Some(true));
+
+    assert!(!app.yolo_state.lock().unwrap().effective("session"));
+    let request = master_rx.try_recv().expect("reconcile request");
+    let MasterExtRequest::ReconcileSessionAllowAll {
+        sessions,
+        fail_closed,
+    } = request
+    else {
+        panic!("expected ReconcileSessionAllowAll");
+    };
+    assert!(fail_closed);
+    assert_eq!(sessions.len(), 1);
+    assert!(!sessions[0].1);
+
+    app.apply_runtime_yolo_config(Some(false), Some(false));
+    assert!(
+        !app.yolo_state.lock().unwrap().effective("session"),
+        "policy removal must not reactivate the prior override"
+    );
+}
+
+#[test]
+fn session_replacement_cleans_yolo_and_pending_state() {
+    let mut app = test_app();
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .set_session_override("old-session".into(), true);
+    app.pending_yolo_changes.insert(
+        "old-session".into(),
+        (true, DEFAULT_TAB_ID.into()),
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "new-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(!app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective("old-session"));
+    assert!(!app.pending_yolo_changes.contains_key("old-session"));
+}
+
+#[test]
+fn typing_bare_yolo_opens_on_off_completion() {
+    let mut app = test_app();
+
+    type_input(&mut app, "/yolo");
+
+    assert_eq!(
+        app.current_tab()
+            .yolo_option_candidates
+            .iter()
+            .map(|option| option.name)
+            .collect::<Vec<_>>(),
+        vec!["on", "off"]
+    );
 }
 
 /// Dispatch a slash command with free-form args (e.g. `/model gpt-5`) through

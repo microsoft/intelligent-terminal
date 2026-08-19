@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session
 system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."
 system.fallback.this_agent: "this agent"
 system.fallback.connected_agent: "the connected agent"
+system.yolo_blocked_by_policy: "Yolo mode is disabled by your organisation's policy."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "No windows found."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Agent switching is unavailable outside a Windo
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 commands.config.summary: "Configure this agent session"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Auto-approve tool calls for this session only (until /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Select model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."  # {Locked="%{model}"}
