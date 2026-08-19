@@ -945,7 +945,13 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    let tab = app.current_tab();
+    build_pending_stream_lines_for_tab(app.current_tab(), wrap_width)
+}
+
+fn build_pending_stream_lines_for_tab<'a>(
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+) -> Vec<Line<'a>> {
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
@@ -964,15 +970,7 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             Cow::Owned(text.chars().take(shown).collect())
         }
     };
-    let mut lines = Vec::new();
-    push_dot_prefixed_lines(
-        &mut lines,
-        &revealed,
-        wrap_width,
-        theme::DOT_AGENT,
-        theme::AGENT_TEXT,
-    );
-    lines
+    agent_markdown_lines(&revealed, wrap_width, theme::DOT_AGENT)
 }
 
 fn build_message_lines<'a>(
@@ -1927,6 +1925,27 @@ mod tests {
         }
         tab.reveal_chars = reveal_chars;
         tab
+    }
+
+    #[test]
+    fn pending_stream_renders_markdown_and_preserves_partial_syntax() {
+        let complete = "# Heading\n\nStreaming **bold** text";
+        let complete_tab = streaming_tab(complete, complete.chars().count());
+
+        let lines = build_pending_stream_lines_for_tab(&complete_tab, 80);
+        assert_eq!(line_text(&lines[0]), "● Heading");
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold" && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
+
+        let partial = "# Heading\n\nStreaming **bo";
+        let partial_tab = streaming_tab(partial, partial.chars().count());
+        let partial_text = build_pending_stream_lines_for_tab(&partial_tab, 80)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(partial_text.contains("bo"));
     }
 
     #[test]
