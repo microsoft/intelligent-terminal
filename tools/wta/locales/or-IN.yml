@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ଏଜେଣ୍ଟ ପୁନଃ ଆରମ୍ଭ କରନ୍ତୁ"
 commands.stop.summary: "ଚାଲୁଥିବା ପ୍ରମ୍ପ୍ଟକୁ ବାତିଲ କରନ୍ତୁ"
 commands.sessions.summary: "ଇତିହାସିକ ସେସନ୍ ପିକର୍ ଖୋଲନ୍ତୁ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "ସଞ୍ଚିତ ଟ୍ୟାବ୍‌ଗୁଡ଼ିକୁ ବ୍ରାଉଜ୍ କରନ୍ତୁ ଏବଂ ପୁନଃସ୍ଥାପନ କରନ୍ତୁ"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ଏହି ଟ୍ୟାବ୍ ପାଇଁ ଏଜେଣ୍ଟ୍ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ସୁପାରିଶ ପ୍ୟାନେଲ (src/ui/recommendations.rs) ───────────────────────────────

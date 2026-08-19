@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "एजंट परत सुरू करात"
 commands.stop.summary: "चालू आशिल्लो प्रॉम्प्ट रद्द करात"
 commands.sessions.summary: "इतिहासीक सत्र पिकर उगडात (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "जतनाय केल्लीं टॅब ब्राउझ करात आनी परतून मेळोवचीं"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ह्या पेना खातीर एजंट निवडात (थेट बदलपाक /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── शिफारस पॅनेल (src/ui/recommendations.rs) ───────────────────────────────

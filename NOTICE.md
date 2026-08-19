@@ -627,6 +627,8 @@ if it were canonical for the whole group.
 - **euclid** v0.22.13 -- [https://github.com/servo/euclid](https://github.com/servo/euclid) -- `Apache-2.0 OR MIT`
 - **event-listener** v5.4.1 -- [https://github.com/smol-rs/event-listener](https://github.com/smol-rs/event-listener) -- `Apache-2.0 OR MIT`
 - **event-listener-strategy** v0.5.4 -- [https://github.com/smol-rs/event-listener-strategy](https://github.com/smol-rs/event-listener-strategy) -- `Apache-2.0 OR MIT`
+- **fallible-iterator** v0.3.0 -- [https://github.com/sfackler/rust-fallible-iterator](https://github.com/sfackler/rust-fallible-iterator) -- `Apache-2.0 OR MIT`
+- **fallible-streaming-iterator** v0.1.9 -- [https://github.com/sfackler/fallible-streaming-iterator](https://github.com/sfackler/fallible-streaming-iterator) -- `Apache-2.0 OR MIT`
 - **fancy-regex** v0.11.0 -- [https://github.com/fancy-regex/fancy-regex](https://github.com/fancy-regex/fancy-regex) -- `MIT`
 - **fastrand** v2.4.1 -- [https://github.com/smol-rs/fastrand](https://github.com/smol-rs/fastrand) -- `Apache-2.0 OR MIT`
 - **fdeflate** v0.3.7 -- [https://github.com/image-rs/fdeflate](https://github.com/image-rs/fdeflate) -- `Apache-2.0 OR MIT`
@@ -637,6 +639,7 @@ if it were canonical for the whole group.
 - **fixedbitset** v0.5.7 -- [https://github.com/petgraph/fixedbitset](https://github.com/petgraph/fixedbitset) -- `Apache-2.0 OR MIT`
 - **flate2** v1.1.9 -- [https://github.com/rust-lang/flate2-rs](https://github.com/rust-lang/flate2-rs) -- `Apache-2.0 OR MIT`
 - **fnv** v1.0.7 -- [https://github.com/servo/rust-fnv](https://github.com/servo/rust-fnv) -- `Apache-2.0 OR MIT`
+- **foldhash** v0.1.5 -- [https://github.com/orlp/foldhash](https://github.com/orlp/foldhash) -- `Zlib`
 - **foldhash** v0.2.0 -- [https://github.com/orlp/foldhash](https://github.com/orlp/foldhash) -- `Zlib`
 - **futures** v0.3.32 -- [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) -- `Apache-2.0 OR MIT`
 - **futures-channel** v0.3.32 -- [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) -- `Apache-2.0 OR MIT`
@@ -656,7 +659,9 @@ if it were canonical for the whole group.
 - **globset** v0.4.18 -- [https://github.com/BurntSushi/ripgrep/tree/master/crates/globset](https://github.com/BurntSushi/ripgrep/tree/master/crates/globset) -- `MIT OR Unlicense`
 - **globwalk** v0.8.1 -- [https://github.com/gilnaa/globwalk](https://github.com/gilnaa/globwalk) -- `MIT`
 - **hashbrown** v0.12.3 -- [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) -- `Apache-2.0 OR MIT`
+- **hashbrown** v0.15.5 -- [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) -- `Apache-2.0 OR MIT`
 - **hashbrown** v0.16.1 -- [https://github.com/rust-lang/hashbrown](https://github.com/rust-lang/hashbrown) -- `Apache-2.0 OR MIT`
+- **hashlink** v0.10.0 -- [https://github.com/kyren/hashlink](https://github.com/kyren/hashlink) -- `Apache-2.0 OR MIT`
 - **heck** v0.5.0 -- [https://github.com/withoutboats/heck](https://github.com/withoutboats/heck) -- `Apache-2.0 OR MIT`
 - **hex** v0.4.3 -- [https://github.com/KokaKiwi/rust-hex](https://github.com/KokaKiwi/rust-hex) -- `Apache-2.0 OR MIT`
 - **ident_case** v1.0.1 -- [https://github.com/TedDriggs/ident_case](https://github.com/TedDriggs/ident_case) -- `Apache-2.0 OR MIT`
@@ -674,6 +679,7 @@ if it were canonical for the whole group.
 - **lab** v0.11.0 -- [https://github.com/TooManyBees/lab](https://github.com/TooManyBees/lab) -- `MIT`
 - **lazy_static** v1.5.0 -- [https://github.com/rust-lang-nursery/lazy-static.rs](https://github.com/rust-lang-nursery/lazy-static.rs) -- `Apache-2.0 OR MIT`
 - **libc** v0.2.183 -- [https://github.com/rust-lang/libc](https://github.com/rust-lang/libc) -- `Apache-2.0 OR MIT`
+- **libsqlite3-sys** v0.35.0 -- [https://github.com/rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) -- `MIT`
 - **line-clipping** v0.3.5 -- [https://github.com/joshka/line-clipping](https://github.com/joshka/line-clipping) -- `Apache-2.0 OR MIT`
 - **litrs** v1.0.0 -- [https://github.com/LukasKalbertodt/litrs](https://github.com/LukasKalbertodt/litrs) -- `Apache-2.0 OR MIT`
 - **lock_api** v0.4.14 -- [https://github.com/Amanieu/parking_lot](https://github.com/Amanieu/parking_lot) -- `Apache-2.0 OR MIT`
@@ -732,6 +738,7 @@ if it were canonical for the whole group.
 - **regex** v1.12.3 -- [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) -- `Apache-2.0 OR MIT`
 - **regex-automata** v0.4.14 -- [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) -- `Apache-2.0 OR MIT`
 - **regex-syntax** v0.8.10 -- [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) -- `Apache-2.0 OR MIT`
+- **rusqlite** v0.37.0 -- [https://github.com/rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) -- `MIT`
 - **rust-i18n** v3.1.5 -- [https://github.com/longbridge/rust-i18n](https://github.com/longbridge/rust-i18n) -- `MIT`
 - **rust-i18n-macro** v3.1.5 -- [https://github.com/longbridge/rust-i18n](https://github.com/longbridge/rust-i18n) -- `MIT`
 - **rust-i18n-support** v3.1.5 -- [https://github.com/longbridge/rust-i18n](https://github.com/longbridge/rust-i18n) -- `MIT`
@@ -856,7 +863,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 190 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+182 more)
+Applies to 194 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+186 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -956,6 +963,7 @@ Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
 Copyright (c) 2015 nwin
 Copyright (c) 2015 The Rust Project Developers
+Copyright (c) 2015 The rust-openssl-verify Developers
 Copyright (c) 2015-2018 The winapi-rs Developers
 Copyright (c) 2015-2020 The rust-hex Developers
 Copyright (c) 2016 Alex Crichton
@@ -963,6 +971,7 @@ Copyright (c) 2016 Amanieu d'Antras
 Copyright (c) 2016 Artyom Pavlov
 Copyright (c) 2016 Dylan Ede
 Copyright (c) 2016 Joe Wilm
+Copyright (c) 2016 The fallible-streaming-iterator Developers
 Copyright (c) 2016 The roaring-rs developers.
 Copyright (c) 2016 The Rust Project Developers
 Copyright (c) 2016 Tomasz Miąsko
@@ -1214,7 +1223,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 266 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+258 more)
+Applies to 272 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+264 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1254,6 +1263,7 @@ Copyright (c) 2014 Carl Lerche and other MIO contributors
 Copyright (c) 2014 Chris Morgan and the Teepee project developers
 Copyright (c) 2014 Chris Wong
 Copyright (c) 2014 Paho Lurie-Gregg
+Copyright (c) 2014 The rusqlite developers
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2019 Geoffroy Couprie
 Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
@@ -1268,6 +1278,7 @@ Copyright (c) 2015 François Bernier
 Copyright (c) 2015 Jonathan Reem
 Copyright (c) 2015 nwin
 Copyright (c) 2015 The Rust Project Developers
+Copyright (c) 2015 The rust-openssl-verify Developers
 Copyright (c) 2015-2018 The winapi-rs Developers
 Copyright (c) 2015-2020 The rust-hex Developers
 Copyright (c) 2016 Alex Crichton
@@ -1278,6 +1289,7 @@ Copyright (c) 2016 Jelte Fennema
 Copyright (c) 2016 Jerome Froelich
 Copyright (c) 2016 Joe Wilm
 Copyright (c) 2016 Martin Geisler
+Copyright (c) 2016 The fallible-streaming-iterator Developers
 Copyright (c) 2016 The roaring-rs developers.
 Copyright (c) 2016 The Rust Project Developers
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
@@ -1484,7 +1496,7 @@ TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
 ### `Zlib`
 
-Applies to 5 crate(s) (directly or via composite identifiers): bytemuck v1.25.0, foldhash v0.2.0, miniz_oxide v0.8.9, tinyvec v1.11.0, tinyvec_macros v0.1.1
+Applies to 6 crate(s) (directly or via composite identifiers): bytemuck v1.25.0, foldhash v0.1.5, foldhash v0.2.0, miniz_oxide v0.8.9, tinyvec v1.11.0, tinyvec_macros v0.1.1
 
 _Canonical text reproduced from upstream `SPDX:Zlib`:_
 

@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnosis terminal aktif dan cadangkan pembetulan (/fix <
 commands.restart.summary: "Mulakan semula ejen"
 commands.stop.summary: "Batalkan gesaan yang sedang berjalan"
 commands.sessions.summary: "Buka pemilih sesi sejarah (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Semak imbas dan pulihkan tab yang disimpan"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Pilih ejen untuk tab ini (/agent <id> untuk menukar terus)"  # {Locked="/agent","<id>"}
 
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────

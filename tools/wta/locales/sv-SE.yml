@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnostisera den aktiva terminalen och föreslå en korr
 commands.restart.summary: "Starta om agenten"
 commands.stop.summary: "Avbryt den pågående prompten"
 commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Bläddra och återställ sparade flikar"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Välj agenten för den här panelen (/agent <id> för att växla direkt)"  # {Locked="/agent","<id>"}
 
 # ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────

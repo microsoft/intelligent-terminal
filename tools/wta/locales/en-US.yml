@@ -89,6 +89,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Browse and restore saved tabs"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 commands.config.summary: "Configure this agent session"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}

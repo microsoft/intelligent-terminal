@@ -25,6 +25,7 @@
 #include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -179,6 +180,50 @@ static HRESULT CallJson(F&& call, Json::Value& out)
     return hr;
 }
 
+static std::string MethodDisplayName(std::string_view method)
+{
+    std::string displayName{ method };
+    for (auto& ch : displayName)
+    {
+        if (ch == '_')
+            ch = '-';
+    }
+    return displayName;
+}
+
+static bool SupportsMethod(ITerminalProtocol* server, std::string_view method, int& exitCode)
+{
+    Json::Value methods;
+    const auto hr = CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, methods);
+    const auto displayName = MethodDisplayName(method);
+
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities failed while checking %s support: 0x%08X\n",
+                displayName.c_str(),
+                static_cast<uint32_t>(hr));
+        exitCode = 1;
+        return false;
+    }
+    if (!methods.isArray())
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities returned malformed capabilities while checking %s support.\n",
+                displayName.c_str());
+        exitCode = 1;
+        return false;
+    }
+
+    for (const auto& supportedMethod : methods)
+    {
+        if (supportedMethod.isString() && supportedMethod.asString() == method)
+            return true;
+    }
+
+    fprintf(stderr, "[wtcli] Connected Terminal does not support %s.\n", displayName.c_str());
+    exitCode = 1;
+    return false;
+}
+
 static std::string GuidToString(const GUID& g)
 {
     wchar_t buf[40]{};
@@ -289,7 +334,6 @@ int main()
             exitCode = 1;
         return server;
     };
-
     // ── list-windows ──
     auto* listWindowsCmd = app.add_subcommand("list-windows", "List all windows")->alias("lsw");
     listWindowsCmd->callback([&]() {
@@ -410,6 +454,60 @@ int main()
         else
         {
             FormatPanesHuman(panes);
+        }
+    });
+
+    // ── list-shell-sessions ──
+    auto* listShellSessionsCmd = app.add_subcommand("list-shell-sessions", "List saved shell sessions");
+    listShellSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "list_shell_sessions", exitCode))
+            return;
+        Json::Value sessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListShellSessions(j); }, sessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListShellSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["shell_sessions"] = sessions;
+            PrintJson(result);
+        }
+        else
+        {
+            FormatShellSessionsHuman(sessions);
+        }
+    });
+
+    // ── restore-shell-session ──
+    std::string restoreShellSessionId;
+    std::string restoreShellSessionWindowId;
+    auto* restoreShellSessionCmd = app.add_subcommand("restore-shell-session", "Restore a saved shell session");
+    restoreShellSessionCmd->add_option("id", restoreShellSessionId, "Durable shell session ID")->required();
+    restoreShellSessionCmd->add_option("-w,--window-id", restoreShellSessionWindowId, "Target window ID");
+    restoreShellSessionCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "restore_shell_session", exitCode))
+            return;
+
+        uint64_t windowId = 0;
+        if (!restoreShellSessionWindowId.empty() && !TryParseU64(restoreShellSessionWindowId, windowId))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreShellSessionWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        wil::unique_bstr id{ Bstr(restoreShellSessionId) };
+        const auto hr = server->RestoreShellSession(windowId, id.get());
+        if (FAILED(hr)) { fprintf(stderr, "RestoreShellSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["id"] = restoreShellSessionId;
+            PrintJson(result);
         }
     });
 
@@ -792,15 +890,30 @@ int main()
         auto server = connect();
         if (!server) return;
         std::string resolvedSessionId;
-        if (!sendEventPaneTarget.empty())
+        const auto paneIdIsExplicit = !sendEventPaneTarget.empty();
+        if (paneIdIsExplicit)
         {
             resolvedSessionId = sendEventPaneTarget;
         }
         else
         {
-            // Fall back to the active pane as the event source. If there is no
-            // active pane, bail rather than sending with an all-zero GUID,
-            // which would silently misroute the event.
+            // No --pane given: fall back to the focused pane so the event
+            // still carries a concrete pane id, and bail if there isn't one
+            // rather than emitting an all-zero GUID.
+            //
+            // Delivery does not depend on this: SendEvent broadcasts to every
+            // subscriber and only filters by pane when a listener passes
+            // --target. The fallback exists because a *blank* pane id is
+            // actively harmful downstream — wta's session registry keys
+            // `active_by_pane` by pane id, so sessions arriving with an empty
+            // id all collide on one key and demote each other (see the
+            // post-mortem in tools/wta/src/helper/runtime.rs).
+            //
+            // The id is therefore a placeholder, not a claim about origin. An
+            // agent CLI spawned by wta-master has no WT_SESSION, so its hooks
+            // pass no --pane and would otherwise be attributed to whichever
+            // pane happens to be focused. `pane_bound` below records that
+            // distinction for consumers that bind per-pane state.
             const auto activeSid = ResolveSessionId(server.get(), "");
             if (IsEqualGUID(activeSid, GUID{}))
             {
@@ -811,7 +924,7 @@ int main()
             resolvedSessionId = GuidToString(activeSid);
         }
         Json::Value evt;
-        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
+        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, paneIdIsExplicit, evt))
         {
             fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
             exitCode = 1;

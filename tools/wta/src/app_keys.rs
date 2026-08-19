@@ -239,6 +239,105 @@ impl App {
             return;
         }
 
+        if self.current_tab().current_view == View::ShellSessions {
+            let tab_id = self.active_tab_key().to_string();
+            let count = self.current_tab().matching_shell_session_count();
+
+            if self.current_tab().shell_session_restore_in_flight
+                || self.current_tab().shell_session_delete_in_flight
+            {
+                return;
+            }
+            if let Some(id) = self.current_tab().shell_session_delete_confirmation.clone() {
+                match key.code {
+                    KeyCode::Char('y' | 'Y') => self.delete_shell_session(tab_id, id),
+                    KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                        self.current_tab_mut().shell_session_delete_confirmation = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            if self.current_tab().shell_sessions_search_focused {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Enter => {
+                        self.current_tab_mut().shell_sessions_search_focused = false;
+                    }
+                    KeyCode::Backspace => {
+                        self.current_tab_mut().shell_sessions_query.pop();
+                        self.current_tab_mut().reset_shell_session_selection();
+                    }
+                    KeyCode::Char(character)
+                        if !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        self.current_tab_mut().shell_sessions_query.push(character);
+                        self.current_tab_mut().reset_shell_session_selection();
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            match key.code {
+                KeyCode::Down => {
+                    let current = self
+                        .current_tab()
+                        .shell_sessions_list_state
+                        .selected()
+                        .unwrap_or(0);
+                    let next = if count == 0 {
+                        0
+                    } else {
+                        (current + 1).min(count - 1)
+                    };
+                    self.current_tab_mut()
+                        .shell_sessions_list_state
+                        .select((count > 0).then_some(next));
+                }
+                KeyCode::Up => {
+                    let current = self
+                        .current_tab()
+                        .shell_sessions_list_state
+                        .selected()
+                        .unwrap_or(0);
+                    self.current_tab_mut()
+                        .shell_sessions_list_state
+                        .select((count > 0).then_some(current.saturating_sub(1)));
+                }
+                KeyCode::Enter => {
+                    if let Some(index) = self.current_tab().shell_sessions_list_state.selected() {
+                        if let Some(session) =
+                            self.current_tab().matching_shell_session(index).cloned()
+                        {
+                            self.restore_shell_session(tab_id, session.id);
+                        }
+                    }
+                }
+                KeyCode::Delete | KeyCode::Char('d' | 'D') => {
+                    self.current_tab_mut().begin_selected_shell_session_delete();
+                }
+                KeyCode::Char('/') => {
+                    self.current_tab_mut().shell_sessions_search_focused = true;
+                }
+                KeyCode::Char('f' | 'F') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.current_tab_mut().shell_sessions_search_focused = true;
+                }
+                KeyCode::F(5) => {
+                    self.current_tab_mut().shell_sessions_loading = true;
+                    self.load_shell_sessions(tab_id);
+                }
+                KeyCode::Esc => {
+                    self.close_shell_sessions_view_for_tab(&tab_id);
+                    self.project_active_tab_state();
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // Agent session view: list navigation, Enter activation, search,
         // refresh, and Esc handling. Captures all input while open. View
         // open-state and the selection cursor are per-tab on `TabSession`
@@ -265,14 +364,14 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().agents_view.search_query.push(*character);
+                        self.current_tab_mut()
+                            .agents_view
+                            .search_query
+                            .push(*character);
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::F(5) => {}
+                    KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -536,8 +635,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
                         .current_tab()
@@ -566,8 +664,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() => {
                 let choices_len = self
                     .current_tab()
                     .turn
@@ -597,8 +694,7 @@ impl App {
             }
             KeyCode::Right
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_next_recommendation_action();
             }
@@ -629,8 +725,7 @@ impl App {
             }
             KeyCode::Left
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_previous_recommendation_action();
             }

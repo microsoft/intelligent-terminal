@@ -14,9 +14,9 @@
 
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session, AutofixTextKind, CancelRequest,
-    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, spawn_master_ext_pump,
+    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -1720,6 +1720,50 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
         .await;
 }
 
+/// The ext-request pump must serve requests off its own task, with no ACP
+/// session bound. That is what keeps a view opened during a cold handshake off
+/// the critical path of `session/new`, which waits on the agent CLI and can run
+/// for seconds. Regression guard: if this ever moves back into the main select
+/// loop, the request would not be picked up until `session/new` returned.
+#[tokio::test]
+async fn master_ext_pump_serves_requests_before_any_session_exists() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+            let (master_tx, master_rx) = mpsc::unbounded_channel();
+
+            spawn_master_ext_pump(
+                master_rx,
+                h.conn.clone(),
+                h.event_tx.clone(),
+                std::sync::Arc::clone(&tab_to_session),
+            );
+
+            master_tx
+                .send(MasterExtRequest::SessionsList {
+                    request_id: 11,
+                    rescan: false,
+                })
+                .expect("pump must be listening");
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentsSnapshotLoaded { request_id, .. })) => {
+                    assert_eq!(request_id, 11, "request_id must round-trip");
+                }
+                Ok(_) => panic!("expected AgentsSnapshotLoaded"),
+                Err(_) => panic!("pump did not serve the request"),
+            }
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "the pump must not need a bound session to answer"
+            );
+        })
+        .await;
+}
+
 /// `dispatch_master_ext_request(SessionFocus)` always emits
 /// `MasterMutationCompleted` with the request_id once the ext-method call
 /// returns, so the App can clear its pending-mutation state.
@@ -1827,15 +1871,21 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new(
-                "prior prompt".into(),
-            )),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(
+                acp::schema::v1::ContentChunk::new("prior prompt".into())
+                    .message_id("prior-message"),
+            ),
         ))
         .await
         .unwrap();
     match rx.try_recv() {
-        Ok(AppEvent::UserMessageReplayChunk { session_id, text }) => {
+        Ok(AppEvent::UserMessageReplayChunk {
+            session_id,
+            message_id,
+            text,
+        }) => {
             assert_eq!(session_id, "s1");
+            assert_eq!(message_id.as_deref(), Some("prior-message"));
             assert_eq!(text, "prior prompt");
         }
         _ => panic!("expected UserMessageReplayChunk"),

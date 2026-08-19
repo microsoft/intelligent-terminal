@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ఏజెంట్‌ను పునఃప్రారంభించండి"
 commands.stop.summary: "నడుస్తున్న ప్రాంప్ట్‌ను రద్దు చేయి"
 commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎంపికను తెరవండి (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "సేవ్ చేయబడిన ట్యాబ్‌లను బ్రౌజ్ చేయండి మరియు పునరుద్ధరించండి"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ఈ ట్యాబ్ కోసం ఏజెంట్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────

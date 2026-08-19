@@ -1288,6 +1288,11 @@ fn load_session_applied_when_target_tab_matches_owner() {
         Some("old-session"),
         "the previous session remains authoritative until load succeeds"
     );
+    assert!(app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].durable_session_id(),
+        Some("sess-abc")
+    );
     assert!(app.session_model_configs.contains_key("old-session"));
 }
 
@@ -1416,6 +1421,42 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
 }
 
 #[test]
+fn agent_connected_does_not_add_disclaimer_while_resuming() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".to_string(),
+        model: None,
+        version: None,
+        session_id: "sess-bootstrap".to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: true,
+    });
+
+    assert!(!app.tab_sessions["OWNER-TAB"]
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Disclaimer)));
+}
+
+#[test]
 fn set_agent_state_preserves_owner_pane_position() {
     let mut app = test_app();
     app.window_id = Some("window-1".into());
@@ -1513,21 +1554,59 @@ fn tab_error_clears_load_target() {
     assert!(app.tab_sessions["OWNER-TAB"]
         .loading_target_session_id
         .is_none());
+    assert!(!app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
 }
 
-/// Replayed history must be packed into collapsed CompletedTurn rows
-/// after session/load completes. Each User message opens a new turn;
-/// the prompt header is a short preview (the full original User text
-/// is kept as the first details entry so expanding shows everything).
-/// Subsequent non-User messages become later details. Default
-/// `expanded: false` so the resumed transcript doesn't dump as one
-/// long wall.
 #[test]
-fn pack_replayed_messages_groups_into_collapsed_turns() {
+fn tab_error_restores_the_previous_meaningful_session() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            session_id: Some("old-session".to_string()),
+            has_meaningful_conversation: true,
+            ..Default::default()
+        },
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "replacement-session",
+            "cwd": "",
+        }),
+    });
+    app.handle_event(AppEvent::TabError {
+        tab_id: "OWNER-TAB".to_string(),
+        message: "load failed".to_string(),
+    });
+
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].durable_session_id(),
+        Some("old-session")
+    );
+}
+
+/// Replayed history must be packed into CompletedTurn rows after session/load
+/// completes. Each User message opens a new turn and WTA's composed prompt is
+/// reduced back to the original user request.
+#[test]
+fn pack_replayed_messages_groups_into_expanded_turns() {
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::System("Resuming session abc...".to_string()),
-        ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+        ChatMessage::User(
+            r#"# Terminal Agent
+You are...
+
+## User Request
+get time"#
+                .to_string(),
+        ),
         ChatMessage::Agent("Hello, I am ready.".to_string()),
         ChatMessage::User("list files".to_string()),
         ChatMessage::ToolCall {
@@ -1556,26 +1635,85 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(tab.completed_turns.len(), 2);
 
     let t0 = &tab.completed_turns[0];
-    // Preview shows first non-empty line + ellipsis (extra lines below).
-    assert_eq!(t0.prompt, "# Terminal Agent…");
-    // details = [original full User, Agent reply].
-    assert_eq!(t0.details.len(), 2);
-    assert!(
-        matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are"))
-    );
-    assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
-    assert!(!t0.expanded, "replayed turn must default to collapsed");
+    assert_eq!(t0.prompt, "get time");
+    assert_eq!(t0.details.len(), 1);
+    assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
+    assert!(t0.expanded, "replayed turn must match live expanded rendering");
     assert!(t0.trailing_marker.is_none());
 
     let t1 = &tab.completed_turns[1];
     // Short single-line prompt — no ellipsis.
     assert_eq!(t1.prompt, "list files");
-    // details = [original User, ToolCall, Agent].
-    assert_eq!(t1.details.len(), 3);
-    assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
-    assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
-    assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
-    assert!(!t1.expanded);
+    assert_eq!(t1.details.len(), 2);
+    assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
+    assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
+    assert!(t1.expanded);
+}
+
+#[test]
+fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+    let mut tab = TabSession::default();
+    tab.messages = vec![
+        ChatMessage::User(
+            r#"# Terminal Agent
+...
+
+## User Request
+get time"#
+                .to_string(),
+        ),
+        ChatMessage::Agent(
+            r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [{
+    "choice": 1,
+    "title": "Get the current time",
+    "rationale": "Displays the current time.",
+    "actions": [{
+      "type": "send",
+      "parent": "old-pane-id",
+      "input": "Get-Date -Format 'HH:mm:ss'"
+    }]
+  }]
+}
+```"#
+                .to_string(),
+        ),
+    ];
+
+    tab.pack_replayed_messages_into_turns();
+
+    assert_eq!(tab.completed_turns.len(), 1);
+    let turn = &tab.completed_turns[0];
+    assert_eq!(turn.prompt, "get time");
+    assert!(turn.expanded);
+    assert_eq!(
+        turn.details,
+        vec![ChatMessage::Agent(
+            "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+        )]
+    );
+}
+
+#[test]
+fn render_replayed_turn_matches_live_expanded_conversation() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let tab = app.current_tab_mut();
+    tab.messages = vec![
+        ChatMessage::User(
+            "# Terminal Agent\nSYSTEM_PROMPT_MUST_NOT_RENDER\n\n## User Request\nREAL_USER_REQUEST"
+                .to_string(),
+        ),
+        ChatMessage::Agent("RESTORED_AGENT_REPLY".to_string()),
+    ];
+    tab.pack_replayed_messages_into_turns();
+
+    let rendered = render_to_text(&mut app, 80, 24);
+    assert!(rendered.contains("REAL_USER_REQUEST"));
+    assert!(rendered.contains("RESTORED_AGENT_REPLY"));
+    assert!(!rendered.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
 }
 
 /// Preview logic: huge single-line prompt must clip to the cap with
@@ -1613,7 +1751,7 @@ fn pack_replayed_messages_preserves_pre_user_orphans() {
     assert!(matches!(&tab.messages[1], ChatMessage::Agent(s) if s == "stray context dump"));
     assert_eq!(tab.completed_turns.len(), 1);
     assert_eq!(tab.completed_turns[0].prompt, "hi");
-    assert!(!tab.completed_turns[0].expanded);
+    assert!(tab.completed_turns[0].expanded);
 }
 
 /// Empty messages must no-op (no panic, no spurious turn).
@@ -1626,8 +1764,8 @@ fn pack_replayed_messages_empty_is_noop() {
 }
 
 /// Integration: SessionAttached for the load target must trigger
-/// packing — replayed User/Agent rows must end up as collapsed
-/// CompletedTurn entries, not loose ChatMessage rows.
+/// packing — replayed User/Agent rows must end up as expanded CompletedTurn
+/// entries, matching live chat rendering rather than loose ChatMessage rows.
 #[test]
 fn session_attached_for_load_target_packs_replayed_history() {
     let (mut app, _load_session_rx) = make_app_with_load_session_channel();
@@ -1668,10 +1806,10 @@ fn session_attached_for_load_target_packs_replayed_history() {
     assert_eq!(
         tab.completed_turns.len(),
         2,
-        "both replayed user prompts must become collapsed CompletedTurn rows"
+        "both replayed user prompts must become CompletedTurn rows"
     );
     for turn in &tab.completed_turns {
-        assert!(!turn.expanded, "replayed turns default collapsed");
+        assert!(turn.expanded, "replayed turns must match live expanded rendering");
     }
     // Resume is silent now — no "Resuming…" marker is posted, so after
     // packing the replayed User/Agent rows into turns nothing is left in
@@ -1681,6 +1819,133 @@ fn session_attached_for_load_target_packs_replayed_history() {
         "resume must not leave any loose chat messages, got {:?}",
         tab.messages
     );
+}
+
+#[test]
+fn replay_message_ids_preserve_user_only_recommendation_turns() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "# Terminal Agent\n\n## User Request\nos ".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("chat-turn".to_string()),
+        text: "## User Request\nhow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0].prompt, "os version");
+    assert!(turns[0].details.is_empty());
+    assert_eq!(turns[1].prompt, "how is the day");
+    assert_eq!(
+        turns[1].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+#[test]
+fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nhow are you".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "I am doing well.".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nos version".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-os-version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nlist file size".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-file-size".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nhow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 4);
+    assert_eq!(turns[0].prompt, "how are you");
+    assert_eq!(
+        turns[0].details,
+        vec![ChatMessage::Agent("I am doing well.".to_string())]
+    );
+    assert_eq!(turns[1].prompt, "os version");
+    assert!(turns[1].details.is_empty());
+    assert_eq!(turns[2].prompt, "list file size");
+    assert!(turns[2].details.is_empty());
+    assert_eq!(turns[3].prompt, "how is the day");
+    assert_eq!(
+        turns[3].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+fn app_loading_replayed_session() -> App {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.session_to_tab
+        .insert("sess-target".to_string(), "OWNER-TAB".to_string());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+    app
 }
 
 // ─── WtNotification auto-dismiss ────────────────────────────────────────
@@ -2043,6 +2308,49 @@ fn born_bound_registration_uses_current_master_request_sender() {
         }
         other => panic!("expected SessionBornBound, got {other:?}"),
     }
+}
+
+#[test]
+fn restored_shell_agent_session_registers_as_born_bound() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let agent_session_id = "8f924227-22df-4e54-aa18-3471107b567b";
+    let pane_id = "F6BAB379-8942-4F5F-9E7F-078EA1AB9463";
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "session_born_bound".to_string(),
+        pane_id: pane_id.to_string(),
+        tab_id: None,
+        params: json!({
+            "agent_session_id": agent_session_id,
+            "agent": "copilot",
+            "cwd": r"C:\project",
+        }),
+    });
+
+    let session = app
+        .agent_sessions
+        .get(&agent_session_id.to_string())
+        .expect("restored session should be live locally");
+    assert_eq!(session.status, crate::agent_sessions::AgentStatus::Idle);
+    assert_eq!(
+        session.pane_session_id.as_deref(),
+        Some("f6bab379-8942-4f5f-9e7f-078ea1ab9463")
+    );
+    assert_eq!(
+        session.cli_source,
+        crate::agent_sessions::CliSource::Copilot
+    );
+
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            event: crate::agent_sessions::SessionEvent::SessionStarted {
+                key,
+                pane_session_id,
+                ..
+            },
+        }) if key == agent_session_id && pane_session_id == pane_id
+    ));
 }
 
 #[test]
@@ -10854,6 +11162,74 @@ fn usage_projection_contains_context_cost_and_explicit_null() {
 }
 
 #[test]
+fn agent_state_projection_includes_agent_session_id() {
+    let mut tab = TabSession {
+        session_id: Some("agent-session-1".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+
+    let event = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        event["params"]["agent_session_id"],
+        serde_json::json!("agent-session-1")
+    );
+
+    tab.loading_target_session_id = Some("agent-session-2".to_string());
+    let loading = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        loading["params"]["agent_session_id"],
+        serde_json::json!("agent-session-2")
+    );
+
+    let cleared = super::app_status_projection::build_agent_state_changed_event(
+        "TAB-1",
+        &TabSession::default(),
+    );
+    assert!(cleared["params"]["agent_session_id"].is_null());
+}
+
+#[test]
+fn durable_session_id_requires_a_meaningful_conversation() {
+    let mut tab = TabSession {
+        session_id: Some("fresh-session".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(tab.durable_session_id(), None);
+
+    tab.has_meaningful_conversation = true;
+    assert_eq!(tab.durable_session_id(), Some("fresh-session"));
+}
+
+#[test]
+fn durable_session_id_uses_the_load_target_during_replay() {
+    let tab = TabSession {
+        loading_session: true,
+        loading_target_session_id: Some("loaded-session".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+    assert_eq!(tab.durable_session_id(), Some("loaded-session"));
+}
+
+#[test]
+fn submitting_a_prompt_marks_the_session_meaningful() {
+    let mut app = test_app();
+    app.turn_submit_prompt_for_tab(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: 1,
+            text: "hello".to_string(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+
+    assert!(app.current_tab().has_meaningful_conversation);
+}
+
+#[test]
 fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -10906,5 +11282,135 @@ fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
             cost: true,
             provider_metrics: false,
         }
+    );
+}
+
+fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::ShellSessionSummary {
+    crate::shell_session_store::ShellSessionSummary {
+        id: id.to_string(),
+        name: name.to_string(),
+        active_pane_cwd: r"C:\repo".to_string(),
+        last_used_at: 1,
+    }
+}
+
+#[test]
+fn shell_session_delete_requires_confirmation_and_dispatches_to_master() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    assert_eq!(
+        app.current_tab()
+            .shell_session_delete_confirmation
+            .as_deref(),
+        Some(id)
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT));
+    assert!(app.current_tab().shell_session_delete_in_flight);
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+            tab_id,
+            id: dispatched_id,
+            ..
+        }) if tab_id == DEFAULT_TAB_ID && dispatched_id == id
+    ));
+}
+
+#[test]
+fn shell_session_delete_confirmation_can_be_cancelled() {
+    let mut app = test_app();
+    let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().current_view, View::ShellSessions);
+    assert!(app
+        .current_tab()
+        .shell_session_delete_confirmation
+        .is_none());
+    assert!(!app.current_tab().shell_session_delete_in_flight);
+}
+
+#[test]
+fn shell_session_search_filters_navigation_and_restore() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let powershell_id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+    let empower_id = "b5671763-0c71-46bb-9374-d966751c9a00";
+    let cwd_id = "ef8e974d-ff11-407c-8372-a4742a2f6fa3";
+    {
+        let tab = app.current_tab_mut();
+        tab.current_view = View::ShellSessions;
+        let mut powershell = shell_session_record(powershell_id, "PowerShell");
+        powershell.active_pane_cwd = r"C:\Windows".to_string();
+        let mut empower = shell_session_record(empower_id, "empower");
+        empower.active_pane_cwd = r"C:\Windows".to_string();
+        let mut unrelated =
+            shell_session_record("1ee9352a-bd66-4353-bf88-cdf67d6089ce", "unrelated");
+        unrelated.active_pane_cwd = r"C:\Windows".to_string();
+        tab.shell_sessions = vec![
+            powershell,
+            empower,
+            crate::shell_session_store::ShellSessionSummary {
+                id: cwd_id.to_string(),
+                name: "cmd".to_string(),
+                active_pane_cwd: r"C:\repos\portal".to_string(),
+                last_used_at: 1,
+            },
+            unrelated,
+        ];
+        tab.shell_sessions_list_state.select(Some(0));
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().shell_sessions_query, "po");
+    assert_eq!(app.current_tab().matching_shell_session_count(), 3);
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(app.current_tab().shell_session_restore_in_flight);
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+            id,
+            ..
+        }) if id == cwd_id
+    ));
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::ShellSessionRestored {
+        tab_id: DEFAULT_TAB_ID.to_string(),
+        id: cwd_id.to_string(),
+        error: None,
+    });
+    assert!(!app.current_tab().shell_session_restore_in_flight);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().shell_sessions_query, "p");
+    assert_eq!(
+        app.current_tab().shell_sessions_list_state.selected(),
+        Some(0)
     );
 }

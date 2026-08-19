@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnosticar la terminal activa y sugerir una corrección
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar la petición en curso"
 commands.sessions.summary: "Abrir el selector de sesiones anteriores (Ctrl+Shift+/)"
+commands.tab_history.summary: "Explorar y restaurar pestañas guardadas"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Elige el agente para esta pestaña (/agent <id> para cambiar directamente)"  # {Locked="/agent","<id>"}
 
 # ── Ejecución de recomendaciones (src/coordinator.rs) ───────────────────────────

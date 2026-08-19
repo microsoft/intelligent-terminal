@@ -56,6 +56,7 @@ const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
+use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::LocalSet;
@@ -157,6 +158,7 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    shell_sessions: Option<crate::shell_session_store::ShellSessionStore>,
     session_mcp_endpoints: session_mcp::Endpoints,
     session_mcp_capabilities: session_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
@@ -310,15 +312,15 @@ struct MasterStateInner {
     /// and Gemini in another, and reaping one must not affect the other.
     ///
     /// When a helper resumes such a session (`--initial-load-session-id`
-    /// re-warm or `/restart`), `load_session` re-binds routing to the new
-    /// helper *directly* — no fresh `session/load` — because the CLI already
-    /// has it (a re-load would be rejected "already loaded", or, if the
-    /// orphan turn is still running, wedge behind it and hang the pane on
-    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
-    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
-    /// drops just that agent's set on CLI death, so a crashed-and-respawned
-    /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real `session/load` from disk.
+    /// re-warm or `/restart`), `load_session` uses `session/close` followed
+    /// by a real `session/load` on the same ACP connection so the replacement
+    /// helper receives the history replay. Agents without the close capability
+    /// retain the legacy route-only re-bind. Only recorded while the owning
+    /// CLI *instance* is still the live pool entry (checked via `Arc::ptr_eq`),
+    /// and `reap_agent` drops just that agent's set on CLI death, so a
+    /// crashed-and-respawned CLI under the same command line never re-binds
+    /// to a session it never had — such a resume falls back to a real
+    /// `session/load` from disk.
     orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
@@ -671,6 +673,16 @@ struct AgentCli {
     bound_helpers: Mutex<HashSet<HelperId>>,
 }
 
+impl AgentCli {
+    fn supports_session_close(&self) -> bool {
+        self.cached_init_resp
+            .agent_capabilities
+            .session_capabilities
+            .close
+            .is_some()
+    }
+}
+
 fn update_model_switch_channel_from_load(
     session_id: &acp::schema::v1::SessionId,
     response: &acp::schema::v1::LoadSessionResponse,
@@ -952,7 +964,8 @@ impl MasterClient {
 /// already live inside the CLI (not missing). Copilot reports this as a
 /// "… is already loaded" message under `-32602`; we match that stable
 /// substring (in message or data) rather than the code. `load_session`
-/// uses it to re-bind an orphan session instead of failing the resume.
+/// uses it to close and retry when supported, or to retain the legacy
+/// route-only re-bind for agents without `session/close`.
 fn is_already_loaded_error(err: &acp::Error) -> bool {
     let msg = err.message.to_ascii_lowercase();
     if msg.contains("already loaded") {
@@ -1344,6 +1357,7 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
 #[derive(Clone)]
 struct HelperHandler {
     helper_id: HelperId,
+    client_elevated: bool,
     /// The agent CLI this helper is bound to. Resolved lazily during
     /// `initialize` from the helper's declared `_meta.wta.agent_id`
     /// (+ `model`): the master reconstructs the command from that id and
@@ -2087,7 +2101,6 @@ impl HelperHandler {
                 .get_mut(&agent.cmd_key)
                 .is_some_and(|set| set.remove(&session_id))
         };
-
         // Both a re-bind and a real `session/load` resume the session; only a
         // genuine load failure rolls back. Resolve the response, then register
         // the resumed row once for either success path.
@@ -2100,7 +2113,7 @@ impl HelperHandler {
                 op = "load_session",
                 helper_id = ?self.helper_id,
                 session_id = ?session_id,
-                "re-binding orphan session without a session/load round-trip"
+                "re-binding orphan session because agent does not support session/close"
             );
             acp::schema::v1::LoadSessionResponse::new()
         } else {
@@ -2158,7 +2171,7 @@ impl HelperHandler {
                         op = "load_session",
                         helper_id = ?self.helper_id,
                         session_id = ?session_id,
-                        "re-binding session already loaded in the shared CLI"
+                        "re-binding already-loaded session because agent does not support session/close"
                     );
                     acp::schema::v1::LoadSessionResponse::new()
                 }
@@ -2301,7 +2314,7 @@ impl HelperHandler {
         }
 
         // Register the resumed row (Live + tagged) — shared by the real-load
-        // and orphan-re-bind paths.
+        // and legacy orphan-re-bind paths.
         let mut info =
             crate::session_registry::SessionInfo::new(session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
@@ -2548,7 +2561,21 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "routing ext_method"
         );
-        match crate::session_registry::parse_ext_request(args) {
+        let mut request = crate::session_registry::parse_ext_request(args);
+        if let Some(claimed_elevated) =
+            scope_shell_session_request(&mut request, self.client_elevated)
+        {
+            if claimed_elevated != self.client_elevated {
+                tracing::warn!(
+                    target: "shell_sessions",
+                    helper_id = ?self.helper_id,
+                    claimed_elevated,
+                    authenticated_elevated = self.client_elevated,
+                    "ignoring caller-controlled shell-session elevation scope"
+                );
+            }
+        }
+        match request {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
@@ -2559,6 +2586,10 @@ impl HelperHandler {
                 handle_session_resume_dispatched(&self.state, &p).await
             }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
+            Req::ShellSessionsList(p) => handle_shell_sessions_list(&self.state, p).await,
+            Req::ShellSessionSave(p) => handle_shell_session_save(&self.state, p).await,
+            Req::ShellSessionGet(p) => handle_shell_session_get(&self.state, p).await,
+            Req::ShellSessionDelete(p) => handle_shell_session_delete(&self.state, p).await,
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
                     .conn
@@ -2880,6 +2911,103 @@ fn create_master_pipe_instance(
     }
 }
 
+#[derive(Debug)]
+enum PipeClientElevationError {
+    Reject(anyhow::Error),
+    Fatal(anyhow::Error),
+}
+
+struct RevertImpersonationGuard {
+    active: bool,
+}
+
+impl RevertImpersonationGuard {
+    fn revert(mut self) -> std::io::Result<()> {
+        if unsafe { windows_sys::Win32::Security::RevertToSelf() } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for RevertImpersonationGuard {
+    fn drop(&mut self) {
+        if self.active {
+            unsafe {
+                windows_sys::Win32::Security::RevertToSelf();
+            }
+        }
+    }
+}
+
+struct OwnedWin32Handle(windows_sys::Win32::Foundation::HANDLE);
+
+impl Drop for OwnedWin32Handle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+fn connected_pipe_client_is_elevated(
+    pipe: &NamedPipeServer,
+) -> std::result::Result<bool, PipeClientElevationError> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Pipes::ImpersonateNamedPipeClient;
+    use windows_sys::Win32::System::Threading::{GetCurrentThread, OpenThreadToken};
+
+    let pipe_handle = pipe.as_raw_handle() as HANDLE;
+    if unsafe { ImpersonateNamedPipeClient(pipe_handle) } == 0 {
+        return Err(PipeClientElevationError::Reject(
+            anyhow::Error::new(std::io::Error::last_os_error())
+                .context("ImpersonateNamedPipeClient failed"),
+        ));
+    }
+    let revert_guard = RevertImpersonationGuard { active: true };
+
+    let elevation_result = (|| -> std::io::Result<bool> {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let token = OwnedWin32Handle(token);
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut returned = 0;
+        let ok = unsafe {
+            GetTokenInformation(
+                token.0,
+                TokenElevation,
+                &mut elevation as *mut TOKEN_ELEVATION as *mut std::ffi::c_void,
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned,
+            )
+        };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(elevation.TokenIsElevated != 0)
+    })();
+
+    if let Err(error) = revert_guard.revert() {
+        return Err(PipeClientElevationError::Fatal(
+            anyhow::Error::new(error).context("RevertToSelf failed after pipe impersonation"),
+        ));
+    }
+    elevation_result.map_err(|error| {
+        PipeClientElevationError::Reject(
+            anyhow::Error::new(error).context("failed to query pipe client token elevation"),
+        )
+    })
+}
+
 async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> {
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
@@ -2940,9 +3068,21 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
             .local_addr()
             .context("read master session MCP HTTP endpoint")?
     );
+    let shell_sessions = match crate::shell_session_store::ShellSessionStore::open_runtime().await {
+        Ok(store) => Some(store),
+        Err(error) => {
+            tracing::error!(
+                target: "shell_sessions",
+                error = %error,
+                "durable shell-session store unavailable; agent master will continue"
+            );
+            None
+        }
+    };
     let inner = Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
+        shell_sessions,
         session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
@@ -3094,27 +3234,73 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
-        let live = live_helpers.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        tracing::info!(
-            target: "master",
-            helper_id = ?helper_id,
-            live_helpers = live,
-            "helper pipe connected, dispatching to serve_helper"
-        );
-
         // Replace the connected instance with a fresh one so the next
         // helper can connect concurrently.
-        let connected = std::mem::replace(
+        let mut connected = std::mem::replace(
             &mut server,
             create_master_pipe_instance(&pipe_name, false, pipe_security.as_ref()).with_context(
                 || format!("failed to create follow-up pipe instance for '{pipe_name}'"),
             )?,
         );
 
+        let mut first_byte = [0u8; 1];
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            connected.read_exact(&mut first_byte),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    error = %error,
+                    "rejecting helper before elevation authentication"
+                );
+                continue;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    "rejecting helper that sent no request before authentication timeout"
+                );
+                continue;
+            }
+        }
+
+        let client_elevated = match connected_pipe_client_is_elevated(&connected) {
+            Ok(elevated) => elevated,
+            Err(PipeClientElevationError::Reject(error)) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    error = %error,
+                    "rejecting helper whose elevation could not be authenticated"
+                );
+                continue;
+            }
+            Err(PipeClientElevationError::Fatal(error)) => {
+                return Err(error.context(format!(
+                    "failed to safely revert impersonation for helper {helper_id:?}"
+                )));
+            }
+        };
+        let live = live_helpers.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        tracing::info!(
+            target: "master",
+            helper_id = ?helper_id,
+            client_elevated,
+            live_helpers = live,
+            "authenticated helper pipe, dispatching to serve_helper"
+        );
+
         let inner = Arc::clone(&inner);
         let live_helpers = Arc::clone(&live_helpers);
         tokio::task::spawn_local(async move {
-            let result = serve_helper(helper_id, connected, inner).await;
+            let result =
+                serve_helper(helper_id, client_elevated, first_byte, connected, inner).await;
             let live = live_helpers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1;
             match result {
                 Err(err) => tracing::warn!(
@@ -3651,6 +3837,8 @@ async fn reap_agent(
 /// forwarder until the helper disconnects.
 async fn serve_helper(
     helper_id: HelperId,
+    client_elevated: bool,
+    first_byte: [u8; 1],
     pipe: NamedPipeServer,
     state: Arc<MasterStateInner>,
 ) -> Result<()> {
@@ -3686,6 +3874,7 @@ async fn serve_helper(
 
     let handler = HelperHandler {
         helper_id,
+        client_elevated,
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
@@ -3697,7 +3886,7 @@ async fn serve_helper(
 
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
-    let incoming = read_half.compat();
+    let incoming = std::io::Cursor::new(first_byte).chain(read_half).compat();
 
     let builder = acp::Agent
         .builder()
@@ -3898,14 +4087,14 @@ async fn serve_helper(
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     // The dropped sessions are still loaded on the shared CLI — they're now
-    // orphans. Record them under the owning agent's key so a later resume
-    // re-binds directly instead of forwarding a `session/load` that the CLI
-    // rejects "already loaded" (or, mid-turn, wedges behind the running
-    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
-    // is STILL the live pool instance for its key. If that CLI already died
-    // (reaped, possibly respawned under the same command line), these
-    // sessions are gone — recording them would make a later resume skip the
-    // `session/load` the new CLI needs, binding to a session it never had.
+    // orphans. Record them under the owning agent's key so a later resume can
+    // close and reload them on the same ACP connection (or use the legacy
+    // route-only re-bind when the agent lacks session/close). Guard on
+    // `Arc::ptr_eq`: only record if the helper's bound CLI is STILL the live
+    // pool instance for its key. If that CLI already died (reaped, possibly
+    // respawned under the same command line), these sessions are gone —
+    // recording them would make a later resume skip the `session/load` the
+    // new CLI needs, binding to a session it never had.
     if !victims.is_empty() {
         if let Some(agent) = handler.agent.get() {
             let key = agent.cmd_key.clone();
@@ -4529,6 +4718,101 @@ async fn handle_sessions_list(
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
+
+fn scope_shell_session_request(
+    request: &mut crate::session_registry::WtaExtRequest,
+    authenticated_elevated: bool,
+) -> Option<bool> {
+    use crate::session_registry::WtaExtRequest as Req;
+    let claimed = match request {
+        Req::ShellSessionsList(params) => &mut params.elevated,
+        Req::ShellSessionSave(params) => &mut params.elevated,
+        Req::ShellSessionGet(params) => &mut params.elevated,
+        Req::ShellSessionDelete(params) => &mut params.elevated,
+        _ => return None,
+    };
+    let claimed_elevated = *claimed;
+    *claimed = authenticated_elevated;
+    Some(claimed_elevated)
+}
+
+fn shell_session_store(
+    state: &MasterStateInner,
+) -> acp::Result<&crate::shell_session_store::ShellSessionStore> {
+    state.shell_sessions.as_ref().ok_or_else(|| {
+        acp::Error::internal_error().data(serde_json::json!({
+            "reason": "shell-session store unavailable"
+        }))
+    })
+}
+
+fn shell_session_store_error(operation: &str, error: anyhow::Error) -> acp::Error {
+    tracing::warn!(target: "shell_sessions", operation, error = %error, "durable shell-session operation failed");
+    acp::Error::internal_error().data(serde_json::json!({
+        "operation": operation,
+        "message": error.to_string()
+    }))
+}
+
+async fn handle_shell_sessions_list(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionsListParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .list(params)
+        .await
+        .map_err(|error| shell_session_store_error("list", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_save(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionSaveParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .save(params)
+        .await
+        .map_err(|error| shell_session_store_error("save", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_get(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionGetParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let id = params.id.clone();
+    let response = shell_session_store(state)?
+        .get(params)
+        .await
+        .map_err(|error| shell_session_store_error("get", error))?
+        .ok_or_else(|| {
+            acp::Error::resource_not_found(None).data(serde_json::json!({
+                "id": id,
+                "reason": "durable shell session not found in elevation scope"
+            }))
+        })?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_delete(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionDeleteParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .delete(params)
+        .await
+        .map_err(|error| shell_session_store_error("delete", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
 
 /// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.
 ///
