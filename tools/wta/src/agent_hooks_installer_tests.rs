@@ -773,6 +773,22 @@ fn bash_exe() -> Option<&'static str> {
     })
 }
 
+/// Whether `wtcli.exe` resolves on `PATH`.
+///
+/// `symlink_metadata` rather than `is_file`: when Intelligent Terminal is
+/// installed, `wtcli.exe` on `PATH` is an MSIX app-execution alias — a
+/// zero-length reparse point that following metadata calls can fail to resolve.
+fn hook_bridge_on_path() -> bool {
+    static FOUND: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FOUND.get_or_init(|| {
+        let Some(path) = std::env::var_os("PATH") else {
+            return false;
+        };
+        std::env::split_paths(&path)
+            .any(|dir| std::fs::symlink_metadata(dir.join("wtcli.exe")).is_ok())
+    })
+}
+
 /// Runs a command line the way a CLI would dispatch it. Returns `None` when the
 /// shell is unavailable on this machine.
 fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Output> {
@@ -814,8 +830,20 @@ fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Out
 /// This is the check that would have caught the `cmd /c "…"` spelling: under
 /// bash, MSYS path conversion mangled `/c`, so `cmd.exe` started interactively
 /// and echoed the hook payload instead of running the bridge.
+///
+/// Requires `wtcli.exe` on `PATH`, and skips when it is absent — CI runs
+/// `cargo test` without building the C++ `wtcli`, and an uninstalled machine
+/// has no app-execution alias either. Skipping loses nothing this test can
+/// actually assert: with no bridge to reach, a guarded command passes
+/// vacuously because its own guard absorbs the miss, and a bare one fails for a
+/// reason that has nothing to do with its spelling. Behaviour without the
+/// bridge is the subject of the `*_exit_zero_when_the_bridge_is_missing` tests,
+/// which substitute [`MISSING_BRIDGE`] so they hold either way.
 #[test]
 fn bundled_hook_commands_run_in_every_shell() {
+    if !hook_bridge_on_path() {
+        return;
+    }
     for (cli, hooks) in [
         ("copilot", COPILOT_HOOKS_JSON),
         ("codex", CODEX_HOOKS_JSON),
