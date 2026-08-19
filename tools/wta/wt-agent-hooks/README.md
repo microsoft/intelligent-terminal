@@ -281,12 +281,33 @@ to write the PowerShell guard straight into `command`:
 }
 ```
 
-Codex keeps the bare spelling, and does not need a guard for a different
-reason: its marketplace entry points directly at the package directory, so an
-uninstall takes the plugin with it and the hook never loads. Its hook shell also
-could not be established from its docs, its source, or a local probe, so writing
-shell-specific syntax there would be a guess — and a wrong guess breaks the
-working path, which is how this bundle broke twice already.
+Codex has neither field pair nor a `shell` field either, and needs the same
+PowerShell guard as Gemini:
+
+```json
+{
+  "type": "command",
+  "command": "try { wtcli.exe agent-hook --cli-source codex --event <topic> } catch { }; exit 0"
+}
+```
+
+Codex shipped the bare spelling until 0.1.5, on the theory that its marketplace
+entry points at the package directory, so an uninstall would take the plugin
+with it and the hook would never load. A manual run disproved that: Codex keeps
+its own copy under `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`,
+outside the package, and `enabled = true` plus the trusted hashes stay in
+`~/.codex/config.toml`. With the bridge gone the hooks still load, still run,
+and Codex reports every one of them in the conversation:
+
+```text
+• UserPromptSubmit hook (failed)
+  error: hook exited with code 1
+```
+
+That exit code is also what settles the shell. An unresolvable command exits 1
+under PowerShell, 9009 under `cmd.exe`, and 127 under bash, which confirms the
+`pwsh.exe -NoProfile -Command` dispatch already recorded in the shell table
+above — so the guard is written for PowerShell rather than guessed.
 
 Current state with the bridge missing:
 
@@ -295,8 +316,8 @@ Current state with the bridge missing:
 | Copilot | `powershell` / `bash` fields, no bare `command` | exit 0, silent |
 | Claude | `shell: "bash"` + `command -v` guard | exit 0, silent |
 | Gemini | PowerShell guard in `command` | exit 0, silent |
+| Codex | PowerShell guard in `command` | exit 0, silent |
 | OpenCode | JS `try`/`catch`, output ignored | exit 0, silent |
-| Codex | plugin is removed with the package | hook never loads |
 
 OpenCode needs none of this: its plugin spawns `wtcli.exe` through an argv array
 rather than a shell string, already gates on `WT_COM_CLSID` / `WT_SESSION`,

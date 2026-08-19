@@ -595,7 +595,10 @@ fn bundle_hooks_thread_cli_source() {
 /// such field, so its single-shell guarantee is recorded here instead — see
 /// `gemini_hooks_exit_zero_when_the_bridge_is_missing` for the source evidence
 /// that Gemini only ever dispatches through PowerShell on Windows.
-const SINGLE_SHELL_BUNDLES: [(&str, HookShell); 1] = [("gemini", HookShell::PowerShell)];
+const SINGLE_SHELL_BUNDLES: [(&str, HookShell); 2] = [
+    ("gemini", HookShell::PowerShell),
+    ("codex", HookShell::PowerShell),
+];
 
 /// The shell a hook handler is written for, if it is not meant to be portable:
 /// either declared inline with Claude's `shell` field, or recorded for a bundle
@@ -656,13 +659,17 @@ fn pinned_shell_commands(cli: &str, hooks_json: &str) -> Vec<(HookShell, String)
 #[test]
 fn hook_commands_are_shell_agnostic() {
     // Whether a bundle is expected to carry a portable `command` at all.
-    // claude and gemini pin a shell, so their command is deliberately written
-    // for that one shell and `shell_agnostic_commands` skips them. Copilot
-    // ships only per-shell handlers, so it has no portable fallback at all.
-    // Codex is the last bundle whose command really does have to run anywhere.
+    // Every bundle now pins the shell its command is written for, so
+    // `shell_agnostic_commands` skips them all and this test asserts the
+    // absence rather than the shape. Codex was the last portable one until a
+    // manual run showed its hooks survive an uninstall in Codex's own plugin
+    // cache and fail loudly there — see
+    // `codex_hooks_exit_zero_when_the_bridge_is_missing`. The loop below is
+    // kept so a bundle that reintroduces a portable `command` is still held to
+    // the every-shell contract instead of quietly skipping it.
     for (cli, hooks, portable) in [
         ("copilot", COPILOT_HOOKS_JSON, false),
-        ("codex", CODEX_HOOKS_JSON, true),
+        ("codex", CODEX_HOOKS_JSON, false),
         ("gemini", GEMINI_HOOKS_JSON, false),
         ("claude", CLAUDE_HOOKS_JSON, false),
     ] {
@@ -947,6 +954,59 @@ fn gemini_hooks_exit_zero_when_the_bridge_is_missing() {
         assert!(
             out.stdout.is_empty() && out.stderr.is_empty(),
             "gemini hook must stay silent with no bridge installed: {uninstalled}\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+/// Codex was the last bundle shipping the bare spelling. The bundle README
+/// justified that with "its marketplace entry points directly at the package
+/// directory, so an uninstall takes the plugin with it and the hook never
+/// loads" — which a manual run disproved: Codex keeps its own copy under
+/// `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`, outside the
+/// package, and keeps `enabled = true` plus the trusted hashes in
+/// `~/.codex/config.toml`. With the bridge gone the hooks therefore still load
+/// and still run, and Codex renders each miss in the conversation itself:
+///
+/// ```text
+/// • UserPromptSubmit hook (failed)
+///   error: hook exited with code 1
+/// ```
+///
+/// That exit code also settles which shell Codex dispatches through, which the
+/// README had recorded two contradictory answers for. A command that cannot be
+/// resolved exits 1 under PowerShell, 9009 under `cmd.exe`, and 127 under bash
+/// — so PowerShell it is, and the Gemini-shaped guard is the right one.
+#[test]
+fn codex_hooks_exit_zero_when_the_bridge_is_missing() {
+    let pinned = pinned_shell_commands("codex", CODEX_HOOKS_JSON);
+    assert!(
+        !pinned.is_empty(),
+        "codex must pin its hook shell so its guard cannot run under the wrong one"
+    );
+    for (shell, command) in pinned {
+        assert!(
+            matches!(shell, HookShell::PowerShell),
+            "codex hooks are dispatched through PowerShell: {command}"
+        );
+        assert!(
+            command.starts_with("try { wtcli.exe agent-hook ")
+                && command.ends_with("} catch { }; exit 0"),
+            "codex hook must wrap the bridge in a PowerShell guard: {command}"
+        );
+        let uninstalled = command.replace("wtcli.exe", MISSING_BRIDGE);
+        let Some(out) = run_hook_command(shell, &uninstalled) else {
+            continue;
+        };
+        assert!(
+            out.status.success(),
+            "codex hook must exit 0 with no bridge installed: {uninstalled}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.stdout.is_empty() && out.stderr.is_empty(),
+            "codex hook must stay silent with no bridge installed: {uninstalled}\nstdout: {}\nstderr: {}",
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
