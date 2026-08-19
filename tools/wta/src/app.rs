@@ -362,6 +362,7 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "toolName",
     "tool_input",
     "message",
+    "notification_type",
     "reason",
     "error",
 ];
@@ -615,14 +616,44 @@ where
             return reg.take_dirty();
         }
         "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => SessionEvent::Notification {
-            key,
-            message: payload
-                .get("message")
+        "agent.notification" => {
+            // Not every notification means "the agent is blocked on you".
+            // Claude's `Notification` hook covers two cases, distinguished by
+            // `notification_type`:
+            //
+            //   * `permission_prompt` — the agent wants approval for a tool.
+            //     Genuinely Attention: nothing proceeds until the user acts.
+            //   * `idle_prompt` — the agent already finished its turn and has
+            //     simply been sitting at an empty prompt for 60s. It fires
+            //     *after* `agent.stop` has correctly moved the row to Idle, so
+            //     treating it as Attention parks every session at "Claude is
+            //     waiting for your input" between turns.
+            //
+            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
+            // turn-end transition, the same division of labour the tool
+            // completion arm above relies on. Deliberately *not* mapped to
+            // Idle: an unanswered `permission_prompt` also goes idle after
+            // 60s, and demoting that row would hide a pending approval.
+            //
+            // Unknown types stay Attention on purpose. Over-reporting costs a
+            // stale badge the next event clears; under-reporting loses a
+            // permission request with no other signal that it happened.
+            let notification_type = payload
+                .get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                return reg.take_dirty();
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
             key,
             reason: payload

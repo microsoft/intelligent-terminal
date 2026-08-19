@@ -588,6 +588,202 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
     );
 }
 
+/// Claude's `Notification` hook fires for two unrelated situations and only
+/// `notification_type` tells them apart. `idle_prompt` arrives ~60s *after*
+/// `agent.stop` already moved the row to Idle, so routing it to Attention
+/// parked every Claude session at "Claude is waiting for your input" between
+/// turns. Payload shape below is copied from a real capture.
+#[test]
+fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    reg.apply(SessionEvent::SessionStarted {
+        key: "claude-sid".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "ee1b7549-2c86-47a1-9337-38753ddc03fc".into(),
+        cwd: std::path::PathBuf::from("/work"),
+        title: "claude".into(),
+    });
+    reg.take_dirty();
+
+    let pane = "ee1b7549-2c86-47a1-9337-38753ddc03fc";
+    let turn_end = json!({
+        "event": "agent.stop",
+        "cli_source": "claude",
+        "agent_session_id": "claude-sid",
+        "payload": {}
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &turn_end, |_| {});
+    assert_eq!(
+        reg.get(&"claude-sid".to_string()).unwrap().status,
+        AgentStatus::Idle,
+        "precondition: agent.stop owns the turn-end transition",
+    );
+
+    let idle_prompt = json!({
+        "event": "agent.notification",
+        "cli_source": "claude",
+        "agent_session_id": "claude-sid",
+        "payload": {
+            "cwd": "C:\\Users\\yuazha",
+            "message": "Claude is waiting for your input",
+            "notification_type": "idle_prompt",
+            "session_id": "claude-sid"
+        }
+    });
+    let mut published: Vec<SessionEvent> = Vec::new();
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &idle_prompt, |ev| {
+        published.push(ev)
+    });
+
+    let s = reg.get(&"claude-sid".to_string()).unwrap();
+    assert_eq!(
+        s.status,
+        AgentStatus::Idle,
+        "idle_prompt means the agent is idle, not blocked on the user",
+    );
+    assert!(
+        s.attention_reason.is_none(),
+        "idle_prompt must not leave an attention reason on the row",
+    );
+    assert!(
+        !published
+            .iter()
+            .any(|ev| matches!(ev, SessionEvent::Notification { .. })),
+        "a dropped notification must not be published to master either",
+    );
+}
+
+/// The other half of the same discriminator: a permission request is the case
+/// Attention exists for, and it must survive the `idle_prompt` filter.
+#[test]
+fn claude_permission_prompt_notification_still_sets_attention() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    reg.apply(SessionEvent::SessionStarted {
+        key: "claude-sid".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
+        cwd: std::path::PathBuf::from("/work"),
+        title: "claude".into(),
+    });
+    reg.take_dirty();
+
+    let params = json!({
+        "event": "agent.notification",
+        "cli_source": "claude",
+        "agent_session_id": "claude-sid",
+        "payload": {
+            "message": "Claude needs your permission to use Bash",
+            "notification_type": "permission_prompt"
+        }
+    });
+    route_agent_event_to_registry_with_hook_sink(
+        &mut reg,
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        &params,
+        |_| {},
+    );
+
+    let s = reg.get(&"claude-sid".to_string()).unwrap();
+    assert_eq!(s.status, AgentStatus::Attention);
+    assert_eq!(
+        s.attention_reason.as_deref(),
+        Some("Claude needs your permission to use Bash"),
+    );
+}
+
+/// The filter is a denylist of one known-inert type, not an allowlist of known
+/// types: CLIs that send no `notification_type` at all (Copilot, Gemini,
+/// OpenCode) and any type Claude adds later must keep reaching Attention.
+/// Under-reporting silently loses an approval request; over-reporting only
+/// costs a badge the next event clears.
+#[test]
+fn notification_without_a_known_type_still_sets_attention() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    for payload in [
+        json!({ "message": "approve: rm -rf foo" }),
+        json!({ "message": "something new", "notification_type": "some_future_prompt" }),
+    ] {
+        let mut reg = AgentSessionRegistry::new();
+        reg.apply(SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "t".into(),
+        });
+        reg.take_dirty();
+
+        let params = json!({
+            "event": "agent.notification",
+            "cli_source": "copilot",
+            "agent_session_id": "sid",
+            "payload": payload,
+        });
+        route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            &params,
+            |_| {},
+        );
+
+        assert_eq!(
+            reg.get(&"sid".to_string()).unwrap().status,
+            AgentStatus::Attention,
+            "unknown notification types must fail toward visibility",
+        );
+    }
+}
+
+/// Why `idle_prompt` is dropped rather than mapped to Idle: an unanswered
+/// permission prompt also goes idle after 60s, so mapping it would clear a
+/// pending approval that is still blocking the agent.
+#[test]
+fn idle_prompt_does_not_demote_a_pending_permission_prompt() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    reg.apply(SessionEvent::SessionStarted {
+        key: "claude-sid".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".into(),
+        cwd: std::path::PathBuf::from("/work"),
+        title: "claude".into(),
+    });
+    reg.apply(SessionEvent::Notification {
+        key: "claude-sid".into(),
+        message: "Claude needs your permission to use Bash".into(),
+    });
+    reg.take_dirty();
+
+    let idle_prompt = json!({
+        "event": "agent.notification",
+        "cli_source": "claude",
+        "agent_session_id": "claude-sid",
+        "payload": {
+            "message": "Claude is waiting for your input",
+            "notification_type": "idle_prompt"
+        }
+    });
+    route_agent_event_to_registry_with_hook_sink(
+        &mut reg,
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        &idle_prompt,
+        |_| {},
+    );
+
+    let s = reg.get(&"claude-sid".to_string()).unwrap();
+    assert_eq!(
+        s.status,
+        AgentStatus::Attention,
+        "a pending approval must outlive the idle notification that follows it",
+    );
+    assert_eq!(
+        s.attention_reason.as_deref(),
+        Some("Claude needs your permission to use Bash"),
+    );
+}
+
 #[test]
 fn session_info_to_agent_session_preserves_live_agent_pane_session_fields() {
     // Regression: master's new_session/load_session handlers stamp
