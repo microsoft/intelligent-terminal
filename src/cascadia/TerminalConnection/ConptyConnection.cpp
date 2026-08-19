@@ -79,15 +79,22 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
             }
 
-            // Keep the log path available to pre-0.1.5 hook bundles while
-            // startup auto-upgrade replaces their PowerShell bridge with
-            // `wtcli agent-hook`. Inject it after regenerate() on the
-            // per-connection environment so concurrent pane launches cannot
-            // race. The only reader is the deleted `send-event.ps1`, which can
-            // still be cached on disk for one agent lifetime after an upgrade.
+            // Directory hook integrations may write diagnostics into.
             //
-            // RETIREMENT (#620): delete once no supported upgrade path can
-            // leave a pre-0.1.5 wt-agent-hooks bundle installed.
+            // Two consumers, with different lifetimes. The pre-0.1.5 PowerShell
+            // bridge wrote its ENTER/DISPATCHED trace here and can still be
+            // cached on disk for one agent lifetime after an upgrade replaces
+            // it. The OpenCode plugin also writes here, permanently: it spawns
+            // the bridge by argv and cannot report a spawn failure through the
+            // bridge itself, so a plain file is the only channel that survives
+            // the failure it is describing.
+            //
+            // Injected after regenerate() on the per-connection environment so
+            // concurrent pane launches cannot race.
+            //
+            // RETIREMENT (#620): the pre-0.1.5 reader goes away once no
+            // supported upgrade path can leave that bundle installed. The
+            // variable itself must stay for the OpenCode plugin.
             {
                 const auto wtaLogDir = ::IntelligentTerminal::LogDirVersioned();
                 if (!wtaLogDir.empty())

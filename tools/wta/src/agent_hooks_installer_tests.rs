@@ -1283,7 +1283,7 @@ fn native_hook_bundle_versions_stay_in_sync() {
         let value: Value = serde_json::from_str(manifest).unwrap();
         assert_eq!(
             value.get("version").and_then(Value::as_str),
-            Some("0.1.7")
+            Some("0.1.5")
         );
     }
 
@@ -1296,7 +1296,7 @@ fn native_hook_bundle_versions_stay_in_sync() {
                 .and_then(|plugins| plugins.first())
                 .and_then(|plugin| plugin.get("version"))
                 .and_then(Value::as_str),
-            Some("0.1.7")
+            Some("0.1.5")
         );
     }
 }

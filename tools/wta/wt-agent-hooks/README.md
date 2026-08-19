@@ -330,7 +330,7 @@ wta hooks install --cli opencode
 | Hooks not firing (Claude)        | `~/.claude/logs/*.log` (or `claude --debug`); search for `hook` / `wt-agent-hooks`.         |
 | Hooks not firing (Copilot)       | `~/.copilot/logs/process-*.log`; verify `Loaded N hook(s) from M plugin(s)`.                |
 | Hooks not firing (Gemini)        | `~/.gemini/logs/*.log` and `gemini extensions list`.                                        |
-| Hooks not firing (OpenCode)      | Verify `~/.config/opencode/plugins/wt-agent-hooks.js` contains the managed-file marker.      |
+| Hooks not firing (OpenCode)      | `hook-trace.log` in the WTA log directory — the plugin records every spawn failure there. A present, correct `wt-agent-hooks.js` proves nothing on its own: the plugin spawns `wtcli` by argv, so it cannot resolve the MSIX app-execution alias on `PATH` and depends on the injected `WTCLI_PATH`. |
 | Events not reaching WTA          | `%LOCALAPPDATA%\IntelligentTerminal\logs\wta-ensure-host.log` — search for `agent_event`.   |
 | Wrong `cli_source` reported      | Check `hooks.json` in the installed plugin folder — every command must contain `--cli-source <name>`. |
 
@@ -357,6 +357,6 @@ Gemini has no marketplace concept and reads the extension folder directly.
   upgrade, which is why `agent_hooks_installer` re-runs marketplace
   registration on every wta startup and strips stale entries before
   reinstalling.
-- **Codex must re-trust the 0.1.7 commands once.** Codex hashes each hook
+- **Codex must re-trust the 0.1.5 commands once.** Codex hashes each hook
   command for trust, so replacing the PowerShell command with
   `wtcli agent-hook` requires reviewing the updated plugin through `/hooks`.

@@ -26,8 +26,13 @@ function bridgeCommand() {
 
 // A spawn failure here must never disturb OpenCode, but it must not be
 // invisible either: this exact failure shipped once and left no trace anywhere,
-// because the handler was empty. Terminal already injects the hook log
-// directory, so record it there and carry on.
+// because the handler was empty.
+//
+// Written straight to a file rather than reported through the bridge, because
+// the thing being reported IS the bridge being unreachable — any channel that
+// went through wtcli or the protocol server would fail for the same reason.
+// Terminal already injects the directory, and the bug report tars that tree
+// recursively.
 function noteBridgeFailure(topic, error) {
   try {
     const dir = process.env.WTA_HOOK_LOG_DIR

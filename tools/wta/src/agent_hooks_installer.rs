@@ -4283,7 +4283,7 @@ fn upgrade_claude(home: &Path) -> bool {
 /// re-run the same uninstall + install flow used at first-run.
 ///
 /// Trust hashes recorded in `~/.codex/config.toml` normally survive the
-/// reinstall while hook commands stay unchanged. Bundle 0.1.7 intentionally
+/// reinstall while hook commands stay unchanged. Bundle 0.1.5 intentionally
 /// changed them from PowerShell to `wtcli agent-hook`, so existing users must
 /// approve the new native commands once through `/hooks`.
 fn upgrade_codex(home: &Path) -> bool {
