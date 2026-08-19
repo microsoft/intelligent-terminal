@@ -4,19 +4,23 @@ use std::cell::Cell;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use tui_markdown::{Options as MarkdownOptions, StyleSheet};
+use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::app::{
     App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput,
 };
-#[cfg(test)]
-use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
+fn activity_label() -> String {
+    t!("chat.activity_thinking").into_owned()
+}
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
@@ -123,7 +127,9 @@ fn tool_detail_lines(
     let mut omitted = false;
     if detailed {
         for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
-            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            let suffix = location
+                .line
+                .map_or_else(String::new, |line| format!(":{line}"));
             lines.push(format!("    {}{suffix}", location.path));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
@@ -168,7 +174,9 @@ fn tool_detail_lines(
                 }
             }
             ToolCallContent::Attachment { label, uri } => {
-                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                let target = uri
+                    .as_deref()
+                    .map_or_else(String::new, |uri| format!(" · {uri}"));
                 lines.push(format!("    ↳ {label}{target}"));
             }
         }
@@ -234,15 +242,169 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // it off the top of the visible chat block. Always a single row —
     // terminal min-width guarantees the localized title fits without
     // wrapping.
-    let welcome = if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
+    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
         1
     } else {
         0
     };
 
-    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    (messages + turns + pending + welcome)
+        .max(1)
+        .min(u16::MAX as usize) as u16
+}
+
+#[derive(Clone)]
+struct AgentMarkdownStyleSheet;
+
+impl StyleSheet for AgentMarkdownStyleSheet {
+    fn heading(&self, _level: u8) -> Style {
+        theme::MARKDOWN_HEADING
+    }
+
+    fn code(&self) -> Style {
+        theme::MARKDOWN_CODE
+    }
+
+    fn link(&self) -> Style {
+        theme::MARKDOWN_LINK
+    }
+
+    fn blockquote(&self) -> Style {
+        theme::MARKDOWN_QUOTE
+    }
+
+    fn heading_meta(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn metadata_block(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn table_header(&self) -> Style {
+        theme::MARKDOWN_TABLE_HEADER
+    }
+
+    fn table_cell(&self) -> Style {
+        theme::AGENT_TEXT
+    }
+
+    fn table_border(&self) -> Style {
+        theme::MARKDOWN_TABLE_BORDER
+    }
+
+    fn heading_marker(&self, _level: u8) -> &str {
+        ""
+    }
+
+    fn code_block_fence(&self) -> &str {
+        ""
+    }
+}
+
+#[derive(Clone, Copy)]
+struct StyledChar {
+    value: char,
+    style: Style,
+}
+
+fn styled_chars_to_line(chars: &[StyledChar]) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for styled in chars {
+        if let Some(span) = spans.last_mut().filter(|span| span.style == styled.style) {
+            span.content.to_mut().push(styled.value);
+        } else {
+            spans.push(Span::styled(styled.value.to_string(), styled.style));
+        }
+    }
+    Line::from(spans)
+}
+
+fn wrap_markdown_line(line: Line<'_>, width: usize) -> Vec<Line<'static>> {
+    let base_style = theme::AGENT_TEXT.patch(line.style);
+    let chars: Vec<StyledChar> = line
+        .spans
+        .into_iter()
+        .flat_map(|span| {
+            let style = base_style.patch(span.style);
+            span.content
+                .into_owned()
+                .chars()
+                .map(move |value| StyledChar { value, style })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    if chars.is_empty() {
+        return vec![Line::default()];
+    }
+
+    let width = width.max(1);
+    let mut wrapped = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let mut end = start;
+        let mut cells = 0;
+        let mut last_whitespace = None;
+        while end < chars.len() {
+            let char_width = UnicodeWidthChar::width(chars[end].value).unwrap_or(0);
+            if end > start && cells + char_width > width {
+                break;
+            }
+            cells += char_width;
+            if chars[end].value.is_whitespace() {
+                last_whitespace = Some(end);
+            }
+            end += 1;
+            if cells >= width {
+                break;
+            }
+        }
+
+        let next = if end < chars.len() {
+            last_whitespace
+                .filter(|index| *index > start)
+                .unwrap_or(end)
+        } else {
+            end
+        };
+        wrapped.push(styled_chars_to_line(&chars[start..next]));
+        start = next;
+        while start < chars.len() && chars[start].value.is_whitespace() {
+            start += 1;
+        }
+    }
+    wrapped
+}
+
+fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<Line<'static>> {
+    let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+    let markdown = tui_markdown::from_str_with_options(text.trim_start_matches('\n'), &options);
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let mut lines = Vec::new();
+    let mut first_row = true;
+
+    for logical_line in markdown.lines {
+        for mut line in wrap_markdown_line(logical_line, body_width) {
+            if line.width() == 0 {
+                if !first_row {
+                    lines.push(Line::default());
+                }
+                continue;
+            }
+
+            let mut spans = Vec::with_capacity(line.spans.len() + 1);
+            if first_row {
+                spans.push(Span::styled("● ", dot_style));
+                first_row = false;
+            } else {
+                spans.push(Span::raw("  "));
+            }
+            spans.append(&mut line.spans);
+            lines.push(Line::from(spans));
+        }
+    }
+    lines
 }
 
 #[cfg(test)]
@@ -299,7 +461,8 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+    {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -442,18 +605,17 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
+    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+        let mut welcome_lines = vec![Line::from(vec![
+            Span::styled(
+                "● ",
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                t!("chat.welcome_title").into_owned(),
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+        ])];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
@@ -474,12 +636,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let buffer = frame.buffer_mut();
     for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
-        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
+        if let Some(header_row) = header_from_top
+            .checked_sub(scroll)
+            .filter(|row| *row < visible_height)
         {
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
             if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+                .find(|column| {
+                    buffer
+                        .cell((*column, row))
+                        .is_some_and(|cell| cell.symbol() == symbol)
+                })
             {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
                     start_column: column,
@@ -761,10 +929,7 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(
-        &label,
-        tab.activity_frame,
-    ));
+    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -845,13 +1010,7 @@ fn build_message_lines_with_details<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
-            push_dot_prefixed_lines(
-                &mut lines,
-                text,
-                wrap_width,
-                theme::DOT_AGENT,
-                theme::AGENT_TEXT,
-            );
+            lines.extend(agent_markdown_lines(text, wrap_width, theme::DOT_AGENT));
             if !agent_streaming || !is_last_message {
                 lines.push(Line::default());
             }
@@ -999,7 +1158,10 @@ fn build_message_lines_with_details<'a>(
             }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(
+                t!("chat.plan_header").into_owned(),
+                theme::PLAN_STYLE,
+            )));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -1302,6 +1464,24 @@ mod tests {
     }
 
     #[test]
+    fn agent_message_renders_multiline_markdown_with_theme_relative_styles() {
+        let message =
+            ChatMessage::Agent("# Heading\n\nFirst **bold** line\n\nSecond paragraph".into());
+
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+
+        assert_eq!(line_text(&lines[0]), "● Heading");
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line) == "  Second paragraph"));
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold"
+                && span.style.fg == Some(Color::Reset)
+                && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
+    }
+
+    #[test]
     fn expanded_turn_height_matches_rendered_detail_endings() {
         let cases = [
             (
@@ -1414,7 +1594,10 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+        assert_eq!(
+            line.spans.get(3).map(|span| span.style),
+            expected_detail_style
+        );
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1609,7 +1792,9 @@ mod tests {
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
         assert_eq!(lines[0], "    │ …");
-        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+        assert!(lines
+            .last()
+            .is_some_and(|line| line.ends_with("object-199.o")));
     }
 
     #[test]
@@ -1737,7 +1922,8 @@ mod tests {
             },
         };
         if !buf.is_empty() {
-            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+            tab.messages
+                .push(crate::app::ChatMessage::Agent(buf.to_string()));
         }
         tab.reveal_chars = reveal_chars;
         tab
@@ -1758,10 +1944,7 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(
-            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
-            "●"
-        );
+        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
     }
 
     #[test]
@@ -1793,8 +1976,7 @@ mod tests {
             locations: Vec::new(),
         };
 
-        let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1879,8 +2061,9 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String =
-            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let over: String = std::iter::repeat('é')
+            .take(MAX_RENDER_LINE_CHARS + 10)
+            .collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1891,7 +2074,13 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "\n\nHello",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1899,9 +2088,18 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "A\n\nB",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["● A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
@@ -1916,7 +2114,10 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[0]).starts_with("● "),
+            "first row gets the dot"
+        );
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
@@ -1935,7 +2136,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> line one".to_string(), "  line two".to_string()]
+        );
     }
 
     #[test]
@@ -1951,7 +2155,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
