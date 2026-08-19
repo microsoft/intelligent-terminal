@@ -592,7 +592,8 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
 /// `notification_type` tells them apart. `idle_prompt` arrives ~60s *after*
 /// `agent.stop` already moved the row to Idle, so routing it to Attention
 /// parked every Claude session at "Claude is waiting for your input" between
-/// turns. Payload shape below is copied from a real capture.
+/// turns. Payload shape below mirrors a real capture, with identifying values
+/// replaced.
 #[test]
 fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
     use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
@@ -625,7 +626,7 @@ fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
         "cli_source": "claude",
         "agent_session_id": "claude-sid",
         "payload": {
-            "cwd": "C:\\Users\\yuazha",
+            "cwd": "C:\\Users\\example",
             "message": "Claude is waiting for your input",
             "notification_type": "idle_prompt",
             "session_id": "claude-sid"
