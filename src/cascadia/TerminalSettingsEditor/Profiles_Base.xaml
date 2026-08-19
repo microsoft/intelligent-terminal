@@ -117,6 +117,20 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <!--  Command palette agent  -->
+            <local:SettingContainer x:Name="CommandPaletteAgent"
+                                    x:Uid="Profile_CommandPaletteAgent"
+                                    ClearSettingValue="{x:Bind Profile.ClearCommandPaletteAgent}"
+                                    CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.CommandPaletteAgentList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
             <!--  Icon  -->
             <local:SettingContainer x:Name="Icon"
                                     x:Uid="Profile_Icon"

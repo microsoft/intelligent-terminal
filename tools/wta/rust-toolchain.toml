@@ -1,4 +1,4 @@
 # Pin the public Rust version for local development and GitHub automation.
-# Azure DevOps explicitly overrides this with the matching ms-prod toolchain.
+# Azure DevOps installs the matching ms-prod toolchain explicitly.
 [toolchain]
 channel = "1.93"

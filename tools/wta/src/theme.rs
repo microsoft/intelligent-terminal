@@ -5,12 +5,17 @@ pub const USER_PROMPT: Style = Style::new().fg(Color::DarkGray);
 // Tracks the scheme foreground now that INPUT_BG is the scheme background —
 // a hardcoded white would be invisible in the box on a light scheme (#234).
 pub const INPUT_TEXT: Style = Style::new().fg(Color::Reset);
+pub const ATTACHMENT_TOKEN: Style = Style::new().fg(Color::Cyan);
 // Default foreground (Color::Reset) so the agent's reply text tracks the
 // pane's color scheme — light text on dark schemes, dark text on light
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
-pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset);
+pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
+pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);
+pub const NOTICE_WARNING: Style = Style::new().fg(Color::Yellow);
+pub const NOTICE_ERROR: Style = Style::new().fg(Color::Red);
+pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_SUCCESS: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
@@ -23,6 +28,10 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
+pub const SEARCH_MATCH: Style = Style::new()
+    .fg(Color::Yellow)
+    .add_modifier(Modifier::BOLD)
+    .add_modifier(Modifier::UNDERLINED);
 // Match the /sessions cursor: cyan foreground with no full-row background.
 pub const SELECTED: Style = Style::new().fg(Color::Cyan);
 // Preserve the selection when the pane loses focus without presenting it as
@@ -44,7 +53,7 @@ pub const CARD_FRAME_COLOR: Color = Color::Rgb(26, 26, 26);
 pub const BUTTON_BG: Color = Color::Rgb(70, 70, 70);
 pub const CARD_BORDER: Style = Style::new().fg(CARD_FRAME_COLOR);
 pub const CARD_BORDER_SELECTED: Style = Style::new().fg(CARD_FRAME_COLOR);
-pub const CARD_CODE: Style = Style::new().fg(Color::Reset);
+pub const CARD_CODE: Style = Style::new().fg(Color::DarkGray);
 pub const CARD_DESCRIPTION: Style = Style::new()
     .fg(Color::Reset)
     .add_modifier(Modifier::DIM)

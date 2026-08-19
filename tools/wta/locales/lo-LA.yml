@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "ການສະຫຼັບຕົວແທນ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
+commands.config.summary: "ກຳນົດຄ່າເຊດຊັນຕົວແທນນີ້"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ຍ້າຍແຜງຕົວແທນຂອງແທັບນີ້ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ການກຳນົດຄ່າເຊດຊັນ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ຕົວແທນທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ໂຄສະນາຕົວເລືອກເຊດຊັນທີ່ກຳນົດຄ່າໄດ້."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "ອັບເດດ %{option} ລົ້ມເຫຼວ: %{error}"
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}

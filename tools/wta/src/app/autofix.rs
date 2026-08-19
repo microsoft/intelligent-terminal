@@ -222,14 +222,6 @@ impl App {
             tab.autofix.generation
         };
 
-        // The auto-fix kind is carried by PromptSubmission::is_autofix,
-        // so the text doesn't need a marker prefix — just the raw error
-        // summary + instruction.
-        let prompt_text = format!(
-            "{}\nDiagnose the error and suggest a fix.",
-            notification.summary
-        );
-
         // Route through the target tab's ACP session. `tab_id` carries the
         // failing tab's StableId so the ACP layer's `tab_to_session` map
         // routes (or lazy-creates) to the right session even when the
@@ -252,15 +244,14 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
-        let prompt = PromptSubmission::new_autofix(prompt_text, Some(pane_context));
+        let prompt =
+            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context));
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
-            autofix: Some(AutofixContext {
-                target_pane_id: notification.pane_id.clone(),
-                generation: new_gen,
-            }),
+            context: TurnContext::with_target_pane(notification.pane_id.clone()),
+            autofix: Some(AutofixContext { generation: new_gen }),
         };
         // Install the turn on the target tab — bypasses session_to_tab
         // lookup so a tab with no ACP session yet still gets the prompt
@@ -466,6 +457,7 @@ impl App {
                 .send(crate::coordinator::ChoiceExecution {
                     choice,
                     insert_only: false,
+                    context: TurnContext::with_target_pane(armed_pane),
                 });
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));

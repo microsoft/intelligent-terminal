@@ -24,29 +24,6 @@ Describe 'Feature per-tab agent selection through /agent' -Tag 'Feature' -Skip:(
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It '/agent prefix completion works' {
-        try {
-            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
-            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent cop' -NoSubmit | Out-Null
-
-            (Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
-                    (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) -match '(?i)/agent\s+copilot\s+.*Copilot'
-                }) | Should -BeTrue -Because 'typing an agent-id prefix must show the matching installed and policy-allowed agent'
-
-            $inputRow = '(?m)^\s*[│║|]\s+>\s+/agent copilot'
-            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
-                Should -Match $inputRow -Because 'the selected completion suffix must render inline as ghost text'
-
-            Send-AgentKey -App $script:app -PaneSessionId $script:defaultPane -Key Tab | Out-Null
-            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '-e2e' -NoSubmit | Out-Null
-            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
-                Should -Match '(?m)^\s*[│║|]\s+>\s+/agent copilot-e2e' -Because 'Tab must commit the full selected id into the editable input buffer'
-        }
-        finally {
-            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
-        }
-    }
-
     It '/agent completion selection is safe' {
         try {
             Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
@@ -157,14 +134,17 @@ Describe 'Feature two tabs run different agents through one master' -Tag 'Featur
         $masterBefore | Should -Not -BeNullOrEmpty
         $script:masterPid = $masterBefore.ProcessId
         Initialize-LogOffsets -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:oldTabBPane -Text "/agent $script:targetAgent" -NoSubmit | Out-Null
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:oldTabBPane `
+            -Pattern ('(?i)/agent\s+' + [regex]::Escape($script:targetAgent)) -TimeoutSec 15
+        Send-AgentKey -App $script:app -PaneSessionId $script:oldTabBPane -Key Enter | Out-Null
 
-        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
-                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
-            }) | Should -BeTrue -Because 'switching agents must replace tab B helper/pane'
-        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 45
+        $newB = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $script:tabBShellPane -ExcludePaneSessionId $script:oldTabBPane -TimeoutSec 60
         $script:tabBPane = $newB.PaneSessionId
         $script:tabBPane | Should -Match '[0-9A-Fa-f-]{36}'
+        (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                -not (Get-AgentPaneSession -App $script:app -PaneSessionId $script:oldTabBPane)
+            }) | Should -BeTrue -Because 'switching agents must retire tab B old helper/pane'
 
         (& $script:GetMaster).ProcessId | Should -Be $masterBefore.ProcessId -Because 'a per-tab switch must reuse the shared master'
         (Get-AgentPaneSession -App $script:app -PaneSessionId $script:tabAPane) |

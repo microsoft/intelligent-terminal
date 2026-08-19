@@ -9,20 +9,26 @@ Customization:
 
 ### Build
 
+From the repository root:
+
 ```bash
-cd tools/wta
-cargo build
+cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
 
-The binary is output to `tools/wta/target/debug/wta.exe`.
+The binary is output to
+`tools/wta/target/x86_64-pc-windows-msvc/debug/wta.exe`. Always use the explicit
+target in this repo: the package project prefers that output over the host-target
+fallback.
 
 ### How WTA runs
 
 WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
-`wta-master` singleton (owns the agent CLI) and one `wta-helper` per agent pane
-(renders this TUI and speaks ACP to master over a named pipe). Bare `wta` with no
-subcommand and neither `--master` nor `--connect-master` exits with an error —
-there is no standalone agent / TUI mode.
+`wta-master` singleton (owns a lazily populated agent CLI pool) and one
+`wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
+named pipe). Helpers selecting the same agent identity, source, and command
+share one agent process. Bare `wta` with no subcommand and neither `--master`
+nor `--connect-master` exits with an error — there is no standalone agent / TUI
+mode.
 
 The default agent is Copilot; the agent and model come from Windows Terminal
 settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent`
@@ -31,9 +37,16 @@ settings (`acpAgent` / `acpModel`) and are passed through to master via `--agent
 When the agent pane is connected to Windows Terminal, the agent-facing contract is
 the local `wta` CLI: the agent shells out to commands like `wta active-pane --json`,
 `wta list-panes --json`, `wta capture-pane --json`, and
-`wta resolve-command <name> --json`. Terminal-control commands talk to Windows
+`wta resolve-command <name> --cwd <active-pane-cwd> --json`. Terminal-control commands talk to Windows
 Terminal over the COM protocol; `resolve-command` inspects the user's real,
-profile-loaded PowerShell environment.
+shell-context-selected sources (active working directory, host PATH and, for
+PowerShell, the profile-loaded command environment).
+
+The packaged app registers `wta.exe` as an App Execution Alias. Before spawning
+the host agent, WTA puts the current package family's alias directory first on
+`PATH`; unpackaged builds use the running binary's directory. Agent prompts can
+therefore use short `wta.exe` commands without selecting another installed
+branding or reproducing a protected package path.
 
 ### tmux-like CLI
 
@@ -50,11 +63,12 @@ wta capture-pane -t 3 -l 50              # read last 50 lines from pane 3
 wta kill-pane -t 3                        # close pane 3
 wta pane-status -t 3                      # check if running
 wta wait-for -t 3 --timeout 30           # wait for pane 3 to exit
-wta resolve-command which --json          # resolve aliases/functions from the PowerShell profile
+wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 wta list-windows --json                   # raw JSON output
 ```
 
-Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `send`, `capturep`, `killp`, `setenv`.
+Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
+`killp`, `setenv`, and `mon`.
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 
@@ -96,7 +110,7 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WT_COM_CLSID` | Yes* | Stringified GUID of WT's `TerminalProtocolComServer` COM class |
-| `WTA_DEBUG_LOG` | No | Set to `0` to disable `wta-pipe-debug.log` |
+| `WTA_LOG` | No | Rust tracing filter, such as `debug` or `trace` |
 
 \* Set automatically by WT when it spawns a conpty child. If you launch `wta` from outside WT, run `eval "$(wta set-env)"` to copy the value over (only useful when you've previously captured it from a WT shell).
 
@@ -144,13 +158,16 @@ packaged (or bare `%LOCALAPPDATA%\IntelligentTerminal\logs\` unpackaged):
 
 | File | Contents |
 |------|----------|
-| `wta-main_master.log` | `wta-master`: agent CLI spawn, pipe accept loop, per-helper routing |
+| `wta-main_master.log` | `wta-master`: agent CLI pool, pipe accept loop, per-helper routing |
 | `wta-main_helper-{pid}.log` | each `wta-helper`: pipe connect, ACP init, prompts, agent responses, TUI lifecycle |
 | `wta-cli.log` | short-lived CLI helpers (`list-*`, `capture-pane`, `listen`, `sessions`) |
 | `terminal-agent-pane.log` | Agent-pane chrome (C++ TerminalApp side) |
 | `wta-ensure-host.log` | Background host startup / COM connection / SharedWta lifecycle |
 | `wta-acp-debug.log` | ACP protocol debug trace |
 | `wta-delegate.log` | `?<prompt>` delegation flow |
+| `wta-probe.log` | Agent/model/session capability probes |
+| `wta-install-hooks.log` | Hook installation and upgrade diagnostics |
+| `hook-trace.log` | Shell-hook event diagnostics |
 
 Set `WTA_LOG=debug` for verbose output (debug builds default to `debug`, release
 to `info`). The F12 debug panel in the TUI shows protocol traffic live without
@@ -161,7 +178,7 @@ tailing log files.
 ```
 tools/wta/src/
 +-- main.rs                    Entry point, role/CLI dispatch, protocol discovery
-+-- master/mod.rs             wta-master: owns the agent CLI, multiplexes helpers
++-- master/mod.rs             wta-master: owns the agent CLI pool, multiplexes helpers
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
 |   +-- app/autofix.rs         Autofix detection + suggestion
@@ -197,20 +214,23 @@ tools/wta/src/
 
 ### Build and run
 
+Run these commands from the repository root. GitHub automation and commands run
+from `tools/wta` resolve its public `1.93` pin; Azure DevOps installs the
+matching `ms-prod-1.93` toolchain through MSRustup. Repo-root commands use your
+installed active toolchain, so changes must remain compatible with Rust 1.93.
+
 ```bash
-cd tools/wta
+# A live process may lock the output. Stop only a PID whose executable path
+# matches this target; do not kill every wta.exe by name.
+cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 
-# Kill any live wta.exe first (a running shared-host locks target/debug/wta.exe):
-#   Get-Process wta -ErrorAction SilentlyContinue | Stop-Process -Force
-cargo build
-
-# Run the test suite (cargo build does NOT compile #[cfg(test)] code):
-cargo test
+# cargo build does not compile #[cfg(test)] code.
+cargo test --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 ```
 
 The TUI (master + helper) is launched by Windows Terminal as an agent pane — see
 the C++ F5 / `bcz` flow in the repo `AGENTS.md`. From a WT pane you can exercise
-the CLI helpers directly: `target/debug/wta.exe list-windows`, `… capture-pane`, etc.
+the CLI helpers directly with the packaged `wta` app execution alias.
 
 ### Development workflow
 
@@ -237,4 +257,3 @@ the CLI helpers directly: `target/debug/wta.exe list-windows`, `… capture-pane
 - **Protocol discovery**: `WT_COM_CLSID` env var, inherited from the WT-spawned conpty
 - **CLI subcommands** call `CliChannel::connect()` directly; no ShellManager needed
 - **Pane identity** is discovered at startup via PID matching (list all panes, find ours)
-- **Graceful degradation**: if the WT protocol is unavailable, WTA falls back to local-only mode (no WT tools, just local shell operations)

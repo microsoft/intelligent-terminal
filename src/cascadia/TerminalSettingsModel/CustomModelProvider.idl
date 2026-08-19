@@ -1,0 +1,25 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Microsoft.Terminal.Settings.Model
+{
+    runtimeclass CustomModel
+    {
+        CustomModel(String id, String name);
+        String Id;
+        String Name;
+    }
+
+    runtimeclass CustomModelProvider
+    {
+        CustomModelProvider(String id, String name, String baseUrl);
+        String Id;
+        String Name;
+        String BaseUrl;
+        String ApiContract;
+        String Location;
+        String ApiKeyCredential;
+        Boolean ApiKeyRequired;
+        Windows.Foundation.Collections.IVector<CustomModel> Models;
+    }
+}

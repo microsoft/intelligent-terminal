@@ -1075,6 +1075,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Enabling this will install integration hooks to track sessions across your agents.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Show context usage and session cost</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>When available, show context-window usage and session cost in the terminal bottom bar.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Pane position</value>
   </data>
@@ -1267,5 +1269,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>⚠ PowerShell execution policy is blocking scripts. Error detection turned off.</value>
     <comment>{Locked="PowerShell"}</comment>
+  </data>
+  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Usage</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
+  <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
+  <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Context Window</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
+  <data name="CmdAppHelpFooter" xml:space="preserve">
+    <value>Ŋõŧέ: Цňřέ¢ŏĝŋìźēđ дŗġμмēηţś ąřё àűтόmąťΐċâľĺŷ φαššеď ťò ťĥз 'new-tab' šüьçόmмãŉð. !!! !!! !!! !!! !!! !!! !!! !!! 
+₣őѓ ęхäмρĺё, 'wt -p "Űьűņŧυ" -d Ç:\' ĩś еqυϊνаℓэпţ ťõ 'wt new-tab -p "Űвũлτũ" -d Ć:\'. !!! !!! !!! !!! !!! !!! !!! !!! !
+₣òŕ ăłļ åνãϊłάвļê ôφŧιôņş, ґùη 'wt new-tab --help'. !!! !!! !!! !!! !!!</value>
+    <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
 </root>

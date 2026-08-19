@@ -15,21 +15,25 @@ use std::sync::Arc;
 use crate::shell::wt_channel::{CliChannel, WtChannel};
 use crate::shell::ShellManager;
 use crate::{
-    agent_check, agent_hooks_installer, agent_registry, app, event, logging, protocol, shell, Cli,
-    InitialView,
+    agent_check, agent_hooks_installer, agent_registry, app, event, logging, protocol, shell,
 };
+
+use super::config::{HelperConfig, InitialView};
 
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
 /// named pipe and forwards ACP traffic over it.
-pub(super) async fn run_default_tui_over_pipe(mut cli: Cli, pipe_name: String) -> Result<()> {
+pub(super) async fn run_default_tui_over_pipe(
+    mut config: HelperConfig,
+    pipe_name: String,
+) -> Result<()> {
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
-        cli.agent_source.as_deref(),
-        cli.agent_wsl_distro.as_deref(),
+        config.agent_source.as_deref(),
+        config.agent_wsl_distro.as_deref(),
     );
-    cli.agent_source_cwd =
-        crate::agent_source::resolve_source_cwd(&agent_source, cli.agent_source_cwd.as_deref())
+    config.agent_source_cwd =
+        crate::agent_source::resolve_source_cwd(&agent_source, config.agent_source_cwd.as_deref())
             .await;
 
     // Debug channel for the helper TUI.
@@ -66,7 +70,7 @@ pub(super) async fn run_default_tui_over_pipe(mut cli: Cli, pipe_name: String) -
     // `run_acp_tui_mode`'s exit branch, which `process::exit`s rather than
     // returning Err — so there's no point wrapping the result here.
     run_acp_tui_mode(
-        cli,
+        config,
         shell_mgr,
         wt_connected,
         debug_rx,
@@ -162,7 +166,7 @@ impl Drop for TuiRestoreGuard {
 }
 
 async fn run_acp_tui_mode(
-    cli: Cli,
+    config: HelperConfig,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
@@ -189,7 +193,7 @@ async fn run_acp_tui_mode(
 
     let result = run_acp_app(
         &mut terminal,
-        cli,
+        config,
         shell_mgr,
         wt_connected,
         debug_rx,
@@ -255,7 +259,7 @@ fn spawn_restart_agent_stack_forwarder(
 
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    cli: Cli,
+    config: HelperConfig,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     mut debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
@@ -264,18 +268,77 @@ async fn run_acp_app(
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
 ) -> Result<()> {
-    let agent_cmd = cli.agent.clone();
+    let agent_cmd = config.agent.clone();
     let agent_source = crate::agent_source::AgentSource::from_wire(
-        cli.agent_source.as_deref(),
-        cli.agent_wsl_distro.as_deref(),
+        config.agent_source.as_deref(),
+        config.agent_wsl_distro.as_deref(),
     );
-    let agent_source_cwd = cli.agent_source_cwd.clone();
+    let agent_source_cwd = config.agent_source_cwd.clone();
 
     let local_set = tokio::task::LocalSet::new();
     local_set
         .run_until(async move {
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let proposal_channels =
+                Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+            let (proposal_pipe_tx, mut proposal_pipe_rx) =
+                tokio::sync::mpsc::unbounded_channel();
+            let proposal_server_manager = Arc::clone(&proposal_channels);
+            let proposal_server_lifecycle = Arc::clone(&proposal_channels);
+            tokio::task::spawn_local(async move {
+                if let Err(error) =
+                    crate::agent_tools::action_proposal::pipe::run_server(
+                        proposal_server_manager,
+                        proposal_pipe_tx,
+                    )
+                    .await
+                {
+                    proposal_server_lifecycle.set_pipe_available(false);
+                    tracing::error!(
+                        target: "proposal_pipe",
+                        error = %format!("{error:#}"),
+                        "proposal pipe server stopped"
+                    );
+                }
+            });
+            let proposal_event_tx = event_tx.clone();
+            tokio::task::spawn_local(async move {
+                while let Some(event) = proposal_pipe_rx.recv().await {
+                    let app_event = match event {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Validate {
+                            context,
+                            payload,
+                            source,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposal {
+                            context,
+                            payload,
+                            source,
+                            responder,
+                        },
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Commit {
+                            proposal_id,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposalCommit {
+                            proposal_id,
+                            responder,
+                        },
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Invalidate {
+                            proposal_id,
+                            session_id,
+                        } => app::AppEvent::DirectTerminalActionProposalInvalidate {
+                            proposal_id,
+                            session_id,
+                        },
+                    };
+                    if proposal_event_tx.send(app_event).is_err() {
+                        break;
+                    }
+                }
+            });
 
             let evt_tx = event_tx.clone();
             tokio::task::spawn_local(event::read_crossterm_events(evt_tx));
@@ -442,9 +505,9 @@ async fn run_acp_app(
             // stamps `_meta.wta.owner_tab_id` on every session/new + session/load.
             // Master needs it to address `restart_agent_pane` crash-recovery
             // events by the same StableId C++ routes per-tab events with.
-            protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
+            protocol::acp::client::set_helper_owner_tab_id(config.owner_tab_id.as_deref());
 
-            let explicit_agent_id = cli
+            let explicit_agent_id = config
                 .agent_id
                 .as_deref()
                 .map(str::trim)
@@ -459,19 +522,19 @@ async fn run_acp_app(
             } else {
                 "resolved-from-cmd"
             };
-            let initial_load_requested = cli
+            let initial_load_requested = config
                 .initial_load_session_id
                 .as_deref()
                 .map(str::trim)
                 .map(|s| !s.is_empty())
                 .unwrap_or(false);
-            let initial_auth_agent = match cli
+            let initial_auth_agent = match config
                 .initial_auth_agent
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
             {
-                Some(requested) if cli.assume_master_down => {
+                Some(requested) if config.assume_master_down => {
                     tracing::warn!(
                         target: "initial_auth",
                         requested_agent = %requested,
@@ -479,7 +542,7 @@ async fn run_acp_app(
                     );
                     None
                 }
-                Some(requested) if cli.start_stashed => {
+                Some(requested) if config.start_stashed => {
                     tracing::warn!(
                         target: "initial_auth",
                         requested_agent = %requested,
@@ -487,7 +550,7 @@ async fn run_acp_app(
                     );
                     None
                 }
-                Some(requested) if cli.setup.is_some() => {
+                Some(requested) if config.setup.is_some() => {
                     tracing::warn!(
                         target: "initial_auth",
                         requested_agent = %requested,
@@ -527,13 +590,36 @@ async fn run_acp_app(
                 None => None,
             };
             let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+            let is_host_agent_source =
+                matches!(&agent_source, crate::agent_source::AgentSource::Host);
+            // This snapshot was probed by the Windows host. A WSL agent must
+            // advertise/probe its own catalog rather than inheriting Host models.
+            let cloud_models = if is_host_agent_source {
+                config
+                    .cloud_models
+                    .as_deref()
+                    .and_then(|models| match serde_json::from_str(models) {
+                        Ok(models) => Some(models),
+                        Err(error) => {
+                            tracing::error!(
+                                target: "cloud_models",
+                                %error,
+                                "invalid --cloud-models metadata"
+                            );
+                            None
+                        }
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
             // pipe-attached variant immediately. FRE-installed Copilot is the
             // exception: `--initial-auth-agent copilot` starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
-            if cli.assume_master_down {
+            if config.assume_master_down {
                 // Degraded open: master is known down, so don't even try the
                 // (dead) pipe — go straight to the disconnected view that an
                 // orphaned pane shows, where /restart is the one available
@@ -602,20 +688,20 @@ async fn run_acp_app(
                 let pipe_name = connect_master_pipe.clone();
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
-                let acp_model = cli.acp_model.clone();
-                // Per-tab agent identity passed through to the multi-agent
-                // master via the initialize handshake. The helper has had
-                // this on its `Cli` all along; pre-multi-agent it dropped
-                // it (master owned the single agent CLI).
-                let agent_id = cli.agent_id.clone();
+                let acp_model = config.acp_model.clone();
+                let cloud_models_for_client = cloud_models.clone();
+                // Pass per-tab agent identity through the initialize handshake.
+                let agent_id = config.agent_id.clone();
                 let agent_source_for_client = agent_source.clone();
                 let source_cwd = agent_source_cwd.clone();
-                let owner_tab = cli.owner_tab_id.clone();
-                let initial_load_sid = cli.initial_load_session_id.clone();
+                let owner_tab = config.owner_tab_id.clone();
+                let initial_load_sid = config.initial_load_session_id.clone();
+                let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
                         source_cwd,
@@ -634,6 +720,7 @@ async fn run_acp_app(
                         shell_mgr_for_pipe,
                         wt_connected,
                         false, // post_login_reconnect: first connection, no authenticate needed
+                        proposal_channels_for_pipe,
                     )
                     .await
                     {
@@ -652,10 +739,17 @@ async fn run_acp_app(
                             &e,
                             protocol::acp::failure::HandshakeStage::Initialize,
                         );
+                        let message = match &failure {
+                            protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                detail,
+                                ..
+                            } => detail.clone(),
+                            _ => format!("helper ACP transport failed: {e:#}"),
+                        };
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
                             failure,
-                            message: format!("helper ACP transport failed: {e:#}"),
+                            message,
                         });
                     }
                 });
@@ -675,9 +769,9 @@ async fn run_acp_app(
             // executor snapshots it per choice; the App rebuilds it on change.
             let delegate_agents = Arc::new(std::sync::Mutex::new(
                 crate::coordinator::default_delegate_agent_runtimes(
-                    cli.delegate_agent.as_deref(),
-                    Some(cli.agent.as_str()),
-                    cli.delegate_model.as_deref(),
+                    config.delegate_agent.as_deref(),
+                    Some(config.agent.as_str()),
+                    config.delegate_model.as_deref(),
                 ),
             ));
             tokio::spawn(crate::coordinator::run_recommendation_executor(
@@ -687,9 +781,10 @@ async fn run_acp_app(
                 Arc::clone(&delegate_agents),
             ));
 
-            let autofix_enabled = !cli.no_autofix;
+            let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
-            app_state.set_allowed_agent_ids(cli.allowed_agent_ids.clone());
+            app_state.set_proposal_channels(Arc::clone(&proposal_channels));
+            app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate
@@ -697,9 +792,44 @@ async fn run_acp_app(
             // (re-applied to future sessions so /new stays on the model).
             app_state.set_runtime_agent_config(
                 Arc::clone(&delegate_agents),
-                cli.agent.clone(),
-                cli.acp_model.clone(),
+                config.agent.clone(),
+                config.acp_model.clone(),
+                config.follows_global_acp_model,
             );
+            app_state.set_cloud_models(cloud_models);
+            if is_host_agent_source {
+                match config.custom_models.as_deref() {
+                    Some(custom_models) => match serde_json::from_str(custom_models) {
+                        Ok(models) => app_state.set_custom_model_config(
+                            models,
+                            config.custom_model_selection.clone(),
+                        ),
+                        Err(error) => tracing::error!(
+                            target: "custom_models",
+                            %error,
+                            "invalid --custom-models metadata"
+                        ),
+                    },
+                    None => app_state.set_custom_model_config(
+                        Vec::new(),
+                        config.custom_model_selection.clone(),
+                    ),
+                }
+            } else {
+                if config.custom_models.is_some() || config.custom_model_selection.is_some() {
+                    tracing::warn!(
+                        target: "custom_models",
+                        agent_source = %agent_source,
+                        "ignoring Host custom-provider startup metadata for WSL helper"
+            );
+                }
+                app_state.set_custom_model_config(Vec::new(), None);
+            }
+            // Backward compatibility: older Terminal builds supplied the full
+            // custom catalog on argv. New builds deliver it after Connected
+            // over agent_config_changed, so the initial status requests it.
+            app_state
+                .set_host_catalog_ready(!is_host_agent_source || config.custom_models.is_some());
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial
@@ -719,15 +849,15 @@ async fn run_acp_app(
             app_state.set_master_pipe_acp_params(
                 connect_master_pipe.clone(),
                 agent_cmd.clone(),
-                cli.acp_model.clone(),
+                config.acp_model.clone(),
                 agent_source.clone(),
                 agent_source_cwd.clone(),
-                cli.owner_tab_id.clone(),
+                config.owner_tab_id.clone(),
                 Arc::clone(&shell_mgr),
                 wt_connected,
             );
 
-            if cli.setup.is_none() {
+            if config.setup.is_none() {
                 app_state.current_agent_id = canonical_agent_id.clone();
                 app_state.current_agent_source = agent_source.clone();
                 tracing::info!(
@@ -745,7 +875,7 @@ async fn run_acp_app(
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
-            if cli.setup.is_none() && !start_in_initial_auth {
+            if config.setup.is_none() && !start_in_initial_auth {
                 let agent_id = canonical_agent_id.as_str();
                 let preflight_result =
                     if agent_id.starts_with("custom:") || !agent_registry::is_known_id(agent_id) {
@@ -826,13 +956,13 @@ async fn run_acp_app(
             // match. Without this, helper echoes `pane_open=true`, C++
             // sees a stashed pane and a `pane_open=true` echo, and
             // restores the pane — defeating pre-warm.
-            if let Some(ref owner_tab_id) = cli.owner_tab_id {
+            if let Some(ref owner_tab_id) = config.owner_tab_id {
                 if !owner_tab_id.is_empty() && app_state.tab_id.is_none() {
                     let tab = app_state
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
-                    tab.pane_open = !cli.start_stashed;
+                    tab.pane_open = !config.start_stashed;
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }
@@ -873,15 +1003,15 @@ async fn run_acp_app(
             // (the load_session handler routes by tab id), so we
             // silently skip if owner_tab_id is unset. Logged so a
             // misconfigured spawn is easy to diagnose.
-            if let Some(ref sid) = cli.initial_load_session_id {
+            if let Some(ref sid) = config.initial_load_session_id {
                 if !sid.is_empty() {
                     let tab_id_opt = app_state
                         .owner_tab_id
                         .clone()
-                        .or_else(|| cli.owner_tab_id.clone());
+                        .or_else(|| config.owner_tab_id.clone());
                     match tab_id_opt {
                         Some(tab_id) if !tab_id.is_empty() => {
-                            let cwd = cli
+                            let cwd = config
                                 .initial_load_cwd
                                 .as_deref()
                                 .map(str::to_string)
@@ -948,9 +1078,9 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if cli.setup.is_none()
+            if config.setup.is_none()
                 && !start_in_initial_auth
-                && cli.initial_view == InitialView::Sessions
+                && config.initial_view == InitialView::Sessions
             {
                 tracing::info!(target: "initial_view", "starting in agent session view");
                 let tab_id = app_state
@@ -983,8 +1113,8 @@ async fn run_acp_app(
             // See doc/specs/per-cli-history-filtering.md.
 
             // Enter setup mode if --setup <reason> was passed.
-            tracing::info!("cli.setup = {:?}", cli.setup);
-            if let Some(ref reason_str) = cli.setup {
+            tracing::info!("cli.setup = {:?}", config.setup);
+            if let Some(ref reason_str) = config.setup {
                 tracing::info!("Entering diagnostic setup mode: reason={}", reason_str);
                 let reason = app::SetupReason::from_str(reason_str);
 
@@ -1033,7 +1163,7 @@ async fn run_acp_app(
             // WT knows the owning window authoritatively when it creates the
             // helper. Prefer that seed over best-effort PID discovery so
             // outbound per-window events work from the first render.
-            if let Some(owner_window_id) = cli
+            if let Some(owner_window_id) = config
                 .owner_window_id
                 .as_deref()
                 .map(str::trim)
@@ -1061,7 +1191,7 @@ async fn run_acp_app(
             // expects the active key to already be present, so without
             // pre-inserting we'd panic on the first render before any
             // event has had a chance to lazy-create it.
-            if let Some(owner_tab_id) = cli.owner_tab_id.clone() {
+            if let Some(owner_tab_id) = config.owner_tab_id.clone() {
                 if !owner_tab_id.is_empty() {
                     tracing::info!(
                         target: "tab_session",
@@ -1079,7 +1209,7 @@ async fn run_acp_app(
                     // pane_open=true. The exception is `--start-stashed`
                     // (pre-warm path) where C++ has already stashed the
                     // pane — see comment on the earlier seed block.
-                    tab.pane_open = !cli.start_stashed;
+                    tab.pane_open = !config.start_stashed;
                     app_state.tab_id = Some(owner_tab_id.clone());
 
                     // Publish an initial chip-target state for this tab so
@@ -1112,7 +1242,7 @@ async fn run_acp_app(
 
             // If a prompt was passed via CLI arg (e.g., from command palette creating
             // a new agent pane), delegate it to a new tab agent on startup.
-            if let Some(ref initial_prompt) = cli.prompt {
+            if let Some(ref initial_prompt) = config.prompt {
                 if !initial_prompt.is_empty() {
                     app_state.delegate_to_tab_agent(initial_prompt);
                 }

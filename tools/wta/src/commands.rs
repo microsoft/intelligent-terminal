@@ -3,7 +3,7 @@
 //! The user types `/foo` in the input box; on Enter, [`parse`] resolves the
 //! input to a [`ParsedCommand`] (or returns `None`, in which case the line is
 //! sent as a normal prompt). The autocomplete popup uses [`matches`] for
-//! prefix-filtered suggestions.
+//! substring-filtered suggestions, with prefix matches ranked first.
 //!
 //! See `tools/wta/src/app.rs` `App::handle_slash_command` for dispatch and
 //! `tools/wta/src/ui/command_popup.rs` for rendering.
@@ -16,7 +16,7 @@ pub enum CommandKind {
     New,
     /// Run the auto-fix prompt on demand.
     ///
-    /// Submits the dedicated `auto-fix.md` template plus the active
+    /// Submits the `auto-fix.md` instruction overlay plus the active
     /// terminal pane's recent output to the agent — the same pipeline the
     /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
     /// invoked manually. Any text after `/fix` is passed through as an
@@ -47,12 +47,12 @@ pub enum CommandKind {
     Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
-    /// Bare `/model` opens an interactive picker listing the models the
-    /// connected agent advertised; `/model <id-or-name>` switches directly.
-    /// The choice is a transient per-pane override that survives `/new` for
-    /// the life of the pane but is reset by a global `acpModel` settings
-    /// change — see `App::apply_global_acp_model`.
+    /// Bare `/model` opens an interactive picker listing configured BYOK
+    /// models. Cloud/native models are intentionally omitted; model changes
+    /// are made through Settings because they require an agent restart.
     Model,
+    /// Configure the current ACP session using Agent-provided config options.
+    Config,
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
@@ -65,10 +65,6 @@ pub struct CommandSpec {
     /// time so the popup follows the current locale.
     pub summary_key: &'static str,
     pub kind: CommandKind,
-    /// True if this command takes free-form arguments after the name.
-    /// MVP commands are all zero-arg; the field exists so the popup
-    /// knows whether to leave a trailing space after Tab-completion.
-    pub takes_args: bool,
 }
 
 impl CommandSpec {
@@ -89,63 +85,57 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "help",
         summary_key: "commands.help.summary",
         kind: CommandKind::Help,
-        takes_args: false,
     },
     CommandSpec {
         name: "clear",
         summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
-        takes_args: false,
     },
     CommandSpec {
         name: "new",
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
-        takes_args: false,
     },
     CommandSpec {
         name: "fix",
         summary_key: "commands.fix.summary",
         kind: CommandKind::Fix,
-        // `/fix <hint>` — free-form text after the name steers the fix.
-        takes_args: true,
     },
     CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
-        takes_args: false,
     },
     CommandSpec {
         name: "stop",
         summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
-        takes_args: false,
     },
     CommandSpec {
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
-        takes_args: false,
     },
     CommandSpec {
         name: "agent",
         summary_key: "commands.agent.summary",
         kind: CommandKind::Agent,
-        takes_args: true,
     },
     CommandSpec {
         name: "model",
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
-        takes_args: true,
+    },
+    CommandSpec {
+        name: "config",
+        summary_key: "commands.config.summary",
+        kind: CommandKind::Config,
     },
     CommandSpec {
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
-        takes_args: true,
     },
 ];
 
@@ -286,25 +276,23 @@ pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
         .find(|spec| spec.name.eq_ignore_ascii_case(name))
 }
 
-/// Prefix-match against the registry (case-insensitive). An empty prefix
-/// returns the full registry in declaration order. Used by the autocomplete
-/// popup.
-pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
-    let needle = prefix.trim().to_ascii_lowercase();
-    REGISTRY
+/// Substring-match against the registry (case-insensitive), ranking prefix
+/// matches before other contains matches. An empty query returns the full
+/// registry in declaration order. Used by the autocomplete popup.
+pub fn matches(query: &str) -> Vec<&'static CommandSpec> {
+    let needle = query.trim().to_ascii_lowercase();
+    let (prefix_matches, contains_matches): (Vec<_>, Vec<_>) = REGISTRY
         .iter()
-        .filter(|spec| spec.name.starts_with(&needle))
-        .collect()
+        .filter(|spec| spec.name.contains(&needle))
+        .partition(|spec| spec.name.starts_with(&needle));
+    prefix_matches.into_iter().chain(contains_matches).collect()
 }
 
 /// Resolve a `/move` argument from either its full name or one-letter alias.
 pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
-    MOVE_POSITIONS
-        .iter()
-        .find(|position| {
-            position.name.eq_ignore_ascii_case(value)
-                || position.alias.eq_ignore_ascii_case(value)
+    MOVE_POSITIONS.iter().find(|position| {
+        position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
         })
 }
 
@@ -403,7 +391,6 @@ mod tests {
         let trailing_space = parse("/agent ").unwrap();
         assert_eq!(trailing_space.kind, CommandKind::Agent);
         assert_eq!(trailing_space.rest, "");
-        assert!(lookup("agent").unwrap().takes_args);
     }
 
     #[test]
@@ -433,8 +420,6 @@ mod tests {
         let hinted = parse("/fix the path looks wrong").unwrap();
         assert_eq!(hinted.kind, CommandKind::Fix);
         assert_eq!(hinted.rest, "the path looks wrong");
-        // takes_args is advertised so Tab-completion leaves a trailing space.
-        assert!(lookup("fix").unwrap().takes_args);
     }
 
     #[test]
@@ -474,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_filters_by_prefix() {
+    fn matches_filters_by_substring_and_ranks_prefixes_first() {
         let all = matches("");
         assert_eq!(all.len(), REGISTRY.len());
 
@@ -482,15 +467,22 @@ mod tests {
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].name, "help");
 
+        let middle = matches("lear");
+        assert_eq!(middle.len(), 1);
+        assert_eq!(middle[0].name, "clear");
+
+        let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(ranked, vec!["stop", "restart"]);
+
         let none = matches("zzz");
         assert!(none.is_empty());
     }
 
     #[test]
     fn matches_case_insensitive() {
-        let h = matches("HE");
-        assert_eq!(h.len(), 1);
-        assert_eq!(h[0].name, "help");
+        let sessions = matches("IONS");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].name, "sessions");
     }
 
     #[test]

@@ -74,10 +74,17 @@ function Set-WtSetting {
         $json = $obj | ConvertTo-Json -Depth 64
         Set-Content -LiteralPath $App.SettingsPath -Value $json -Encoding utf8
         Write-ItLog -Level INFO -Message "Set setting '$Key' = '$Value'"
-        Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Because "settings.json to reflect $Key" -Condition {
-            $cur = Get-WtSetting -App $App -Key $Key
-            "$cur" -eq "$Value"
-        } | Out-Null
+        $expectedJson = ConvertTo-Json -InputObject $Value -Depth 64 -Compress
+        $condition = {
+            $settings = Get-WtSettingsObject -App $App
+            $cur = $null
+            if ($settings -and ($settings.PSObject.Properties.Name -contains $Key)) {
+                $cur = $settings.$Key
+            }
+            $curJson = ConvertTo-Json -InputObject $cur -Depth 64 -Compress
+            $curJson -eq $expectedJson
+        }.GetNewClosure()
+        Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Because "settings.json to reflect $Key" -Condition $condition | Out-Null
         $App
     }
 }

@@ -42,6 +42,9 @@ nguyen
 niksa
 nvaccess
 nvda
+Ollama
+OpenRouter
+openrouter
 osgwiki
 Ottosson
 pabhojwa

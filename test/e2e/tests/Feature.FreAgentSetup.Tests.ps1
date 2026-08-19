@@ -86,6 +86,13 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null
     }
 
+    It 'Token usage toggle is present and defaults off' {
+        Test-UiElementExists -App $script:app -Selector 'ShowTokenUsageAndCostToggle' -TimeoutSec 8 |
+            Should -BeTrue -Because 'the FRE settings page must expose the token usage preference'
+        (Get-UiElement -App $script:app -Selector 'ShowTokenUsageAndCostToggle').toggleState |
+            Should -Be 'off' -Because 'token usage and cost must be hidden by default'
+    }
+
     It 'Non-Copilot agents appear as installed in the FRE agent picker' -Skip:(-not $script:HasNonCopilot) {
         # Expand the dropdown so all agent entries (not just the selected one) are in the tree,
         # then assert each installed non-Copilot CLI is offered and labelled installed.

@@ -187,7 +187,7 @@ pub fn message_looks_like_auth(msg: &str) -> bool {
         || l.contains("unauthorized")
         || l.contains("401")
         || l.contains("apikey is missing")
-        || l.contains("api key")
+        || l.contains("api key is missing")
 }
 
 #[cfg(test)]
@@ -241,6 +241,10 @@ mod tests {
             "new_session over master pipe failed: authentication required"
         ));
         assert!(message_looks_like_auth("HTTP 401 Unauthorized"));
+        assert!(message_looks_like_auth("API key is missing"));
+        assert!(!message_looks_like_auth(
+            "The saved API key for the selected BYOK provider was not found in Windows Credential Manager"
+        ));
         assert!(!message_looks_like_auth("new_session timed out after 30s"));
     }
 

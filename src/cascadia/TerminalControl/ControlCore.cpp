@@ -625,7 +625,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 if (const auto uri = _terminal->GetHyperlinkAtBufferPosition(_terminal->GetSelectionAnchor()); !uri.empty())
                 {
                     lock.unlock();
-                    OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ uri }));
+                    if (ParseCompletedTurnActionHyperlink(uri) == CompletedTurnAction::None)
+                    {
+                        OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ uri }));
+                    }
                 }
                 else
                 {
@@ -848,6 +851,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlCore::ClearHoveredCell()
     {
         _updateHoveredCell(std::nullopt);
+    }
+
+    void ControlCore::RefreshHoveredCell()
+    {
+        _refreshHoveredCell();
     }
 
     void ControlCore::_refreshHoveredCell()
@@ -2192,12 +2200,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // without adding any characters from a previous command.
 
             // terminalPosition is viewport-relative.
-            const auto bufferPos = _terminal->GetViewport().Origin() + terminalPosition;
+            auto bufferPos = _terminal->GetViewport().Origin() + terminalPosition;
             if (bufferPos.y > lastNonSpace.y)
             {
                 // Clicked under the prompt. Bail.
                 return;
             }
+
+            bufferPos.x = std::clamp(bufferPos.x, 0, bufferSize.Width());
+            bufferPos.y = std::clamp(bufferPos.y, 0, bufferSize.Height());
 
             // Limit the click to 1 past the last character on the last line.
             const auto clampedClick = std::min(bufferPos, lastNonSpace);
