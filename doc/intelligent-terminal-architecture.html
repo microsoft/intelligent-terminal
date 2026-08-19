@@ -21,6 +21,10 @@
     @keyframes rise{from{opacity:0;transform:translate(-50%,-46%) scale(.985)}}@keyframes appear{from{opacity:0;transform:translateY(7px)}}@keyframes draw{from{opacity:0;stroke-dashoffset:60}}
     .concept-group{position:absolute;z-index:4;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,252,.95);box-shadow:0 9px 28px rgba(0,0,0,.045);backdrop-filter:blur(10px)}.group-head{padding:12px 14px 10px;border-bottom:1px solid #e5e5e1}.group-kicker{display:block;margin-bottom:3px;color:var(--green);font-size:6.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}.group-head strong{font-size:12px;font-weight:650}.group-head p{margin:3px 0 0;color:#8a8a85;font-size:7.5px;line-height:1.35}.cap-grid{display:grid;gap:5px;padding:9px}.cap{position:relative;min-height:35px;padding:8px 9px;border-radius:7px;background:#f1f1ed}.cap strong{display:block;font-size:8px;font-weight:650}.cap small{display:block;margin-top:2px;color:#92928d;font-size:6.5px}.cap.primary{background:var(--soft);color:#205e4e}.cap.primary small{color:#679286}.cap.prewarm{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 8px;border:1px solid #c7e4da;background:#f4fbf8}.prewarm-copy small{white-space:nowrap}.prewarm-flow{display:flex;align-items:center;gap:3px;color:#639184;font:5.5px Consolas;white-space:nowrap}.prewarm-flow b{width:4px;height:4px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(16,163,127,.1);animation:pulse 1.8s ease-in-out infinite}.extension-domain{left:1%;top:18%;width:clamp(160px,15vw,220px)}.extension-domain .cap-grid{grid-template-columns:1fr 1fr}.intelligence-domain{right:0;top:0;width:clamp(230px,20vw,305px)}.intelligence-domain .cap-grid{grid-template-columns:1fr 1fr}.intelligence-domain .cap.wide{grid-column:1/-1}.agent-ecosystem{padding:9px;border-top:1px solid #e5e5e1;background:#fafaf7;border-radius:0 0 13px 13px}.ecosystem-title{display:flex;align-items:center;justify-content:space-between}.ecosystem-title strong{font-size:7px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}.acp-badge{padding:2px 5px;border-radius:4px;background:var(--soft);color:#26725e;font:6.5px Consolas}.agent-providers{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}.agent-provider{padding:6px 2px;border:1px solid #e0e0dc;border-radius:6px;background:#fff;text-align:center;color:#555;font-size:6.5px;font-weight:600}.choice-label{margin:8px 0 5px;padding-top:7px;border-top:1px dashed #d9d9d4;color:#999;font-size:6px;letter-spacing:.1em;text-transform:uppercase}.open-options{display:grid;grid-template-columns:1fr 1fr;gap:5px}.open-option{padding:7px 8px;border:1px solid #d4e7e1;border-radius:7px;background:#fff}.open-option b{display:block;color:#17664f;font-size:9px;letter-spacing:.02em}.open-option small{display:block;margin-top:2px;color:#78958c;font-size:6px;line-height:1.3}.runtime-domain{position:absolute;left:50%;bottom:0;transform:translateX(-50%);z-index:4;width:clamp(300px,28vw,430px);padding:9px;border:1px solid rgba(16,163,127,.55);border-radius:12px;background:rgba(239,249,246,.96);box-shadow:0 8px 25px rgba(16,163,127,.06)}.runtime-title{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:7px;font-size:9px;font-weight:650}.runtime-title i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(16,163,127,.1)}.platforms{display:grid;grid-template-columns:1fr 1fr;gap:6px}.platform{padding:7px 9px;border:1px solid #cfe2dc;border-radius:7px;background:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:space-between}.platform strong{font-size:8px}.platform span{color:#548174;font-size:6.5px}.domain-line{position:absolute;z-index:3;pointer-events:none}.domain-line path{fill:none;stroke:#aeb3ae;stroke-width:1;stroke-dasharray:3 4;vector-effect:non-scaling-stroke}.domain-line path.live{stroke:var(--green)}.domain-line circle{fill:var(--green)}@keyframes pulse{50%{opacity:.45;transform:scale(.75)}}
     @media(max-width:1100px){.slide{padding:22px}.stage{transform:scale(.9);transform-origin:center;width:111%;margin-left:-5.5%}.thesis{display:none}.terminal-shot{width:52vw}.extension-domain{left:0}.intelligence-domain{right:0}}
+    .agent-stack{padding:8px}.session-layer,.stack-layer{position:relative;border-radius:7px}.session-layer{padding:8px;border:1px solid #c9ded7;background:#f3faf7}.session-top{display:flex;justify-content:space-between;align-items:center}.session-top strong{font-size:8px}.session-level{padding:2px 5px;border-radius:4px;background:#dcefe9;color:#26715d;font:6px Consolas}.session-meta{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:6px}.session-meta span{padding:4px 5px;border-radius:4px;background:#fff;color:#6f7f79;font:6px Consolas}.stack-arrow{height:11px;display:grid;place-items:center;color:#72a596;font:8px Consolas}.stack-layer{padding:7px 9px;border:1px solid #dfdfda;background:#f5f5f1;display:flex;align-items:center;justify-content:space-between}.stack-layer strong{font-size:7.5px}.stack-layer small{color:#969690;font-size:6px}.stack-layer.context-layer{border-color:#cddfd9;background:#f7fbfa}.stack-layer.router-layer{border-color:#bad8cf;background:#edf7f4}.stack-layer.router-layer:before{content:"OURS";position:absolute;right:7px;top:-5px;padding:1px 4px;border-radius:3px;background:var(--green);color:#fff;font:5px Consolas}.stack-layer.process-layer{border-color:var(--green);background:#17362d;color:#fff}.stack-layer.process-layer small{color:#8ec5b5}.egress{display:flex;align-items:center;gap:4px;color:#80cdb7;font-size:6px}.egress i{width:5px;height:5px;border-radius:50%;background:#42d0a8;box-shadow:0 0 0 3px rgba(66,208,168,.12)}.acp-row{margin-top:7px;padding-top:7px;border-top:1px dashed #d8d8d3}.acp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}.acp-head strong{font-size:6.5px;letter-spacing:.08em;text-transform:uppercase}.agent-providers.compact{margin:0}.agent-providers.compact .agent-provider{padding:5px 1px}.freedom-row{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}.freedom-row span{padding:5px;border-radius:5px;background:var(--soft);color:#28715e;text-align:center;font:6px Consolas}.feature-rail{display:flex;flex-wrap:wrap;gap:4px;padding:7px 8px;border-top:1px solid #e5e5e1}.feature-rail span{padding:4px 6px;border-radius:5px;background:#f0f0ec;color:#777;font-size:6px}.runtime-domain .runtime-title span{color:#77948c;font-size:7px;font-weight:400}
+    .process-hosts{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px}.process-host{padding:5px 7px;border:1px solid #c6ded7;border-radius:6px;background:#f3faf8;display:flex;align-items:center;justify-content:space-between}.process-host strong{color:#285f50;font-size:6.5px}.process-host span{color:#79968e;font-size:5.5px}.agent-stack{padding:8px}.session-layer,.stack-layer{position:relative;border-radius:7px}.session-layer{padding:8px;border:1px solid #c9ded7;background:#f3faf7}.session-top{display:flex;justify-content:space-between;align-items:center}.session-top strong{font-size:8px}.session-level{padding:2px 5px;border-radius:4px;background:#dcefe9;color:#26715d;font:6px Consolas}.session-meta{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:6px}.session-meta span{padding:4px 5px;border-radius:4px;background:#fff;color:#6f7f79;font:6px Consolas}.stack-arrow{height:11px;display:grid;place-items:center;color:#72a596;font:8px Consolas}.stack-layer{padding:7px 9px;border:1px solid #dfdfda;background:#f5f5f1;display:flex;align-items:center;justify-content:space-between}.stack-layer strong{font-size:7.5px}.stack-layer small{color:#969690;font-size:6px}.stack-layer.context-layer{border-color:#cddfd9;background:#f7fbfa}.stack-layer.router-layer{border-color:#bad8cf;background:#edf7f4}.stack-layer.router-layer:before{content:"OURS";position:absolute;right:7px;top:-5px;padding:1px 4px;border-radius:3px;background:var(--green);color:#fff;font:5px Consolas}.stack-layer.process-layer{border-color:var(--green);background:#17362d;color:#fff}.stack-layer.process-layer small{color:#8ec5b5}.egress{display:flex;align-items:center;gap:4px;color:#80cdb7;font-size:6px}.egress i{width:5px;height:5px;border-radius:50%;background:#42d0a8;box-shadow:0 0 0 3px rgba(66,208,168,.12)}.acp-row{margin-top:7px;padding-top:7px;border-top:1px dashed #d8d8d3}.acp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}.acp-head strong{font-size:6.5px;letter-spacing:.08em;text-transform:uppercase}.agent-providers.compact{margin:0}.agent-providers.compact .agent-provider{padding:5px 1px}.freedom-row{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}.freedom-row span{padding:5px;border-radius:5px;background:var(--soft);color:#28715e;text-align:center;font:6px Consolas}.feature-rail{display:flex;flex-wrap:wrap;gap:4px;padding:7px 8px;border-top:1px solid #e5e5e1}.feature-rail span{padding:4px 6px;border-radius:5px;background:#f0f0ec;color:#777;font-size:6px}
+    .expansion-list{display:grid;gap:5px;padding:9px}.expansion-card{display:grid;grid-template-columns:27px 1fr;gap:8px;align-items:center;padding:8px;border:1px solid #e2e2dd;border-radius:8px;background:#fafaf7}.expansion-card .exp-icon{width:27px;height:27px;display:grid;place-items:center;border-radius:7px;background:#ecece7;color:#555;font:9px Consolas}.expansion-card strong{display:block;font-size:8px}.expansion-card small{display:block;margin-top:2px;color:#92928d;font-size:6px;line-height:1.3}.expansion-card.intellisense{border-color:#c6e2d9;background:#f3faf7}.expansion-card.intellisense .exp-icon{background:#dcefe9;color:#27715e}.expansion-card.navigation .exp-icon{background:#e8edf7;color:#50688f}.expansion-card.surface .exp-icon{background:#f1eaf6;color:#79598c}.expansion-card.continuity .exp-icon{background:#f8eee3;color:#8e673d}.expansion-card.workspace .exp-icon{background:#ececec;color:#555}.reveal-item{display:none;opacity:0;transform:translateY(6px)}.reveal-item.visible{display:grid;animation:revealIn .36s cubic-bezier(.2,.8,.2,1) forwards}.stack-sequence{display:none}.stack-sequence.visible{display:block;animation:revealIn .36s cubic-bezier(.2,.8,.2,1) forwards}[data-feature-rail].visible{display:flex}.reveal-control{width:calc(100% - 18px);margin:0 9px 9px;padding:7px;border:1px dashed #bcd6ce;border-radius:7px;background:transparent;color:#43806e;font:6.5px Consolas;letter-spacing:.05em;cursor:pointer}.reveal-control:hover{border-style:solid;background:var(--soft)}.reveal-progress{float:right;color:#91a59f}@keyframes revealIn{to{opacity:1;transform:none}}
+    .intelligence-domain{width:clamp(280px,23vw,360px)}.agent-pane-root{padding:8px;border:1px solid #bcd9d0;border-radius:8px;background:#f0f9f6}.pane-root-head{display:flex;align-items:center;justify-content:space-between}.pane-root-head strong{font-size:9px}.pane-root-head span{padding:2px 5px;border-radius:4px;background:#d9eee7;color:#276d59;font:6px Consolas}.pane-session{display:flex;gap:4px;margin-top:6px}.pane-session span{flex:1;padding:4px;border-radius:4px;background:#fff;color:#71827d;text-align:center;font:5.5px Consolas}.branch-connector{height:16px;position:relative}.branch-connector:before{content:"";position:absolute;left:25%;right:25%;top:7px;border-top:1px solid #7db2a2}.branch-connector:after{content:"";position:absolute;left:50%;top:0;height:8px;border-left:1px solid #7db2a2}.branch-area{display:grid;grid-template-columns:1fr 1fr;gap:6px}.branch-stack{padding:7px;border:1px solid #deded9;border-radius:8px;background:#fafaf7}.branch-title{display:flex;align-items:center;gap:5px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid #e3e3de}.branch-title i{width:6px;height:6px;border-radius:50%}.branch-title strong{font-size:7px}.agent-branch .branch-title i{background:var(--green)}.terminal-branch .branch-title i{background:#657aa0}.mini-layer{padding:6px;margin-top:4px;border-radius:5px;background:#efefeb}.mini-layer strong{display:block;font-size:6.5px}.mini-layer small{display:block;margin-top:2px;color:#92928d;font-size:5.5px;line-height:1.25}.mini-layer.accent{background:#e6f4ef;color:#276d59}.mini-layer.dark{background:#17362d;color:#fff}.mini-layer.dark small{color:#8fc2b3}.mini-arrow{text-align:center;color:#7fa99d;font:7px Consolas;line-height:9px}.host-mini{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:4px}.host-mini span{padding:4px 2px;border:1px solid #cfe1dc;border-radius:4px;background:#fff;color:#557d71;text-align:center;font:5.5px Consolas}.agent-mini-row{display:grid;grid-template-columns:repeat(2,1fr);gap:3px;margin-top:4px}.agent-mini-row span{padding:4px 2px;border:1px solid #ddd;border-radius:4px;background:#fff;text-align:center;font-size:5.5px}.llm-hook{margin-top:4px;padding:5px 6px;border:1px dashed #afcfc5;border-radius:5px;background:#edf7f4;color:#2f7562;font-size:5.5px}.llm-hook b{font-size:6px}.terminal-state{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:4px}.terminal-state span{padding:4px;border-radius:4px;background:#fff;color:#68768e;text-align:center;font:5.5px Consolas}.branch-note{margin-top:5px;color:#999;font-size:5.5px;line-height:1.3}.shared-features{display:flex;flex-wrap:wrap;gap:3px}.shared-features span{padding:4px 5px;border-radius:4px;background:#f0f0ec;color:#777;font-size:5.5px}
   </style>
 </head>
 <body>
@@ -34,45 +38,51 @@
       <svg class="domain-line" width="100%" height="100%" viewBox="0 0 1400 600" preserveAspectRatio="none" aria-hidden="true">
         <path d="M220 230 C310 230 330 210 405 205"/><circle cx="405" cy="205" r="3"/>
         <path class="live" d="M1180 190 C1090 190 1060 255 995 335"/><circle cx="995" cy="335" r="3"/>
-        <path class="live" d="M995 385 C930 455 835 490 700 515"/><circle cx="700" cy="515" r="3"/>
       </svg>
 
       <section class="concept-group extension-domain">
         <div class="group-head"><span class="group-kicker">Terminal expansion</span><strong>Terminal Extensions</strong><p>Expand how people organize and resume work.</p></div>
-        <div class="cap-grid">
-          <div class="cap"><strong>Vertical Tabs</strong><small>Navigate at scale</small></div>
-          <div class="cap"><strong>Rich Tabs</strong><small>More context</small></div>
-          <div class="cap"><strong>Durable Sessions</strong><small>Persist & resume</small></div>
-          <div class="cap"><strong>Workspaces</strong><small>Restore layouts</small></div>
+        <div class="expansion-list" data-reveal-list="extensions">
+          <div class="expansion-card intellisense reveal-item"><span class="exp-icon">›_</span><span><strong>Shell IntelliSense</strong><small>Contextual prediction, completion and command guidance.</small></span></div>
+          <div class="expansion-card navigation reveal-item"><span class="exp-icon">↕</span><span><strong>Vertical Tabs</strong><small>Navigate many sessions as a scalable sidebar.</small></span></div>
+          <div class="expansion-card surface reveal-item"><span class="exp-icon">▤</span><span><strong>Rich Tabs</strong><small>Surface status, environment and task context.</small></span></div>
+          <div class="expansion-card continuity reveal-item"><span class="exp-icon">∞</span><span><strong>Durable Sessions</strong><small>Keep processes alive and resume without losing state.</small></span></div>
+          <div class="expansion-card workspace reveal-item"><span class="exp-icon">▦</span><span><strong>Workspaces</strong><small>Compose and restore complete terminal layouts.</small></span></div>
         </div>
+        <button class="reveal-control" type="button" data-reveal-button="extensions">Reveal next <span class="reveal-progress">0 / 5</span></button>
       </section>
 
       <section class="concept-group intelligence-domain">
-        <div class="group-head"><span class="group-kicker">Intelligent experience</span><strong>Agent Pane Intelligence</strong><p>Intelligence embedded directly in the terminal workflow.</p></div>
-        <div class="cap-grid">
-          <div class="cap prewarm wide"><span class="prewarm-copy"><strong>Agent Pre-warm</strong><small>Instantly ready when a tab opens</small></span><span class="prewarm-flow">New Tab → <b></b> Ready</span></div>
-          <div class="cap primary wide"><strong>Context Awareness</strong><small>Powered by Terminal Protocol</small></div>
-          <div class="cap"><strong>Command Awareness</strong><small>Understand intent</small></div>
-          <div class="cap"><strong>Shell Integration</strong><small>Read & act</small></div>
-          <div class="cap"><strong>Multi-agent</strong><small>Delegate work</small></div>
-          <div class="cap"><strong>Autofix</strong><small>Detect & repair</small></div>
-          <div class="cap"><strong>Session Management</strong><small>Route & restore</small></div>
-          <div class="cap"><strong>Hooks</strong><small>Observe & trigger</small></div>
-        </div>
-        <div class="agent-ecosystem">
-          <div class="ecosystem-title"><strong>Agent Ecosystem</strong><span class="acp-badge">ACP</span></div>
-          <div class="agent-providers"><span class="agent-provider">Copilot</span><span class="agent-provider">Claude</span><span class="agent-provider">Codex</span><span class="agent-provider">OpenCode</span></div>
-          <div class="choice-label">Provider & model freedom</div>
-          <div class="open-options">
-            <div class="open-option"><b>BYOK</b><small>Bring your own key<br>Provider credentials</small></div>
-            <div class="open-option"><b>BYOM</b><small>Bring your own model<br>Cloud or local</small></div>
+        <div class="group-head"><strong>Agent Pane</strong><p>The pane owns the session; Agent and Terminal context evolve independently.</p></div>
+        <div class="agent-stack" data-reveal-list="agent-stack">
+          <div class="agent-pane-root stack-sequence">
+            <div class="pane-root-head"><strong>Agent Pane</strong><span>SESSION LEVEL</span></div>
+            <div class="pane-session"><span>tab session</span><span>slash commands</span><span>TUI state</span></div>
           </div>
+          <div class="stack-sequence">
+            <div class="branch-connector"></div>
+            <div class="branch-area">
+              <section class="branch-stack agent-branch">
+                <div class="branch-title"><i></i><strong>Agent Stack</strong></div>
+                <div class="mini-layer accent"><strong>Session Router</strong><small>route · multiplex · resume</small></div><div class="mini-arrow">↓</div>
+                <div class="mini-layer dark"><strong>Agent Process</strong><small>shared egress proxy</small></div>
+                <div class="host-mini"><span>Windows</span><span>Ubuntu / WSL</span></div><div class="mini-arrow">↓ ACP</div>
+                <div class="agent-mini-row"><span>Copilot</span><span>Claude</span><span>Codex</span><span>OpenCode</span></div>
+                <div class="freedom-row"><span>BYOK</span><span>BYOM</span></div>
+                <div class="llm-hook"><b>LLM Hooks</b> · intercept · enrich · observe</div>
+              </section>
+              <section class="branch-stack terminal-branch">
+                <div class="branch-title"><i></i><strong>Terminal Stack</strong></div>
+                <div class="mini-layer"><strong>Terminal Context Manager</strong><small>pane scope · state · history</small></div>
+                <div class="terminal-state"><span>paneId</span><span>pane context</span><span>shell state</span><span>command state</span></div><div class="mini-arrow">↓</div>
+                <div class="mini-layer accent"><strong>Terminal Protocol</strong><small>observe · request · respond</small></div><div class="mini-arrow">↓</div>
+                <div class="shared-features"><span>Shell Integration</span><span>Command Awareness</span><span>Autofix</span></div>
+              </section>
+            </div>
+          </div>
+          <div class="stack-sequence"><div class="feature-rail" data-feature-rail><span>Pre-warm</span><span>Session Management</span><span>Multi-agent</span><span>Context Awareness</span></div></div>
         </div>
-      </section>
-
-      <section class="runtime-domain">
-        <div class="runtime-title"><i></i> Agent Runtime <span style="color:#77948c;font-size:7px;font-weight:400">· cross-environment execution</span></div>
-        <div class="platforms"><div class="platform"><strong>Windows</strong><span>Agent 01 · Agent N</span></div><div class="platform"><strong>Ubuntu / WSL</strong><span>Agent 02 · Agent N</span></div></div>
+        <button class="reveal-control" type="button" data-reveal-button="agent-stack">Reveal next <span class="reveal-progress">0 / 3</span></button>
       </section>
 
       <figure class="terminal-shot">
@@ -115,6 +125,19 @@
       prefixes.forEach(item=>item.textContent=ubuntu?'you@ubuntu:':'PS ');
       paths.forEach(item=>item.textContent=ubuntu?'~/workspace$':'C:\\Users\\you\\workspace>');
     }));
+    document.querySelectorAll('[data-reveal-button]').forEach(button=>{
+      const id=button.dataset.revealButton;
+      const list=document.querySelector(`[data-reveal-list="${id}"]`);
+      const items=[...list.querySelectorAll(id==='extensions'?'.reveal-item':'.stack-sequence')];
+      const progress=button.querySelector('.reveal-progress');
+      let shown=0;
+      button.addEventListener('click',()=>{
+        if(shown===items.length){items.forEach(item=>item.classList.remove('visible'));shown=0;}
+        else{items[shown].classList.add('visible');shown++;}
+        progress.textContent=`${shown} / ${items.length}`;
+        button.firstChild.textContent=shown===items.length?'Reset ':'Reveal next ';
+      });
+    });
   </script>
 </body>
 </html>
