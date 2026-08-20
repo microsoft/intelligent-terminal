@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +10,8 @@ use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
+
+static NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoticeKind {
@@ -400,6 +403,10 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    pub(crate) completed_turn_layout_namespace: u64,
+    pub(crate) completed_turn_layout_ids: Vec<u64>,
+    pub(crate) completed_turn_layout_revisions: Vec<u64>,
+    pub(crate) next_completed_turn_layout_id: u64,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -516,6 +523,66 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn completed_turn_layout_metadata(&mut self) -> (u64, Vec<(u64, u64)>) {
+        if self.completed_turn_layout_namespace == 0 {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let len = self.completed_turns.len();
+        self.completed_turn_layout_ids.truncate(len);
+        self.completed_turn_layout_revisions.truncate(len);
+        while self.completed_turn_layout_ids.len() < len {
+            self.next_completed_turn_layout_id =
+                self.next_completed_turn_layout_id.wrapping_add(1).max(1);
+            self.completed_turn_layout_ids
+                .push(self.next_completed_turn_layout_id);
+            self.completed_turn_layout_revisions.push(0);
+        }
+
+        (
+            self.completed_turn_layout_namespace,
+            self.completed_turn_layout_ids
+                .iter()
+                .copied()
+                .zip(self.completed_turn_layout_revisions.iter().copied())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn mark_completed_turn_layout_dirty(&mut self, index: usize) {
+        let _ = self.completed_turn_layout_metadata();
+        if let Some(revision) = self.completed_turn_layout_revisions.get_mut(index) {
+            *revision = revision.wrapping_add(1);
+        }
+    }
+
+    pub fn clear_completed_turns(&mut self) {
+        self.completed_turns.clear();
+        self.completed_turn_layout_ids.clear();
+        self.completed_turn_layout_revisions.clear();
+    }
+
+    pub fn set_last_completed_turn_trailing_marker(&mut self, marker: String) -> bool {
+        let Some(index) = self.completed_turns.len().checked_sub(1) else {
+            return false;
+        };
+        self.completed_turns[index].trailing_marker = Some(marker);
+        self.mark_completed_turn_layout_dirty(index);
+        true
+    }
+
+    pub fn set_completed_turn_expanded(&mut self, index: usize, expanded: bool) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        if turn.expanded != expanded {
+            turn.expanded = expanded;
+            self.mark_completed_turn_layout_dirty(index);
+        }
+        true
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
@@ -742,11 +809,10 @@ impl TabSession {
     }
 
     pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
-        let Some(turn) = self.completed_turns.get_mut(index) else {
+        let Some(expanded) = self.completed_turns.get(index).map(|turn| turn.expanded) else {
             return false;
         };
-        turn.expanded = !turn.expanded;
-        true
+        self.set_completed_turn_expanded(index, !expanded)
     }
 
     pub fn toggle_selected_completed_turn(&mut self) {

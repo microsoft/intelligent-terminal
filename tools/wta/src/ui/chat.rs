@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 #[cfg(test)]
 use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -28,6 +30,9 @@ const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 const MAX_TOOL_PREVIEW_LINES: usize = 2;
 const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
+const MAX_COMPLETED_TURN_CACHE_ENTRIES: usize = 512;
+const MAX_COMPLETED_TURN_CACHE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES: usize = 256 * 1024;
 
 pub struct PreparedChatLayout {
     wrap_width: usize,
@@ -50,6 +55,75 @@ struct PreparedCompletedTurn {
     height: usize,
     expanded: bool,
     prompt_rows: Vec<PromptRowGeometry>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CompletedTurnCacheKey {
+    namespace: u64,
+    item_id: u64,
+    revision: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    expanded: bool,
+    selected: bool,
+    pane_focused: bool,
+}
+
+#[derive(Clone)]
+struct CachedCompletedTurn {
+    lines: Vec<Line<'static>>,
+    height: usize,
+    expanded: bool,
+    prompt_rows: Vec<PromptRowGeometry>,
+}
+
+struct CompletedTurnCacheEntry {
+    key: CompletedTurnCacheKey,
+    value: CachedCompletedTurn,
+    bytes: usize,
+}
+
+#[derive(Default)]
+struct CompletedTurnLayoutCache {
+    entries: VecDeque<CompletedTurnCacheEntry>,
+    bytes: usize,
+}
+
+impl CompletedTurnLayoutCache {
+    fn get(&mut self, key: CompletedTurnCacheKey) -> Option<CachedCompletedTurn> {
+        let index = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(index)?;
+        let value = entry.value.clone();
+        self.entries.push_back(entry);
+        Some(value)
+    }
+
+    fn insert(&mut self, key: CompletedTurnCacheKey, value: CachedCompletedTurn, bytes: usize) {
+        if bytes > MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES {
+            return;
+        }
+        if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
+            if let Some(previous) = self.entries.remove(index) {
+                self.bytes = self.bytes.saturating_sub(previous.bytes);
+            }
+        }
+        while self.entries.len() >= MAX_COMPLETED_TURN_CACHE_ENTRIES
+            || self.bytes.saturating_add(bytes) > MAX_COMPLETED_TURN_CACHE_BYTES
+        {
+            let Some(evicted) = self.entries.pop_front() else {
+                break;
+            };
+            self.bytes = self.bytes.saturating_sub(evicted.bytes);
+        }
+        self.bytes = self.bytes.saturating_add(bytes);
+        self.entries
+            .push_back(CompletedTurnCacheEntry { key, value, bytes });
+    }
+}
+
+thread_local! {
+    static COMPLETED_TURN_LAYOUT_CACHE: RefCell<CompletedTurnLayoutCache> =
+        RefCell::new(CompletedTurnLayoutCache::default());
 }
 
 #[cfg(test)]
@@ -215,7 +289,11 @@ fn tool_detail_lines(
     lines
 }
 
-pub fn prepare(app: &App, area_width: u16) -> PreparedChatLayout {
+pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
+    let render_agent_markdown = app.render_agent_markdown;
+    let pane_focused = app.pane_focused;
+    let (layout_namespace, layout_metadata) =
+        app.current_tab_mut().completed_turn_layout_metadata();
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
     let streaming_index = tab.streaming_agent_message_index();
@@ -242,20 +320,46 @@ pub fn prepare(app: &App, area_width: u16) -> PreparedChatLayout {
         .iter()
         .enumerate()
         .map(|(index, turn)| {
-            let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
-                turn,
-                tab.selected_completed_turn_idx == Some(index),
-                app.pane_focused,
+            let (item_id, revision) = layout_metadata[index];
+            let key = CompletedTurnCacheKey {
+                namespace: layout_namespace,
+                item_id,
+                revision,
                 wrap_width,
-                app.render_agent_markdown,
-            );
-            let lines = own_lines(lines);
+                render_agent_markdown,
+                expanded: turn.expanded,
+                selected: tab.selected_completed_turn_idx == Some(index),
+                pane_focused,
+            };
+            let cached = COMPLETED_TURN_LAYOUT_CACHE
+                .with(|cache| cache.borrow_mut().get(key))
+                .unwrap_or_else(|| {
+                    let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
+                        turn,
+                        key.selected,
+                        pane_focused,
+                        wrap_width,
+                        render_agent_markdown,
+                    );
+                    let lines = own_lines(lines);
+                    let value = CachedCompletedTurn {
+                        height: rendered_lines_height(&lines, wrap_width),
+                        expanded: turn.expanded,
+                        prompt_rows,
+                        lines,
+                    };
+                    let bytes = completed_turn_cache_bytes(&value);
+                    COMPLETED_TURN_LAYOUT_CACHE.with(|cache| {
+                        cache.borrow_mut().insert(key, value.clone(), bytes);
+                    });
+                    value
+                });
             PreparedCompletedTurn {
                 index,
-                height: rendered_lines_height(&lines, wrap_width),
-                lines,
-                expanded: turn.expanded,
-                prompt_rows,
+                height: cached.height,
+                lines: cached.lines,
+                expanded: cached.expanded,
+                prompt_rows: cached.prompt_rows,
             }
         })
         .collect();
@@ -305,7 +409,7 @@ pub fn prepare(app: &App, area_width: u16) -> PreparedChatLayout {
 /// Estimate the chat block's natural height (in visual rows) given the
 /// rendering width. Standalone callers prepare a temporary layout; the main
 /// frame planner reuses one prepared layout for both height and rendering.
-pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
+pub fn estimated_block_height(app: &mut App, area_width: u16) -> u16 {
     prepare(app, area_width).natural_height()
 }
 
@@ -540,6 +644,24 @@ fn own_lines(lines: Vec<Line<'_>>) -> Vec<Line<'static>> {
                 .collect(),
         })
         .collect()
+}
+
+fn completed_turn_cache_bytes(value: &CachedCompletedTurn) -> usize {
+    std::mem::size_of::<CachedCompletedTurn>()
+        + value.lines.capacity() * std::mem::size_of::<Line<'static>>()
+        + value.prompt_rows.capacity() * std::mem::size_of::<PromptRowGeometry>()
+        + value
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans.capacity() * std::mem::size_of::<Span<'static>>()
+                    + line
+                        .spans
+                        .iter()
+                        .map(|span| span.content.len())
+                        .sum::<usize>()
+            })
+            .sum::<usize>()
 }
 
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
@@ -1542,6 +1664,57 @@ mod tests {
         .expect("counter thread must finish");
 
         assert_eq!(completed_turn_line_build_count(), 0);
+    }
+
+    #[test]
+    fn completed_turn_layout_cache_enforces_all_memory_bounds() {
+        let value = CachedCompletedTurn {
+            lines: vec![Line::from("cached")],
+            height: 1,
+            expanded: false,
+            prompt_rows: Vec::new(),
+        };
+        let key = |item_id| CompletedTurnCacheKey {
+            namespace: 1,
+            item_id,
+            revision: 0,
+            wrap_width: 80,
+            render_agent_markdown: true,
+            expanded: false,
+            selected: false,
+            pane_focused: true,
+        };
+        let mut cache = CompletedTurnLayoutCache::default();
+
+        cache.insert(
+            key(0),
+            value.clone(),
+            MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES + 1,
+        );
+        assert!(cache.entries.is_empty(), "oversized entries are not cached");
+
+        for item_id in 0..=MAX_COMPLETED_TURN_CACHE_ENTRIES as u64 {
+            cache.insert(key(item_id), value.clone(), 1);
+        }
+        assert_eq!(cache.entries.len(), MAX_COMPLETED_TURN_CACHE_ENTRIES);
+        assert!(
+            cache.get(key(0)).is_none(),
+            "the least-recent entry is evicted"
+        );
+
+        let mut cache = CompletedTurnLayoutCache::default();
+        for item_id in 0..32 {
+            cache.insert(
+                key(item_id),
+                value.clone(),
+                MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES,
+            );
+        }
+        assert!(cache.bytes <= MAX_COMPLETED_TURN_CACHE_BYTES);
+        assert!(cache
+            .entries
+            .iter()
+            .all(|entry| entry.bytes <= MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES));
     }
 
     #[test]

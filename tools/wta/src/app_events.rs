@@ -61,10 +61,9 @@ impl App {
             return;
         };
         let tab = self.current_tab_mut();
-        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+        if !tab.set_completed_turn_expanded(click.turn_index, click.previous_expanded) {
             return;
-        };
-        turn.expanded = click.previous_expanded;
+        }
         tab.selected_completed_turn_idx = click.previous_selected_index;
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
@@ -1907,7 +1906,7 @@ impl App {
                         tab.clear_chat_history();
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
-                        tab.completed_turns.clear();
+                        tab.clear_completed_turns();
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

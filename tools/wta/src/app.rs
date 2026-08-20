@@ -4913,7 +4913,7 @@ impl App {
     fn cmd_clear(&mut self) {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.scroll_to_bottom();
     }
 
@@ -4968,7 +4968,7 @@ impl App {
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -5160,7 +5160,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
@@ -5538,7 +5538,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {

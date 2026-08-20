@@ -702,9 +702,7 @@ impl App {
         } else {
             // AgentMessageEnd already committed this turn while the card was
             // visible, so only annotate that existing history entry.
-            if let Some(last) = tab.completed_turns.last_mut() {
-                last.trailing_marker = Some(marker);
-            }
+            tab.set_last_completed_turn_trailing_marker(marker);
             TurnOutcome::Empty
         };
         tab.turn = TurnState::Surfaced {
@@ -826,9 +824,7 @@ impl App {
             });
             tab.scroll_to_bottom();
         } else if annotate_card {
-            if let Some(last) = tab.completed_turns.last_mut() {
-                last.trailing_marker = Some(canceled_marker);
-            }
+            tab.set_last_completed_turn_trailing_marker(canceled_marker);
         }
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;

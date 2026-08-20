@@ -8390,9 +8390,9 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
         .push(ChatMessage::User("hello".into()));
 
     app.state = ConnectionState::Disconnected;
-    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let without_activity = crate::ui::chat::estimated_block_height(&mut app, 80);
     app.state = ConnectionState::Connecting("Starting agent".into());
-    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let with_activity = crate::ui::chat::estimated_block_height(&mut app, 80);
 
     assert_eq!(with_activity, without_activity);
     assert!(
@@ -10095,14 +10095,54 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
 
     crate::ui::chat::reset_completed_turn_line_build_count();
     let after = render_to_text(&mut app, 80, 16);
-    assert_eq!(
-        crate::ui::chat::completed_turn_line_build_count(),
-        app.current_tab().completed_turns.len(),
-        "height, selection, and rendering must share one completed-turn layout pass",
+    let first_frame_builds = crate::ui::chat::completed_turn_line_build_count();
+    assert!(
+        first_frame_builds > 0 && first_frame_builds <= app.current_tab().completed_turns.len(),
+        "a frame may build each dirty completed turn at most once; built {first_frame_builds}",
     );
     assert!(
         after.contains("SELECT_SCROLL_TURN_00"),
         "the viewport must follow keyboard selection to the oldest completed turn; rendered:\n{after}",
+    );
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let retained = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        0,
+        "an identical second frame must reuse retained completed-turn layouts",
+    );
+    assert_eq!(retained, after);
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let collapsed = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "collapsing one completed turn must invalidate only that item",
+    );
+    assert_ne!(collapsed, retained);
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let expanded = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "expanding one completed turn must invalidate only that item",
+    );
+    assert!(expanded.contains("ACK_SELECT_SCROLL_TURN_00"));
+
+    assert!(app
+        .current_tab_mut()
+        .set_last_completed_turn_trailing_marker("CACHED_MARKER".into()));
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let _ = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "updating one trailing marker must invalidate only that item",
     );
 
     for _ in 0..11 {
@@ -10120,6 +10160,26 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
         "a later manual scroll must not be overridden after selection visibility is consumed",
     );
     assert!(!manually_scrolled.contains("SELECT_SCROLL_TURN_11"));
+}
+
+#[test]
+fn clearing_completed_turns_renews_retained_layout_identity() {
+    let turn = CompletedTurn {
+        prompt: "same prompt".into(),
+        details: vec![ChatMessage::Agent("same response".into())],
+        expanded: true,
+        trailing_marker: None,
+    };
+    let mut tab = TabSession::default();
+    tab.completed_turns.push(turn.clone());
+    let (namespace, before) = tab.completed_turn_layout_metadata();
+
+    tab.clear_completed_turns();
+    tab.completed_turns.push(turn);
+    let (same_namespace, after) = tab.completed_turn_layout_metadata();
+
+    assert_eq!(same_namespace, namespace);
+    assert_ne!(after[0].0, before[0].0);
 }
 
 #[test]
