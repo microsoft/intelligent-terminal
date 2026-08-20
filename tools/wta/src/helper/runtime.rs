@@ -1159,6 +1159,18 @@ async fn run_acp_app(
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
             }
+            else if let Some(pane_id) = std::env::var("WT_SESSION")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+            {
+                tracing::info!(
+                    target: "tab_session",
+                    pane_id = %pane_id,
+                    "seeded app_state.pane_id from WT_SESSION fallback"
+                );
+                app_state.pane_id = Some(pane_id);
+            }
 
             // WT knows the owning window authoritatively when it creates the
             // helper. Prefer that seed over best-effort PID discovery so

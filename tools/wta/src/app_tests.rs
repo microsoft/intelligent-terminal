@@ -82,6 +82,7 @@ fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
     json!({
         "window_id": window_id,
         "tab_id": tab_id,
+        "pane_id": "{PANE-A}",
     })
 }
 
@@ -104,7 +105,8 @@ fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
     app.window_id = Some("w1".into());
     app.owner_tab_id = Some("tab-a".into());
     app.tab_id = Some("tab-a".into());
-    app.tab_mut("tab-a");
+    app.pane_id = Some("pane-a".into());
+    app.tab_mut("tab-a").pane_open = true;
     let pasted = format!("{}\r\n{}", "alpha", "beta");
     let expected = ["alpha", "beta"].join("\n");
 
@@ -127,6 +129,7 @@ fn agent_paste_text_inserts_at_cursor() {
     app.tab_id = Some("tab-a".into());
     {
         let tab = app.tab_mut("tab-a");
+        tab.pane_open = true;
         tab.input = "ab".into();
         tab.cursor_pos = 1;
         tab.paste_pending = true;
@@ -146,6 +149,7 @@ fn agent_paste_text_ignores_wrong_window_and_non_owner_helpers() {
     app.window_id = Some("w1".into());
     app.owner_tab_id = Some("tab-a".into());
     app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
     app.tab_mut("tab-a");
 
     assert_eq!(
@@ -156,6 +160,12 @@ fn agent_paste_text_ignores_wrong_window_and_non_owner_helpers() {
         app.agent_paste_target_tab(&agent_paste_params("w1", "tab-b")),
         None
     );
+    let wrong_pane = json!({
+        "window_id": "w1",
+        "tab_id": "tab-a",
+        "pane_id": "pane-b",
+    });
+    assert_eq!(app.agent_paste_target_tab(&wrong_pane), None);
 
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
     assert!(
@@ -172,6 +182,7 @@ fn agent_paste_text_ignores_missing_owner_or_window() {
     let mut app = test_app();
     app.window_id = Some("w1".into());
     app.owner_tab_id = None;
+    app.pane_id = Some("pane-a".into());
     assert_eq!(
         app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")),
         None
@@ -192,6 +203,7 @@ fn agent_paste_text_allows_unknown_helper_window_when_owner_matches() {
     let mut app = test_app();
     app.owner_tab_id = Some("tab-a".into());
     app.window_id = None;
+    app.pane_id = Some("pane-a".into());
     assert_eq!(
         app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")),
         Some("tab-a")
@@ -204,6 +216,8 @@ fn agent_paste_text_ignores_non_chat_or_non_live_input() {
     app.window_id = Some("w1".into());
     app.owner_tab_id = Some("tab-a".into());
     app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.tab_mut("tab-a").pane_open = true;
     app.tab_mut("tab-a").current_view = View::Agents;
 
     app.insert_agent_paste_text("tab-a", 0, "hidden");
@@ -228,7 +242,12 @@ fn agent_paste_input_live_requires_existing_chat_input_focus() {
     assert!(!app.agent_paste_input_is_live("tab-a"));
 
     app.tab_mut("tab-a");
+    app.tab_mut("tab-a").pane_open = true;
     assert!(app.agent_paste_input_is_live("tab-a"));
+
+    app.tab_mut("tab-a").pane_open = false;
+    assert!(!app.agent_paste_input_is_live("tab-a"));
+    app.tab_mut("tab-a").pane_open = true;
 
     app.tab_mut("tab-a").paste_pending = true;
     assert!(!app.agent_paste_input_is_live("tab-a"));
@@ -293,11 +312,69 @@ fn stale_agent_paste_completion_is_ignored() {
 }
 
 #[test]
+fn agent_paste_completion_is_ignored_after_pane_is_stashed() {
+    let mut app = test_app();
+    app.mode = AppMode::Chat;
+    app.owner_tab_id = Some("tab-a".into());
+    {
+        let tab = app.tab_mut("tab-a");
+        tab.pane_open = true;
+        tab.paste_pending = true;
+        tab.paste_generation = 1;
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".into(),
+        pane_id: String::new(),
+        tab_id: Some("tab-a".into()),
+        params: json!({ "tab_id": "tab-a", "pane_open": false }),
+    });
+
+    let tab = app.tab_sessions.get("tab-a").unwrap();
+    assert!(!tab.paste_pending);
+    assert_eq!(tab.paste_generation, 2);
+
+    app.handle_event(AppEvent::AgentPasteTextReady {
+        tab_id: "tab-a".into(),
+        generation: 1,
+        text: "hidden".into(),
+    });
+
+    let tab = app.tab_sessions.get("tab-a").unwrap();
+    assert!(tab.input.is_empty());
+    assert!(!tab.paste_pending);
+}
+
+#[test]
+fn tab_rename_invalidates_pending_agent_paste() {
+    let mut app = test_app();
+    app.tab_id = Some("AAAA".into());
+    let mut tab = TabSession::default();
+    tab.paste_pending = true;
+    tab.paste_generation = 7;
+    app.tab_sessions.insert("AAAA".into(), tab);
+
+    app.rename_tab_session("AAAA", "BBBB", None);
+
+    let tab = app.tab_sessions.get("BBBB").unwrap();
+    assert!(!tab.paste_pending);
+    assert_eq!(tab.paste_generation, 8);
+
+    app.handle_event(AppEvent::AgentPasteTextReady {
+        tab_id: "AAAA".into(),
+        generation: 7,
+        text: "stale".into(),
+    });
+    assert!(app.tab_sessions.get("BBBB").unwrap().input.is_empty());
+}
+
+#[test]
 fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
     let mut app = test_app();
     app.window_id = Some("w1".into());
     app.owner_tab_id = Some("tab-a".into());
     app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
 
     app.mode = AppMode::Auth;
     app.handle_event(AppEvent::WtEvent {
@@ -7953,6 +8030,48 @@ fn right_click_copies_and_clears_text_selection() {
         crate::win32::copy_text_to_clipboard(&original_clipboard)
             .expect("original clipboard text must be restored");
     }
+}
+
+#[test]
+fn right_click_without_text_selection_requests_owner_default_paste() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.window_id = Some("window-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+    let request = app
+        .default_paste_request_for_current_tab()
+        .expect("connected Chat view must produce an owner-scoped Default Paste request");
+    let event: serde_json::Value = serde_json::from_str(&request).unwrap();
+    assert_eq!(event["method"], "request_default_paste");
+    assert_eq!(event["params"]["window_id"], "window-a");
+    assert_eq!(event["params"]["tab_id"], "tab-a");
+    assert_eq!(event["params"]["pane_id"], "pane-a");
+
+    let dispatched = app
+        .handle_right_click()
+        .expect("Right Down without selected text must dispatch Default Paste");
+    assert_eq!(dispatched, request);
+    assert_eq!(
+        app.current_tab().selected_completed_turn_idx,
+        None,
+        "completed-turn navigation highlight is not selected text and must clear before paste",
+    );
+}
+
+#[test]
+fn default_paste_request_is_chat_only() {
+    let mut app = test_app();
+    app.window_id = Some("window-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().current_view = View::Agents;
+
+    assert!(app.default_paste_request_for_current_tab().is_none());
+    assert!(app.handle_right_click().is_none());
 }
 
 #[test]

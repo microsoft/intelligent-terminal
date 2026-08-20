@@ -146,22 +146,57 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         }
         $script:evidenceDir = Join-Path $PSScriptRoot "..\artifacts\mouse-interactions\$evidencePhase"
         New-Item -ItemType Directory -Force -Path $script:evidenceDir | Out-Null
+        $script:originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
 
         $script:app = Start-Terminal -Package 'Dev' -PassFre $true -Settings @{
             acpAgent = 'custom:chat-fixture'
             acpCustomCommand = $command
             rightClickContextMenu = $false
+            'warning.confirmOnClose' = 'never'
         }
         $shell = Get-ActivePane -App $script:app
         Open-AgentPane -App $script:app | Out-Null
-        $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30).PaneSessionId
+        $agentSession = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30
+        $script:agentPane = $agentSession.PaneSessionId
+        $helper = Get-CimInstance Win32_Process -Filter "ProcessId=$($agentSession.HelperProcessId)"
+        if (-not $helper.CommandLine -or $helper.CommandLine -notmatch '--owner-tab-id\s+"?\{?(?<tab>[0-9a-fA-F-]{36})') {
+            throw 'Could not resolve the helper owner tab identity from its process command line.'
+        }
+        $script:ownerTabId = $Matches.tab
         Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 60 |
             Should -BeTrue -Because 'the deterministic ACP fixture must connect before triangle hit-testing'
+        $script:getMouseInputSegment = {
+            param([string]$Text)
+
+            $lines = @($Text -split "`r?`n")
+            $inputStart = -1
+            for ($index = 0; $index -lt $lines.Count; $index++) {
+                if ($lines[$index] -match '>\s*') { $inputStart = $index }
+            }
+            if ($inputStart -lt 0) { return '' }
+            $lines[$inputStart..($lines.Count - 1)] -join "`n"
+        }
+        $script:clearMouseDraft = {
+            param([string]$ExpectedMarker)
+
+            if (Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 1) { return $true }
+            if ([string]::IsNullOrEmpty($ExpectedMarker)) { return $false }
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 30
+            $input = & $script:getMouseInputSegment -Text $text
+            if (([regex]::Matches($input, [regex]::Escape($ExpectedMarker))).Count -ne 1) {
+                return $false
+            }
+            Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
+            Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 5
+        }
     }
 
     AfterAll {
         if ($script:app) {
             Stop-Terminal -App $script:app
+        }
+        if ($null -ne $script:originalClipboard) {
+            Set-Clipboard -Value $script:originalClipboard
         }
         if ($script:fixtureLog -and (Test-Path -LiteralPath $script:fixtureLog)) {
             Copy-Item -LiteralPath $script:fixtureLog -Destination (Join-Path $script:evidenceDir 'fixture.log') -Force
@@ -407,6 +442,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         Start-Sleep -Milliseconds 300
         Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'selected-before-right-click.png') | Out-Null
 
+        $pasteMarker = $null
         try {
             Set-Clipboard -Value "RIGHT_CLICK_SETUP_$id"
             Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
@@ -422,22 +458,195 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
             $sentinel = "RIGHT_CLICK_SENTINEL_$id"
             Set-Clipboard -Value $sentinel
             $clickX = [Math]::Round(($fromX + $toX) / 2)
-            Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
-            Start-Sleep -Milliseconds 300
+            $copyListener = Start-WtEventListener -App $script:app
+            try {
+                Start-Sleep -Milliseconds 400
+                Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
+                Start-Sleep -Milliseconds 300
 
-            (Get-Clipboard -Raw) | Should -Be $reply -Because 'right-click must copy the exact physical WTA selection'
-            Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -Pattern $copiedPattern -TimeoutSec 5
-            Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-right-click-copy.png') | Out-Null
+                (Get-Clipboard -Raw) | Should -Be $reply -Because 'right-click must copy the exact physical WTA selection'
+                @(Get-WtEvents -Listener $copyListener -Predicate { $_.method -eq 'agent_paste_text' }).Count |
+                    Should -Be 0 -Because 'an actual text selection must copy without also requesting Default Paste'
+                Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -Pattern $copiedPattern -TimeoutSec 5
+                Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-right-click-copy.png') | Out-Null
+            }
+            finally {
+                Stop-WtEventListener -Listener $copyListener
+            }
 
-            $clearedSentinel = "RIGHT_CLICK_CLEARED_$id"
-            Set-Clipboard -Value $clearedSentinel
-            Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
-            Start-Sleep -Milliseconds 300
-            (Get-Clipboard -Raw) | Should -Be $clearedSentinel -Because 'a second right-click must not replay the cleared selection'
-            Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-second-right-click.png') | Out-Null
+            $pasteMarker = "RIGHT_CLICK_AFTER_COPY_$id"
+            Set-Clipboard -Value $pasteMarker
+            $pasteListener = Start-WtEventListener -App $script:app
+            $secondPasteObserved = $false
+            try {
+                Start-Sleep -Milliseconds 400
+                Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
+                $pasteEvent = Wait-WtEvent -Listener $pasteListener -TimeoutSec 5 -Predicate {
+                    $_.method -eq 'agent_paste_text' -and
+                    "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                    "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                    "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+                }
+                $pasteEvent | Should -Not -BeNullOrEmpty -Because 'after copy clears the selection, the next right-click must request Default Paste'
+                Start-Sleep -Milliseconds 300
+                @(Get-WtEvents -Listener $pasteListener -Predicate {
+                    $_.method -eq 'agent_paste_text' -and
+                    "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                    "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                    "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+                }).Count | Should -Be 1 -Because 'one physical Right Down must request Default Paste exactly once'
+                $secondPasteObserved = Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+                    $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 30
+                    ([regex]::Matches($text, [regex]::Escape($pasteMarker))).Count -eq 1
+                }
+                $secondPasteObserved | Should -BeTrue -Because 'the second right-click must paste rather than replay stale selected text'
+                (Get-Clipboard -Raw) | Should -Be $pasteMarker
+                Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-second-right-click.png') | Out-Null
+                $markerToClear = $pasteMarker
+                $pasteMarker = $null
+                (& $script:clearMouseDraft -ExpectedMarker $markerToClear) |
+                    Should -BeTrue -Because 'the known pasted marker must be cleared with one Ctrl+C'
+            }
+            finally {
+                Stop-WtEventListener -Listener $pasteListener
+            }
         }
         finally {
+            if ($pasteMarker) {
+                $markerToClear = $pasteMarker
+                $pasteMarker = $null
+                $null = & $script:clearMouseDraft -ExpectedMarker $markerToClear
+            }
             if ($null -ne $originalClipboard) { Set-Clipboard -Value $originalClipboard }
         }
+    }
+
+    It 'Right-click without text selection pastes throughout the Chat pane' -Tag 'RightClickPaste' {
+        $id = [guid]::NewGuid().ToString('N')
+        $prompt = "SCROLL_TURN_00_$id"
+        $reply = "ACK_$prompt"
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $prompt | Out-Null
+        Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -match [regex]::Escape($reply)
+        } | Should -BeTrue
+        $promptCountBefore = @(Get-Content -LiteralPath $script:fixtureLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '\|prompt\|' }).Count
+
+        $historyRect = @(Get-UiTextBounds -App $script:app -Text $reply)[0]
+        $promptRect = @(Get-UiTextBounds -App $script:app -Text $prompt)[0]
+        $inputRect = @(Get-UiTextBounds -App $script:app -Text 'Ask anything, / for commands..')[0]
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:app.Hwnd)
+        $condition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            'Agent Pane')
+        $agentControl = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) |
+            Where-Object { $_.Current.ClassName -eq 'TermControl' } |
+            Select-Object -First 1
+        $agentControl | Should -Not -BeNullOrEmpty
+        $paneRect = $agentControl.Current.BoundingRectangle
+
+        $points = @(
+            [pscustomobject]@{ Name = 'history'; X = [Math]::Round($historyRect.Left + ($historyRect.Width / 2)); Y = [Math]::Round($historyRect.Top + ($historyRect.Height / 2)) }
+            [pscustomobject]@{ Name = 'input'; X = [Math]::Round($inputRect.Left + ($inputRect.Width / 2)); Y = [Math]::Round($inputRect.Top + ($inputRect.Height / 2)) }
+            [pscustomobject]@{ Name = 'blank'; X = [Math]::Round($paneRect.Right - 24); Y = [Math]::Round($historyRect.Top + ($historyRect.Height / 2)) }
+        )
+
+        foreach ($point in $points) {
+            $marker = "RIGHT_CLICK_PASTE_$($point.Name)_$([guid]::NewGuid().ToString('N'))"
+            Set-Clipboard -Value $marker
+            $listener = Start-WtEventListener -App $script:app
+            try {
+                Start-Sleep -Milliseconds 400
+                try {
+                    Invoke-UiMouseDrag -App $script:app -FromX $point.X -FromY $point.Y -ToX $point.X -ToY $point.Y -Right | Out-Null
+                }
+                catch {
+                    if ($_.Exception.Message -match 'No interactive desktop is available') {
+                        Set-ItResult -Skipped -Because 'physical mouse injection requires an unlocked interactive desktop'
+                        return
+                    }
+                    throw
+                }
+                Start-Sleep -Milliseconds 1500
+                $allEvents = @(Get-WtEvents -Listener $listener)
+                $allEvents | ConvertTo-Json -Depth 64 |
+                    Set-Content -LiteralPath (Join-Path $script:evidenceDir "right-click-paste-$($point.Name)-events.json") -Encoding utf8NoBOM
+                $matchingEvents = @($allEvents | Where-Object {
+                    $_.method -eq 'agent_paste_text' -and
+                    "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                    "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                    "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+                })
+                $observed = @($allEvents | ForEach-Object {
+                    "$($_.method):window=$($_.params.window_id),tab=$($_.params.tab_id),pane=$($_.params.pane_id)"
+                }) -join '; '
+                $matchingEvents.Count | Should -Be 1 -Because "$($point.Name) Right Down must request owner-scoped Default Paste exactly once; observed [$observed]"
+                Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+                    $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+                    $input = & $script:getMouseInputSegment -Text $text
+                    ([regex]::Matches($input, [regex]::Escape($marker))).Count -eq 1
+                } | Should -BeTrue -Because "$($point.Name) right-click paste must enter the current draft exactly once"
+                @(Get-Content -LiteralPath $script:fixtureLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '\|prompt\|' }).Count |
+                    Should -Be $promptCountBefore -Because 'right-click paste must not submit the draft'
+                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "right-click-paste-$($point.Name).png") | Out-Null
+            }
+            finally {
+                Stop-WtEventListener -Listener $listener
+            }
+            (& $script:clearMouseDraft -ExpectedMarker $marker) |
+                Should -BeTrue -Because 'the known pasted marker must be cleared with one Ctrl+C'
+        }
+
+        $promptX = [Math]::Round($promptRect.Left + ($promptRect.Width / 2))
+        $promptY = [Math]::Round($promptRect.Top + ($promptRect.Height / 2))
+        Invoke-UiMouseDrag -App $script:app -FromX $promptX -FromY $promptY -ToX $promptX -ToY $promptY | Out-Null
+        Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -notmatch [regex]::Escape($reply)
+        } | Should -BeTrue -Because 'physical title click must establish completed-turn navigation highlight'
+
+        $marker = "RIGHT_CLICK_PASTE_highlight_$([guid]::NewGuid().ToString('N'))"
+        Set-Clipboard -Value $marker
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 400
+            try {
+                Invoke-UiMouseDrag -App $script:app -FromX $promptX -FromY $promptY -ToX $promptX -ToY $promptY -Right | Out-Null
+            }
+            catch {
+                if ($_.Exception.Message -match 'No interactive desktop is available') {
+                    Set-ItResult -Skipped -Because 'physical mouse injection requires an unlocked interactive desktop'
+                    return
+                }
+                throw
+            }
+            $event = Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
+                $_.method -eq 'agent_paste_text' -and
+                "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+            }
+            $event | Should -Not -BeNullOrEmpty
+            Start-Sleep -Milliseconds 300
+            @(Get-WtEvents -Listener $listener -Predicate {
+                $_.method -eq 'agent_paste_text' -and
+                "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
+                "$($_.params.window_id)" -eq "$($script:app.WindowId)"
+            }).Count | Should -Be 1 -Because 'one physical Right Down on a navigation highlight must request Default Paste exactly once'
+            Test-Until -TimeoutSec 5 -IntervalSec 0.25 -Condition {
+                $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+                $input = & $script:getMouseInputSegment -Text $text
+                ([regex]::Matches($input, [regex]::Escape($marker))).Count -eq 1
+            } | Should -BeTrue -Because 'navigation highlight is not selected text and must clear before paste'
+            @(Get-Content -LiteralPath $script:fixtureLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '\|prompt\|' }).Count |
+                Should -Be $promptCountBefore -Because 'right-click paste from a navigation highlight must not submit'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'right-click-paste-completed-highlight.png') | Out-Null
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+        }
+        (& $script:clearMouseDraft -ExpectedMarker $marker) |
+            Should -BeTrue -Because 'the known highlighted-turn paste marker must be cleared with one Ctrl+C'
     }
 }

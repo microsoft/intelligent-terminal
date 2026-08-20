@@ -50,6 +50,7 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
                 return Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and
                     "$($_.params.tab_id)" -eq "$($script:ownerTabId)" -and
+                    "$($_.params.pane_id)".Trim('{}') -eq "$($script:agentPane)".Trim('{}') -and
                     "$($_.params.window_id)" -eq "$($script:app.WindowId)"
                 }
             }
