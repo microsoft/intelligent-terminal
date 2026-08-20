@@ -280,6 +280,15 @@
                     IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="RenderAgentMarkdown"
+                                    x:Uid="AIAgents_RenderAgentMarkdown">
+                <ToggleSwitch x:Name="RenderAgentMarkdownToggle"
+                              x:Uid="AIAgents_RenderAgentMarkdownToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                              IsOn="{x:Bind ViewModel.RenderAgentMarkdown, Mode=TwoWay}" />
+            </local:SettingContainer>
+
             <!--  Automatic error detection (parent) + Automatic error
                   suggestion (dependent child). Modeled as an Expander so the
                   hierarchy is explicit: detection's master toggle lives in the

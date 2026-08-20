@@ -64,4 +64,21 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         } | Out-Null
         Assert-Setting -App $script:app -Key 'showTokenUsageAndCost' -Value $true
     }
+
+    It 'Markdown rendering toggle defaults on and persists when disabled' {
+        if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
+        Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
+
+        Test-UiElementExists -App $script:app -Selector 'RenderAgentMarkdownToggle' -TimeoutSec 8 |
+            Should -BeTrue -Because 'Settings > Agents must expose the Markdown rendering preference'
+        (Get-UiElement -App $script:app -Selector 'RenderAgentMarkdownToggle').toggleState |
+            Should -Be 'on' -Because 'agent responses must render Markdown by default'
+
+        Invoke-UiElement -App $script:app -Selector 'RenderAgentMarkdownToggle' | Out-Null
+        Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
+        Wait-Until -TimeoutSec 8 -Because 'the Settings toggle to persist renderAgentMarkdown=false' -Condition {
+            (Get-WtSettingsObject -App $script:app).renderAgentMarkdown -eq $false
+        } | Out-Null
+        Assert-Setting -App $script:app -Key 'renderAgentMarkdown' -Value $false
+    }
 }
