@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  ចុច Enter ដើម្បីព្យ�
 chat.activity_thinking: "កំពុងគិត…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "សូមស្វាគមន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
-chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។ ពិនិត្យមើលកំហុស។"
+chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។"
 # Header label for the AI agent’s step-by-step plan section
 chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -193,7 +193,7 @@ hooks.marketplace_path_stale: "⚠ ផ្លូវ marketplace ហួសសម�
 hooks.installed_but_disabled: "⚠ បានតំឡើងប៉ុន្តែត្រូវបានបិទ"
 hooks.not_installed: "✗ មិនត្រូវបានតំឡើង"
 hooks.uninstall_skipped: "រំលង (CLI មិននៅលើ PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks បានតំឡើងសម្រាប់ %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ទើបតែឥឡូវនេះ"

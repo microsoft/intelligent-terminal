@@ -8,6 +8,7 @@ mod agent_registry;
 mod agent_sessions;
 mod agent_source;
 mod agent_tools;
+mod action_links;
 mod app;
 mod app_contracts;
 mod cli;
@@ -20,6 +21,9 @@ mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
+#[cfg(test)]
+#[path = "hook_contract_tests.rs"]
+mod hook_contract_tests;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;

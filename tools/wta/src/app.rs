@@ -342,6 +342,40 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
     crate::win32::open_url_in_default_browser(url)
 }
 
+/// Members of `params.payload` that [`route_agent_event_to_registry_with_hook_sink`]
+/// actually reads.
+///
+/// This is the other half of the cross-language contract described on
+/// [`crate::agent_sessions::USER_INPUT_TOOL_NAMES`]. The hook producer
+/// (`BuildAgentHookEventJson` in `src/tools/wtcli/wtcli_functions.h`) redacts
+/// the payload with a denylist before broadcasting it, so a key that lands in
+/// that denylist while still being read here goes silently empty — no error,
+/// no log, just a blank cwd or a lost notification message.
+/// `hook_contract_tests` asserts the denylist and this list stay disjoint.
+///
+/// Nested lookups (`tool_input.question` / `.prompt` / `.message`) are covered
+/// by their `tool_input` parent, which the producer strips only for tools
+/// outside `USER_INPUT_TOOL_NAMES`.
+pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
+    "cwd",
+    "tool_name",
+    "toolName",
+    "tool_input",
+    "message",
+    "notification_type",
+    "reason",
+    "error",
+];
+
+/// Members of `payload.tool_input` the routing function reads when the tool is
+/// a user-input tool.
+///
+/// The producer projects `tool_input` down to exactly these when an event
+/// overflows its wire budget (`ReduceOversizedHookPayload` in
+/// `src/tools/wtcli/wtcli_functions.h`), so a name missing here is dropped
+/// from the degraded payload and the notification loses its question text.
+pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
@@ -569,20 +603,57 @@ where
         // request, with many tool pairs in between). So ignore tool completions
         // here and let `agent.stop` own the turn-end → Idle, mirroring the
         // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
-        // hook events at all, so this only affects Copilot/Gemini.
+        // ignore `tool.execution_complete`.
+        //
+        // Because these are dropped, no bundle subscribes them any more: each
+        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
+        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
+        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
+        // `tool.execute.after` were all removed. The arm stays so an older
+        // installed bundle that still emits them is ignored rather than
+        // mis-routed.
         "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
             return reg.take_dirty();
         }
         "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => SessionEvent::Notification {
-            key,
-            message: payload
-                .get("message")
+        "agent.notification" => {
+            // Not every notification means "the agent is blocked on you".
+            // Claude's `Notification` hook covers two cases, distinguished by
+            // `notification_type`:
+            //
+            //   * `permission_prompt` — the agent wants approval for a tool.
+            //     Genuinely Attention: nothing proceeds until the user acts.
+            //   * `idle_prompt` — the agent already finished its turn and has
+            //     simply been sitting at an empty prompt for 60s. It fires
+            //     *after* `agent.stop` has correctly moved the row to Idle, so
+            //     treating it as Attention parks every session at "Claude is
+            //     waiting for your input" between turns.
+            //
+            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
+            // turn-end transition, the same division of labour the tool
+            // completion arm above relies on. Deliberately *not* mapped to
+            // Idle: an unanswered `permission_prompt` also goes idle after
+            // 60s, and demoting that row would hide a pending approval.
+            //
+            // Unknown types stay Attention on purpose. Over-reporting costs a
+            // stale badge the next event clears; under-reporting loses a
+            // permission request with no other signal that it happened.
+            let notification_type = payload
+                .get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                return reg.take_dirty();
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
             key,
             reason: payload
@@ -963,6 +1034,13 @@ pub struct App {
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
     pub(crate) text_selection: crate::text_selection::TextSelection,
+    pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
+    pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
+    pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) pressed_input_dialog_tab: Option<String>,
+    pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
+    pub(crate) painted_completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1259,6 +1337,13 @@ impl App {
             show_debug_panel: false,
             debug_scroll: 0,
             text_selection: crate::text_selection::TextSelection::default(),
+            completed_turn_hits: Vec::new(),
+            pressed_completed_turn: None,
+            last_completed_turn_click: None,
+            input_dialog_area: None,
+            pressed_input_dialog_tab: None,
+            completed_turn_action_links: Vec::new(),
+            painted_completed_turn_action_links: Vec::new(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -1809,7 +1894,12 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(&self, session_id: Option<String>, model: String) {
+    fn send_session_model(
+        &self,
+        session_id: Option<String>,
+        model: String,
+        pane_override: bool,
+    ) {
         if model.trim().is_empty() {
             return;
         }
@@ -1817,6 +1907,7 @@ impl App {
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
                 session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
+                pane_override,
             },
         );
     }
@@ -1843,7 +1934,7 @@ impl App {
                 continue;
             }
             if let Some(sid) = tab.session_id.clone() {
-                self.send_session_model(Some(sid), model.clone());
+                self.send_session_model(Some(sid), model.clone(), false);
             }
         }
     }
@@ -1861,7 +1952,6 @@ impl App {
         }
 
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
-        self.recompute_current_model_id();
         self.send_acp_model_update();
         self.publish_agent_status();
         true
@@ -2372,26 +2462,21 @@ impl App {
             return;
         }
 
-        let name = self
-            .available_models
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| model_id.clone());
-        let session_id = {
-            let tab = self.current_tab_mut();
-            tab.model_override = Some(model_id.clone());
-            tab.messages.push(ChatMessage::success(
-                t!("system.model_set", model = name.as_str()).into_owned(),
-            ));
-            tab.scroll_to_bottom();
-            tab.session_id.clone()
-        };
-        self.current_model_id = Some(model_id.clone());
-        self.agent_current_model_id = Some(model_id.clone());
+        let session_id = self.current_tab().session_id.clone();
         if let Some(session_id) = session_id {
-            self.send_session_model(Some(session_id), model_id);
+            self.send_session_model(Some(session_id), model_id, true);
+            return;
         }
+
+        let name = self.model_display_name(&model_id);
+        let tab = self.current_tab_mut();
+        tab.model_override = Some(model_id.clone());
+        tab.messages.push(ChatMessage::success(
+            t!("system.model_set", model = name.as_str()).into_owned(),
+        ));
+        tab.scroll_to_bottom();
+        self.current_model_id = Some(model_id.clone());
+        self.agent_current_model_id = Some(model_id);
         self.publish_agent_status();
     }
 
@@ -3939,6 +4024,11 @@ impl App {
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         self.text_selection.snapshot_and_render(frame.buffer_mut());
+        let action_overlay = crate::action_links::build_overlay(
+            frame.buffer_mut(),
+            &self.painted_completed_turn_action_links,
+            &self.completed_turn_action_links,
+        );
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`
@@ -3956,6 +4046,10 @@ impl App {
         });
 
         terminal.swap_buffers();
+
+        crate::action_links::paint(terminal.backend_mut(), &action_overlay)?;
+        self.painted_completed_turn_action_links
+            .clone_from(&self.completed_turn_action_links);
 
         let backend_flush_started = std::time::Instant::now();
         terminal.backend_mut().flush()?;
@@ -3988,6 +4082,8 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::ModelSetCompleted { .. } => "model_set_completed",
+            AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
             AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
             AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
@@ -4300,6 +4396,44 @@ impl App {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompletedTurnHitKind {
+    Triangle,
+    UserInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletedTurnHitRegion {
+    pub(crate) start_column: u16,
+    pub(crate) end_column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) kind: CompletedTurnHitKind,
+}
+
+impl CompletedTurnHitRegion {
+    pub(crate) fn contains(self, column: u16, row: u16) -> bool {
+        self.row == row && column >= self.start_column && column < self.end_column
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PressedCompletedTurn {
+    pub(crate) tab_id: String,
+    pub(crate) hit: CompletedTurnHitRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompletedTurnClickRecord {
+    pub(crate) tab_id: String,
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) previous_selected_index: Option<usize>,
+    pub(crate) previous_selection_pending: bool,
+    pub(crate) previous_expanded: bool,
+}
+
 #[path = "app_events.rs"]
 mod app_events;
 
@@ -4534,13 +4668,27 @@ impl App {
             .or_else(|| self.current_model_id.clone())
             .or_else(|| self.acp_model.clone())
             .filter(|s| !s.trim().is_empty())?;
-        let name = self
-            .available_models
+        Some(self.model_display_name(&id))
+    }
+
+    fn confirmed_model_display(&self) -> Option<String> {
+        let id = self
+            .current_tab()
+            .model_override
+            .as_deref()
+            .or(self.agent_current_model_id.as_deref())
+            .or_else(|| self.selected_custom_model_id())
+            .map(str::trim)
+            .filter(|id| !id.is_empty())?;
+        Some(self.model_display_name(id))
+    }
+
+    fn model_display_name(&self, id: &str) -> String {
+        self.available_models
             .iter()
-            .find(|m| m.id == id)
-            .map(|m| m.name.clone())
-            .unwrap_or(id);
-        Some(name)
+            .find(|model| model.id == id)
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| id.to_string())
     }
 
     /// Whether the command popup is *effectively* visible — i.e. actually
@@ -5184,6 +5332,9 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(
@@ -5218,6 +5369,7 @@ impl App {
         self.agent_models = models;
         self.agent_current_model_id = current;
         self.rebuild_model_catalog_from_agent_state();
+        self.publish_agent_status();
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar

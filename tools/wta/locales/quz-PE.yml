@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq kuti
 chat.activity_thinking: "Yuyachkan..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Allillanchu Yuyaysapa Terminal!"
-chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin. Pantaykunata qhaway."
+chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin."
 chat.plan_header: "Ruwana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ qhatu ñan mawkayasqa"
 hooks.installed_but_disabled: "⚠ churasqa ichaqa ñit'isqa"
 hooks.not_installed: "✗ mana churasqachu"
 hooks.uninstall_skipped: "pasasqa (CLI mana PATH nisqapichu)"
-hooks.install_attempted: "wt-agent-hooks churay llamk'achisqa (idempotente). `wta hooks status` purichiy ruwasqata qhawanaykipaq. Qatiy willana: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks churasqa %{clis}-paq"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "kunanlla"
 time.minute_singular: "%{count} minutu ñawpaq"

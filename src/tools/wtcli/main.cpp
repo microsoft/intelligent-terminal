@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -69,8 +70,9 @@ struct EventSink : ITerminalProtocolEventSink
 // ── Helpers ──
 
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
-                                                          std::string* outVersion = nullptr,
-                                                          bool skipAuthenticate = false)
+                                                           std::string* outVersion = nullptr,
+                                                           bool skipAuthenticate = false,
+                                                           bool quiet = false)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -80,14 +82,16 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     wchar_t clsid[128]{};
     if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
     {
-        fprintf(stderr, "[wtcli] WT_COM_CLSID not set. Must run inside a Windows Terminal pane.\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] WT_COM_CLSID not set. Must run inside an Intelligent Terminal pane.\n");
         return nullptr;
     }
 
     CLSID cls{};
     if (FAILED(CLSIDFromString(clsid, &cls)))
     {
-        fprintf(stderr, "[wtcli] Invalid CLSID: %ls\n", clsid);
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Invalid CLSID: %ls\n", clsid);
         return nullptr;
     }
 
@@ -95,7 +99,8 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
     }
     if (skipAuthenticate)
@@ -127,19 +132,22 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
 
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
     }
     if (!parsed)
     {
         // Success HRESULT but a null/malformed auth payload is a broken
         // server contract — don't misreport it as a server rejection.
-        fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
         return nullptr;
     }
     if (!authenticated)
     {
-        fprintf(stderr, "[wtcli] Authentication rejected by server\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication rejected by server\n");
         return nullptr;
     }
 
@@ -189,7 +197,7 @@ static std::string GuidToString(const GUID& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
-static GUID GuidFromString(const std::string& target)
+static GUID GuidFromString(const std::string& target, bool quiet = false)
 {
     auto wstr = winrt::to_hstring(target);
     std::wstring guidStr{ wstr };
@@ -198,7 +206,7 @@ static GUID GuidFromString(const std::string& target)
     GUID g{};
     if (FAILED(CLSIDFromString(guidStr.c_str(), &g)))
     {
-        if (!target.empty())
+        if (!quiet && !target.empty())
             fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
         return GUID{};
     }
@@ -249,6 +257,37 @@ static uint32_t GetFirstTabId(ITerminalProtocol* server, uint64_t windowId)
 static BSTR Bstr(const std::string& s)
 {
     return SysAllocString(winrt::to_hstring(s).c_str());
+}
+
+static std::string EnvironmentValue(const wchar_t* name)
+{
+    const auto required = GetEnvironmentVariableW(name, nullptr, 0);
+    if (required == 0)
+    {
+        return {};
+    }
+
+    std::wstring value(required, L'\0');
+    const auto written = GetEnvironmentVariableW(name, value.data(), required);
+    if (written == 0 || written >= required)
+    {
+        return {};
+    }
+    value.resize(written);
+    return winrt::to_string(winrt::hstring{ value });
+}
+
+static std::string AgentSessionIdFromEnvironment(const std::string& cliSource)
+{
+    if (cliSource == "copilot")
+        return EnvironmentValue(L"COPILOT_SESSION_ID");
+    if (cliSource == "claude")
+        return EnvironmentValue(L"CLAUDE_SESSION_ID");
+    if (cliSource == "gemini")
+        return EnvironmentValue(L"GEMINI_SESSION_ID");
+    if (cliSource == "codex")
+        return EnvironmentValue(L"CODEX_SESSION_ID");
+    return {};
 }
 
 // Parse a base-10 unsigned 64-bit integer without throwing (unlike std::stoull,
@@ -783,6 +822,14 @@ int main()
     });
 
     // ── send-event ──
+    //
+    // Also the transport every hook bundle installed before the native
+    // `agent-hook` bridge still uses. Those bundles live in each CLI's own
+    // plugin cache, which a Terminal upgrade never rewrites and whose
+    // auto-refresh can fail outright, so they keep calling this subcommand
+    // indefinitely. Removing it as superseded would silently stop tracking
+    // every user whose hooks never refreshed.
+    // Guarded by Feature.LegacyHookBundle.Tests.ps1 (C270).
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
     sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
@@ -790,7 +837,8 @@ int main()
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
         auto server = connect();
-        if (!server) return;
+        if (!server)
+            return;
         std::string resolvedSessionId;
         if (!sendEventPaneTarget.empty())
         {
@@ -821,7 +869,85 @@ int main()
         wb["indentation"] = "";
         wil::unique_bstr evtB{ Bstr(Json::writeString(wb, evt)) };
         auto hr = server->SendEvent(evtB.get());
-        if (FAILED(hr)) { fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; }
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+        }
+    });
+
+    // ── agent-hook ──
+    // Native hook bridge. It deliberately never writes to stdout/stderr and
+    // never returns a failure because hook failures can block agent actions.
+    std::string agentHookEventType, agentHookCliSource;
+    auto* agentHookCmd = app.add_subcommand("agent-hook", "Forward an agent lifecycle hook from stdin");
+    agentHookCmd->add_option("-e,--event", agentHookEventType, "WTA agent event type")->required();
+    agentHookCmd->add_option("-c,--cli-source", agentHookCliSource, "Source agent CLI")->required();
+    agentHookCmd->callback([&]() {
+        try
+        {
+            // A shell-pane session always has both values. The shared ACP
+            // process has no pane identity and is already tracked over ACP, so
+            // dropping it here also prevents events from binding to the active
+            // user pane.
+            const auto paneGuid = GuidFromString(EnvironmentValue(L"WT_SESSION"), true);
+            if (EnvironmentValue(L"WT_COM_CLSID").empty() || IsEqualGUID(paneGuid, GUID{}))
+            {
+                return;
+            }
+            const auto paneId = GuidToString(paneGuid);
+
+            // Read a bounded amount. `BuildAgentHookEventJson` caps what goes
+            // on the wire, but that happens *after* the whole of stdin is in
+            // memory and parsed, so an oversized hook payload still costs
+            // memory and parse time first. The ceiling is deliberately far
+            // above the event budget rather than equal to it: payloads larger
+            // than the budget are normal and still produce a useful event
+            // (truncated body, routing fields intact), so capping at the
+            // budget would drop events that work today.
+            constexpr std::streamsize kMaxHookStdinChars = 1024 * 1024;
+            std::string input(static_cast<size_t>(kMaxHookStdinChars) + 1, '\0');
+            std::cin.read(input.data(), static_cast<std::streamsize>(input.size()));
+            const auto readChars = std::cin.gcount();
+            if (readChars > kMaxHookStdinChars)
+            {
+                // Anything this large is a broken or hostile producer, not a
+                // hook. Drop it rather than parse it; the callback still exits
+                // 0 so a fail-closed CLI is unaffected.
+                return;
+            }
+            input.resize(static_cast<size_t>(readChars));
+
+            Json::Value event;
+            if (!wtcli::BuildAgentHookEventJson(
+                    agentHookEventType,
+                    agentHookCliSource,
+                    input,
+                    paneId,
+                    AgentSessionIdFromEnvironment(agentHookCliSource),
+                    event))
+            {
+                return;
+            }
+
+            auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate, true);
+            if (!server)
+            {
+                return;
+            }
+
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            wil::unique_bstr eventJson{ Bstr(Json::writeString(writer, event)) };
+            if (eventJson)
+            {
+                server->SendEvent(eventJson.get());
+            }
+        }
+        catch (...)
+        {
+            // Session tracking must never affect the parent agent CLI.
+        }
     });
 
     // ── listen ──
@@ -832,7 +958,11 @@ int main()
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->callback([&]() {
         auto server = connect();
-        if (!server) { exitCode = 1; return; }
+        if (!server)
+        {
+            exitCode = 1;
+            return;
+        }
 
         static HANDLE s_stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!s_stopEvent)

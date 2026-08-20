@@ -116,7 +116,7 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
+    /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
@@ -539,8 +539,11 @@ impl TabSession {
 
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && (self.turn.recommendations().is_none()
+        self.selected_completed_turn_idx.is_none() && self.input_can_receive_nav_focus()
+    }
+
+    pub fn input_can_receive_nav_focus(&self) -> bool {
+        (self.turn.recommendations().is_none()
                 || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && self.user_input.is_empty()
@@ -729,12 +732,28 @@ impl TabSession {
         self.completed_turn_selection_visible_pending = false;
     }
 
+    pub fn select_completed_turn(&mut self, index: usize) -> bool {
+        if index >= self.completed_turns.len() {
+            return false;
+        }
+        self.selected_completed_turn_idx = Some(index);
+        self.completed_turn_selection_visible_pending = true;
+        true
+    }
+
+    pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        turn.expanded = !turn.expanded;
+        true
+    }
+
     pub fn toggle_selected_completed_turn(&mut self) {
         let Some(index) = self.selected_completed_turn_idx else {
             return;
         };
-        if let Some(turn) = self.completed_turns.get_mut(index) {
-            turn.expanded = !turn.expanded;
+        if self.toggle_completed_turn(index) {
             self.completed_turn_selection_visible_pending = true;
         }
     }

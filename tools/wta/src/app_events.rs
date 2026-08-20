@@ -8,9 +8,71 @@
 use super::*;
 
 impl App {
+    fn completed_turn_hit_at(&self, column: u16, row: u16) -> Option<CompletedTurnHitRegion> {
+        let tab = self.current_tab();
+        if self.mode != AppMode::Chat
+            || tab.current_view != View::Chat
+            || self.help_overlay_visible
+            || tab.model_picker_open
+            || tab.agent_picker_open
+            || self.command_popup_visible()
+        {
+            return None;
+        }
+        self.completed_turn_hits
+            .iter()
+            .copied()
+            .find(|hit| hit.contains(column, row))
+    }
+
+    fn active_mouse_tab_id(&self) -> String {
+        self.tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
+    }
+
+    fn input_dialog_at(&self, column: u16, row: u16) -> bool {
+        let tab = self.current_tab();
+        let Some(area) = self.input_dialog_area else {
+            return false;
+        };
+        self.mode == AppMode::Chat
+            && tab.current_view == View::Chat
+            && tab.input_can_receive_nav_focus()
+            && !self.help_overlay_visible
+            && !self.command_popup_visible()
+            && column >= area.x
+            && column < area.x.saturating_add(area.width)
+            && row >= area.y
+            && row < area.y.saturating_add(area.height)
+    }
+
+    fn cancel_completed_turn_click(&mut self) {
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
+    }
+
+    fn restore_completed_turn_click(&mut self, column: u16, row: u16) {
+        let active_tab_id = self.active_mouse_tab_id();
+        let Some(click) = self.last_completed_turn_click.take().filter(|click| {
+            click.tab_id == active_tab_id && click.column == column && click.row == row
+        }) else {
+            return;
+        };
+        let tab = self.current_tab_mut();
+        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+            return;
+        };
+        turn.expanded = click.previous_expanded;
+        tab.selected_completed_turn_idx = click.previous_selected_index;
+        tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
+                self.cancel_completed_turn_click();
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy {
@@ -43,6 +105,7 @@ impl App {
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
                 {
+                    self.cancel_completed_turn_click();
                     self.text_selection.clear();
                     let code = if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
                         KeyCode::Up
@@ -56,6 +119,7 @@ impl App {
                     if self.mode == AppMode::Chat
                         && self.current_tab().current_view == View::Chat =>
                 {
+                    self.cancel_completed_turn_click();
                     self.text_selection.clear();
                     let lines = if mouse.modifiers.contains(KeyModifiers::ALT) {
                         1
@@ -70,6 +134,73 @@ impl App {
                             self.current_tab_mut().chat_scroll.by(-lines);
                         }
                         _ => {}
+                    }
+                }
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    self.text_selection.handle_mouse(mouse);
+                    let click_count = self.text_selection.click_count().unwrap_or(1);
+                    if click_count > 1 {
+                        self.pressed_completed_turn = None;
+                        if click_count == 2 {
+                            self.restore_completed_turn_click(mouse.column, mouse.row);
+                        }
+                        return;
+                    }
+                    self.last_completed_turn_click = None;
+                    if self.input_dialog_at(mouse.column, mouse.row) {
+                        self.pressed_input_dialog_tab = Some(self.active_mouse_tab_id());
+                        self.pressed_completed_turn = None;
+                        return;
+                    }
+                    self.pressed_completed_turn = self
+                        .completed_turn_hit_at(mouse.column, mouse.row)
+                        .map(|hit| PressedCompletedTurn {
+                            tab_id: self.active_mouse_tab_id(),
+                            hit,
+                        });
+                }
+                crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
+                    self.cancel_completed_turn_click();
+                    self.text_selection.handle_mouse(mouse);
+                }
+                crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                    let active_tab_id = self.active_mouse_tab_id();
+                    let input_pressed = self.pressed_input_dialog_tab.take();
+                    if input_pressed.as_deref() == Some(active_tab_id.as_str())
+                        && self.input_dialog_at(mouse.column, mouse.row)
+                    {
+                        self.pressed_completed_turn = None;
+                        self.last_completed_turn_click = None;
+                        self.text_selection.clear();
+                        self.current_tab_mut().clear_completed_turn_selection();
+                        return;
+                    }
+                    let pressed = self.pressed_completed_turn.take();
+                    let released = self.completed_turn_hit_at(mouse.column, mouse.row);
+                    self.text_selection.handle_mouse(mouse);
+                    if let Some(pressed) = pressed.filter(|pressed| {
+                        pressed.tab_id == active_tab_id
+                            && released.is_some_and(|hit| hit.turn_index == pressed.hit.turn_index)
+                    }) {
+                        let tab = self.current_tab_mut();
+                        let previous_selected_index = tab.selected_completed_turn_idx;
+                        let previous_selection_pending =
+                            tab.completed_turn_selection_visible_pending;
+                        let previous_expanded = tab.completed_turns[pressed.hit.turn_index].expanded;
+                        if tab.select_completed_turn(pressed.hit.turn_index)
+                            && tab.toggle_completed_turn(pressed.hit.turn_index)
+                            && pressed.hit.kind == CompletedTurnHitKind::UserInput
+                        {
+                            self.last_completed_turn_click = Some(CompletedTurnClickRecord {
+                                tab_id: active_tab_id,
+                                column: mouse.column,
+                                row: mouse.row,
+                                turn_index: pressed.hit.turn_index,
+                                previous_selected_index,
+                                previous_selection_pending,
+                                previous_expanded,
+                            });
+                        }
                     }
                 }
                 _ => {
@@ -138,6 +269,7 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
+                self.cancel_completed_turn_click();
                 self.text_selection.clear();
                 self.terminal_cols = w;
                 self.terminal_rows = h;
@@ -146,6 +278,7 @@ impl App {
                 self.advance_reveal();
             }
             AppEvent::FocusChanged(focused) => {
+                self.cancel_completed_turn_click();
                 self.pane_focused = focused;
             }
             AppEvent::ConnectionStage(stage) => {
@@ -314,7 +447,7 @@ impl App {
                 // already model-applied by the client at startup.
                 if !is_load_target {
                     if let Some(model) = self.effective_model_for_tab(&tab_id) {
-                        self.send_session_model(Some(session_id.clone()), model);
+                        self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
                 self.publish_agent_status();
@@ -354,6 +487,59 @@ impl App {
                     self.agent_current_model_id = current_model_id;
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
+                }
+            }
+            AppEvent::ModelSetCompleted {
+                session_id,
+                model,
+                pane_override,
+            } => {
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                if let Some((_, current_model_id)) =
+                    self.session_model_configs.get_mut(&session_id)
+                {
+                    *current_model_id = Some(model.clone());
+                }
+                if pane_override {
+                    let name = self.model_display_name(&model);
+                    let tab = self.tab_mut(&target_tab);
+                    tab.model_override = Some(model.clone());
+                    tab.messages.push(ChatMessage::success(
+                        t!("system.model_set", model = name.as_str()).into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                }
+                if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                    self.agent_current_model_id = Some(model);
+                    self.rebuild_model_catalog_from_agent_state();
+                    self.publish_agent_status();
+                }
+            }
+            AppEvent::ModelSetFailed {
+                session_id,
+                model,
+                pane_override,
+                message,
+            } => {
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                if pane_override {
+                    let name = self.model_display_name(&model);
+                    let tab = self.tab_mut(&target_tab);
+                    tab.messages.push(ChatMessage::error(
+                        t!(
+                            "system.config_update_failed",
+                            option = name.as_str(),
+                            error = message.as_str()
+                        )
+                        .into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
                 }
             }
             AppEvent::SessionConfigUpdated {

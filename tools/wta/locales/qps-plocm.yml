@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # 
 chat.activity_thinking: "[!! Thi_nking... !!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[!! Welco_me to Intelligent Terminal! !!]"
-chat.welcome_disclaimer: "[!! Inte_lligent Terminal uses AI. Check for mistakes. !!]"
+chat.welcome_disclaimer: "[!! Inte_lligent Terminal uses AI. !!]"
 chat.plan_header: "[!! Pla_n: !!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "[!! ⚠ m_arketplace path stale !!]"
 hooks.installed_but_disabled: "[!! ⚠ i_nstalled but disabled !!]"
 hooks.not_installed: "[!! ✗ n_ot installed !!]"
 hooks.uninstall_skipped: "[!! ski_pped (CLI not on PATH) !!]"
-hooks.install_attempted: "[!! wt-_agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log !!]"
+hooks.install_succeeded: "[!! ✓ wt-_agent-hooks installed for %{clis} !!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "[!! just now !!]"
 time.minute_singular: "[!! %{count} minute ago !!]"

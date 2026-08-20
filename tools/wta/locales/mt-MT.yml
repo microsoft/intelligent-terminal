@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Agħfas Enter biex terġa' tipprova, jew Esc 
 chat.activity_thinking: "Qed jaħseb…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Merħba fl-Terminal Intelliġenti!"
-chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI. Iċċekkja għall-iżbalji."
+chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI."
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ triq tal-marketplace skaduta"
 hooks.installed_but_disabled: "⚠ installat imma diżattivat"
 hooks.not_installed: "✗ mhux installat"
 hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
-hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installat għal %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "issa stess"
 time.minute_singular: "%{count} minuta ilu"

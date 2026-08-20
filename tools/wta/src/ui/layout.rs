@@ -9,6 +9,9 @@ use super::{
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    app.completed_turn_hits.clear();
+    app.completed_turn_action_links.clear();
+    app.input_dialog_area = None;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -253,6 +256,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         recommendations::render_hint(frame, chunks[5]);
     }
     chat::render_activity(frame, app, h_activity[1]);
+    app.input_dialog_area = Some(chunks[7]);
     input::render(frame, app, chunks[7]);
 
     if let Some(debug_area) = debug_area {

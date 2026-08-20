@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "../TerminalControl/EventArgs.h"
 #include "../TerminalControl/ControlInteractivity.h"
+#include "../../renderer/base/renderer.hpp"
 
 #include "../../inc/TestUtils.h"
 #include "MockControlSettings.h"
@@ -42,6 +43,9 @@ namespace ControlUnitTests
 
         TEST_METHOD(GetMouseEventsInTest);
         TEST_METHOD(AltBufferClampMouse);
+        TEST_METHOD(ParseCompletedTurnActionHyperlinks);
+        TEST_METHOD(CompletedTurnActionHyperlinksSuppressUnderlines);
+        TEST_METHOD(CompletedTurnActionHyperlinkForwardsVtMouse);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -119,6 +123,56 @@ namespace ControlUnitTests
             }));
         }
     };
+
+    void ControlInteractivityTests::ParseCompletedTurnActionHyperlinks()
+    {
+        using Control::implementation::CompletedTurnAction;
+        using Control::implementation::ParseCompletedTurnActionHyperlink;
+
+        VERIFY_ARE_EQUAL(CompletedTurnAction::Collapse, ParseCompletedTurnActionHyperlink(L"wta-action://collapse"));
+        VERIFY_ARE_EQUAL(CompletedTurnAction::Expand, ParseCompletedTurnActionHyperlink(L"wta-action://expand"));
+        VERIFY_ARE_EQUAL(CompletedTurnAction::None, ParseCompletedTurnActionHyperlink(L"https://example.com"));
+        VERIFY_ARE_EQUAL(CompletedTurnAction::None, ParseCompletedTurnActionHyperlink(L"wta-action://unknown"));
+    }
+
+    void ControlInteractivityTests::CompletedTurnActionHyperlinksSuppressUnderlines()
+    {
+        using ::Microsoft::Console::Render::Renderer;
+
+        VERIFY_IS_FALSE(Renderer::ShouldUnderlineHyperlink(L"wta-action://collapse"));
+        VERIFY_IS_FALSE(Renderer::ShouldUnderlineHyperlink(L"wta-action://expand"));
+        VERIFY_IS_TRUE(Renderer::ShouldUnderlineHyperlink(L"wta-action://unknown"));
+        VERIFY_IS_TRUE(Renderer::ShouldUnderlineHyperlink(L"https://example.com"));
+    }
+
+    void ControlInteractivityTests::CompletedTurnActionHyperlinkForwardsVtMouse()
+    {
+        WEX::TestExecution::DisableVerifyExceptions disableVerifyExceptions{};
+
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+        _standardInit(core, interactivity);
+
+        std::deque<std::wstring> expectedOutput{};
+        auto validateDrained = _addInputCallback(conn, expectedOutput);
+        auto openedHyperlinks = 0;
+        interactivity->OpenHyperlink([&](const auto&, const auto&) { ++openedHyperlinks; });
+
+        auto& term{ *core->_terminal };
+        term.Write(L"\x1b[?1000h\x1b[?1006h");
+        term.Write(L"\x1b]8;;wta-action://collapse\x1b\\X\x1b]8;;\x1b\\");
+
+        expectedOutput.push_back(L"\x1b[<16;1;1M");
+        interactivity->PointerPressed(0,
+                                      Control::MouseButtonState::IsLeftButtonDown,
+                                      WM_LBUTTONDOWN,
+                                      0,
+                                      ControlKeyStates{ CTRL_PRESSED },
+                                      Core::Point{ 0, 0 });
+
+        VERIFY_ARE_EQUAL(0, openedHyperlinks);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+    }
 
     void ControlInteractivityTests::TestAdjustAcrylic()
     {

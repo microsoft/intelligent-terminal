@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Yenidən cəhd etmək üçün Enter basın, y
 chat.activity_thinking: "Düşünür…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Ağıllı Terminal-a xoş gəlmisiniz!"
-chat.welcome_disclaimer: "Ağıllı Terminal AI istifadə edir. Səhvləri yoxlayın."
+chat.welcome_disclaimer: "Ağıllı Terminal AI istifadə edir."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -192,7 +192,7 @@ hooks.marketplace_path_stale: "⚠ marketplace yolu köhnəlib"
 hooks.installed_but_disabled: "⚠ quraşdırılıb amma deaktiv edilib"
 hooks.not_installed: "✗ quraşdırılmayıb"
 hooks.uninstall_skipped: "keçildi (CLI PATH-də deyil)"
-hooks.install_attempted: "wt-agent-hooks quraşdırması cəhd edildi (idempotent). Nəticəni yoxlamaq üçün `wta hooks status` icra edin. İzləmə jurnalı: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} üçün quraşdırılıb"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "indicə"
 time.minute_singular: "%{count} dəqiqə əvvəl"

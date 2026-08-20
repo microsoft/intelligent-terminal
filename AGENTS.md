@@ -169,7 +169,6 @@ Primary logs are:
 - `wta-ensure-host.log`
 - `wta-acp-debug.log`
 - `terminal-agent-pane.log`
-- `hook-trace.log`
 
 Use `WTA_LOG=debug` or `WTA_LOG=trace` for additional Rust tracing. See
 `tools/wta/README.md` for current diagnostics and CLI usage.

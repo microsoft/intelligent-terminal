@@ -1804,8 +1804,8 @@ namespace winrt::TerminalApp::implementation
         }
         const std::filesystem::path desktop{ desktopRaw.get() };
         // Archive the WTA log *root* (`...\logs`), not the per-version subdir,
-        // so the bug report captures every version's logs plus the flat
-        // hook-trace.log — the whole `logs\` tree is tarred recursively below.
+        // so the bug report captures every version's logs — the whole `logs\`
+        // tree is tarred recursively below.
         const std::filesystem::path logsDir = ::IntelligentTerminal::LogDir();
         if (logsDir.empty())
         {
