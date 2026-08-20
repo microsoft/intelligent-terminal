@@ -37,6 +37,7 @@ const MAX_COMPLETED_TURN_CACHE_ENTRIES: usize = 512;
 const MAX_COMPLETED_TURN_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES: usize = 256 * 1024;
 const MAX_STREAMING_MARKDOWN_CACHE_BYTES: usize = 256 * 1024;
+const MAX_RETAINED_COMPLETED_TURN_INDICES: usize = 16;
 
 pub struct PreparedChatLayout {
     wrap_width: usize,
@@ -148,8 +149,8 @@ impl CompletedTurnLayoutCache {
 thread_local! {
     static COMPLETED_TURN_LAYOUT_CACHE: RefCell<CompletedTurnLayoutCache> =
         RefCell::new(CompletedTurnLayoutCache::default());
-    static RETAINED_COMPLETED_TURN_INDEX: RefCell<Option<RetainedCompletedTurnIndex>> =
-        const { RefCell::new(None) };
+    static RETAINED_COMPLETED_TURN_INDICES: RefCell<VecDeque<RetainedCompletedTurnIndex>> =
+        const { RefCell::new(VecDeque::new()) };
     static STREAMING_MARKDOWN_PROJECTION_CACHE: RefCell<Option<StreamingMarkdownProjectionCache>> =
         const { RefCell::new(None) };
 }
@@ -216,6 +217,16 @@ pub(crate) fn completed_turn_descriptor_lookup_count() -> usize {
 #[cfg(test)]
 fn record_completed_turn_descriptor_lookup() {
     COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_retained_completed_turn_indices() {
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| retained.borrow_mut().clear());
+}
+
+#[cfg(test)]
+pub(crate) fn retained_completed_turn_index_count() -> usize {
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| retained.borrow().len())
 }
 
 #[cfg(test)]
@@ -449,12 +460,14 @@ fn prepare_completed_turn_index(
     render_agent_markdown: bool,
     pane_focused: bool,
 ) -> (Rc<Vec<PreparedCompletedTurn>>, usize) {
-    let previous = RETAINED_COMPLETED_TURN_INDEX.with(|retained| {
-        retained.borrow().as_ref().and_then(|index| {
-            (index.wrap_width == wrap_width
+    let (namespace, _) = app.current_tab_mut().completed_turn_layout_identity();
+    let previous = RETAINED_COMPLETED_TURN_INDICES.with(|retained| {
+        retained.borrow().iter().find_map(|index| {
+            (index.namespace == namespace
+                && index.wrap_width == wrap_width
                 && index.render_agent_markdown == render_agent_markdown
                 && index.pane_focused == pane_focused)
-                .then_some((index.namespace, index.generation))
+                .then_some((namespace, index.generation))
         })
     });
     let changes = app
@@ -463,9 +476,13 @@ fn prepare_completed_turn_index(
     let tab = app.current_tab();
     let selected = tab.selected_completed_turn_idx;
 
-    RETAINED_COMPLETED_TURN_INDEX.with(|retained| {
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| {
         let mut retained = retained.borrow_mut();
-        let compatible = retained.as_ref().is_some_and(|index| {
+        let position = retained
+            .iter()
+            .position(|index| index.namespace == changes.namespace);
+        let mut current = position.and_then(|position| retained.remove(position));
+        let compatible = current.as_ref().is_some_and(|index| {
             index.namespace == changes.namespace
                 && index.wrap_width == wrap_width
                 && index.render_agent_markdown == render_agent_markdown
@@ -499,7 +516,7 @@ fn prepare_completed_turn_index(
                     height: layout.height,
                 });
             }
-            *retained = Some(RetainedCompletedTurnIndex {
+            current = Some(RetainedCompletedTurnIndex {
                 namespace: changes.namespace,
                 generation: changes.generation,
                 wrap_width,
@@ -509,7 +526,7 @@ fn prepare_completed_turn_index(
                 turns: Rc::new(turns),
                 total_height,
             });
-        } else if let Some(index) = retained.as_mut() {
+        } else if let Some(index) = current.as_mut() {
             let turns = Rc::make_mut(&mut index.turns);
             let dirty_indices = changes.dirty_indices.as_deref().unwrap_or_default();
             for &dirty_index in dirty_indices {
@@ -558,10 +575,17 @@ fn prepare_completed_turn_index(
             index.selected = selected;
         }
 
-        retained.as_ref().map_or_else(
+        let result = current.as_ref().map_or_else(
             || (Rc::new(Vec::new()), 0),
             |index| (Rc::clone(&index.turns), index.total_height),
-        )
+        );
+        if let Some(current) = current {
+            retained.push_back(current);
+        }
+        while retained.len() > MAX_RETAINED_COMPLETED_TURN_INDICES {
+            retained.pop_front();
+        }
+        result
     })
 }
 

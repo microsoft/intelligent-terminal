@@ -10319,6 +10319,68 @@ fn render_chat_materializes_only_viewport_plus_overscan_turns() {
 }
 
 #[test]
+fn render_chat_retains_height_indices_across_tab_switches() {
+    crate::ui::chat::reset_retained_completed_turn_indices();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for tab_id in ["RETAINED-TAB-A", "RETAINED-TAB-B"] {
+        for index in 0..100 {
+            app.tab_mut(tab_id).completed_turns.push(CompletedTurn {
+                prompt: format!("{tab_id}_TURN_{index:03}"),
+                details: Vec::new(),
+                expanded: false,
+                trailing_marker: None,
+            });
+        }
+    }
+
+    app.tab_id = Some("RETAINED-TAB-A".into());
+    render_to_text(&mut app, 80, 16);
+    app.tab_id = Some("RETAINED-TAB-B".into());
+    render_to_text(&mut app, 80, 16);
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    app.tab_id = Some("RETAINED-TAB-A".into());
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("RETAINED-TAB-A_TURN_099"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        0,
+        "switching back to an unchanged tab must reuse its retained height index",
+    );
+}
+
+#[test]
+fn retained_completed_turn_height_indices_are_bounded() {
+    crate::ui::chat::reset_retained_completed_turn_indices();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    for tab_index in 0..17 {
+        let tab_id = format!("RETAINED-LRU-{tab_index:02}");
+        app.tab_mut(&tab_id).completed_turns.push(CompletedTurn {
+            prompt: tab_id.clone(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_id = Some(tab_id);
+        render_to_text(&mut app, 80, 16);
+    }
+    assert_eq!(crate::ui::chat::retained_completed_turn_index_count(), 16);
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    app.tab_id = Some("RETAINED-LRU-00".into());
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("RETAINED-LRU-00"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        1,
+        "an evicted tab must rebuild safely when revisited",
+    );
+}
+
+#[test]
 fn input_history_deduplicates_and_caps_at_fifty() {
     let mut tab = TabSession::default();
     for index in 0..55 {

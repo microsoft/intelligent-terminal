@@ -745,6 +745,14 @@ impl TabSession {
         }
     }
 
+    pub(crate) fn completed_turn_layout_identity(&mut self) -> (u64, u64) {
+        self.sync_completed_turn_layout_metadata();
+        (
+            self.completed_turn_layout_namespace,
+            self.completed_turn_layout_generation,
+        )
+    }
+
     pub(crate) fn completed_turn_layout_item(&self, index: usize) -> Option<(u64, u64)> {
         Some((
             *self.completed_turn_layout_ids.get(index)?,
