@@ -122,7 +122,12 @@ while ($stack.Count -gt 0) {
 #    attribution.
 # ---------------------------------------------------------------------------
 $attributed = @()
-$vendorRoot = [System.IO.Path]::GetFullPath((Join-Path $wtaRoot 'vendor')).TrimEnd('\') + '\'
+$directorySeparators = [char[]]@(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+)
+$vendorRoot = [System.IO.Path]::GetFullPath((Join-Path $wtaRoot 'vendor')).TrimEnd($directorySeparators) +
+    [System.IO.Path]::DirectorySeparatorChar
 foreach ($pkgId in $seen) {
     $pkg = $packages[$pkgId]
     if (-not $pkg) { continue }

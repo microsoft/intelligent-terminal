@@ -10557,7 +10557,7 @@ fn completed_turn_layout_change_log_wrap_and_overflow_force_safe_rebuilds() {
 }
 
 #[test]
-fn render_chat_materializes_only_viewport_plus_overscan_turns() {
+fn render_chat_materializes_only_viewport_plus_retained_margin_turns() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     for index in 0..200 {
@@ -10576,7 +10576,7 @@ fn render_chat_materializes_only_viewport_plus_overscan_turns() {
     assert!(rendered.contains("RETAINED_VIEWPORT_TURN_199"));
     assert!(
         (1..=48).contains(&materialized),
-        "a 16-row viewport plus 32-row overscan should materialize at most 48 turns; materialized {materialized}",
+        "a 16-row viewport plus 32 retained rows should materialize at most 48 turns; materialized {materialized}",
     );
 
     crate::ui::chat::reset_completed_turn_descriptor_lookup_count();

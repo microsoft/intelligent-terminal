@@ -2824,7 +2824,7 @@ mod tests {
 
         assert!(
             streaming_markdown_parsed_bytes() < cold_bytes,
-            "stable blocks must avoid reparsing every complete prefix",
+            "stable blocks must avoid parsing every complete prefix again",
         );
 
         let completed_source = tab.streaming_agent_text().expect("completed source");
