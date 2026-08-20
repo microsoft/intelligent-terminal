@@ -2427,6 +2427,10 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        if (!globals.RenderAgentMarkdown())
+        {
+            helperCmd.append(L" --no-agent-markdown");
+        }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             appendHelperFlagValue(L"--language", lang);
