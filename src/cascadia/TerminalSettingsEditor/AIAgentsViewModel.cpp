@@ -1391,9 +1391,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const std::wstring hooksRemovedSummary{ RS_(L"AIAgents_HooksRemovedSummary") };
         const std::wstring hooksInstalledSummary{ RS_(L"AIAgents_HooksInstalledSummary") };
         const auto hooksLogDir = ::IntelligentTerminal::LogDirVersioned();
+        const auto hooksInstallLogPath = (hooksLogDir / L"wta-install-hooks.log").wstring();
         const std::wstring hooksRemovalFailedSummary{ RS_fmt(L"AIAgents_HooksRemovalFailedSummary", hooksLogDir.wstring()) };
         const std::wstring hooksInstallationFailedSummary{
-            RS_fmt(L"AIAgents_HooksInstallationFailedSummary", (hooksLogDir / L"wta-install-hooks.log").wstring())
+            RS_fmt(L"AIAgents_HooksInstallationFailedSummary", hooksInstallLogPath)
         };
         std::wstring summary;
         bool ok = false;
@@ -1405,16 +1406,37 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             summary = locateWtaFailedSummary;
         }
-        else
+        else if (isUninstall)
         {
             ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, wtaArgs, 60'000);
+            summary = ok ? hooksRemovedSummary : hooksRemovalFailedSummary;
+        }
+        else
+        {
+            // Ask for the structured report so a failure can name the CLIs
+            // that failed. wta prints it and *then* exits non-zero, so we
+            // capture output independently of the exit code.
+            const auto run = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath, wtaArgs + L" --json", 60'000);
+            ok = run.completed && run.exitCode == 0;
             if (ok)
             {
-                summary = isUninstall ? hooksRemovedSummary : hooksInstalledSummary;
+                summary = hooksInstalledSummary;
             }
             else
             {
-                summary = isUninstall ? hooksRemovalFailedSummary : hooksInstallationFailedSummary;
+                // Fall back to the unattributed message whenever the report
+                // is unreadable or blames no particular CLI — a timeout, a
+                // crash before the report was written, or a failure that
+                // isn't per-CLI all land here.
+                summary = hooksInstallationFailedSummary;
+                if (const auto report = ::Microsoft::Terminal::AgentHooks::ParseInstallReportJson(run.output))
+                {
+                    const auto failed = ::Microsoft::Terminal::AgentHooks::FormatFailedCliList(*report);
+                    if (!failed.empty())
+                    {
+                        summary = RS_fmt(L"AIAgents_HooksInstallationFailedForSummary", failed, hooksInstallLogPath);
+                    }
+                }
             }
         }
 
