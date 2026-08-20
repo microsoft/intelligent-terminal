@@ -1482,12 +1482,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _acpProbing = true;
         _RebuildAcpModelListFromCache();
         const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
         TraceLoggingWrite(
             g_hTerminalSettingsEditorProvider,
             "AcpModelProbeStarted",
             TraceLoggingDescription("A clean ACP model catalog probe started"),
             TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-            TraceLoggingWideString(agentId.c_str(), "AgentId"),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
             TraceLoggingUInt64(cacheRevision, "CacheRevision"),
             TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
         _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
@@ -1542,6 +1543,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         co_await wil::resume_foreground(dispatcher);
 
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
+
         // Drop stale results — a newer probe is already in flight
         // for a different agent and we'd clobber its eventual write.
         if (generation != _acpProbeGeneration)
@@ -1551,7 +1554,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 "AcpModelProbeDiscarded",
                 TraceLoggingDescription("An ACP model catalog probe result was superseded"),
                 TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-                TraceLoggingWideString(agentId.c_str(), "AgentId"),
+                TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
                 TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
             co_return;
         }
@@ -1563,7 +1566,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             "AcpModelProbeCompleted",
             TraceLoggingDescription("A clean ACP model catalog probe completed"),
             TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-            TraceLoggingWideString(agentId.c_str(), "AgentId"),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
             TraceLoggingBool(probeSucceeded, "Succeeded"),
             TraceLoggingUInt32(gsl::narrow_cast<uint32_t>(parsed.size()), "ModelCount"),
             TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));

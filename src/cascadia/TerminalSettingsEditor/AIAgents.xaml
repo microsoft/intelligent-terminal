@@ -172,10 +172,18 @@
             <local:SettingContainer x:Name="EmptyCustomModelProviders"
                                     x:Uid="AIAgents_CustomModels"
                                     Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <Button x:Uid="AIAgents_CustomProviderAdd"
-                        VerticalAlignment="Center"
-                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                        Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel MaxWidth="400"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button x:Uid="AIAgents_CustomProviderAdd"
+                            HorizontalAlignment="Right"
+                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
+                </StackPanel>
             </local:SettingContainer>
 
             <local:SettingContainer x:Name="CustomModelProvidersExpander"
