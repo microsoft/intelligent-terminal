@@ -53,8 +53,13 @@ $RepoRoot     = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $InstalledDir = Join-Path $env:USERPROFILE '.copilot\installed-plugins\wt-local\wt-agent-hooks'
 $HooksJson    = Join-Path $InstalledDir 'hooks\hooks.json'
 $BridgePs1    = Join-Path $InstalledDir 'hooks\send-event.ps1'
-# Commit that deleted the PowerShell bridge; its parent is configuration A.
-$LegacyCommit = '9a9a17b280ddc24209914ed83dd8ed00acb5e830'
+# Both historical configurations are pinned to commits rather than branch names
+# so the benchmark reproduces on any clone: branches get deleted after merge,
+# and a shallow or offline clone may not have them at all.
+#   A = the parent of the commit that deleted the PowerShell bridge.
+#   B = the merge of the native-bridge work, which still subscribed PreToolUse.
+$LegacyCommit       = '9a9a17b280ddc24209914ed83dd8ed00acb5e830'
+$NativeBridgeCommit = 'e610bacc181c488d806fef1e84520761adbd2be4'
 
 # Hook topics a single turn produces, in order. Session lifecycle is fixed;
 # per-tool topics repeat once per tool call and are what the configurations
@@ -82,12 +87,15 @@ $Prompts = @(
     }
 )
 
-function Get-LegacyFile {
-    param([Parameter(Mandatory)][string]$RepoPath)
+function Get-RepoFileAt {
+    param(
+        [Parameter(Mandatory)][string]$Commitish,
+        [Parameter(Mandatory)][string]$RepoPath
+    )
     Push-Location $RepoRoot
     try {
-        $text = & git --no-pager show "${LegacyCommit}^:$RepoPath" 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "cannot read $RepoPath from ${LegacyCommit}^" }
+        $text = & git --no-pager show "${Commitish}:$RepoPath" 2>$null
+        if ($LASTEXITCODE -ne 0) { throw "cannot read $RepoPath at $Commitish" }
         ($text | Out-String)
     }
     finally { Pop-Location }
@@ -164,24 +172,24 @@ function Install-Config {
     param([Parameter(Mandatory)][ValidateSet('A', 'B', 'C')][string]$Config)
 
     if ($Config -eq 'A') {
-        Get-LegacyFile 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1' |
+        Get-RepoFileAt -Commitish "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1' |
             Set-Content -LiteralPath $BridgePs1 -Encoding utf8
         # Absolute path rather than the plugin-root placeholder: this writes the
-        # *installed* copy directly, so no expansion step runs over it.
-        $json = Get-LegacyFile 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
+        # *installed* copy directly, so no expansion step runs over it. The path
+        # is JSON-escaped first -- a Windows path's single backslashes are
+        # invalid escapes inside a JSON string.
+        $json = Get-RepoFileAt -Commitish "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
         $escaped = $BridgePs1 -replace '\\', '\\'
         $json = $json -replace '\$\{CLAUDE_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
         $json = $json -replace '\$\{COPILOT_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
+        $null = $json | ConvertFrom-Json   # fail loudly rather than benchmarking a broken manifest
         $json | Set-Content -LiteralPath $HooksJson -Encoding utf8
         return
     }
 
     if (Test-Path $BridgePs1) { Remove-Item -LiteralPath $BridgePs1 -Force }
     $source = if ($Config -eq 'B') {
-        # #571 shipped the native bridge while still subscribing PreToolUse.
-        Push-Location $RepoRoot
-        try { (& git --no-pager show "origin/dev/yuazha/native-hook-bridge:tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json" | Out-String) }
-        finally { Pop-Location }
+        Get-RepoFileAt -Commitish $NativeBridgeCommit -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
     }
     else {
         Get-Content -LiteralPath (Join-Path $RepoRoot 'tools\wta\wt-agent-hooks\copilot\wt-agent-hooks\hooks\hooks.json') -Raw
