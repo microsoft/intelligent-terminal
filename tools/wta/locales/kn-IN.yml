@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  ಮತ್ತೆ ಪ್ರಯತ್ನಿಸ�
 chat.activity_thinking: "ಯೋಚಿಸುತ್ತಿದೆ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್-ಗೆ ಸ್ವಾಗತ!"
-chat.welcome_disclaimer: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ AI ಬಳಸುತ್ತದೆ. ತಪ್ಪುಗಳನ್ನು ಪರಿಶೀಲಿಸಿ."
+chat.welcome_disclaimer: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ AI ಬಳಸುತ್ತದೆ"
 chat.plan_header: "ಯೋಜನೆ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

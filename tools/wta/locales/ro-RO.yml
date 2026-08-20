@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Apăsați Enter pentru a încerca din nou, sa
 chat.activity_thinking: "Se gândește..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Bun venit la Terminal Inteligent!"
-chat.welcome_disclaimer: "Terminal Inteligent folosește AI. Verificați erorile."
+chat.welcome_disclaimer: "Terminal Inteligent folosește AI"
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

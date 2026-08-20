@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Кабатлап карау өчен Enter т
 chat.activity_thinking: "Уйлыйм…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Акыллы терминал-га рәхим итегез!"
-chat.welcome_disclaimer: "Акыллы терминал AI куллана. Хаталарны тикшерегез."
+chat.welcome_disclaimer: "Акыллы терминал AI куллана"
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

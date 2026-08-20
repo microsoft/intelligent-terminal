@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Vajutage Enter uuesti proovimiseks või Esc t
 chat.activity_thinking: "Mõtleb..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Tere tulemast Nutikas Terminali!"
-chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d. Kontrollige vigu."
+chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d"
 chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

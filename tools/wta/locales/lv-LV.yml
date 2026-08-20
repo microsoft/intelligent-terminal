@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nospiediet Enter, lai mēģinātu vēlreiz, v
 chat.activity_thinking: "Domā..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Laipni lūdzam Viedais Terminālis!"
-chat.welcome_disclaimer: "Viedais Terminālis izmanto AI. Pārbaudiet kļūdas."
+chat.welcome_disclaimer: "Viedais Terminālis izmanto AI"
 chat.plan_header: "Plāns:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

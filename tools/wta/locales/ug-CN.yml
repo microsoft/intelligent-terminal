@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  قايتا سىناش ئۈچۈن Enter نى �
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ئەقلىي تېرمىنال ھە خوش كەلدىڭىز!"
-chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ. خاتالىقلارنى تەكشۈرۈڭ."
+chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ"
 chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

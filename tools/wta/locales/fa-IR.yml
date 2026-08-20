@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  برای تلاش دوباره Enter را ف�
 chat.activity_thinking: "در حال فکر کردن…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "به پایانه هوشمند خوش آمدید!"
-chat.welcome_disclaimer: "پایانه هوشمند از AI استفاده می‌کند. خطاها را بررسی کنید."
+chat.welcome_disclaimer: "پایانه هوشمند از AI استفاده می‌کند"
 chat.plan_header: "طرح:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

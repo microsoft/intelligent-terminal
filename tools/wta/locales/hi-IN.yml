@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  फिर से प्रयास करन
 chat.activity_thinking: "सोच रहा है…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "इंटेलिजेंट टर्मिनल में आपका स्वागत है!"
-chat.welcome_disclaimer: "इंटेलिजेंट टर्मिनल AI का उपयोग करता है। गलतियों की जाँच करें।"
+chat.welcome_disclaimer: "इंटेलिजेंट टर्मिनल AI का उपयोग करता है"
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

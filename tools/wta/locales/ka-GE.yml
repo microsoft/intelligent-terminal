@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  დააჭირეთ Enter-ს ხელ�
 chat.activity_thinking: "ვფიქრობ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
-chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს. შეამოწმეთ შეცდომები."
+chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს"
 chat.plan_header: "გეგმა:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

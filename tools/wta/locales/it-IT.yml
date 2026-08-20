@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Premi Enter per riprovare, oppure Esc per tor
 chat.activity_thinking: "Elaborazione in corso…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Benvenuto in Terminale Intelligente!"
-chat.welcome_disclaimer: "Terminale Intelligente usa l'IA. Verifica la presenza di errori."
+chat.welcome_disclaimer: "Terminale Intelligente usa l'IA"
 chat.plan_header: "Piano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

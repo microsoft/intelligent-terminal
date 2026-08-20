@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Qayta urinish uchun Enter tugmasini bosing yo
 chat.activity_thinking: "Oʻylayapman…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Aqlli terminal-ga xush kelibsiz!"
-chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi. Xatolarni tekshiring."
+chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi"
 chat.plan_header: "Reja:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμά
 chat.activity_thinking: "Σκέφτομαι…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
-chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
+chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI"
 chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

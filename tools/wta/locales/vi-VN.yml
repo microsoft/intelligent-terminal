@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc đ�
 chat.activity_thinking: "Đang suy nghĩ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Chào mừng bạn đến Đầu cuối thông minh!"
-chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI. Hãy kiểm tra lỗi."
+chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI"
 chat.plan_header: "Kế hoạch:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

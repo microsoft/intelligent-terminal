@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tekan Enter untuk mencuba semula, atau Esc un
 chat.activity_thinking: "Sedang berfikir…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Selamat datang ke Terminal Pintar!"
-chat.welcome_disclaimer: "Terminal Pintar menggunakan AI. Semak kesilapan."
+chat.welcome_disclaimer: "Terminal Pintar menggunakan AI"
 chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  እንደገና ለመሞከር Enter ይጫ�
 chat.activity_thinking: "በማሰብ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "እንኳን ወደ ብልህ ተርሚናል በደህና መጡ!"
-chat.welcome_disclaimer: "ብልህ ተርሚናል AI ይጠቀማል። ስህተቶችን ያረጋግጡ።"
+chat.welcome_disclaimer: "ብልህ ተርሚናል AI ይጠቀማል"
 chat.plan_header: "እቅድ፡"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

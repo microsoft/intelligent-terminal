@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Dréckt Enter fir nach eng Kéier ze probéie
 chat.activity_thinking: "Denkt no…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Wëllkomm am Intelligenten Terminal!"
-chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI. Kuckt no Feeler."
+chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI"
 chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

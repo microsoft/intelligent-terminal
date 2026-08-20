@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  กด Enter เพื่อลองอี�
 chat.activity_thinking: "กำลังคิด…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ!"
-chat.welcome_disclaimer: "เทอร์มินัลอัจฉริยะ ใช้ AI ตรวจสอบข้อผิดพลาด."
+chat.welcome_disclaimer: "เทอร์มินัลอัจฉริยะ ใช้ AI"
 chat.plan_header: "แผน:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

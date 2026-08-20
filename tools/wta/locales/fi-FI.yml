@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Paina Enter yrittääksesi uudelleen tai Esc 
 chat.activity_thinking: "Ajattelee..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Tervetuloa Älykäs Pääteiin!"
-chat.welcome_disclaimer: "Älykäs Pääte käyttää tekoälyä. Tarkista virheet."
+chat.welcome_disclaimer: "Älykäs Pääte käyttää tekoälyä"
 chat.plan_header: "Suunnitelma:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

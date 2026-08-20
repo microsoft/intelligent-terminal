@@ -10,6 +10,7 @@ pub const ATTACHMENT_TOKEN: Style = Style::new().fg(Color::Cyan);
 // pane's color scheme — light text on dark schemes, dark text on light
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
+pub const DISCLAIMER_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
 pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
 pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);

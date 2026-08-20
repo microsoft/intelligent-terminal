@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Premeu Enter per a tornar-ho a provar, o Esc 
 chat.activity_thinking: "Pensant…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Vos donem la benvinguda a l'Terminal Intel·ligent!"
-chat.welcome_disclaimer: "Terminal Intel·ligent utilitza IA. Comproveu si hi ha errors."
+chat.welcome_disclaimer: "Terminal Intel·ligent utilitza IA"
 chat.plan_header: "Pla:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

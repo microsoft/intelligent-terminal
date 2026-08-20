@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Yeniden denemek için Enter tuşuna veya geri
 chat.activity_thinking: "Düşünüyor…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Akıllı Terminal'e hoş geldiniz!"
-chat.welcome_disclaimer: "Akıllı Terminal, AI kullanır. Hataları kontrol edin."
+chat.welcome_disclaimer: "Akıllı Terminal, AI kullanır"
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

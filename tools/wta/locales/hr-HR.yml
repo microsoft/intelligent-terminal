@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pritisnite Enter za ponovni pokušaj ili Esc 
 chat.activity_thinking: "Razmišljam..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Dobro došli u Inteligentni Terminal!"
-chat.welcome_disclaimer: "Inteligentni Terminal koristi AI. Provjerite pogreške."
+chat.welcome_disclaimer: "Inteligentni Terminal koristi AI"
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
