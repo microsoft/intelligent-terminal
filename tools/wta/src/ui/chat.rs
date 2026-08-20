@@ -8,7 +8,6 @@ use std::rc::Rc;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tui_markdown::{Options as MarkdownOptions, StyleSheet};
-use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
@@ -1331,8 +1330,10 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
     (!text.trim().is_empty()).then_some(Cow::Borrowed(text))
 }
 
-fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    user_visible_stream_text(tab.streaming_agent_text()?)
+fn pending_render_text(tab: &crate::app::TabSession) -> Option<&str> {
+    let text = tab.streaming_agent_text()?;
+    user_visible_stream_text(text)?;
+    Some(text)
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -1358,19 +1359,23 @@ fn build_pending_stream_lines_for_tab_with_mode<'a>(
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
-    // Typewriter smoothing: only reveal the first `reveal_chars` grapheme
+    // Typewriter smoothing: only reveal the first `reveal_graphemes` grapheme
     // clusters of the streaming text. The reveal cursor advances toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
     // full text is always in the ordered transcript, and finalize moves that
     // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
-        let total = text.graphemes(true).count();
-        let shown = tab.reveal_chars.max(1).min(total);
+        let total = tab.streaming_grapheme_count().unwrap_or_default();
+        let shown = tab.reveal_graphemes.max(1).min(total);
         if shown >= total {
-            text
+            Cow::Borrowed(text)
         } else {
-            Cow::Owned(text.graphemes(true).take(shown).collect())
+            let end = tab
+                .streaming_prefix_byte_end(shown)
+                .unwrap_or(text.len())
+                .min(text.len());
+            Cow::Borrowed(&text[..end])
         }
     };
     agent_response_lines(
@@ -2428,7 +2433,7 @@ mod tests {
         assert_eq!(user_visible_stream_text("   \n  "), None);
     }
 
-    fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
+    fn streaming_tab(buf: &str, reveal_graphemes: usize) -> crate::app::TabSession {
         let mut tab = crate::app::TabSession::default();
         tab.turn = crate::app::TurnState::Streaming {
             prompt: crate::app::SubmittedPrompt {
@@ -2443,7 +2448,7 @@ mod tests {
             tab.messages
                 .push(crate::app::ChatMessage::Agent(buf.to_string()));
         }
-        tab.reveal_chars = reveal_chars;
+        tab.reveal_graphemes = reveal_graphemes;
         tab
     }
 

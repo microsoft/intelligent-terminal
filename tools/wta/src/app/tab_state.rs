@@ -1,7 +1,10 @@
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
@@ -19,6 +22,26 @@ pub(crate) struct CompletedTurnLayoutChanges {
     pub generation: u64,
     pub len: usize,
     pub dirty_indices: Option<Vec<usize>>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_streaming_grapheme_fallback_scan_count() {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn streaming_grapheme_fallback_scan_count() -> usize {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_streaming_grapheme_fallback_scan() {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(|count| count.set(count.get() + 1));
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -455,7 +478,11 @@ pub struct TabSession {
     /// assistant-text item in the active transcript. Advanced toward its full length by `RevealTick`
     /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
     /// made irrelevant on finalize (the committed message renders in full).
-    pub reveal_chars: usize,
+    pub reveal_graphemes: usize,
+    pub(crate) streaming_source_generation: u64,
+    pub(crate) streaming_source_revision: u64,
+    pub(crate) streaming_indexed_bytes: usize,
+    pub(crate) streaming_grapheme_ends: Vec<usize>,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
@@ -533,6 +560,64 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    fn clear_streaming_source_index(&mut self) {
+        self.streaming_source_revision = 0;
+        self.streaming_indexed_bytes = 0;
+        self.streaming_grapheme_ends.clear();
+    }
+
+    fn start_streaming_source_index(&mut self, text: &str) {
+        self.streaming_source_generation = self.streaming_source_generation.wrapping_add(1).max(1);
+        self.streaming_source_revision = 1;
+        self.streaming_indexed_bytes = text.len();
+        self.streaming_grapheme_ends = text
+            .grapheme_indices(true)
+            .map(|(start, grapheme)| start + grapheme.len())
+            .collect();
+    }
+
+    pub(crate) fn streaming_source_generation(&self) -> u64 {
+        self.streaming_source_generation
+    }
+
+    pub(crate) fn streaming_source_revision(&self) -> u64 {
+        self.streaming_source_revision
+    }
+
+    pub(crate) fn streaming_grapheme_count(&self) -> Option<usize> {
+        let text = self.streaming_agent_text()?;
+        if self.streaming_indexed_bytes == text.len() {
+            Some(self.streaming_grapheme_ends.len())
+        } else {
+            #[cfg(test)]
+            record_streaming_grapheme_fallback_scan();
+            Some(text.graphemes(true).count())
+        }
+    }
+
+    pub(crate) fn streaming_prefix_byte_end(&self, grapheme_count: usize) -> Option<usize> {
+        let text = self.streaming_agent_text()?;
+        if grapheme_count == 0 {
+            return Some(0);
+        }
+        if self.streaming_indexed_bytes == text.len() {
+            return Some(
+                self.streaming_grapheme_ends
+                    .get(grapheme_count - 1)
+                    .copied()
+                    .unwrap_or(text.len()),
+            );
+        }
+        #[cfg(test)]
+        record_streaming_grapheme_fallback_scan();
+        Some(
+            text.grapheme_indices(true)
+                .nth(grapheme_count - 1)
+                .map(|(start, grapheme)| start + grapheme.len())
+                .unwrap_or(text.len()),
+        )
+    }
+
     fn record_completed_turn_layout_change(&mut self, index: usize) {
         if self.completed_turn_layout_generation == u64::MAX {
             self.completed_turn_layout_namespace =
@@ -775,6 +860,7 @@ impl TabSession {
         self.activity_frame = 0;
         self.replay_agent_buffer.clear();
         self.replay_user_buffer.clear();
+        self.clear_streaming_source_index();
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -800,11 +886,48 @@ impl TabSession {
     }
 
     pub fn append_agent_chunk(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         match self.messages.last_mut() {
-            Some(ChatMessage::Agent(current)) => current.push_str(text),
+            Some(ChatMessage::Agent(current)) => {
+                let index_matches_source = self.streaming_indexed_bytes == current.len()
+                    && self
+                        .streaming_grapheme_ends
+                        .last()
+                        .is_none_or(|end| *end == current.len());
+                let rescan_start = index_matches_source
+                    .then(|| {
+                        self.streaming_grapheme_ends
+                            .len()
+                            .checked_sub(2)
+                            .and_then(|index| self.streaming_grapheme_ends.get(index).copied())
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
+                current.push_str(text);
+                if index_matches_source {
+                    self.streaming_grapheme_ends
+                        .retain(|end| *end <= rescan_start);
+                    self.streaming_source_revision =
+                        self.streaming_source_revision.wrapping_add(1).max(1);
+                } else {
+                    self.streaming_grapheme_ends.clear();
+                    self.streaming_source_generation =
+                        self.streaming_source_generation.wrapping_add(1).max(1);
+                    self.streaming_source_revision = 1;
+                }
+                self.streaming_grapheme_ends.extend(
+                    current[rescan_start..]
+                        .grapheme_indices(true)
+                        .map(|(start, grapheme)| rescan_start + start + grapheme.len()),
+                );
+                self.streaming_indexed_bytes = current.len();
+            }
             _ => {
                 self.messages.push(ChatMessage::Agent(text.to_string()));
-                self.reveal_chars = 0;
+                self.reveal_graphemes = 0;
+                self.start_streaming_source_index(text);
             }
         }
     }
@@ -837,6 +960,7 @@ impl TabSession {
     }
 
     pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
+        self.clear_streaming_source_index();
         std::mem::take(&mut self.messages)
             .into_iter()
             .filter(|message| !matches!(message, ChatMessage::User(_)))
@@ -847,6 +971,7 @@ impl TabSession {
         if self.messages.is_empty() {
             return;
         }
+        self.clear_streaming_source_index();
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
         let mut current: Option<(String, Vec<ChatMessage>)> = None;

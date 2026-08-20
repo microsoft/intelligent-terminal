@@ -6074,7 +6074,7 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         session_id: DEFAULT_TAB_ID.into(),
         text: "I will update the file.".into(),
     });
-    app.current_tab_mut().reveal_chars = 12;
+    app.current_tab_mut().reveal_graphemes = 12;
     app.handle_event(AppEvent::ToolCall {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool-1".into(),
@@ -6094,7 +6094,7 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         text: "The update is complete.".into(),
     });
     assert_eq!(
-        app.current_tab().reveal_chars,
+        app.current_tab().reveal_graphemes,
         0,
         "a new prose segment after a tool must start its own reveal cursor"
     );
@@ -8661,12 +8661,51 @@ fn reveal_backlog_and_cursor_count_extended_grapheme_clusters() {
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "👩‍💻x");
 
     assert_eq!(App::tab_visible_stream_len(app.current_tab()), Some(2));
-    app.current_tab_mut().reveal_chars = 1;
+    app.current_tab_mut().reveal_graphemes = 1;
     assert!(app.has_reveal_backlog());
 
     app.advance_reveal();
-    assert_eq!(app.current_tab().reveal_chars, 2);
+    assert_eq!(app.current_tab().reveal_graphemes, 2);
     assert!(!app.has_reveal_backlog());
+}
+
+#[test]
+fn streaming_append_lineage_repairs_cross_chunk_grapheme_boundaries() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    crate::app::tab_state::reset_streaming_grapheme_fallback_scan_count();
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "👩");
+    let generation = app.current_tab().streaming_source_generation();
+    let first_revision = app.current_tab().streaming_source_revision();
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(1));
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "‍💻x");
+
+    assert_eq!(app.current_tab().streaming_source_generation(), generation);
+    assert!(app.current_tab().streaming_source_revision() > first_revision);
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(2));
+    assert_eq!(
+        app.current_tab().streaming_prefix_byte_end(1),
+        Some("👩‍💻".len())
+    );
+    assert_eq!(
+        crate::app::tab_state::streaming_grapheme_fallback_scan_count(),
+        0,
+        "normal append lineage must not rescan the full stream prefix",
+    );
+
+    let replaced_generation = app.current_tab().streaming_source_generation();
+    if let Some(ChatMessage::Agent(text)) = app.current_tab_mut().messages.last_mut() {
+        *text = "e\u{301}".into();
+    }
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "x");
+    assert_ne!(
+        app.current_tab().streaming_source_generation(),
+        replaced_generation,
+        "source replacement must renew append lineage",
+    );
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(2));
+    assert_eq!(app.current_tab().streaming_prefix_byte_end(1), Some(3));
 }
 
 #[test]

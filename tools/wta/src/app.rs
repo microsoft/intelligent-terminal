@@ -8,7 +8,6 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use unicode_segmentation::UnicodeSegmentation;
 
 struct DeferredAcpParams {
     agent_cmd: String,
@@ -4389,15 +4388,15 @@ impl App {
 
     /// Number of user-visible grapheme clusters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
-            .map(|text| text.graphemes(true).count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)?;
+        tab.streaming_grapheme_count()
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
     /// cursor hasn't caught up to yet. Used to gate `RevealTick` redraws.
     fn has_reveal_backlog(&self) -> bool {
         let tab = self.current_tab();
-        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
+        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_graphemes < len)
     }
 
     /// Advance the typewriter reveal cursor on every streaming tab. The step
@@ -4418,15 +4417,15 @@ impl App {
             let Some(len) = Self::tab_visible_stream_len(tab) else {
                 continue;
             };
-            if tab.reveal_chars >= len {
+            if tab.reveal_graphemes >= len {
                 // Clamp down if the visible text shrank (e.g. a fenced JSON
                 // block replaced the streamed prose).
-                tab.reveal_chars = len;
+                tab.reveal_graphemes = len;
                 continue;
             }
-            let backlog = len - tab.reveal_chars;
+            let backlog = len - tab.reveal_graphemes;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
-            tab.reveal_chars = (tab.reveal_chars + step).min(len);
+            tab.reveal_graphemes = (tab.reveal_graphemes + step).min(len);
         }
     }
 }

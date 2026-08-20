@@ -121,7 +121,7 @@ impl App {
                     unreachable!();
                 };
                 tab.turn = TurnState::Streaming { prompt };
-                tab.reveal_chars = 0;
+                tab.reveal_graphemes = 0;
                 if kind == ChunkKind::Message {
                     tab.append_agent_chunk(text);
                     true
@@ -389,7 +389,7 @@ impl App {
                 self.turn_clear_agent_activity(session_id);
                 let tab = self.session_tab_mut(session_id);
                 tab.messages.clear();
-                tab.reveal_chars = 0;
+                tab.reveal_graphemes = 0;
                 tab.turn = TurnState::Idle;
                 return;
             }
