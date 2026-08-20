@@ -8,6 +8,7 @@ use std::rc::Rc;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tui_markdown::{Options as MarkdownOptions, StyleSheet};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
@@ -1357,19 +1358,19 @@ fn build_pending_stream_lines_for_tab_with_mode<'a>(
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
-    // Typewriter smoothing: only reveal the first `reveal_chars` characters of
-    // the streaming text. The reveal cursor is advanced toward the full length
+    // Typewriter smoothing: only reveal the first `reveal_chars` grapheme
+    // clusters of the streaming text. The reveal cursor advances toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
     // full text is always in the ordered transcript, and finalize moves that
     // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
-        let total = text.chars().count();
+        let total = text.graphemes(true).count();
         let shown = tab.reveal_chars.max(1).min(total);
         if shown >= total {
             text
         } else {
-            Cow::Owned(text.chars().take(shown).collect())
+            Cow::Owned(text.graphemes(true).take(shown).collect())
         }
     };
     agent_response_lines(
@@ -2465,6 +2466,20 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(partial_text.contains("bo"));
+    }
+
+    #[test]
+    fn pending_stream_reveal_does_not_split_grapheme_clusters() {
+        let text = "👩‍💻 ready";
+        let tab = streaming_tab(text, 1);
+
+        let rendered = build_pending_stream_lines_for_tab(&tab, 80)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(rendered, "● 👩‍💻");
     }
 
     #[test]

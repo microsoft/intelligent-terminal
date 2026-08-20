@@ -8,6 +8,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use unicode_segmentation::UnicodeSegmentation;
 
 struct DeferredAcpParams {
     agent_cmd: String,
@@ -4386,10 +4387,10 @@ impl App {
         }
     }
 
-    /// Number of user-visible characters in the active assistant segment.
+    /// Number of user-visible grapheme clusters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
         crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
-            .map(|text| text.chars().count())
+            .map(|text| text.graphemes(true).count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal

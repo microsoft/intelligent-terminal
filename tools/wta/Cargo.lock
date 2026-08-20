@@ -3526,6 +3526,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "tui-markdown",
+ "unicode-segmentation",
  "unicode-width",
  "uuid",
  "which",

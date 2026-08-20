@@ -451,8 +451,8 @@ pub struct TabSession {
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
     pub activity_frame: usize,
-    /// Typewriter reveal cursor for the final assistant-text item in the
-    /// active transcript. Advanced toward its full length by `RevealTick`
+    /// Typewriter reveal cursor, in extended grapheme clusters, for the final
+    /// assistant-text item in the active transcript. Advanced toward its full length by `RevealTick`
     /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
     /// made irrelevant on finalize (the committed message renders in full).
     pub reveal_chars: usize,

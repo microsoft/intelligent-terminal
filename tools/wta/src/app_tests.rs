@@ -8655,6 +8655,21 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
 }
 
 #[test]
+fn reveal_backlog_and_cursor_count_extended_grapheme_clusters() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "👩‍💻x");
+
+    assert_eq!(App::tab_visible_stream_len(app.current_tab()), Some(2));
+    app.current_tab_mut().reveal_chars = 1;
+    assert!(app.has_reveal_backlog());
+
+    app.advance_reveal();
+    assert_eq!(app.current_tab().reveal_chars, 2);
+    assert!(!app.has_reveal_backlog());
+}
+
+#[test]
 fn thought_chunk_first_transitions_without_visible_text() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
