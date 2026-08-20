@@ -171,6 +171,7 @@ pub enum MasterExtRequest {
     SetSessionModel {
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
+        pane_override: bool,
     },
     SetSessionConfigOption {
         session_id: acp::schema::v1::SessionId,
@@ -3385,7 +3386,11 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
-            MasterExtRequest::SetSessionModel { session_id, model } => {
+            MasterExtRequest::SetSessionModel {
+                session_id,
+                model,
+                pane_override,
+            } => {
                 // Apply to the targeted session, or to every live session
                 // this helper owns when no target is given (normally just the
                 // one bound to its owner tab). Best-effort: a failure on one
@@ -3410,6 +3415,12 @@ fn dispatch_master_ext_request(
                             model = %model,
                             "set_session_model targeted an unknown/stale session; no live session updated"
                         );
+                        let _ = event_tx.send(AppEvent::ModelSetFailed {
+                            session_id: target.to_string(),
+                            model: model.clone(),
+                            pane_override,
+                            message: "the session is no longer active".to_string(),
+                        });
                     }
                 }
                 for sid in sessions {
@@ -3439,6 +3450,11 @@ fn dispatch_master_ext_request(
                                     current_model_id,
                                 });
                             }
+                            let _ = event_tx.send(AppEvent::ModelSetCompleted {
+                                session_id: sid.to_string(),
+                                model: model.clone(),
+                                pane_override,
+                            });
                             tracing::info!(
                                 target: "acp",
                                 session_id = %sid.0,
@@ -3446,13 +3462,21 @@ fn dispatch_master_ext_request(
                                 "acp-model hot-applied to live session"
                             );
                         }
-                        Err(err) => tracing::warn!(
-                            target: "acp",
-                            session_id = %sid.0,
-                            model = %model,
-                            error = ?err,
-                            "model hot-update failed"
-                        ),
+                        Err(err) => {
+                            tracing::warn!(
+                                target: "acp",
+                                session_id = %sid.0,
+                                model = %model,
+                                error = ?err,
+                                "model hot-update failed"
+                            );
+                            let _ = event_tx.send(AppEvent::ModelSetFailed {
+                                session_id: sid.to_string(),
+                                model: model.clone(),
+                                pane_override,
+                                message: err.to_string(),
+                            });
+                        }
                     }
                 }
             }

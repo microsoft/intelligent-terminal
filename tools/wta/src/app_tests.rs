@@ -2425,6 +2425,26 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
+    assert_eq!(app.current_tab().model_override, None);
+    match master_rx.try_recv().expect("live model switch request") {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+            pane_override,
+        } => {
+            assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
+            assert_eq!(model, "gpt-5.4");
+            assert!(pane_override);
+        }
+        other => panic!("expected SetSessionModel, got {other:?}"),
+    }
+
+    app.handle_event(AppEvent::ModelSetCompleted {
+        session_id: "sid-1".into(),
+        model: "gpt-5.4".into(),
+        pane_override: true,
+    });
+
     assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
@@ -2433,13 +2453,62 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
             ..
         })
     ));
-    match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
-            assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
-            assert_eq!(model, "gpt-5.4");
-        }
-        other => panic!("expected SetSessionModel, got {other:?}"),
-    }
+}
+
+#[test]
+fn failed_legacy_model_pick_preserves_confirmed_model() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.set_cloud_models(vec![model_info("gpt-5.5"), model_info("gpt-5.4")]);
+    app.current_model_id = Some("gpt-5.5".into());
+    app.current_tab_mut().session_id = Some("sid-1".into());
+
+    app.cmd_model("gpt-5.4".into());
+    let _ = master_rx.try_recv().expect("live model switch request");
+    app.handle_event(AppEvent::ModelSetFailed {
+        session_id: "sid-1".into(),
+        model: "gpt-5.4".into(),
+        pane_override: true,
+        message: "rejected".into(),
+    });
+
+    assert_eq!(app.current_tab().model_override, None);
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.5"));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Notice {
+            kind: NoticeKind::Error,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn status_model_ignores_unconfirmed_global_selection() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("confirmed"), model_info("requested")];
+    app.agent_current_model_id = Some("confirmed".into());
+    app.current_model_id = Some("requested".into());
+    app.acp_model = Some("requested".into());
+
+    assert_eq!(app.confirmed_model_display().as_deref(), Some("CONFIRMED"));
+}
+
+#[test]
+fn connected_byok_selection_is_available_for_status() {
+    let mut app = test_app();
+    app.set_custom_model_config(
+        vec![CustomModelCatalogEntry {
+            selection_id: "custom:provider:qwen".into(),
+            model_id: "qwen".into(),
+            ..Default::default()
+        }],
+        Some("custom:provider:qwen".into()),
+    );
+
+    assert_eq!(
+        app.confirmed_model_display().as_deref(),
+        Some("qwen (BYOK)")
+    );
 }
 
 /// A pane-local `/model` pick remains authoritative when the matching global
@@ -2535,9 +2604,14 @@ fn fresh_session_model_does_not_replace_global_override() {
         .try_recv()
         .expect("the global override must be re-applied to the fresh session")
     {
-        MasterExtRequest::SetSessionModel { session_id, model } => {
+        MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+            pane_override,
+        } => {
             assert_eq!(session_id.unwrap().0.to_string(), "sid-fresh");
             assert_eq!(model, "global");
+            assert!(!pane_override);
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
@@ -2568,9 +2642,14 @@ fn fresh_session_model_does_not_replace_pane_override_on_new() {
         .try_recv()
         .expect("the pane override must be re-applied to the /new session")
     {
-        MasterExtRequest::SetSessionModel { session_id, model } => {
+        MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+            pane_override,
+        } => {
             assert_eq!(session_id.unwrap().0.to_string(), "sid-new");
             assert_eq!(model, "pane-picked");
+            assert!(!pane_override);
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
@@ -2616,9 +2695,14 @@ fn non_overridden_pane_follows_global_model() {
         .try_recv()
         .expect("non-overridden pane follows global")
     {
-        MasterExtRequest::SetSessionModel { session_id, model } => {
+        MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+            pane_override,
+        } => {
             assert_eq!(model, "global");
             assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            assert!(!pane_override);
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
@@ -2677,9 +2761,14 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
         .try_recv()
         .expect("matching global-following helper should receive the model")
     {
-        MasterExtRequest::SetSessionModel { session_id, model } => {
+        MasterExtRequest::SetSessionModel {
+            session_id,
+            model,
+            pane_override,
+        } => {
             assert_eq!(session_id.unwrap().0.to_string(), "gemini-session");
             assert_eq!(model, "copilot-only-model");
+            assert!(!pane_override);
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }

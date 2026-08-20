@@ -447,7 +447,7 @@ impl App {
                 // already model-applied by the client at startup.
                 if !is_load_target {
                     if let Some(model) = self.effective_model_for_tab(&tab_id) {
-                        self.send_session_model(Some(session_id.clone()), model);
+                        self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
                 self.publish_agent_status();
@@ -487,6 +487,59 @@ impl App {
                     self.agent_current_model_id = current_model_id;
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
+                }
+            }
+            AppEvent::ModelSetCompleted {
+                session_id,
+                model,
+                pane_override,
+            } => {
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                if let Some((_, current_model_id)) =
+                    self.session_model_configs.get_mut(&session_id)
+                {
+                    *current_model_id = Some(model.clone());
+                }
+                if pane_override {
+                    let name = self.model_display_name(&model);
+                    let tab = self.tab_mut(&target_tab);
+                    tab.model_override = Some(model.clone());
+                    tab.messages.push(ChatMessage::success(
+                        t!("system.model_set", model = name.as_str()).into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                }
+                if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                    self.agent_current_model_id = Some(model);
+                    self.rebuild_model_catalog_from_agent_state();
+                    self.publish_agent_status();
+                }
+            }
+            AppEvent::ModelSetFailed {
+                session_id,
+                model,
+                pane_override,
+                message,
+            } => {
+                let target_tab = self.bound_tab_for_session(&session_id);
+                let Some(target_tab) = target_tab else {
+                    return;
+                };
+                if pane_override {
+                    let name = self.model_display_name(&model);
+                    let tab = self.tab_mut(&target_tab);
+                    tab.messages.push(ChatMessage::error(
+                        t!(
+                            "system.config_update_failed",
+                            option = name.as_str(),
+                            error = message.as_str()
+                        )
+                        .into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
                 }
             }
             AppEvent::SessionConfigUpdated {

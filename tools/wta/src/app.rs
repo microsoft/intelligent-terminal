@@ -1894,7 +1894,12 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(&self, session_id: Option<String>, model: String) {
+    fn send_session_model(
+        &self,
+        session_id: Option<String>,
+        model: String,
+        pane_override: bool,
+    ) {
         if model.trim().is_empty() {
             return;
         }
@@ -1902,6 +1907,7 @@ impl App {
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
                 session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
+                pane_override,
             },
         );
     }
@@ -1928,7 +1934,7 @@ impl App {
                 continue;
             }
             if let Some(sid) = tab.session_id.clone() {
-                self.send_session_model(Some(sid), model.clone());
+                self.send_session_model(Some(sid), model.clone(), false);
             }
         }
     }
@@ -1946,7 +1952,6 @@ impl App {
         }
 
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
-        self.recompute_current_model_id();
         self.send_acp_model_update();
         self.publish_agent_status();
         true
@@ -2457,26 +2462,21 @@ impl App {
             return;
         }
 
-        let name = self
-            .available_models
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| model_id.clone());
-        let session_id = {
-            let tab = self.current_tab_mut();
-            tab.model_override = Some(model_id.clone());
-            tab.messages.push(ChatMessage::success(
-                t!("system.model_set", model = name.as_str()).into_owned(),
-            ));
-            tab.scroll_to_bottom();
-            tab.session_id.clone()
-        };
-        self.current_model_id = Some(model_id.clone());
-        self.agent_current_model_id = Some(model_id.clone());
+        let session_id = self.current_tab().session_id.clone();
         if let Some(session_id) = session_id {
-            self.send_session_model(Some(session_id), model_id);
+            self.send_session_model(Some(session_id), model_id, true);
+            return;
         }
+
+        let name = self.model_display_name(&model_id);
+        let tab = self.current_tab_mut();
+        tab.model_override = Some(model_id.clone());
+        tab.messages.push(ChatMessage::success(
+            t!("system.model_set", model = name.as_str()).into_owned(),
+        ));
+        tab.scroll_to_bottom();
+        self.current_model_id = Some(model_id.clone());
+        self.agent_current_model_id = Some(model_id);
         self.publish_agent_status();
     }
 
@@ -4082,6 +4082,8 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::ModelSetCompleted { .. } => "model_set_completed",
+            AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
             AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
             AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
@@ -4666,13 +4668,27 @@ impl App {
             .or_else(|| self.current_model_id.clone())
             .or_else(|| self.acp_model.clone())
             .filter(|s| !s.trim().is_empty())?;
-        let name = self
-            .available_models
+        Some(self.model_display_name(&id))
+    }
+
+    fn confirmed_model_display(&self) -> Option<String> {
+        let id = self
+            .current_tab()
+            .model_override
+            .as_deref()
+            .or(self.agent_current_model_id.as_deref())
+            .or_else(|| self.selected_custom_model_id())
+            .map(str::trim)
+            .filter(|id| !id.is_empty())?;
+        Some(self.model_display_name(id))
+    }
+
+    fn model_display_name(&self, id: &str) -> String {
+        self.available_models
             .iter()
-            .find(|m| m.id == id)
-            .map(|m| m.name.clone())
-            .unwrap_or(id);
-        Some(name)
+            .find(|model| model.id == id)
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| id.to_string())
     }
 
     /// Whether the command popup is *effectively* visible — i.e. actually
@@ -5353,6 +5369,7 @@ impl App {
         self.agent_models = models;
         self.agent_current_model_id = current;
         self.rebuild_model_catalog_from_agent_state();
+        self.publish_agent_status();
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
