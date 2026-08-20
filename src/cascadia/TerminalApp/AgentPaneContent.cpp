@@ -248,7 +248,7 @@ namespace winrt::TerminalApp::implementation
                 text += L" ";
                 text += _agentVersion;
             }
-            if (!_agentModel.empty())
+            if (_agentState == L"connected" && !_agentModel.empty())
             {
                 text += L" \u00B7 ";
                 text += _agentModel;
