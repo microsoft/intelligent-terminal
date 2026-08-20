@@ -134,7 +134,10 @@ namespace Microsoft::Terminal::WtaProcess
         si.hStdOutput = writeHandle.get();
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 
-        wil::unique_handle nullHandle;
+        // unique_hfile, not unique_handle: CreateFileW signals failure with
+        // INVALID_HANDLE_VALUE, which unique_handle (whose invalid value is
+        // nullptr) would happily treat as a live handle.
+        wil::unique_hfile nullHandle;
         if (mergeStderr)
         {
             si.hStdError = writeHandle.get();
