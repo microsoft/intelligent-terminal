@@ -133,7 +133,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C053` `[UT✓]` `[E2E]` **Focus hotkey works:** `Ctrl+Shift+I` focuses the agent pane when available. _(UT: `DefaultAgentKeybindings` binding; focus behavior E2E.)_
 - [ ] `C054` `[E2E]` **Different positions work:** Open/hide/focus works for bottom, right, left, and top pane positions.
 - [ ] `C055` `[E2E]` **Stash preserves chat:** Hiding and restoring the pane preserves helper process, connection state, and chat history.
-- [ ] `C056` `[E2E]` **Tab close cleans up:** Closing the owning tab cleans up the helper and does not leave a broken pane.
+- [ ] `C056` `[E2E]` **Tab close cleans up:** Closing the owning tab physically closes its ACP session, cleans up the helper, and does not leave a broken pane.
+- [ ] `C247` `[new]` `[E2E]` **Closing a tab mid-turn leaves sibling agent tabs working:** When one tab closes with a prompt in flight, only its ACP session is closed; the shared agent CLI remains alive and another tab can continue chatting without a restart. _(#419/#425; E2E: `Feature.SharedAgentLifecycle`.)_
 - [ ] `C215` `[new]` `[E2E]` **Agent panes are not persisted into saved layout:** Saving and restoring a window layout does not resurrect a previously-open agent pane; restored windows come back without an unexpected agent pane. _(#360/#275.)_
 
 ### Built-in agent chat matrix
@@ -339,6 +340,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C166` `[UT✓]` `[E2E]` **Multiple windows do not cross-route:** Events from one window do not mutate another window's agent pane/session UI. _(UT: `wt_event_critical_from_other_tab_does_not_surface_in_owner_tab` — a helper owning tab A DROPS a connection-failure event broadcast from tab B (no banner, no chat, no notification), the exact cross-route isolation contract; helpers filter inbound events by window_id + owner_tab_id.)_
 - [ ] `C167` `[E2E]` **Close source window is safe:** Closing a source window after moving a tab does not kill the moved tab's agent state.
 - [ ] `C168` `[E2E]` **Close target tab cleans up:** Closing moved tabs cleans up helper/session state without affecting other tabs.
+- [ ] `C275` `[E2E]` **Move tab back to source window preserves the same ACP session:** Redocking an agent tab keeps its helper, chat, and ACP session alive and does not emit session teardown.
 
 ## 8. Agent hooks and session tracking
 

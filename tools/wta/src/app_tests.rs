@@ -78,6 +78,106 @@ pub(super) fn test_app() -> App {
     )
 }
 
+fn test_app_with_drop_session_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
+) {
+    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        drop_session_rx,
+    )
+}
+
+#[test]
+fn tab_close_drops_state_and_requests_acp_session_close() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    let tab_id = "closed-tab";
+    app.tab_id = Some(tab_id.to_string());
+    app.current_tab_mut().session_id = Some("session-to-close".to_string());
+
+    app.drop_tab_session(tab_id);
+
+    assert!(!app.tab_sessions.contains_key(tab_id));
+    let request = drop_session_rx
+        .try_recv()
+        .expect("tab close must request ACP session teardown");
+    assert_eq!(request.tab_id, tab_id);
+    assert!(request.notify_master);
+}
+
+#[test]
+fn cross_window_tab_close_only_requests_master_cleanup() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    app.window_id = Some("window-a".to_string());
+    app.tab_id = Some("local-tab".to_string());
+    app.tab_sessions
+        .insert("local-tab".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "tab_closed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": "window-b",
+            "tab_id": "foreign-closed-tab",
+        }),
+    });
+
+    assert!(
+        app.tab_sessions.contains_key("local-tab"),
+        "a cross-window close must not mutate this helper's local tab state"
+    );
+    let request = drop_session_rx
+        .try_recv()
+        .expect("a surviving helper must forward cross-window close to master");
+    assert_eq!(request.tab_id, "foreign-closed-tab");
+    assert!(request.notify_master);
+}
+
+#[test]
+fn reset_tab_session_clears_local_binding_without_duplicate_master_close() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    let tab_id = "reset-tab";
+    app.tab_id = Some(tab_id.to_string());
+    app.current_tab_mut().session_id = Some("session-to-reset".to_string());
+
+    app.reset_tab_session_for(tab_id);
+
+    let request = drop_session_rx
+        .try_recv()
+        .expect("reset must ask the ACP client task to clear its local binding");
+    assert_eq!(request.tab_id, tab_id);
+    assert!(
+        !request.notify_master,
+        "the master consumes WT reset events directly and owns physical close"
+    );
+}
+
 fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
     json!({
         "window_id": window_id,

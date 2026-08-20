@@ -1668,7 +1668,7 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                        tracing::info!(
+                            tracing::info!(
                             target: "autofix",
                             model = raw,
                                 target_agent_id,
@@ -1698,10 +1698,10 @@ impl App {
                                 Ok(models) => self.set_cloud_models(models),
                                 Err(error) => {
                                     tracing::error!(
-                                        target: "cloud_models",
-                                        %error,
-                                        "invalid cloud model catalog in agent_config_changed"
-                        );
+                                                    target: "cloud_models",
+                                                    %error,
+                                                    "invalid cloud model catalog in agent_config_changed"
+                                    );
                                     return;
                                 }
                             }
@@ -1817,11 +1817,20 @@ impl App {
                         && !our_window.is_empty()
                         && target_window != our_window
                     {
+                        // Do not mutate this helper's per-window tab state,
+                        // but still notify master. If every helper in the
+                        // owning window exits during teardown, a helper in a
+                        // surviving window is the only process left that can
+                        // deliver the stable tab id needed to close the ACP
+                        // session. Master de-duplicates these requests.
+                        if let Some(closed_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
+                            self.request_tab_session_close(closed_tab_id);
+                        }
                         tracing::debug!(
                             target: "tab_session",
                             target_window,
                             our_window,
-                            "ignoring tab_closed for different window"
+                            "forwarded cross-window tab_closed without mutating local state"
                         );
                         return;
                     }
