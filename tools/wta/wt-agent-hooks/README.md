@@ -116,10 +116,10 @@ the failure topics, so those rows are silent on Gemini.
 
 Two topics keep a routing arm in `app.rs` that outlives their subscription in
 the Claude and Copilot bundles: `agent.subagent.stop`, which no shipped manifest
-claims at all, and `agent.tool.starting`, which Gemini and OpenCode still send
-(see the table above) but those two no longer do. The arms stay so a CLI that
-adds the event later, or a bundle a user installed earlier, is routed rather
-than mis-handled.
+claims at all, and `agent.tool.starting`, which Gemini still sends as
+`BeforeTool` in the table above and OpenCode still sends through the plugin API
+described below. The arms stay so a CLI that adds the event later, or a bundle a
+user installed earlier, is routed rather than mis-handled.
 
 **Tool-completion events are deliberately not subscribed.** `app.rs` discards
 `agent.tool.finished` / `agent.tool.failed`: tool completion does not end a
