@@ -7873,6 +7873,88 @@ fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn right_click_copies_and_clears_text_selection() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let _clipboard_guard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let original_clipboard = crate::win32::read_paste_string_from_clipboard().ok();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "RIGHT_CLICK_COPY_MARKER".into(),
+        details: Vec::new(),
+        expanded: true,
+        trailing_marker: None,
+    });
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("RIGHT_CLICK_COPY_MARKER")
+                .map(|column| (row as u16, column as u16 + 2))
+        })
+        .expect("copy marker must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(
+        app.text_selection.selected_text().as_deref(),
+        Some("RIGHT_CLICK_COPY_MARKER")
+    );
+
+    crate::win32::copy_text_to_clipboard("RIGHT_CLICK_COPY_SENTINEL")
+        .expect("clipboard setup must succeed");
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }));
+
+    let clipboard = crate::win32::read_paste_string_from_clipboard()
+        .expect("copied text must be readable from the clipboard");
+    assert_eq!(clipboard, "RIGHT_CLICK_COPY_MARKER");
+    assert!(app.text_selection.selected_text().is_none());
+    assert!(app
+        .transient_hint
+        .as_ref()
+        .is_some_and(|(hint, _)| hint == &t!("system.selection_copied")));
+
+    crate::win32::copy_text_to_clipboard("RIGHT_CLICK_COPY_CLEARED")
+        .expect("clipboard reset must succeed");
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(
+        crate::win32::read_paste_string_from_clipboard().expect("clipboard must remain readable"),
+        "RIGHT_CLICK_COPY_CLEARED",
+        "a second right click must not replay the cleared selection"
+    );
+    if let Some(original_clipboard) = original_clipboard {
+        crate::win32::copy_text_to_clipboard(&original_clipboard)
+            .expect("original clipboard text must be restored");
+    }
+}
+
 #[test]
 fn completed_turn_user_input_hit_spans_full_row_with_wide_cells() {
     let mut app = test_app();

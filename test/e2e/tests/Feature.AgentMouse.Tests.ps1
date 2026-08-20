@@ -150,6 +150,7 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $script:app = Start-Terminal -Package 'Dev' -PassFre $true -Settings @{
             acpAgent = 'custom:chat-fixture'
             acpCustomCommand = $command
+            rightClickContextMenu = $false
         }
         $shell = Get-ActivePane -App $script:app
         Open-AgentPane -App $script:app | Out-Null
@@ -367,5 +368,76 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         Set-Content -LiteralPath (Join-Path $script:evidenceDir 'after-input-focus.txt') -Value $afterInputFocus -Encoding utf8NoBOM
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'after-input-focus.png') | Out-Null
         $inputFocused | Should -BeTrue -Because 'clicking the input dialog must clear completed-turn selection and route typing to the current draft'
+    }
+
+    It 'Right-click copies the agent text selection with physical mouse input' -Tag 'RightClickCopy' {
+        $originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+        $id = [guid]::NewGuid().ToString('N')
+        $prompt = "SCROLL_TURN_00_$id"
+        $reply = "ACK_$prompt"
+        $replyPattern = [regex]::Escape($reply)
+        $rightClickEvidenceDir = Join-Path $PSScriptRoot '..\artifacts\right-click-copy\green'
+        New-Item -ItemType Directory -Force -Path $rightClickEvidenceDir | Out-Null
+
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Escape | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $prompt | Out-Null
+        Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) -match $replyPattern
+        } | Should -BeTrue -Because 'the deterministic reply must render before physical selection'
+
+        $rectangles = @(Get-UiTextBounds -App $script:app -Text $reply)
+        $rectangles.Count | Should -Be 1 -Because 'the unique reply marker must expose one UIA text rectangle'
+        $rect = $rectangles[0]
+        $cellWidth = $rect.Width / $reply.Length
+        $fromX = [Math]::Round($rect.Right - 1)
+        $toX = [Math]::Round($rect.Left - (2 * $cellWidth) + 1)
+        $y = [Math]::Round($rect.Top + ($rect.Height / 2))
+
+        Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'before-right-click-selection.png') | Out-Null
+        try {
+            Invoke-UiMouseDrag -App $script:app -FromX $fromX -FromY $y -ToX $toX -ToY $y | Out-Null
+        }
+        catch {
+            if ($_.Exception.Message -match 'No interactive desktop is available') {
+                Set-ItResult -Skipped -Because 'physical mouse injection requires an unlocked interactive desktop'
+                return
+            }
+            throw
+        }
+        Start-Sleep -Milliseconds 300
+        Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'selected-before-right-click.png') | Out-Null
+
+        try {
+            Set-Clipboard -Value "RIGHT_CLICK_SETUP_$id"
+            Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
+            (Get-Clipboard -Raw) | Should -Be $reply -Because 'Ctrl+C must prove the physical selection geometry before testing right-click'
+            $copiedPattern = Get-WtaLocalizedTextRegex -Key 'system.selection_copied'
+            if (-not $copiedPattern) { $copiedPattern = '(?i)Copied' }
+            Start-Sleep -Milliseconds 1800
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100) |
+                Should -Not -Match $copiedPattern -Because 'the Ctrl+C confirmation must expire before right-click tests its own hint'
+
+            Invoke-UiMouseDrag -App $script:app -FromX $fromX -FromY $y -ToX $toX -ToY $y | Out-Null
+            Start-Sleep -Milliseconds 300
+            $sentinel = "RIGHT_CLICK_SENTINEL_$id"
+            Set-Clipboard -Value $sentinel
+            $clickX = [Math]::Round(($fromX + $toX) / 2)
+            Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
+            Start-Sleep -Milliseconds 300
+
+            (Get-Clipboard -Raw) | Should -Be $reply -Because 'right-click must copy the exact physical WTA selection'
+            Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -Pattern $copiedPattern -TimeoutSec 5
+            Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-right-click-copy.png') | Out-Null
+
+            $clearedSentinel = "RIGHT_CLICK_CLEARED_$id"
+            Set-Clipboard -Value $clearedSentinel
+            Invoke-UiMouseDrag -App $script:app -FromX $clickX -FromY $y -ToX $clickX -ToY $y -Right | Out-Null
+            Start-Sleep -Milliseconds 300
+            (Get-Clipboard -Raw) | Should -Be $clearedSentinel -Because 'a second right-click must not replay the cleared selection'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'after-second-right-click.png') | Out-Null
+        }
+        finally {
+            if ($null -ne $originalClipboard) { Set-Clipboard -Value $originalClipboard }
+        }
     }
 }

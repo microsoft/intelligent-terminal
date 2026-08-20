@@ -292,6 +292,19 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
+
+        const winrt::Microsoft::Terminal::Control::KeyChord ctrlV{ Windows::System::VirtualKeyModifiers::Control, 'V', 0 };
+        if (const auto actionMap = settings.ActionMap())
+        {
+            const auto command = actionMap.GetActionByKeyChord(ctrlV);
+            const auto isPasteAction = command && command.ActionAndArgs().Action() == ShortcutAction::PasteText;
+            GetTermControl().EnableAgentPasteShortcutFallback(
+                !actionMap.IsKeyChordExplicitlyUnbound(ctrlV) && (!command || isPasteAction));
+        }
+        else
+        {
+            GetTermControl().EnableAgentPasteShortcutFallback(false);
+        }
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()

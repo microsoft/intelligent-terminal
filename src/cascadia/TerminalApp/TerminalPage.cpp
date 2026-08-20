@@ -1876,6 +1876,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
         auto agentContent = winrt::make<winrt::TerminalApp::implementation::AgentPaneContent>(innerTerm);
+        if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+        {
+            agentImpl->UpdateSettings(_settings);
+        }
         // Apply the cached fallback immediately when a pane is created
         // mid-session (#348). The next theme refresh replaces it with the
         // agent pane's own background color.

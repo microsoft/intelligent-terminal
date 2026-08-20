@@ -69,33 +69,39 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
+    fn copy_text_selection(&mut self) -> bool {
+        let Some(text) = self.text_selection.selected_text() else {
+            return false;
+        };
+        match crate::win32::copy_text_to_clipboard(&text) {
+            Ok(()) => {
+                self.text_selection.clear();
+                self.close_pane_armed_at = None;
+                self.transient_hint = Some((
+                    t!("system.selection_copied").into_owned(),
+                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
+                ));
+            }
+            Err(error) => {
+                self.transient_hint = None;
+                tracing::warn!(
+                    target: "clipboard",
+                    error = %error,
+                    "failed to copy mouse-selected text"
+                );
+            }
+        }
+        true
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
-                if is_copy {
-                    if let Some(text) = self.text_selection.selected_text() {
-                        match crate::win32::copy_text_to_clipboard(&text) {
-                            Ok(()) => {
-                                self.text_selection.clear();
-                                self.close_pane_armed_at = None;
-                                self.transient_hint = Some((
-                                    t!("system.selection_copied").into_owned(),
-                                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
-                                ));
-                            }
-                            Err(error) => {
-                                tracing::warn!(
-                                    target: "clipboard",
-                                    error = %error,
-                                    "failed to copy mouse-selected text"
-                                );
-                            }
-                        }
-                        return;
-                    }
+                if is_copy && self.copy_text_selection() {
+                    return;
                 }
                 self.text_selection.clear();
                 self.handle_key(key);
@@ -135,6 +141,12 @@ impl App {
                         }
                         _ => {}
                     }
+                }
+                crossterm::event::MouseEventKind::Down(
+                    crossterm::event::MouseButton::Right,
+                ) => {
+                    self.cancel_completed_turn_click();
+                    self.copy_text_selection();
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     self.text_selection.handle_mouse(mouse);
