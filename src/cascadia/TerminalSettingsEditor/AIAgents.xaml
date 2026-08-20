@@ -169,10 +169,20 @@
                 </Grid>
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="EmptyCustomModelProviders"
+                                    x:Uid="AIAgents_CustomModels"
+                                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
+                <Button x:Uid="AIAgents_CustomProviderAdd"
+                        VerticalAlignment="Center"
+                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                        Style="{StaticResource AccentButtonStyle}" />
+            </local:SettingContainer>
+
             <local:SettingContainer x:Name="CustomModelProvidersExpander"
                                     x:Uid="AIAgents_CustomModels"
                                     StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}"
+                                    Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
                 <local:SettingContainer.CurrentValue>
                     <Button x:Uid="AIAgents_CustomProviderAdd"
                             VerticalAlignment="Center"

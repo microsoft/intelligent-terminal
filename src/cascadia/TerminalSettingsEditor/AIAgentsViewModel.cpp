@@ -324,10 +324,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.CustomModelProviders(providers);
         _originalCustomModelProviders = std::move(mergedProviders);
 
-        // The clean cloud catalog is independent of configured BYOK providers.
-        // Rebuild the combined list without launching another agent process.
-        _RebuildAcpModelListFromCache();
-        _NotifyChanges(L"CustomModelProviders");
+        // Refresh the clean cloud catalog after adding or removing a provider.
+        _TriggerAcpModelProbe();
+        _NotifyChanges(L"CustomModelProviders", L"ShowCustomModelProvidersExpander");
     }
 
     void AIAgentsViewModel::_RemoveCustomModelProvider(const winrt::hstring& id)
@@ -390,7 +389,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         IsCustomModelProvidersExpanded(true);
         _isAddingCustomModelProvider = true;
-        _NotifyChanges(L"IsAddingCustomModelProvider");
+        _NotifyChanges(L"IsAddingCustomModelProvider", L"ShowCustomModelProvidersExpander");
     }
 
     bool AIAgentsViewModel::_HasNonWhitespace(const std::wstring_view value) noexcept
@@ -482,6 +481,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _newCustomModelProviderApiKey.clear();
         _NotifyChanges(
             L"IsAddingCustomModelProvider",
+            L"ShowCustomModelProvidersExpander",
             L"NewCustomModelProviderBaseUrl",
             L"NewCustomModelId",
             L"NewCustomModelProviderApiKey",
@@ -1482,6 +1482,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _acpProbing = true;
         _RebuildAcpModelListFromCache();
         const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeStarted",
+            TraceLoggingDescription("A clean ACP model catalog probe started"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(agentId.c_str(), "AgentId"),
+            TraceLoggingUInt64(cacheRevision, "CacheRevision"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
         _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
     }
 
@@ -1538,12 +1546,29 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // for a different agent and we'd clobber its eventual write.
         if (generation != _acpProbeGeneration)
         {
+            TraceLoggingWrite(
+                g_hTerminalSettingsEditorProvider,
+                "AcpModelProbeDiscarded",
+                TraceLoggingDescription("An ACP model catalog probe result was superseded"),
+                TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                TraceLoggingWideString(agentId.c_str(), "AgentId"),
+                TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
             co_return;
         }
 
         _acpProbing = false;
+        const auto probeSucceeded = catalog && !parsed.empty();
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeCompleted",
+            TraceLoggingDescription("A clean ACP model catalog probe completed"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(agentId.c_str(), "AgentId"),
+            TraceLoggingBool(probeSucceeded, "Succeeded"),
+            TraceLoggingUInt32(gsl::narrow_cast<uint32_t>(parsed.size()), "ModelCount"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
 
-        if (catalog && !parsed.empty())
+        if (probeSucceeded)
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
             if (!Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId))
