@@ -29,6 +29,29 @@ const MAX_TOOL_PREVIEW_LINES: usize = 2;
 const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
 
+pub struct PreparedChatLayout {
+    wrap_width: usize,
+    natural_height: u16,
+    pending_lines: Vec<Line<'static>>,
+    message_lines: Vec<Vec<Line<'static>>>,
+    completed_turns: Vec<PreparedCompletedTurn>,
+    welcome_lines: Vec<Line<'static>>,
+}
+
+impl PreparedChatLayout {
+    pub fn natural_height(&self) -> u16 {
+        self.natural_height
+    }
+}
+
+struct PreparedCompletedTurn {
+    index: usize,
+    lines: Vec<Line<'static>>,
+    height: usize,
+    expanded: bool,
+    prompt_rows: Vec<PromptRowGeometry>,
+}
+
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
@@ -192,72 +215,98 @@ fn tool_detail_lines(
     lines
 }
 
-/// Estimate the chat block's natural height (in visual rows) given the
-/// rendering width. Counts wraps for each message + completed turn. Used by
-/// `layout::render` to size the
-/// chat area so the rec panel sits directly below content instead of being
-/// pushed to the pane bottom by a `Min(1)` spacer.
-pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
+pub fn prepare(app: &App, area_width: u16) -> PreparedChatLayout {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
-    // Fetch once for the pending-height calculation.
-    let pending_text = pending_render_text(tab);
-
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
-    let messages: usize = tab
+    let message_lines: Vec<Vec<Line<'static>>> = tab
         .messages
         .iter()
         .enumerate()
         .filter(|(index, _)| Some(*index) != streaming_index)
         .map(|(index, message)| {
-            rendered_lines_height(
-                &build_message_lines_for_mode(
-                    message,
-                    index + 1 == tab.messages.len(),
-                    tab.turn.is_streaming(),
-                    permission_tool_call_id,
-                    tab.activity_frame,
-                    wrap_width,
-                    app.render_agent_markdown,
-                ),
+            own_lines(build_message_lines_for_mode(
+                message,
+                index + 1 == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
                 wrap_width,
-            )
+                app.render_agent_markdown,
+            ))
         })
-        .sum();
-    let turns: usize = tab
+        .collect();
+    let completed_turns: Vec<PreparedCompletedTurn> = tab
         .completed_turns
         .iter()
-        .map(|turn| {
-            rendered_lines_height(
-                &build_completed_turn_lines_for_mode(
-                    turn,
-                    false,
-                    false,
-                    wrap_width,
-                    app.render_agent_markdown,
-                ),
+        .enumerate()
+        .map(|(index, turn)| {
+            let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
+                turn,
+                tab.selected_completed_turn_idx == Some(index),
+                app.pane_focused,
                 wrap_width,
-            )
+                app.render_agent_markdown,
+            );
+            let lines = own_lines(lines);
+            PreparedCompletedTurn {
+                index,
+                height: rendered_lines_height(&lines, wrap_width),
+                lines,
+                expanded: turn.expanded,
+                prompt_rows,
+            }
         })
-        .sum();
-    let pending = pending_text
-        .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
-        .unwrap_or(0);
+        .collect();
+    let pending_lines = own_lines(build_pending_stream_lines(app, wrap_width));
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
-    // it off the top of the visible chat block. Always a single row —
-    // terminal min-width guarantees the localized title fits without
-    // wrapping.
-    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
-        1
-    } else {
-        0
-    };
+    // it off the top of the visible chat block.
+    let welcome_lines =
+        if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+            vec![Line::from(vec![
+                Span::styled(
+                    "● ",
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    t!("chat.welcome_title").into_owned(),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+            ])]
+        } else {
+            Vec::new()
+        };
 
-    (messages + turns + pending + welcome)
-        .max(1)
-        .min(u16::MAX as usize) as u16
+    let natural_height = (message_lines
+        .iter()
+        .map(|lines| rendered_lines_height(lines, wrap_width))
+        .sum::<usize>()
+        + completed_turns
+            .iter()
+            .map(|turn| turn.height)
+            .sum::<usize>()
+        + rendered_lines_height(&pending_lines, wrap_width)
+        + rendered_lines_height(&welcome_lines, wrap_width))
+    .max(1)
+    .min(u16::MAX as usize) as u16;
+
+    PreparedChatLayout {
+        wrap_width,
+        natural_height,
+        pending_lines,
+        message_lines,
+        completed_turns,
+        welcome_lines,
+    }
+}
+
+/// Estimate the chat block's natural height (in visual rows) given the
+/// rendering width. Standalone callers prepare a temporary layout; the main
+/// frame planner reuses one prepared layout for both height and rendering.
+pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
+    prepare(app, area_width).natural_height()
 }
 
 #[derive(Clone)]
@@ -478,6 +527,21 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
         .sum()
 }
 
+fn own_lines(lines: Vec<Line<'_>>) -> Vec<Line<'static>> {
+    lines
+        .into_iter()
+        .map(|line| Line {
+            style: line.style,
+            alignment: line.alignment,
+            spans: line
+                .spans
+                .into_iter()
+                .map(|span| Span::styled(span.content.into_owned(), span.style))
+                .collect(),
+        })
+        .collect()
+}
+
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
     value
         .get(..prefix.len())
@@ -539,13 +603,14 @@ fn breathing_dot(frame: usize) -> &'static str {
     }
 }
 
-pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, area: Rect, prepared: PreparedChatLayout) {
     let render_started = std::time::Instant::now();
 
     let inner = Block::default().borders(Borders::NONE);
     let inner_area = inner.inner(area);
     let visible_height = inner_area.height as usize;
     let wrap_width = inner_area.width as usize;
+    debug_assert_eq!(prepared.wrap_width, wrap_width.max(1));
     let selection_pending = app.current_tab().completed_turn_selection_visible_pending;
     let selection_target_idx = selection_pending
         .then_some(app.current_tab().selected_completed_turn_idx)
@@ -556,33 +621,22 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .saturating_add(effective_offset)
         .saturating_add(32);
 
+    let PreparedChatLayout {
+        mut pending_lines,
+        message_lines,
+        completed_turns,
+        mut welcome_lines,
+        ..
+    } = prepared;
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();
-    let render_agent_markdown = app.render_agent_markdown;
 
-    let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
 
     let mut truncated = false;
 
-    let tab = app.current_tab();
-    let permission_tool_call_id = permission_tool_call_id(tab);
-    let streaming_index = tab.streaming_agent_message_index();
-    for (idx, msg) in tab.messages.iter().enumerate().rev() {
-        if Some(idx) == streaming_index {
-            continue;
-        }
-        let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_message_lines_for_mode(
-            msg,
-            is_last_message,
-            tab.turn.is_streaming(),
-            permission_tool_call_id,
-            tab.activity_frame,
-            wrap_width,
-            render_agent_markdown,
-        );
-        reversed_lines.extend(message_lines.drain(..).rev());
+    for mut lines in message_lines.into_iter().rev() {
+        reversed_lines.extend(lines.drain(..).rev());
         if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
             truncated = true;
             break;
@@ -590,28 +644,17 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if !truncated {
-        let selected_idx = app.current_tab().selected_completed_turn_idx;
-        let pane_focused = app.pane_focused;
         let mut selection_reached = selection_target_idx.is_none();
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
-        for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
-            let is_selected = selected_idx == Some(idx);
-            let (mut turn_lines, prompt_rows) =
-                build_completed_turn_lines_with_prompt_rows_for_mode(
-                    turn,
-                    is_selected,
-                    pane_focused,
-                    wrap_width,
-                    render_agent_markdown,
-                );
-            let turn_height = rendered_lines_height(&turn_lines, wrap_width);
-            turn_hit_offsets.push((
-                idx,
-                rendered_rows_below,
-                turn_height,
-                turn.expanded,
+        for prepared_turn in completed_turns.into_iter().rev() {
+            let PreparedCompletedTurn {
+                index: idx,
+                mut lines,
+                height: turn_height,
+                expanded,
                 prompt_rows,
-            ));
+            } = prepared_turn;
+            turn_hit_offsets.push((idx, rendered_rows_below, turn_height, expanded, prompt_rows));
             if selection_target_idx == Some(idx) {
                 let selected_end = rendered_rows_below.saturating_add(turn_height);
                 let viewport_height = visible_height.max(1);
@@ -627,7 +670,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                     .saturating_add(32);
                 selection_reached = true;
             }
-            reversed_lines.extend(turn_lines.drain(..).rev());
+            reversed_lines.extend(lines.drain(..).rev());
             rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
             if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
@@ -636,20 +679,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
-        let mut welcome_lines = vec![Line::from(vec![
-            Span::styled(
-                "● ",
-                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                t!("chat.welcome_title").into_owned(),
-                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-            ),
-        ])];
-        reversed_lines.extend(welcome_lines.drain(..).rev());
-    }
+    // First-run welcome: shown once until user sends first message.
+    reversed_lines.extend(welcome_lines.drain(..).rev());
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
