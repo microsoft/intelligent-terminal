@@ -92,9 +92,12 @@ namespace winrt::TerminalApp::implementation
 {
     SharedWta& SharedWta::Instance()
     {
-        // Magic-static initialization is thread-safe in C++11+.
-        static SharedWta s_instance;
-        return s_instance;
+        // Initialization remains thread-safe, but this process singleton must
+        // outlive delayed ReleasePaneAfterSessionClose coroutines. At process
+        // exit Windows closes the Job handle, preserving KILL_ON_JOB_CLOSE
+        // cleanup for the master and its descendants.
+        static auto* const s_instance = new SharedWta;
+        return *s_instance;
     }
 
     SharedWta::~SharedWta()
@@ -456,7 +459,7 @@ namespace winrt::TerminalApp::implementation
 
         // Containment: a Job Object with KILL_ON_JOB_CLOSE binds
         // wta's lifetime to ours. When the last pane releases (or
-        // Terminal exits and the destructor runs), the job handle
+        // Terminal exits and Windows closes the final handle), the job handle
         // drops and the OS terminates wta + every descendant it
         // spawned. Any failure here MUST TerminateProcess to avoid
         // leaking a suspended-then-uncontained wta.

@@ -181,8 +181,9 @@ function Stop-StaleItInstances {
         -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
     } | Out-Null
     foreach ($staleId in $staleIds) {
-        if (Get-Process -Id $staleId -ErrorAction SilentlyContinue) {
-            Stop-Process -Id $staleId -Force -ErrorAction SilentlyContinue
+        $stale = @(& $find) | Where-Object Id -eq $staleId | Select-Object -First 1
+        if ($stale) {
+            Stop-Process -InputObject $stale -Force -ErrorAction SilentlyContinue
             Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
         }
     }
