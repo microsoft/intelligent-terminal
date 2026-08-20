@@ -61,10 +61,9 @@ $BridgePs1    = Join-Path $InstalledDir 'hooks\send-event.ps1'
 $LegacyCommit       = '9a9a17b280ddc24209914ed83dd8ed00acb5e830'
 $NativeBridgeCommit = 'e610bacc181c488d806fef1e84520761adbd2be4'
 
-# Hook topics a single turn produces, in order. Session lifecycle is fixed;
-# per-tool topics repeat once per tool call and are what the configurations
-# actually differ on.
-$SessionTopics = @('agent.session.start', 'agent.prompt.submit', 'agent.stop', 'agent.session.end')
+# Per-tool topics repeat once per tool call and are the only thing the three
+# configurations differ on. The session lifecycle around them is identical, and
+# is built in Get-TurnTopics.
 $PerToolTopics = @{
     A = @('agent.tool.starting', 'agent.tool.finished')  # PreToolUse + PostToolUse
     B = @('agent.tool.starting')                         # PreToolUse
@@ -129,6 +128,21 @@ function Measure-HookDispatch {
     $sw.Elapsed.TotalMilliseconds
 }
 
+# The topic sequence one turn produces, which is what the `hooks` column in the
+# replay table counts.
+#
+# Four of them are session lifecycle — `SessionStart`, `UserPromptSubmit`,
+# `Stop`, `SessionEnd` — and every configuration subscribes all four, which is
+# what makes the zero-tool prompt a negative control: it isolates *what a single
+# hook costs* from *how many fire*.
+#
+# The lifecycle four are counted per turn because the end-to-end part invokes
+# `copilot -p`, and each of those is a whole session: start, one turn, end. An
+# interactive session pays `SessionStart` / `SessionEnd` once for the whole
+# session instead, so a turn there is 2 + per-tool rather than 4 + per-tool.
+# That only widens the gap this measures — the fixed cost shrinks while the
+# per-tool cost, which is the entire difference between the configurations,
+# does not.
 function Get-TurnTopics {
     param(
         [Parameter(Mandatory)][ValidateSet('A', 'B', 'C')][string]$Config,
