@@ -89,13 +89,13 @@ $Prompts = @(
 
 function Get-RepoFileAt {
     param(
-        [Parameter(Mandatory)][string]$Commitish,
+        [Parameter(Mandatory)][string]$Revision,
         [Parameter(Mandatory)][string]$RepoPath
     )
     Push-Location $RepoRoot
     try {
-        $text = & git --no-pager show "${Commitish}:$RepoPath" 2>$null
-        if ($LASTEXITCODE -ne 0) { throw "cannot read $RepoPath at $Commitish" }
+        $text = & git --no-pager show "${Revision}:$RepoPath" 2>$null
+        if ($LASTEXITCODE -ne 0) { throw "cannot read $RepoPath at $Revision" }
         ($text | Out-String)
     }
     finally { Pop-Location }
@@ -172,13 +172,13 @@ function Install-Config {
     param([Parameter(Mandatory)][ValidateSet('A', 'B', 'C')][string]$Config)
 
     if ($Config -eq 'A') {
-        Get-RepoFileAt -Commitish "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1' |
+        Get-RepoFileAt -Revision "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1' |
             Set-Content -LiteralPath $BridgePs1 -Encoding utf8
         # Absolute path rather than the plugin-root placeholder: this writes the
         # *installed* copy directly, so no expansion step runs over it. The path
         # is JSON-escaped first -- a Windows path's single backslashes are
         # invalid escapes inside a JSON string.
-        $json = Get-RepoFileAt -Commitish "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
+        $json = Get-RepoFileAt -Revision "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
         $escaped = $BridgePs1 -replace '\\', '\\'
         $json = $json -replace '\$\{CLAUDE_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
         $json = $json -replace '\$\{COPILOT_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
@@ -189,7 +189,7 @@ function Install-Config {
 
     if (Test-Path $BridgePs1) { Remove-Item -LiteralPath $BridgePs1 -Force }
     $source = if ($Config -eq 'B') {
-        Get-RepoFileAt -Commitish $NativeBridgeCommit -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
+        Get-RepoFileAt -Revision $NativeBridgeCommit -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
     }
     else {
         Get-Content -LiteralPath (Join-Path $RepoRoot 'tools\wta\wt-agent-hooks\copilot\wt-agent-hooks\hooks\hooks.json') -Raw

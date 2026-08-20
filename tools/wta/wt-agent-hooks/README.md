@@ -114,7 +114,7 @@ error" — earlier wta builds shipped an undocumented `ErrorOccurred` name
 which is no longer used. Gemini's manifest has no native equivalents for
 the failure topics, so those rows are silent on Gemini.
 
-**Per-tool-call events are deliberately not subscribed.** `app.rs` discards
+**Tool-completion events are deliberately not subscribed.** `app.rs` discards
 `agent.tool.finished` / `agent.tool.failed`: tool completion does not end a
 turn, so `agent.stop` owns the transition back to Idle. Subscribing them cost a
 shell spawn plus a COM round trip *per tool call*, only to be dropped — so
@@ -122,16 +122,18 @@ Copilot's `PostToolUse` / `PostToolUseFailure`, Gemini's `AfterTool`, and
 OpenCode's `tool.execute.after` were removed. The routing arm remains so an
 older installed bundle that still emits them is ignored rather than mis-routed.
 
-Copilot's `PreToolUse` went the same way, one release later. It was kept for
-the Attention path `app.rs` synthesizes when `tool_name` names a user-input
-tool, which was the only signal available while Copilot's `Notification` hook
-did not cover questions. It does now: on 1.0.81-2 a single `AskUserQuestion`
-produces both the tool hook and a `Notification`, ~0.9 s apart, each carrying
-the question text. Measured cost of the duplicate was ~536 ms per tool call —
-~388 ms of it `pwsh` startup — on a **fail-closed** hook, so the CLI blocks on
-it. Turn-level Working is unaffected because `UserPromptSubmit` already maps to
-`ToolStarting`; what is given up is the tool's name in the session row, not its
-status.
+**Copilot's `PreToolUse` went the same way, one release later** — note this is
+narrower than the rule above: `agent.tool.starting` is still subscribed by
+Gemini (`BeforeTool`) and OpenCode (`tool.execute.before`), and `app.rs` still
+routes it. Copilot kept it for the Attention path `app.rs` synthesizes when
+`tool_name` names a user-input tool, which was the only signal available while
+Copilot's `Notification` hook did not cover questions. It does now: on 1.0.81-2
+a single `AskUserQuestion` produces both the tool hook and a `Notification`,
+~0.9 s apart, each carrying the question text. Measured cost of the duplicate
+was ~536 ms per tool call — ~388 ms of it `pwsh` startup — on a **fail-closed**
+hook, so the CLI blocks on it. Turn-level Working is unaffected because
+`UserPromptSubmit` already maps to `ToolStarting`; what is given up is the
+tool's name in the session row, not its status.
 
 OpenCode uses its V1 plugin API rather than a hook manifest. The plugin maps
 `session.created/updated`, `chat.message`, `tool.execute.before`,
