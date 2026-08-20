@@ -13,6 +13,7 @@
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
 #include "../inc/CustomModelCredential.h"
+#include "../inc/IntelligentTerminalPaths.h"
 #include "../inc/WtaProcess.h"
 
 using namespace winrt::Windows::Foundation;
@@ -1236,7 +1237,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showGeminiHookRow = false;
             _showCodexHookRow = false;
             _showOpenCodeHookRow = false;
-            _openCodeHooksPresent = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
@@ -1257,12 +1257,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _codexCliDetected = codex && codex->binaryOnPath;
             _openCodeCliDetected = openCode && openCode->binaryOnPath;
 
-            _showCopilotHookRow = AgentHooks::HasHookState(copilot);
-            _showClaudeHookRow = AgentHooks::HasHookState(claude);
-            _showGeminiHookRow = AgentHooks::HasHookState(gemini);
-            _showCodexHookRow = AgentHooks::HasHookState(codex);
-            _openCodeHooksPresent = AgentHooks::HasHookState(openCode);
-            _showOpenCodeHookRow = AgentHooks::ShouldShowDetectedOrConfiguredHookRow(openCode);
+            _showCopilotHookRow = AgentHooks::ShouldShowHookRow(copilot);
+            _showClaudeHookRow = AgentHooks::ShouldShowHookRow(claude);
+            _showGeminiHookRow = AgentHooks::ShouldShowHookRow(gemini);
+            _showCodexHookRow = AgentHooks::ShouldShowHookRow(codex);
+            _showOpenCodeHookRow = AgentHooks::ShouldShowHookRow(openCode);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
@@ -1279,7 +1278,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
                        L"CanRemoveAgentHooks",
-                       L"CanRemoveOpenCodeHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
@@ -1392,8 +1390,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const std::wstring locateWtaFailedSummary{ RS_(L"AIAgents_HooksLocateWtaFailedSummary") };
         const std::wstring hooksRemovedSummary{ RS_(L"AIAgents_HooksRemovedSummary") };
         const std::wstring hooksInstalledSummary{ RS_(L"AIAgents_HooksInstalledSummary") };
-        const std::wstring hooksRemovalFailedSummary{ RS_(L"AIAgents_HooksRemovalFailedSummary") };
-        const std::wstring hooksInstallationFailedSummary{ RS_(L"AIAgents_HooksInstallationFailedSummary") };
+        const auto hooksLogDir = ::IntelligentTerminal::LogDirVersioned();
+        const auto hooksInstallLogPath = (hooksLogDir / L"wta-install-hooks.log").wstring();
+        const std::wstring hooksRemovalFailedSummary{ RS_fmt(L"AIAgents_HooksRemovalFailedSummary", hooksLogDir.wstring()) };
+        const std::wstring hooksInstallationFailedSummary{
+            RS_fmt(L"AIAgents_HooksInstallationFailedSummary", hooksInstallLogPath)
+        };
         std::wstring summary;
         bool ok = false;
 
@@ -1404,16 +1406,43 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             summary = locateWtaFailedSummary;
         }
-        else
+        else if (isUninstall)
         {
             ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, wtaArgs, 60'000);
+            summary = ok ? hooksRemovedSummary : hooksRemovalFailedSummary;
+        }
+        else
+        {
+            // Ask for the structured report so a failure can name the CLIs
+            // that failed. wta prints it and *then* exits non-zero, so we
+            // capture output independently of the exit code — and keep
+            // stderr out of it, since the failing run also writes an
+            // `Error: ...` line there that would break the JSON parse.
+            const auto run = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath,
+                                                                             wtaArgs + L" --json",
+                                                                             60'000,
+                                                                             nullptr,
+                                                                             /* mergeStderr */ false);
+            ok = run.completed && run.exitCode == 0;
             if (ok)
             {
-                summary = isUninstall ? hooksRemovedSummary : hooksInstalledSummary;
+                summary = hooksInstalledSummary;
             }
             else
             {
-                summary = isUninstall ? hooksRemovalFailedSummary : hooksInstallationFailedSummary;
+                // Fall back to the unattributed message whenever the report
+                // is unreadable or blames no particular CLI — a timeout, a
+                // crash before the report was written, or a failure that
+                // isn't per-CLI all land here.
+                summary = hooksInstallationFailedSummary;
+                if (const auto report = ::Microsoft::Terminal::AgentHooks::ParseInstallReportJson(run.output))
+                {
+                    const auto failed = ::Microsoft::Terminal::AgentHooks::FormatFailedCliList(*report);
+                    if (!failed.empty())
+                    {
+                        summary = RS_fmt(L"AIAgents_HooksInstallationFailedForSummary", failed, hooksInstallLogPath);
+                    }
+                }
             }
         }
 

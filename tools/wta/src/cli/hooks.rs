@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use super::args::HooksCliFilter;
 
-pub(crate) fn run_install(cli: HooksCliFilter) -> Result<()> {
+pub(crate) fn run_install(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     // Logging is initialized in `main()`; the install attempt is observable in
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
     let scope = cli.into_scope();
@@ -37,7 +37,22 @@ pub(crate) fn run_install(cli: HooksCliFilter) -> Result<()> {
         .map(|c| c.name)
         .collect();
 
+    if json_mode {
+        // Emitted for both outcomes: the Settings UI needs the per-CLI
+        // breakdown precisely when the run failed, and the exit code below
+        // still carries pass/fail for scripts.
+        let install_report = build_install_report(scope, &report, &spawn_failures, &missing);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&install_report)
+                .unwrap_or_else(|_| serde_json::to_string(&install_report).unwrap_or_default())
+        );
+    }
+
     if spawn_failures.is_empty() && missing.is_empty() {
+        if json_mode {
+            return Ok(());
+        }
         // The version rides inside the interpolated CLI list rather than in its
         // own placeholder, so adding it costs no re-translation across the
         // locale set — "name (vX.Y.Z)" reads the same in every language.
@@ -67,6 +82,61 @@ pub(crate) fn run_install(cli: HooksCliFilter) -> Result<()> {
     let message = format_install_failure(&spawn_failures, &missing);
     tracing::error!(target: "agent_hooks", "{}", message);
     anyhow::bail!(message)
+}
+
+/// Fold the two independent failure signals and the post-install status
+/// check into one per-CLI verdict.
+///
+/// Failure wins over the status check: a CLI whose install command failed
+/// while a PREVIOUS plugin is still on disk reads as `plugin_installed` in
+/// the status report, and reporting that as `installed` is exactly the
+/// silent-stale-build case [`run_install`] exists to catch.
+fn build_install_report(
+    scope: crate::agent_hooks_installer::CliScope,
+    status: &crate::agent_hooks_installer::StatusReport,
+    spawn_failures: &[crate::agent_hooks_installer::InstallFailure],
+    missing: &[&str],
+) -> crate::agent_hooks_installer::InstallReport {
+    use crate::agent_hooks_installer::{
+        CliInstallResult, CliScope, InstallReport, INSTALL_OUTCOME_FAILED,
+        INSTALL_OUTCOME_INSTALLED, INSTALL_OUTCOME_SKIPPED,
+    };
+
+    let clis = status
+        .clis
+        .iter()
+        .filter(|c| match scope {
+            CliScope::All => true,
+            CliScope::One(kind) => c.name == kind.name(),
+        })
+        .map(|c| {
+            if let Some(f) = spawn_failures.iter().find(|f| f.cli == c.name) {
+                return CliInstallResult {
+                    name: c.name,
+                    outcome: INSTALL_OUTCOME_FAILED,
+                    reason: Some(f.reason.clone()),
+                };
+            }
+            if missing.contains(&c.name) {
+                return CliInstallResult {
+                    name: c.name,
+                    outcome: INSTALL_OUTCOME_FAILED,
+                    reason: None,
+                };
+            }
+            CliInstallResult {
+                name: c.name,
+                outcome: if c.binary_on_path && c.plugin_installed {
+                    INSTALL_OUTCOME_INSTALLED
+                } else {
+                    INSTALL_OUTCOME_SKIPPED
+                },
+                reason: None,
+            }
+        })
+        .collect();
+
+    InstallReport::new(clis)
 }
 
 /// Render the user-facing failure text for an install that did not fully land.
@@ -283,8 +353,12 @@ fn yn(b: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_bundle_source, format_install_failure, format_version_column};
-    use crate::agent_hooks_installer::{CliStatus, InstallFailure};
+    use super::{
+        build_install_report, format_bundle_source, format_install_failure, format_version_column,
+    };
+    use crate::agent_hooks_installer::{
+        BundleSourceInfo, CliScope, CliStatus, InstallFailure, StatusReport,
+    };
 
     fn failure(cli: &'static str, reason: &str) -> InstallFailure {
         InstallFailure {
@@ -454,5 +528,157 @@ mod tests {
             "exe-sibling v0.1.5"
         );
         assert_eq!(format_bundle_source("none", None), "none");
+    }
+
+    // ---- install report (`wta hooks install --json`) --------------------
+
+    fn status_of(clis: Vec<CliStatus>) -> StatusReport {
+        StatusReport {
+            schema_version: 4,
+            clis,
+            bundle_source: BundleSourceInfo {
+                kind: "exe-sibling",
+                path: None,
+            },
+        }
+    }
+
+    fn absent_cli(name: &'static str) -> CliStatus {
+        CliStatus {
+            name,
+            binary_on_path: false,
+            binary_path: None,
+            marketplace_registered: false,
+            marketplace_path: None,
+            marketplace_path_valid: false,
+            plugin_installed: false,
+            plugin_enabled: false,
+            installed_version: None,
+            bundle_version: None,
+            detection_fallback: None,
+        }
+    }
+
+    fn no_failures() -> [InstallFailure; 0] {
+        []
+    }
+
+    fn outcome_of<'a>(
+        report: &'a crate::agent_hooks_installer::InstallReport,
+        name: &str,
+    ) -> &'a str {
+        report
+            .clis
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} missing from report"))
+            .outcome
+    }
+
+    /// The reason the JSON exists: the Settings UI needs to name the CLI that
+    /// failed. A spawn failure must be reported per-CLI, with its reason, and
+    /// must not contaminate the CLIs that installed fine.
+    #[test]
+    fn install_report_names_the_failing_cli_and_carries_its_reason() {
+        let status = status_of(vec![
+            cli_with_bundle("copilot", Some("0.1.6")),
+            cli_with_bundle("codex", Some("0.1.6")),
+        ]);
+        let failures = [failure(
+            "codex",
+            "codex plugin marketplace add failed: already added from a different source",
+        )];
+
+        let report = build_install_report(CliScope::All, &status, &failures, &[]);
+
+        assert_eq!(outcome_of(&report, "copilot"), "installed");
+        assert_eq!(outcome_of(&report, "codex"), "failed");
+        let codex = report.clis.iter().find(|c| c.name == "codex").unwrap();
+        assert!(
+            codex
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("already added from a different source"),
+            "the actionable reason must survive into the report: {:?}",
+            codex.reason
+        );
+    }
+
+    /// Mirrors `spawn_failure_is_reported_even_when_a_stale_plugin_is_still_installed`:
+    /// the status check sees the PREVIOUS plugin on disk, so only the spawn
+    /// failure distinguishes "installed" from "still running the old build".
+    #[test]
+    fn install_report_prefers_the_spawn_failure_over_a_stale_on_disk_plugin() {
+        let status = status_of(vec![cli_with_bundle("copilot", Some("0.1.5"))]);
+        let failures = [failure(
+            "copilot",
+            "install failed: Access is denied. (os error 5)",
+        )];
+
+        let report = build_install_report(CliScope::All, &status, &failures, &[]);
+
+        assert_eq!(
+            outcome_of(&report, "copilot"),
+            "failed",
+            "a stale plugin left on disk must not read as a successful install"
+        );
+    }
+
+    /// A CLI that simply isn't on the machine is not a failure — reporting it
+    /// as one would name every uninstalled CLI in the Settings error line.
+    #[test]
+    fn install_report_marks_an_absent_cli_as_skipped() {
+        let status = status_of(vec![
+            cli_with_bundle("copilot", Some("0.1.6")),
+            absent_cli("gemini"),
+        ]);
+
+        let report = build_install_report(CliScope::All, &status, &no_failures(), &[]);
+
+        assert_eq!(outcome_of(&report, "gemini"), "skipped");
+        assert_eq!(outcome_of(&report, "copilot"), "installed");
+    }
+
+    /// The silent no-op: the install command reported success but left nothing
+    /// registered. It has no spawn reason, so `reason` stays absent while the
+    /// outcome is still `failed`.
+    #[test]
+    fn install_report_reports_a_silent_no_op_as_failed_without_a_reason() {
+        let status = status_of(vec![absent_cli("claude")]);
+
+        let report = build_install_report(CliScope::All, &status, &no_failures(), &["claude"]);
+
+        let claude = report.clis.iter().find(|c| c.name == "claude").unwrap();
+        assert_eq!(claude.outcome, "failed");
+        assert!(claude.reason.is_none());
+    }
+
+    /// `--cli <x>` must narrow the report too, or the UI would name CLIs the
+    /// user never asked to install.
+    #[test]
+    fn install_report_honors_a_single_cli_scope() {
+        use crate::agent_hooks_installer::CliKind;
+
+        let status = status_of(vec![
+            cli_with_bundle("copilot", Some("0.1.6")),
+            cli_with_bundle("codex", Some("0.1.6")),
+        ]);
+
+        let report =
+            build_install_report(CliScope::One(CliKind::Codex), &status, &no_failures(), &[]);
+
+        assert_eq!(report.clis.len(), 1);
+        assert_eq!(report.clis[0].name, "codex");
+    }
+
+    /// The C++ parser rejects an unexpected `schema_version` outright, so the
+    /// version this code emits is part of the contract, not an implementation
+    /// detail.
+    #[test]
+    fn install_report_pins_its_schema_version() {
+        let report =
+            build_install_report(CliScope::All, &status_of(vec![]), &no_failures(), &[]);
+        assert_eq!(report.schema_version, 1);
     }
 }

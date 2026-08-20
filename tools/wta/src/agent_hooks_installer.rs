@@ -172,6 +172,14 @@ const STATUS_SCHEMA_VERSION: u32 = 4;
 /// upgrading from older wta builds don't end up with orphan files.
 const UNINSTALL_SCHEMA_VERSION: u32 = 2;
 
+/// Schema version of the JSON returned by `wta hooks install --json`.
+///
+/// v1: initial shape — `clis[]` of `{ name, outcome, reason? }` where
+/// `outcome` is `installed` / `skipped` / `failed`. Exists so the Settings
+/// UI can name the CLI that failed instead of showing a single generic
+/// "installation failed" line whose only remedy is reading the trace log.
+const INSTALL_SCHEMA_VERSION: u32 = 1;
+
 // ---------------------------------------------------------------------------
 // Public CLI enum (consumed by `wta hooks --cli=<name>`)
 // ---------------------------------------------------------------------------
@@ -434,6 +442,43 @@ pub struct UninstallReport {
 impl UninstallReport {
     pub fn succeeded(&self) -> bool {
         self.clis.iter().all(CliUninstallResult::succeeded)
+    }
+}
+
+/// Per-CLI outcome of an install run, as reported by
+/// `wta hooks install --json`.
+///
+/// `outcome` is a stable string rather than a serialized enum so the C++
+/// consumer can treat an unrecognized value as "not a failure" instead of
+/// failing the whole parse when this list grows.
+#[derive(Debug, Clone, Serialize)]
+pub struct CliInstallResult {
+    pub name: &'static str,
+    /// `"installed"` | `"skipped"` | `"failed"`.
+    pub outcome: &'static str,
+    /// Present only for `failed`, and only when we have a specific reason
+    /// beyond "hooks aren't registered afterwards".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+pub const INSTALL_OUTCOME_INSTALLED: &str = "installed";
+pub const INSTALL_OUTCOME_SKIPPED: &str = "skipped";
+pub const INSTALL_OUTCOME_FAILED: &str = "failed";
+
+/// Top-level shape of `wta hooks install --json`.
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallReport {
+    pub schema_version: u32,
+    pub clis: Vec<CliInstallResult>,
+}
+
+impl InstallReport {
+    pub fn new(clis: Vec<CliInstallResult>) -> Self {
+        Self {
+            schema_version: INSTALL_SCHEMA_VERSION,
+            clis,
+        }
     }
 }
 

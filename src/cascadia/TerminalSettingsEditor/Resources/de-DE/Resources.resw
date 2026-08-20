@@ -2914,6 +2914,10 @@
     <value>Hooks-Installation fehlgeschlagen. Überprüfen Sie %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log auf Details.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
   </data>
+  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
+    <value>Hooks-Installation für {0} fehlgeschlagen. Überprüfen Sie {1} auf Details.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
+  </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Automatische Fehlererkennung</value>
   </data>
