@@ -989,6 +989,8 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    /// Whether agent responses are projected as Markdown instead of raw text.
+    pub render_agent_markdown: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1280,6 +1282,7 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            render_agent_markdown: true,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -1323,6 +1326,10 @@ impl App {
         >,
     ) {
         self.proposal_channels = proposal_channels;
+    }
+
+    pub fn set_render_agent_markdown(&mut self, render_agent_markdown: bool) {
+        self.render_agent_markdown = render_agent_markdown;
     }
 
     /// Stash pipe-mode launch parameters on App so that a post-FRE-login

@@ -212,13 +212,14 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
         .filter(|(index, _)| Some(*index) != streaming_index)
         .map(|(index, message)| {
             rendered_lines_height(
-                &build_message_lines(
+                &build_message_lines_for_mode(
                     message,
                     index + 1 == tab.messages.len(),
                     tab.turn.is_streaming(),
                     permission_tool_call_id,
                     tab.activity_frame,
                     wrap_width,
+                    app.render_agent_markdown,
                 ),
                 wrap_width,
             )
@@ -229,7 +230,13 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
         .iter()
         .map(|turn| {
             rendered_lines_height(
-                &build_completed_turn_lines(turn, false, false, wrap_width),
+                &build_completed_turn_lines_for_mode(
+                    turn,
+                    false,
+                    false,
+                    wrap_width,
+                    app.render_agent_markdown,
+                ),
                 wrap_width,
             )
         })
@@ -407,6 +414,27 @@ fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<
     lines
 }
 
+fn agent_response_lines(
+    text: &str,
+    wrap_width: usize,
+    dot_style: Style,
+    render_markdown: bool,
+) -> Vec<Line<'static>> {
+    if render_markdown {
+        agent_markdown_lines(text, wrap_width, dot_style)
+    } else {
+        let mut lines = Vec::new();
+        push_prefixed_lines(
+            &mut lines,
+            "●",
+            text.trim_start_matches('\n'),
+            wrap_width,
+            theme::AGENT_TEXT,
+        );
+        lines
+    }
+}
+
 #[cfg(test)]
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     rendered_lines_height(
@@ -530,6 +558,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();
+    let render_agent_markdown = app.render_agent_markdown;
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
@@ -544,13 +573,14 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             continue;
         }
         let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_message_lines(
+        let mut message_lines = build_message_lines_for_mode(
             msg,
             is_last_message,
             tab.turn.is_streaming(),
             permission_tool_call_id,
             tab.activity_frame,
             wrap_width,
+            render_agent_markdown,
         );
         reversed_lines.extend(message_lines.drain(..).rev());
         if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
@@ -566,12 +596,14 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
-                turn,
-                is_selected,
-                pane_focused,
-                wrap_width,
-            );
+            let (mut turn_lines, prompt_rows) =
+                build_completed_turn_lines_with_prompt_rows_for_mode(
+                    turn,
+                    is_selected,
+                    pane_focused,
+                    wrap_width,
+                    render_agent_markdown,
+                );
             let turn_height = rendered_lines_height(&turn_lines, wrap_width);
             turn_hit_offsets.push((
                 idx,
@@ -794,14 +826,32 @@ fn build_completed_turn_lines<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
-    build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
+    build_completed_turn_lines_for_mode(turn, is_selected, pane_focused, wrap_width, true)
 }
 
-fn build_completed_turn_lines_with_prompt_rows<'a>(
+fn build_completed_turn_lines_for_mode<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
+    render_agent_markdown: bool,
+) -> Vec<Line<'a>> {
+    build_completed_turn_lines_with_prompt_rows_for_mode(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        render_agent_markdown,
+    )
+    .0
+}
+
+fn build_completed_turn_lines_with_prompt_rows_for_mode<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+    render_agent_markdown: bool,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
@@ -887,7 +937,14 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
             lines.extend(build_message_lines_with_details(
-                msg, false, false, None, 0, wrap_width, true,
+                msg,
+                false,
+                false,
+                None,
+                0,
+                wrap_width,
+                true,
+                render_agent_markdown,
             ));
         }
     }
@@ -945,12 +1002,24 @@ fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    build_pending_stream_lines_for_tab(app.current_tab(), wrap_width)
+    build_pending_stream_lines_for_tab_with_mode(
+        app.current_tab(),
+        wrap_width,
+        app.render_agent_markdown,
+    )
 }
 
 fn build_pending_stream_lines_for_tab<'a>(
     tab: &crate::app::TabSession,
     wrap_width: usize,
+) -> Vec<Line<'a>> {
+    build_pending_stream_lines_for_tab_with_mode(tab, wrap_width, true)
+}
+
+fn build_pending_stream_lines_for_tab_with_mode<'a>(
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+    render_agent_markdown: bool,
 ) -> Vec<Line<'a>> {
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
@@ -970,7 +1039,12 @@ fn build_pending_stream_lines_for_tab<'a>(
             Cow::Owned(text.chars().take(shown).collect())
         }
     };
-    agent_markdown_lines(&revealed, wrap_width, theme::DOT_AGENT)
+    agent_response_lines(
+        &revealed,
+        wrap_width,
+        theme::DOT_AGENT,
+        render_agent_markdown,
+    )
 }
 
 fn build_message_lines<'a>(
@@ -981,6 +1055,26 @@ fn build_message_lines<'a>(
     activity_frame: usize,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    build_message_lines_for_mode(
+        msg,
+        is_last_message,
+        agent_streaming,
+        permission_tool_call_id,
+        activity_frame,
+        wrap_width,
+        true,
+    )
+}
+
+fn build_message_lines_for_mode<'a>(
+    msg: &'a ChatMessage,
+    is_last_message: bool,
+    agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+) -> Vec<Line<'a>> {
     build_message_lines_with_details(
         msg,
         is_last_message,
@@ -989,6 +1083,7 @@ fn build_message_lines<'a>(
         activity_frame,
         wrap_width,
         false,
+        render_agent_markdown,
     )
 }
 
@@ -1000,6 +1095,7 @@ fn build_message_lines_with_details<'a>(
     activity_frame: usize,
     wrap_width: usize,
     detailed_tools: bool,
+    render_agent_markdown: bool,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
@@ -1008,7 +1104,12 @@ fn build_message_lines_with_details<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
-            lines.extend(agent_markdown_lines(text, wrap_width, theme::DOT_AGENT));
+            lines.extend(agent_response_lines(
+                text,
+                wrap_width,
+                theme::DOT_AGENT,
+                render_agent_markdown,
+            ));
             if !agent_streaming || !is_last_message {
                 lines.push(Line::default());
             }
@@ -1477,6 +1578,40 @@ mod tests {
                 && span.style.fg == Some(Color::Reset)
                 && span.style.add_modifier.contains(Modifier::BOLD)
         }));
+    }
+
+    #[test]
+    fn agent_markdown_can_be_disabled_for_finalized_and_pending_responses() {
+        let raw = "# Heading\n\nFirst **bold** line";
+        let message = ChatMessage::Agent(raw.into());
+
+        let finalized = build_message_lines_for_mode(
+            &message, false, false, None, 0, 80, false,
+        );
+        assert_eq!(line_text(&finalized[0]), "● # Heading");
+        assert!(finalized
+            .iter()
+            .any(|line| line_text(line) == "  First **bold** line"));
+        assert!(matches!(&message, ChatMessage::Agent(text) if text == raw));
+
+        let pending_tab = streaming_tab(raw, raw.chars().count());
+        let pending = build_pending_stream_lines_for_tab_with_mode(&pending_tab, 80, false);
+        assert_eq!(line_text(&pending[0]), "● # Heading");
+        assert!(pending
+            .iter()
+            .any(|line| line_text(line) == "  First **bold** line"));
+
+        let completed = CompletedTurn {
+            prompt: "Summarize the result".into(),
+            details: vec![message],
+            expanded: true,
+            trailing_marker: None,
+        };
+        let history = build_completed_turn_lines_for_mode(&completed, false, true, 80, false);
+        assert!(history
+            .iter()
+            .any(|line| line_text(line) == "● # Heading"));
+        assert!(matches!(&completed.details[0], ChatMessage::Agent(text) if text == raw));
     }
 
     #[test]
