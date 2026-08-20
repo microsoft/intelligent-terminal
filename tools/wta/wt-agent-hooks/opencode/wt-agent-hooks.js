@@ -1,6 +1,6 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 
-import { appendFileSync } from "node:fs"
+import { appendFileSync, mkdirSync } from "node:fs"
 
 function eventMessage(value) {
   if (typeof value === "string") return value
@@ -37,6 +37,13 @@ function noteBridgeFailure(topic, error) {
   try {
     const dir = process.env.WTA_HOOK_LOG_DIR
     if (!dir) return
+    // The directory is created by whichever wta or Terminal component logs
+    // first, so it usually exists — but "usually" is not good enough here.
+    // The states where this note matters most are the degraded ones (wta never
+    // started, blocked by policy), which are exactly the states where nothing
+    // has created it yet, and `appendFileSync` fails with ENOENT straight into
+    // the catch below. Recursive mkdir is idempotent, so pay it every time.
+    mkdirSync(dir, { recursive: true })
     const message = error && error.message ? error.message : String(error)
     const line = `${new Date().toISOString()} opencode bridge spawn failed topic=${topic} cmd=${bridgeCommand()} err=${message}\n`
     appendFileSync(`${dir}\\hook-trace.log`, line)
