@@ -16,6 +16,7 @@ pub(crate) struct HelperConfig {
     pub(crate) delegate_agent: Option<String>,
     pub(crate) delegate_model: Option<String>,
     pub(crate) no_autofix: bool,
+    pub(crate) render_agent_markdown: bool,
     pub(crate) setup: Option<String>,
     pub(crate) initial_view: InitialView,
     pub(crate) owner_tab_id: Option<String>,
