@@ -22,6 +22,8 @@ struct ControlledNewSessionAgent {
     events: mpsc::UnboundedSender<ReplacementEvent>,
     live_sessions: Arc<Mutex<HashSet<SessionId>>>,
     fail_close: Option<SessionId>,
+    close_method_not_found: bool,
+    capture_cancel: bool,
     failed_closes: Arc<Mutex<HashSet<SessionId>>>,
 }
 
@@ -37,6 +39,7 @@ struct RebindDuringCloseAgent {
 }
 
 enum ReplacementEvent {
+    Cancel(SessionId),
     Close(SessionId),
     BlockingClose(SessionId, tokio::sync::oneshot::Sender<()>),
     FailingClose(SessionId, tokio::sync::oneshot::Sender<()>),
@@ -45,6 +48,15 @@ enum ReplacementEvent {
 }
 
 impl ControlledNewSessionAgent {
+    async fn cancel(&self, args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
+        if self.capture_cancel {
+            self.events
+                .send(ReplacementEvent::Cancel(args.session_id))
+                .map_err(|_| acp::Error::internal_error().data("test event receiver dropped"))?;
+        }
+        Ok(())
+    }
+
     async fn new_session(
         &self,
         _args: acp::schema::v1::NewSessionRequest,
@@ -74,6 +86,9 @@ impl ControlledNewSessionAgent {
         self.events
             .send(ReplacementEvent::Close(args.session_id.clone()))
             .map_err(|_| acp::Error::internal_error().data("test event receiver dropped"))?;
+        if self.close_method_not_found {
+            return Err(acp::Error::method_not_found());
+        }
         if self.fail_close.as_ref() == Some(&args.session_id)
             && self
                 .failed_closes
@@ -724,6 +739,22 @@ fn client_connection_to_controlled_new_session_agent(
     live_sessions: Arc<Mutex<HashSet<SessionId>>>,
     fail_close: Option<SessionId>,
 ) -> conn::ClientLink {
+    client_connection_to_controlled_new_session_agent_with_close_result(
+        events,
+        live_sessions,
+        fail_close,
+        false,
+        false,
+    )
+}
+
+fn client_connection_to_controlled_new_session_agent_with_close_result(
+    events: mpsc::UnboundedSender<ReplacementEvent>,
+    live_sessions: Arc<Mutex<HashSet<SessionId>>>,
+    fail_close: Option<SessionId>,
+    close_method_not_found: bool,
+    capture_cancel: bool,
+) -> conn::ClientLink {
     let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
     let (client_read, client_write) = tokio::io::split(client_pipe);
     let (agent_read, agent_write) = tokio::io::split(agent_pipe);
@@ -733,6 +764,8 @@ fn client_connection_to_controlled_new_session_agent(
         events,
         live_sessions,
         fail_close,
+        close_method_not_found,
+        capture_cancel,
         failed_closes: Arc::new(Mutex::new(HashSet::new())),
     };
     let agent_builder = acp::Agent
@@ -788,6 +821,22 @@ fn client_connection_to_controlled_new_session_agent(
                 }
             },
             acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let mock = mock.clone();
+                move |notif: acp::schema::v1::ClientNotification, _cx| {
+                    let mock = mock.clone();
+                    async move {
+                        if let acp::schema::v1::ClientNotification::CancelNotification(args) = notif
+                        {
+                            mock.cancel(args).await?;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
         );
     let (_agent_conn, agent_io) = conn::spawn_agent(
         agent_builder,
@@ -2616,13 +2665,14 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn unsupported_close_falls_back_to_logical_retirement() {
+async fn unsupported_session_close_capability_cancels_and_logically_retires_session() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let state = make_state();
             let helper_id = HelperId(18);
             let old_session = SessionId::new("unsupported-old");
             let replacement = SessionId::new("replacement-b");
+            let agent_instance_id = AgentInstanceId::new_v4();
             let live_sessions = Arc::new(Mutex::new(HashSet::from([old_session.clone()])));
             let (events_tx, mut events_rx) = mpsc::unbounded_channel();
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
@@ -2633,22 +2683,37 @@ async fn unsupported_close_falls_back_to_logical_retirement() {
             let agent = Arc::new(OnceLock::new());
             assert!(agent
                 .set(Arc::new(AgentCli {
-                    instance_id: AgentInstanceId::new_v4(),
-                    conn: client_connection_to_controlled_new_session_agent(
+                    instance_id: agent_instance_id,
+                    conn: client_connection_to_controlled_new_session_agent_with_close_result(
                         events_tx,
                         Arc::clone(&live_sessions),
                         None,
+                        false,
+                        true,
                     ),
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
                         acp::schema::ProtocolVersion::V1,
                     ),
-                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    cli_source: Some(crate::agent_sessions::CliSource::Gemini),
                     source: crate::agent_source::AgentSource::Host,
                     cmd_key: "unsupported-close-agent".to_string(),
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
+            let pooled_agent = Arc::new(tokio::sync::OnceCell::new());
+            assert!(pooled_agent
+                .set(Arc::clone(
+                    agent
+                        .get()
+                        .expect("handler agent binding should be initialized"),
+                ))
+                .is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert("unsupported-close-agent".to_string(), pooled_agent);
             let handler = HelperHandler {
                 helper_id,
                 agent,
@@ -2662,7 +2727,7 @@ async fn unsupported_close_falls_back_to_logical_retirement() {
                 old_session.clone(),
                 HelperRoute {
                     helper_id,
-                    agent_instance_id: AgentInstanceId::nil(),
+                    agent_instance_id,
                     notif_tx,
                     forwarder: Some(agent_link_to_noop_client()),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -2683,6 +2748,28 @@ async fn unsupported_close_falls_back_to_logical_retirement() {
                     ..Default::default()
                 },
             );
+            let pending_capability = state
+                .session_mcp_capabilities
+                .prepare(agent_instance_id, None)
+                .await;
+            assert!(
+                state
+                    .session_mcp_capabilities
+                    .bind(&pending_capability, old_session.clone())
+                    .await
+            );
+            state.pending_usage.lock().await.insert(
+                old_session.clone(),
+                (
+                    helper_id,
+                    acp::schema::v1::SessionNotification::new(
+                        old_session.clone(),
+                        acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                            acp::schema::v1::ContentChunk::new("pending usage".into()),
+                        ),
+                    ),
+                ),
+            );
 
             let request = tokio::task::spawn_local({
                 let handler = handler.clone();
@@ -2694,6 +2781,11 @@ async fn unsupported_close_falls_back_to_logical_retirement() {
                         .await
                 }
             });
+            let Some(ReplacementEvent::Cancel(cancelled_session_id)) = events_rx.recv().await
+            else {
+                panic!("unsupported agents must receive the best-effort session/cancel");
+            };
+            assert_eq!(cancelled_session_id, old_session);
             let ReplacementEvent::New(index, release) = events_rx
                 .recv()
                 .await
@@ -2707,16 +2799,195 @@ async fn unsupported_close_falls_back_to_logical_retirement() {
                 request.await.unwrap().unwrap().session_id,
                 replacement.clone()
             );
+            assert!(
+                events_rx.try_recv().is_err(),
+                "unsupported agents must not receive session/close"
+            );
 
             let routes = state.session_to_helper.lock().await;
             assert!(!routes.contains_key(&old_session));
             assert!(routes.contains_key(&replacement));
             drop(routes);
             assert!(state.registry.lookup(&old_session).await.is_none());
+            assert!(!state.pending_usage.lock().await.contains_key(&old_session));
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(agent_instance_id)
+                    .await,
+                0,
+                "logical retirement must revoke the session-scoped MCP capability"
+            );
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get("unsupported-close-agent")
+                    .and_then(|cell| cell.get())
+                    .is_some(),
+                "logical retirement must keep the shared agent process usable"
+            );
             assert_eq!(
                 *live_sessions.lock().await,
                 HashSet::from([old_session, replacement]),
                 "unsupported agents can only be logically retired"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn advertised_but_unimplemented_session_close_cancels_and_logically_retires_session() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(19);
+            let session_id = SessionId::new("advertised-unimplemented");
+            let replacement = SessionId::new("replacement-b");
+            let agent_instance_id = AgentInstanceId::new_v4();
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: agent_instance_id,
+                conn: client_connection_to_controlled_new_session_agent_with_close_result(
+                    events_tx,
+                    Arc::clone(&live_sessions),
+                    None,
+                    true,
+                    true,
+                ),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Gemini),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "advertised-unimplemented-close-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let agent_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(agent_cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), Arc::clone(&agent_cell));
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    session_id.clone(),
+                    PathBuf::from("C:\\repo"),
+                ))
+                .await;
+            let pending_capability = state
+                .session_mcp_capabilities
+                .prepare(agent_instance_id, None)
+                .await;
+            assert!(
+                state
+                    .session_mcp_capabilities
+                    .bind(&pending_capability, session_id.clone())
+                    .await
+            );
+            state.pending_usage.lock().await.insert(
+                session_id.clone(),
+                (
+                    helper_id,
+                    acp::schema::v1::SessionNotification::new(
+                        session_id.clone(),
+                        acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                            acp::schema::v1::ContentChunk::new("pending usage".into()),
+                        ),
+                    ),
+                ),
+            );
+
+            assert_eq!(
+                close_and_retire_replaced_session(
+                    &state,
+                    helper_id,
+                    &agent,
+                    &session_id,
+                    std::time::Duration::from_secs(1),
+                )
+                .await
+                .expect("MethodNotFound must fall back without failing tab teardown"),
+                ReplacedSessionCleanup::LogicalFallback
+            );
+            let Some(ReplacementEvent::Cancel(cancelled_session_id)) = events_rx.recv().await
+            else {
+                panic!("best-effort cancellation must precede the close attempt");
+            };
+            assert_eq!(cancelled_session_id, session_id);
+            let Some(ReplacementEvent::Close(close_session_id)) = events_rx.recv().await else {
+                panic!("the advertised capability must be attempted once");
+            };
+            assert_eq!(close_session_id, session_id);
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+            assert!(state.registry.lookup(&session_id).await.is_none());
+            assert!(!state.pending_usage.lock().await.contains_key(&session_id));
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(agent_instance_id)
+                    .await,
+                0,
+                "logical retirement must revoke the session-scoped MCP capability"
+            );
+
+            let conn = agent.conn.clone();
+            let follow_up = tokio::task::spawn_local(async move {
+                conn.new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
+                    "C:\\replacement",
+                )))
+                .await
+            });
+            let Some(ReplacementEvent::New(index, release)) = events_rx.recv().await else {
+                panic!("the shared agent must remain usable after MethodNotFound");
+            };
+            assert_eq!(index, 0);
+            release
+                .send(())
+                .expect("follow-up session request must still be live");
+            assert_eq!(
+                follow_up
+                    .await
+                    .expect("follow-up task must finish")
+                    .expect("shared agent must accept a follow-up session")
+                    .session_id,
+                replacement
+            );
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&agent.cmd_key)
+                    .and_then(|cell| cell.get())
+                    .is_some(),
+                "logical retirement must keep the shared agent process pooled"
             );
         })
         .await;

@@ -582,18 +582,32 @@ async fn close_and_retire_replaced_session(
                 ReplacedSessionCleanup::PhysicallyClosed
             }
             Ok(Err(error)) => {
-                tracing::error!(
-                    target: "master",
-                    step = "helper→agent",
-                    op = "close_replaced_session",
-                    helper_id = ?helper_id,
-                    old_session_id = %session_id,
-                    outcome = "acp_error",
-                    error = %error,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    "failed to physically close replaced ACP session"
-                );
-                return Err(error);
+                if error.code == acp::ErrorCode::MethodNotFound {
+                    tracing::warn!(
+                        target: "master",
+                        step = "helper→agent",
+                        op = "close_replaced_session",
+                        helper_id = ?helper_id,
+                        old_session_id = %session_id,
+                        outcome = "unsupported_logical_fallback",
+                        error = %error,
+                        "agent advertised session/close but rejected it; retiring only WTA state"
+                    );
+                    ReplacedSessionCleanup::LogicalFallback
+                } else {
+                    tracing::error!(
+                        target: "master",
+                        step = "helper→agent",
+                        op = "close_replaced_session",
+                        helper_id = ?helper_id,
+                        old_session_id = %session_id,
+                        outcome = "acp_error",
+                        error = %error,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "failed to physically close replaced ACP session"
+                    );
+                    return Err(error);
+                }
             }
             Err(_) => {
                 let message =
@@ -830,7 +844,7 @@ async fn handle_close_tab_session(
                         "failed to cancel orphaned turn before session/close"
                     );
                 }
-                tokio::time::timeout(
+                match tokio::time::timeout(
                     SESSION_CLOSE_TIMEOUT,
                     agent
                         .conn
@@ -839,15 +853,28 @@ async fn handle_close_tab_session(
                         )),
                 )
                 .await
-                .map_err(|_| {
-                    acp::Error::internal_error().data(serde_json::json!({
-                        "message": format!(
-                            "session/close timed out for orphaned tab {}",
-                            params.tab_id
-                        )
-                    }))
-                })??;
-                ReplacedSessionCleanup::PhysicallyClosed
+                {
+                    Ok(Ok(_)) => ReplacedSessionCleanup::PhysicallyClosed,
+                    Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
+                        tracing::warn!(
+                            target: "master",
+                            tab_id = %params.tab_id,
+                            session_id = %orphan_session_id,
+                            error = %error,
+                            "agent advertised session/close but rejected it; retiring orphaned WTA state"
+                        );
+                        ReplacedSessionCleanup::LogicalFallback
+                    }
+                    Ok(Err(error)) => return Err(error),
+                    Err(_) => {
+                        return Err(acp::Error::internal_error().data(serde_json::json!({
+                            "message": format!(
+                                "session/close timed out for orphaned tab {}",
+                                params.tab_id
+                            )
+                        })));
+                    }
+                }
             } else {
                 let _ = agent
                     .conn
