@@ -754,14 +754,20 @@ namespace winrt::TerminalApp::implementation
         //  - Close-pane (last pane): in _HandleClosePaneRequested
         //  - Close-tab: in _HandleCloseTabRequested
 
+        if (!movingAway)
+        {
+            // Notify WTA while the agent helper is still alive. Shutdown tears down the
+            // helper's ConPTY process, so emitting this afterwards races session/close
+            // against process termination and leaves the ACP session orphaned.
+            _NotifyAgentTabClosed(closedTabStableId);
+        }
+
         // Removing the tab from the collection should destroy its control and disconnect its connection,
         // but it doesn't always do so. The UI tree may still be holding the control and preventing its destruction.
         tab.Shutdown();
 
         if (!movingAway)
         {
-            _NotifyAgentTabClosed(closedTabStableId);
-
             // Preexisting latent leak (made worse by pre-warm): tab close
             // goes through `Tab::Shutdown` → `Pane::Shutdown`, which only
             // calls `_setPaneContent(nullptr)` on each leaf — it does NOT
@@ -779,9 +785,13 @@ namespace winrt::TerminalApp::implementation
             // re-wrapped pane is the new owner), so decrementing here
             // would prematurely zero the refcount and tear down the
             // master that the dragged pane still depends on.
+            // `tab_closed` reaches master asynchronously, and physical ACP
+            // close has a bounded 15-second timeout. Keep the final job-object
+            // reference alive slightly longer so last-tab/window teardown
+            // cannot kill wta-master before session/close completes.
             for (size_t i = 0; i < agentPanesOnTab; ++i)
             {
-                winrt::TerminalApp::implementation::SharedWta::Instance().ReleasePane();
+                SharedWta::ReleasePaneAfterSessionClose();
             }
         }
 

@@ -11,6 +11,13 @@
 #include "../inc/WtaProcess.h"
 #include "AgentPaneLog.h"
 
+namespace
+{
+    // Must remain strictly greater than WTA's 15-second
+    // SESSION_CLOSE_TIMEOUT in tools/wta/src/master/mod.rs.
+    constexpr auto WtaSessionCloseGracePeriod{ std::chrono::seconds{ 16 } };
+}
+
 namespace winrt::TerminalApp::implementation::details
 {
     std::optional<std::wstring> BuildEnvironmentBlock(
@@ -92,8 +99,9 @@ namespace winrt::TerminalApp::implementation
 
     SharedWta::~SharedWta()
     {
-        // Process is exiting; tear wta down deterministically via
-        // KILL_ON_JOB_CLOSE rather than letting handles leak.
+        // Process is exiting, so a graceful per-session close can no longer
+        // delay app shutdown. KILL_ON_JOB_CLOSE deterministically reclaims the
+        // master, every agent CLI, and their MCP descendants without orphans.
         //
         // Wait callback synchronisation: cancel the wait WITH a
         // blocking unregister BEFORE we touch the fields it might
@@ -193,6 +201,12 @@ namespace winrt::TerminalApp::implementation
             // no orphaned helpers left to keep consistent with.
             _degraded = false;
         }
+    }
+
+    winrt::fire_and_forget SharedWta::ReleasePaneAfterSessionClose()
+    {
+        co_await winrt::resume_after(WtaSessionCloseGracePeriod);
+        Instance().ReleasePane();
     }
 
     bool SharedWta::Restart()

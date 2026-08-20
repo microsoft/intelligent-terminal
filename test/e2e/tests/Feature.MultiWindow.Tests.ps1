@@ -44,6 +44,10 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
         # whereas invoking the item by name is deterministic. Retry the palette open (foreground can
         # miss), re-checking for a new COM window before each attempt.
         $wins0 = @(Get-WtWindows -App $script:app).window_id
+        $sourceHwnds = @(Get-WtWindowHwnds -App $script:app |
+            Where-Object { [int]$_.pid -eq [int]$script:app.Pid } |
+            ForEach-Object { [string]$_.hwnd })
+        Initialize-LogOffsets -App $script:app | Out-Null
         $newWin = $null
         for ($a = 0; $a -lt 3 -and -not $newWin; $a++) {
             Set-WtWindowForeground -App $script:app | Out-Null
@@ -68,6 +72,17 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
         if (-not $newWin -and -not (Test-WtWindowKeyFocusable -App $script:app)) { Set-ItResult -Skipped -Because 'foreground precondition for the command palette'; return }
         $newWin | Should -Not -BeNullOrEmpty -Because 'moving a tab to a new window must create a new COM window'
         $script:movedWin = $newWin
+        $script:movedHwnd = Wait-Until -TimeoutSec 15 -IntervalSec 1 -Quiet -Because 'moved WT window HWND' -Condition {
+            Get-WtWindowHwnds -App $script:app |
+                Where-Object {
+                    [int]$_.pid -eq [int]$script:app.Pid -and
+                    [string]$_.hwnd -notin $sourceHwnds
+                } |
+                Select-Object -First 1 -ExpandProperty hwnd
+        }
+        (Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart) |
+            Should -Not -Match 'closed ACP session resolved from destroyed tab' `
+            -Because 'moving a tab to another window must preserve, not close, its ACP session'
 
         # Chat preserved: the pinned agent session still carries the marker after the move.
         (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition { (Get-WtCapture -App $script:app -SessionId $script:agentSid -MaxLines 40) -match $marker }) |
@@ -110,6 +125,7 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
                 try { Close-WtPane -App $script:app -SessionId $p.session_id } catch { }
             }
         }
+
         # The moved window must still be present and its agent pane still readable (chat intact).
         (Test-Until -TimeoutSec 12 -IntervalSec 1 -Condition { @(Get-WtWindows -App $script:app).window_id -contains $moved }) |
             Should -BeTrue -Because 'closing the source window must NOT take down the moved window'
@@ -118,5 +134,93 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
         (Test-Until -TimeoutSec 12 -IntervalSec 1 -Condition {
                 -not [string]::IsNullOrWhiteSpace((Get-WtCapture -App $script:app -SessionId $script:agentSid -MaxLines 40))
             }) | Should -BeTrue -Because 'the moved window''s agent pane must remain alive after the source window closes'
+    }
+}
+
+Describe 'Feature: agent tab undock and redock lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:redockApp = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+    }
+    AfterAll { if ($script:redockApp) { Stop-Terminal -App $script:redockApp } }
+
+    It 'Move tab back to source window preserves the same ACP session' {
+        if (-not (Test-WtWindowKeyFocusable -App $script:redockApp)) {
+            Set-ItResult -Skipped -Because 'WT window cannot take foreground for the command palette'
+            return
+        }
+
+        Open-AgentPane -App $script:redockApp | Out-Null
+        Wait-AgentReady -App $script:redockApp -TimeoutSec 90 | Should -BeTrue
+        $originalSession = Get-AgentPaneSession -App $script:redockApp
+        $agentSid = $originalSession.PaneSessionId
+        $agentSid | Should -Not -BeNullOrEmpty
+        $originalSession.AcpSessionId | Should -Not -BeNullOrEmpty
+        $marker = "REDOCK$(Get-Random -Maximum 999999)"
+        Send-AgentPrompt -App $script:redockApp -Text "Remember the token $marker. Reply OK." | Out-Null
+        (Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
+            (Get-AgentPaneText -App $script:redockApp -PaneSessionId $agentSid -MaxLines 60) -match $marker
+        }) | Should -BeTrue -Because 'the chat marker must exist before undocking'
+        New-WtTab -App $script:redockApp -Title 'redock-source-survivor' | Out-Null
+        Send-WtWindowKey -App $script:redockApp -Vk 0x31 -Ctrl -Alt -RequireForeground | Out-Null
+        Start-Sleep -Milliseconds 800
+
+        Initialize-LogOffsets -App $script:redockApp | Out-Null
+        $sourceWindows = @(Get-WtWindows -App $script:redockApp).window_id
+        $sourceHwnds = @(Get-WtWindowHwnds -App $script:redockApp |
+            Where-Object { [int]$_.pid -eq [int]$script:redockApp.Pid } |
+            ForEach-Object { [string]$_.hwnd })
+        Send-WtWindowKey -App $script:redockApp -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
+        (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+            Test-CommandPaletteOpen -App $script:redockApp
+        }) | Should -BeTrue
+        Set-UiValue -App $script:redockApp -Selector '_searchBox' -Value 'Move tab to a new window' | Out-Null
+        Start-Sleep -Milliseconds 1000
+        $env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
+        & winapp ui invoke 'Move tab to a new window' -w ([string]$script:redockApp.Hwnd) 2>&1 | Out-Null
+
+        $temporaryWindow = Wait-Until -TimeoutSec 15 -IntervalSec 1 -Quiet -Because 'temporary undock window' -Condition {
+            @(Get-WtWindows -App $script:redockApp).window_id |
+                Where-Object { $_ -notin $sourceWindows } |
+                Select-Object -First 1
+        }
+        $temporaryWindow | Should -Not -BeNullOrEmpty
+        $temporaryHwnd = Wait-Until -TimeoutSec 15 -IntervalSec 1 -Quiet -Because 'temporary undock HWND' -Condition {
+            Get-WtWindowHwnds -App $script:redockApp |
+                Where-Object {
+                    [int]$_.pid -eq [int]$script:redockApp.Pid -and
+                    [string]$_.hwnd -notin $sourceHwnds
+                } |
+                Select-Object -First 1 -ExpandProperty hwnd
+        }
+        $temporaryHwnd | Should -Not -BeNullOrEmpty
+
+        $temporaryApp = $script:redockApp.PSObject.Copy()
+        $temporaryApp.Hwnd = $temporaryHwnd
+        if (-not (Test-WtWindowKeyFocusable -App $temporaryApp)) {
+            Set-ItResult -Skipped -Because 'temporary undock window cannot take foreground for redock'
+            return
+        }
+
+        Send-WtWindowKey -App $temporaryApp -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
+        (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+            Test-CommandPaletteOpen -App $temporaryApp
+        }) | Should -BeTrue
+        Set-UiValue -App $temporaryApp -Selector '_searchBox' -Value 'Move tab to window' | Out-Null
+        Start-Sleep -Milliseconds 1000
+        & winapp ui invoke 'Move tab to window' -w ([string]$temporaryApp.Hwnd) 2>&1 | Out-Null
+
+        (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition {
+            @(Get-WtWindows -App $script:redockApp).window_id -notcontains $temporaryWindow
+        }) | Should -BeTrue -Because 'redocking the only tab should close the temporary window'
+        (Get-ItLogText -App $script:redockApp -Name 'wta-main_master.log' -SinceStart) |
+            Should -Not -Match 'closed ACP session resolved from destroyed tab|closed helper-owned ACP session' `
+            -Because 'undock and redock are migrations, not ACP teardown'
+        $redockedSession = Get-AgentPaneSession -App $script:redockApp -PaneSessionId $agentSid
+        $redockedSession.AcpSessionId | Should -Be $originalSession.AcpSessionId `
+            -Because 'redocking must preserve the same ACP conversation'
+        (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition {
+            (Get-AgentPaneText -App $script:redockApp -PaneSessionId $agentSid -MaxLines 60) -match $marker
+        }) | Should -BeTrue -Because 'the same chat history must survive redocking'
     }
 }

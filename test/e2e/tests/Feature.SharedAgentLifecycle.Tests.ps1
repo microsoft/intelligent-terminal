@@ -1,7 +1,7 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #425 / issue #419: all Copilot tabs share one agent CLI through wta-master.
-# Closing one tab while its prompt is in flight must not tear down that shared
-# connection and break a sibling tab.
+# Closing one tab while its prompt is in flight must close only that tab's ACP
+# session, without tearing down the shared connection or breaking a sibling tab.
 
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -44,16 +44,12 @@ Describe 'Feature: shared agent CLI lifecycle' -Tag 'Feature' -Skip:(-not $scrip
         $survivorShell = Get-ActivePane -App $script:app
         Open-AgentPane -App $script:app | Out-Null
         $survivorAgent = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $survivorShell.session_id -TimeoutSec 30).PaneSessionId
-        Wait-AgentReady -App $script:app -PaneSessionId $survivorAgent -TimeoutSec 90 |
-            Should -BeTrue -Because 'the sibling agent tab must connect before the victim tab is closed'
 
         # A second tab shares the same master and underlying Copilot CLI.
         $victimShell = New-WtTab -App $script:app -Title 'mid-turn-close-victim'
         Set-WtPaneFocus -App $script:app -SessionId $victimShell.session_id
         Open-AgentPane -App $script:app | Out-Null
         $victimAgent = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $victimShell.session_id -TimeoutSec 30).PaneSessionId
-        Wait-AgentReady -App $script:app -PaneSessionId $victimAgent -TimeoutSec 90 |
-            Should -BeTrue -Because 'the victim agent tab must connect through the shared master'
 
         $masterReady = Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition $script:GetMaster
         $masterReady | Should -BeTrue -Because 'the two helpers must share a running master'
@@ -74,25 +70,17 @@ Describe 'Feature: shared agent CLI lifecycle' -Tag 'Feature' -Skip:(-not $scrip
 
         Close-WtPane -App $script:app -SessionId $victimShell.session_id
 
-        # This is the fixed #425 branch: the shared CLI finishes the orphaned turn,
-        # and master drops only its undeliverable result instead of propagating the
-        # responder error and tearing down every tab's connection.
-        $orphanDropped = Test-Until -TimeoutSec 120 -IntervalSec 0.5 -Condition {
-            (Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart) -match
-                'dropping orphan prompt result \(helper gone\)'
-        }
-        $orphanDropped | Should -BeTrue -Because 'the closed tab must exercise the orphan-result path'
+        Assert-Log -App $script:app -Name 'wta-main_master.log' `
+            -Pattern 'closed ACP session resolved from destroyed tab.*cleanup=PhysicallyClosed' -TimeoutSec 20
 
         $masterAfter = & $script:GetMaster
         $masterAfter.ProcessId | Should -Be $masterBefore.ProcessId -Because 'closing one tab must not restart the shared master'
         (Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart) |
-            Should -Not -Match 'agent CLI exited' -Because 'the orphan result must not tear down the shared agent CLI'
+            Should -Not -Match 'agent CLI exited' -Because 'closing one session must not tear down the shared agent CLI'
 
         # Final user-visible contract: the original sibling helper is still connected
         # and can complete a fresh turn without /restart or rebuilding its pane.
         Set-WtPaneFocus -App $script:app -SessionId $survivorShell.session_id
-        Wait-AgentReady -App $script:app -PaneSessionId $survivorAgent -TimeoutSec 30 |
-            Should -BeTrue -Because 'the original sibling helper must remain connected'
         Send-AgentPrompt -App $script:app -PaneSessionId $survivorAgent -Text `
             'What is 6 plus 7? Reply with only the number.' | Out-Null
         Assert-AgentPaneText -App $script:app -PaneSessionId $survivorAgent -Pattern '\b13\b' -TimeoutSec 60

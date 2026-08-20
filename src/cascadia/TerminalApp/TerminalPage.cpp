@@ -2555,7 +2555,7 @@ namespace winrt::TerminalApp::implementation
             // tab's pane tree.
             newPane->Closed([](auto&&, auto&&) {
                 _agentPaneLog("agent pane closed");
-                winrt::TerminalApp::implementation::SharedWta::Instance().ReleasePane();
+                winrt::TerminalApp::implementation::SharedWta::ReleasePaneAfterSessionClose();
             });
         }
 
@@ -8481,12 +8481,17 @@ namespace winrt::TerminalApp::implementation
                 // / tabs.
                 if (const auto focusedTab = _GetFocusedTabImpl())
                 {
-                    if (const auto existingAgentPane = focusedTab->FindAgentPane())
+                    if (focusedTab->FindAgentPane())
                     {
                         _agentPaneLog(
                             std::string{ "_MakeTerminalPane: drag-in tearing down pre-warm leftover on tab " } +
                             winrt::to_string(focusedTab->StableId()));
-                        existingAgentPane->Close();
+                        // This pre-warm helper owns its own ACP session. Close
+                        // it authoritatively before replacing the pane, and
+                        // suppress the expected helper-disconnect recovery so
+                        // it cannot tear down the incoming dragged pane.
+                        _NotifyAgentTabReset(focusedTab->StableId());
+                        _TeardownAgentPane(focusedTab, /*suppressMasterRestart*/ true);
                     }
                 }
 
@@ -8518,7 +8523,7 @@ namespace winrt::TerminalApp::implementation
                     // matching `Release` for that.
                     wrapped->Closed([](auto&&, auto&&) {
                         _agentPaneLog("drag-in agent pane closed");
-                        winrt::TerminalApp::implementation::SharedWta::Instance().ReleasePane();
+                        winrt::TerminalApp::implementation::SharedWta::ReleasePaneAfterSessionClose();
                     });
 
                     if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())

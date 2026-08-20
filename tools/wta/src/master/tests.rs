@@ -706,9 +706,13 @@ fn make_state() -> Arc<MasterStateInner> {
         agent_conn: OnceLock::new(),
         cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
+        tab_ownership_gate: Mutex::new(()),
+        pending_session_helpers: Mutex::new(HashMap::new()),
+        closing_session_helpers: Mutex::new(HashSet::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        orphaned_tabs: Mutex::new(HashMap::new()),
         host_list_cache: Mutex::new(None),
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
@@ -1445,6 +1449,48 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
         .await;
 }
 
+#[tokio::test]
+async fn failed_pending_session_cleanup_retires_close_marked_recovery_state() {
+    let state = make_state();
+    let helper_id = HelperId(120);
+    state
+        .pending_session_helpers
+        .lock()
+        .await
+        .insert(helper_id, Some("failed-pending-tab".to_string()));
+    state.closing_session_helpers.lock().await.insert(helper_id);
+    state.helper_meta.lock().await.insert(
+        helper_id,
+        HelperRecoveryMeta {
+            owner_tab_id: Some("failed-pending-tab".to_string()),
+            last_session_id: None,
+        },
+    );
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let handler = HelperHandler {
+        helper_id,
+        agent: Arc::new(OnceLock::new()),
+        state: Arc::clone(&state),
+        replacement_gate: Arc::new(Mutex::new(())),
+        notif_tx,
+        agent_side_slot: Arc::new(OnceLock::new()),
+    };
+
+    handler.finish_failed_pending_session().await;
+
+    assert!(!state
+        .pending_session_helpers
+        .lock()
+        .await
+        .contains_key(&helper_id));
+    assert!(!state
+        .closing_session_helpers
+        .lock()
+        .await
+        .contains(&helper_id));
+    assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
     tokio::task::LocalSet::new()
@@ -1637,6 +1683,756 @@ fn cloned_helper_handlers_share_the_lazy_agent_binding() {
         Arc::ptr_eq(&handler.replacement_gate, &request_handler.replacement_gate),
         "all request handler clones must share the replacement gate"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn helper_close_session_physically_closes_and_retires_owned_session() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(16);
+            let session_id = SessionId::new("tab-close-session");
+            let agent_instance_id = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(OnceLock::new());
+            assert!(agent
+                .set(Arc::new(AgentCli {
+                    instance_id: agent_instance_id,
+                    conn: client_connection_to_controlled_new_session_agent(
+                        events_tx,
+                        Arc::clone(&live_sessions),
+                        None,
+                    ),
+                    cached_init_resp,
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: "tab-close-agent".to_string(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                }))
+                .is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx: notif_tx.clone(),
+                agent_side_slot: Arc::new(OnceLock::new()),
+            };
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    session_id.clone(),
+                    PathBuf::from("C:\\repo"),
+                ))
+                .await;
+            let pending_capability = state
+                .session_mcp_capabilities
+                .prepare(agent_instance_id, None)
+                .await;
+            assert!(
+                state
+                    .session_mcp_capabilities
+                    .bind(&pending_capability, session_id.clone())
+                    .await
+            );
+            state.pending_usage.lock().await.insert(
+                session_id.clone(),
+                (
+                    helper_id,
+                    acp::schema::v1::SessionNotification::new(
+                        session_id.clone(),
+                        acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                            acp::schema::v1::ContentChunk::new("pending usage".into()),
+                        ),
+                    ),
+                ),
+            );
+            state.helper_meta.lock().await.insert(
+                helper_id,
+                HelperRecoveryMeta {
+                    owner_tab_id: Some("tab-16".to_string()),
+                    last_session_id: Some(session_id.clone()),
+                },
+            );
+
+            handler
+                .close_session(acp::schema::v1::CloseSessionRequest::new(
+                    session_id.clone(),
+                ))
+                .await
+                .expect("tab close should release the owned ACP session");
+
+            let Some(ReplacementEvent::Close(closed_session_id)) = events_rx.recv().await else {
+                panic!("tab close must reach the agent as session/close");
+            };
+            assert_eq!(closed_session_id, session_id);
+            assert!(!live_sessions.lock().await.contains(&session_id));
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+            assert!(state.registry.lookup(&session_id).await.is_none());
+            assert!(!state.pending_usage.lock().await.contains_key(&session_id));
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(agent_instance_id)
+                    .await,
+                0,
+                "tab close must revoke the session-scoped MCP capability"
+            );
+            assert!(
+                !state.helper_meta.lock().await.contains_key(&helper_id),
+                "clean close must remove crash-recovery metadata"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn master_reset_tab_session_resolves_owner_and_physically_retires_session() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let owner_helper_id = HelperId(116);
+            let session_id = SessionId::new("sibling-close-session");
+            let agent_instance_id = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: agent_instance_id,
+                conn: client_connection_to_controlled_new_session_agent(
+                    events_tx,
+                    Arc::clone(&live_sessions),
+                    None,
+                ),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "sibling-close-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), cell);
+
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id: owner_helper_id,
+                    agent_instance_id,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    session_id.clone(),
+                    PathBuf::from("C:\\repo"),
+                ))
+                .await;
+            state.helper_meta.lock().await.insert(
+                owner_helper_id,
+                HelperRecoveryMeta {
+                    owner_tab_id: Some("closed-tab-116".to_string()),
+                    last_session_id: Some(session_id.clone()),
+                },
+            );
+
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "reset_tab_session",
+                    "params": { "tab_id": "closed-tab-116" }
+                }),
+            )
+            .await;
+
+            let Some(ReplacementEvent::Close(closed_session_id)) = events_rx.recv().await else {
+                panic!("close-by-tab must reach the owning agent as session/close");
+            };
+            assert_eq!(closed_session_id, session_id);
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+            {
+                let meta = state.helper_meta.lock().await;
+                let recovery = meta
+                    .get(&owner_helper_id)
+                    .expect("reset keeps the surviving helper's tab ownership");
+                assert!(recovery.last_session_id.is_none());
+            }
+            assert!(!state
+                .closing_session_helpers
+                .lock()
+                .await
+                .contains(&owner_helper_id));
+
+            handle_close_tab_session(
+                &state,
+                &crate::session_registry::CloseTabSessionParams {
+                    tab_id: "closed-tab-116".to_string(),
+                },
+                false,
+            )
+            .await
+            .expect("duplicate close-by-tab must be idempotent");
+
+            let (peer_ext_tx, mut peer_ext_rx) = mpsc::unbounded_channel();
+            state
+                .helper_ext_subscribers
+                .lock()
+                .await
+                .insert(HelperId(117), peer_ext_tx);
+            let orphan_session_id = SessionId::new("late-orphan-close-session");
+            live_sessions.lock().await.insert(orphan_session_id.clone());
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(agent.cmd_key.clone())
+                .or_default()
+                .insert(orphan_session_id.clone());
+            state.orphaned_tabs.lock().await.insert(
+                "late-closed-tab".to_string(),
+                (
+                    agent.cmd_key.clone(),
+                    owner_helper_id,
+                    orphan_session_id.clone(),
+                ),
+            );
+            state.helper_meta.lock().await.insert(
+                owner_helper_id,
+                HelperRecoveryMeta {
+                    owner_tab_id: Some("late-closed-tab".to_string()),
+                    last_session_id: Some(orphan_session_id.clone()),
+                },
+            );
+
+            let close_params = crate::session_registry::CloseTabSessionParams {
+                tab_id: "late-closed-tab".to_string(),
+            };
+            let (first_close, duplicate_close) = tokio::join!(
+                handle_close_tab_session(&state, &close_params, false),
+                handle_close_tab_session(&state, &close_params, false)
+            );
+            first_close
+                .expect("late close-by-tab must physically close a disconnected helper's orphan");
+            duplicate_close.expect("concurrent late close-by-tab must be idempotent");
+            let Some(ReplacementEvent::Close(closed_orphan_id)) = events_rx.recv().await else {
+                panic!("late close-by-tab must reach the owning agent as session/close");
+            };
+            assert_eq!(closed_orphan_id, orphan_session_id);
+            assert!(
+                events_rx.try_recv().is_err(),
+                "concurrent duplicate must not issue a second session/close"
+            );
+            assert!(
+                peer_ext_rx.try_recv().is_ok() && peer_ext_rx.try_recv().is_ok(),
+                "orphan close must broadcast session removal and list refresh to peers"
+            );
+            assert!(!state
+                .orphaned_tabs
+                .lock()
+                .await
+                .contains_key("late-closed-tab"));
+            assert!(!state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get(&agent.cmd_key)
+                .is_some_and(|sessions| sessions.contains(&orphan_session_id)));
+            assert!(
+                !state
+                    .helper_meta
+                    .lock()
+                    .await
+                    .contains_key(&owner_helper_id),
+                "late intentional close must remove crash-recovery metadata"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn master_tab_rename_rekeys_live_and_orphan_ownership() {
+    let state = make_state();
+    let helper_id = HelperId(118);
+    let session_id = SessionId::new("dragged-session");
+    state.helper_meta.lock().await.insert(
+        helper_id,
+        HelperRecoveryMeta {
+            owner_tab_id: Some("old-stable-id".to_string()),
+            last_session_id: Some(session_id.clone()),
+        },
+    );
+    state.orphaned_tabs.lock().await.insert(
+        "old-stable-id".to_string(),
+        ("copilot --acp --stdio".to_string(), helper_id, session_id),
+    );
+    state
+        .pending_session_helpers
+        .lock()
+        .await
+        .insert(helper_id, Some("old-stable-id".to_string()));
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "tab_renamed",
+            "params": {
+                "old_tab_id": "old-stable-id",
+                "new_tab_id": "new-stable-id",
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        state
+            .helper_meta
+            .lock()
+            .await
+            .get(&helper_id)
+            .and_then(|meta| meta.owner_tab_id.as_deref()),
+        Some("new-stable-id")
+    );
+    assert_eq!(
+        state
+            .pending_session_helpers
+            .lock()
+            .await
+            .get(&helper_id)
+            .and_then(Option::as_deref),
+        Some("new-stable-id")
+    );
+    let orphaned_tabs = state.orphaned_tabs.lock().await;
+    assert!(!orphaned_tabs.contains_key("old-stable-id"));
+    assert!(orphaned_tabs.contains_key("new-stable-id"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(117);
+            let agent_instance_id = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::new()));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: agent_instance_id,
+                conn: client_connection_to_controlled_new_session_agent(
+                    events_tx,
+                    Arc::clone(&live_sessions),
+                    None,
+                ),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "pending-new-close-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), cell);
+
+            let agent_slot = Arc::new(OnceLock::new());
+            assert!(agent_slot.set(Arc::clone(&agent)).is_ok());
+            let agent_side_slot = Arc::new(OnceLock::new());
+            agent_side_slot
+                .set(agent_link_to_noop_client())
+                .expect("agent-side forwarder should be set once");
+            let handler = HelperHandler {
+                helper_id,
+                agent: agent_slot,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx,
+                agent_side_slot,
+            };
+            let mut request =
+                acp::schema::v1::NewSessionRequest::new(PathBuf::from("C:\\pending-new"));
+            crate::session_registry::inject_wta_meta(
+                &mut request.meta,
+                &crate::session_registry::WtaMeta {
+                    owner_tab_id: Some("closing-pending-new-tab".to_string()),
+                    ..Default::default()
+                },
+            );
+
+            let new_task = tokio::task::spawn_local({
+                let handler = handler.clone();
+                async move { handler.new_session(request).await }
+            });
+            let ReplacementEvent::New(_, release_new) = events_rx
+                .recv()
+                .await
+                .expect("session/new should reach the controlled agent")
+            else {
+                panic!("expected a blocked session/new request");
+            };
+
+            handle_close_tab_session(
+                &state,
+                &crate::session_registry::CloseTabSessionParams {
+                    tab_id: "closing-pending-new-tab".to_string(),
+                },
+                false,
+            )
+            .await
+            .expect("tab close should mark the in-flight session for retirement");
+            assert!(state
+                .closing_session_helpers
+                .lock()
+                .await
+                .contains(&helper_id));
+
+            release_new
+                .send(())
+                .expect("the controlled session/new should still be waiting");
+            let mut response = new_task
+                .await
+                .expect("session/new task should finish")
+                .expect("the agent response should be consumed before retirement");
+            let Some(ReplacementEvent::Close(closed_session_id)) = events_rx.recv().await else {
+                panic!("the late-created session must be physically closed");
+            };
+            assert_eq!(closed_session_id, response.session_id);
+            assert_eq!(
+                crate::session_registry::extract_wta_meta(&mut response.meta)
+                    .session_result
+                    .as_deref(),
+                Some("retired"),
+                "the helper must not bind a session retired during tab destruction"
+            );
+            assert!(live_sessions.lock().await.is_empty());
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(state.registry.lookup(&response.session_id).await.is_none());
+            assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+            assert!(!state
+                .pending_session_helpers
+                .lock()
+                .await
+                .contains_key(&helper_id));
+            assert!(!state
+                .closing_session_helpers
+                .lock()
+                .await
+                .contains(&helper_id));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(121);
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::new()));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
+                conn: client_connection_to_controlled_new_session_agent(
+                    events_tx,
+                    Arc::clone(&live_sessions),
+                    None,
+                ),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "missing-forwarder-new-session-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let agent_slot = Arc::new(OnceLock::new());
+            assert!(agent_slot.set(agent).is_ok());
+            let handler = HelperHandler {
+                helper_id,
+                agent: agent_slot,
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx,
+                // Deliberately unset: the helper disconnected after the agent
+                // accepted session/new but before route installation.
+                agent_side_slot: Arc::new(OnceLock::new()),
+            };
+            let request =
+                acp::schema::v1::NewSessionRequest::new(PathBuf::from("C:\\missing-forwarder"));
+            let new_task = tokio::task::spawn_local({
+                let handler = handler.clone();
+                async move { handler.new_session(request).await }
+            });
+            let ReplacementEvent::New(0, release_new) = events_rx
+                .recv()
+                .await
+                .expect("session/new should reach the controlled agent")
+            else {
+                panic!("expected a blocked session/new request");
+            };
+            release_new
+                .send(())
+                .expect("the controlled session/new should still be waiting");
+
+            new_task
+                .await
+                .expect("session/new task should finish")
+                .expect_err("the missing helper forwarder must reject the response");
+            let Some(ReplacementEvent::Close(closed_session_id)) = events_rx.recv().await else {
+                panic!("the unreachable new session must be physically closed");
+            };
+            assert_eq!(closed_session_id, SessionId::new("replacement-b"));
+            assert!(live_sessions.lock().await.is_empty());
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(!state
+                .pending_session_helpers
+                .lock()
+                .await
+                .contains_key(&helper_id));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn close_by_tab_resolves_pre_registered_load_route_without_last_session_metadata() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(118);
+            let session_id = SessionId::new("pending-load-close-session");
+            let agent_instance_id = AgentInstanceId::new_v4();
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: agent_instance_id,
+                conn: client_connection_to_controlled_new_session_agent(
+                    events_tx,
+                    Arc::clone(&live_sessions),
+                    None,
+                ),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "pending-load-close-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), cell);
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+            state.helper_meta.lock().await.insert(
+                helper_id,
+                HelperRecoveryMeta {
+                    owner_tab_id: Some("closing-pending-load-tab".to_string()),
+                    last_session_id: None,
+                },
+            );
+            state
+                .pending_session_helpers
+                .lock()
+                .await
+                .insert(helper_id, Some("closing-pending-load-tab".to_string()));
+
+            handle_close_tab_session(
+                &state,
+                &crate::session_registry::CloseTabSessionParams {
+                    tab_id: "closing-pending-load-tab".to_string(),
+                },
+                false,
+            )
+            .await
+            .expect("tab close should resolve the pre-registered load route");
+
+            let Some(ReplacementEvent::Close(closed_session_id)) = events_rx.recv().await else {
+                panic!("the in-flight load target must be physically closed");
+            };
+            assert_eq!(closed_session_id, session_id);
+            assert!(live_sessions.lock().await.is_empty());
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(state
+                .closing_session_helpers
+                .lock()
+                .await
+                .contains(&helper_id));
+            assert!(state.helper_meta.lock().await.contains_key(&helper_id));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn close_by_tab_clears_idle_recovery_metadata_without_a_live_session() {
+    let state = make_state();
+    let helper_id = HelperId(119);
+    state.helper_meta.lock().await.insert(
+        helper_id,
+        HelperRecoveryMeta {
+            owner_tab_id: Some("idle-closed-tab".to_string()),
+            last_session_id: None,
+        },
+    );
+
+    handle_close_tab_session(
+        &state,
+        &crate::session_registry::CloseTabSessionParams {
+            tab_id: "idle-closed-tab".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("an idle tab close should remain idempotent");
+
+    assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+    assert!(!state
+        .closing_session_helpers
+        .lock()
+        .await
+        .contains(&helper_id));
+}
+
+#[tokio::test]
+async fn duplicate_close_preserves_marker_until_committing_transaction_consumes_it() {
+    let state = make_state();
+    let helper_id = HelperId(122);
+    state.helper_meta.lock().await.insert(
+        helper_id,
+        HelperRecoveryMeta {
+            owner_tab_id: Some("committing-closed-tab".to_string()),
+            last_session_id: None,
+        },
+    );
+    state.closing_session_helpers.lock().await.insert(helper_id);
+
+    handle_close_tab_session(
+        &state,
+        &crate::session_registry::CloseTabSessionParams {
+            tab_id: "committing-closed-tab".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("duplicate close remains idempotent");
+
+    assert!(state.helper_meta.lock().await.contains_key(&helper_id));
+    assert!(state
+        .closing_session_helpers
+        .lock()
+        .await
+        .contains(&helper_id));
+}
+
+#[tokio::test]
+async fn close_finds_pending_transaction_before_recovery_metadata_is_published() {
+    let state = make_state();
+    let helper_id = HelperId(123);
+    state
+        .pending_session_helpers
+        .lock()
+        .await
+        .insert(helper_id, Some("pending-owner-tab".to_string()));
+
+    handle_close_tab_session(
+        &state,
+        &crate::session_registry::CloseTabSessionParams {
+            tab_id: "pending-owner-tab".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("close should defer to the pending transaction");
+
+    assert!(state
+        .pending_session_helpers
+        .lock()
+        .await
+        .contains_key(&helper_id));
+    assert!(state
+        .closing_session_helpers
+        .lock()
+        .await
+        .contains(&helper_id));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2839,6 +3635,14 @@ async fn reap_agent_drops_only_its_own_orphans() {
             .or_default()
             .insert(SessionId::new("b-sess"));
     }
+    state.orphaned_tabs.lock().await.insert(
+        "tab-a".to_string(),
+        (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
+    );
+    state.orphaned_tabs.lock().await.insert(
+        "tab-b".to_string(),
+        (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
+    );
     // reap only acts when the key is a live pool entry.
     let cell = {
         let mut agents = state.agents.lock().await;
@@ -2863,6 +3667,16 @@ async fn reap_agent_drops_only_its_own_orphans() {
             .get(&key_b)
             .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
         "a co-resident agent's orphans must be untouched"
+    );
+    drop(orphans);
+    let orphaned_tabs = state.orphaned_tabs.lock().await;
+    assert!(
+        !orphaned_tabs.contains_key("tab-a"),
+        "reaping an agent must remove its stale tab fallback"
+    );
+    assert!(
+        orphaned_tabs.contains_key("tab-b"),
+        "reaping one agent must preserve another agent's tab fallback"
     );
 }
 
@@ -4362,9 +5176,13 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         agent_conn: OnceLock::new(),
         cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
+        tab_ownership_gate: Mutex::new(()),
+        pending_session_helpers: Mutex::new(HashMap::new()),
+        closing_session_helpers: Mutex::new(HashSet::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        orphaned_tabs: Mutex::new(HashMap::new()),
         host_list_cache: Mutex::new(None),
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),

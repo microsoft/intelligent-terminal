@@ -78,6 +78,106 @@ pub(super) fn test_app() -> App {
     )
 }
 
+fn test_app_with_drop_session_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
+) {
+    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        drop_session_rx,
+    )
+}
+
+#[test]
+fn tab_close_drops_state_and_requests_acp_session_close() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    let tab_id = "closed-tab";
+    app.tab_id = Some(tab_id.to_string());
+    app.current_tab_mut().session_id = Some("session-to-close".to_string());
+
+    app.drop_tab_session(tab_id);
+
+    assert!(!app.tab_sessions.contains_key(tab_id));
+    let request = drop_session_rx
+        .try_recv()
+        .expect("tab close must request ACP session teardown");
+    assert_eq!(request.tab_id, tab_id);
+    assert!(request.notify_master);
+}
+
+#[test]
+fn cross_window_tab_close_only_requests_master_cleanup() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    app.window_id = Some("window-a".to_string());
+    app.tab_id = Some("local-tab".to_string());
+    app.tab_sessions
+        .insert("local-tab".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "tab_closed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": "window-b",
+            "tab_id": "foreign-closed-tab",
+        }),
+    });
+
+    assert!(
+        app.tab_sessions.contains_key("local-tab"),
+        "a cross-window close must not mutate this helper's local tab state"
+    );
+    let request = drop_session_rx
+        .try_recv()
+        .expect("a surviving helper must forward cross-window close to master");
+    assert_eq!(request.tab_id, "foreign-closed-tab");
+    assert!(request.notify_master);
+}
+
+#[test]
+fn reset_tab_session_clears_local_binding_without_duplicate_master_close() {
+    let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
+    let tab_id = "reset-tab";
+    app.tab_id = Some(tab_id.to_string());
+    app.current_tab_mut().session_id = Some("session-to-reset".to_string());
+
+    app.reset_tab_session_for(tab_id);
+
+    let request = drop_session_rx
+        .try_recv()
+        .expect("reset must ask the ACP client task to clear its local binding");
+    assert_eq!(request.tab_id, tab_id);
+    assert!(
+        !request.notify_master,
+        "the master consumes WT reset events directly and owns physical close"
+    );
+}
+
 fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
     json!({
         "window_id": window_id,
@@ -5260,8 +5360,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5327,8 +5427,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5864,8 +5964,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5945,8 +6045,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -6427,9 +6527,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -6438,13 +6538,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -9364,7 +9464,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -9786,10 +9886,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -9807,21 +9907,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },

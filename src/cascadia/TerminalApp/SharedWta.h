@@ -99,6 +99,12 @@ namespace winrt::TerminalApp::implementation
         /// teardown paths that aren't sure whether they acquired).
         void ReleasePane();
 
+        /// Release a previously acquired reference after the bounded ACP
+        /// session-close window. Agent-pane Closed events can fire before
+        /// the owning tab publishes tab_closed, so an immediate final
+        /// release could terminate wta-master before session/close runs.
+        static winrt::fire_and_forget ReleasePaneAfterSessionClose();
+
         /// Force-restart the wta-master process, bypassing the
         /// `AcquirePane`/`ReleasePane` reference count. Used by the
         /// `/restart` slash command path: the caller (TerminalPage)

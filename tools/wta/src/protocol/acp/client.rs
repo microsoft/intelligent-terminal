@@ -230,6 +230,10 @@ pub struct LoadSessionForTab {
 #[derive(Debug, Clone)]
 pub struct DropSessionRequest {
     pub tab_id: String,
+    /// `false` when WT already published a process-wide reset event that the
+    /// master consumes directly. The helper still clears its local binding
+    /// and cancellation state, but must not race a duplicate physical close.
+    pub notify_master: bool,
 }
 
 /// Rekey the `tab_to_session` binding when WT mints a new stable tab id
@@ -491,8 +495,8 @@ const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
 const TOOL_CALL_OUTPUT_MAX_CHARS: usize = 4000;
 
 fn tool_call_kind(kind: acp::schema::v1::ToolKind) -> crate::app::ToolCallKind {
-    use acp::schema::v1::ToolKind;
     use crate::app::ToolCallKind as AppKind;
+    use acp::schema::v1::ToolKind;
 
     match kind {
         ToolKind::Read => AppKind::Read,
@@ -566,8 +570,8 @@ fn bounded_tool_output(text: &str) -> crate::app::ToolCallOutput {
 fn tool_call_content(
     content: &[acp::schema::v1::ToolCallContent],
 ) -> Vec<crate::app::ToolCallContent> {
-    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
     use crate::app::ToolCallContent as AppContent;
+    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
 
     content
         .iter()
@@ -598,10 +602,10 @@ fn tool_call_content(
                     }
                     EmbeddedResourceResource::BlobResourceContents(resource) => {
                         AppContent::Attachment {
-                            label: resource.mime_type.as_deref().map_or_else(
-                                || resource.uri.clone(),
-                                str::to_string,
-                            ),
+                            label: resource
+                                .mime_type
+                                .as_deref()
+                                .map_or_else(|| resource.uri.clone(), str::to_string),
                             uri: resource.mime_type.as_ref().map(|_| resource.uri.clone()),
                         }
                     }
@@ -1001,7 +1005,7 @@ impl WtaClient {
     async fn dispatch_session_notification(&self, args: acp::schema::v1::SessionNotification) {
         let usage_session_id =
             matches!(&args.update, acp::schema::v1::SessionUpdate::UsageUpdate(_))
-        .then(|| args.session_id.0.to_string());
+                .then(|| args.session_id.0.to_string());
 
         if self.session_notification(args).await.is_err() {
             if let Some(session_id) = usage_session_id {
@@ -1413,7 +1417,9 @@ impl WtaClient {
                         .map(str::trim)
                         .filter(|message| !message.is_empty());
                     match reason {
-                        Some(message) if matches!(status, acp::schema::v1::ToolCallStatus::Failed) => {
+                        Some(message)
+                            if matches!(status, acp::schema::v1::ToolCallStatus::Failed) =>
+                        {
                             format!("{:?}: {}", status, message)
                         }
                         _ => format!("{:?}", status),
@@ -1425,9 +1431,7 @@ impl WtaClient {
                 let output = if let Some(content) = &update.fields.content {
                     Some(
                         tool_call_content_text(content)
-                            .or_else(|| {
-                                update.fields.raw_output.as_ref().and_then(raw_output_text)
-                            })
+                            .or_else(|| update.fields.raw_output.as_ref().and_then(raw_output_text))
                             .unwrap_or(crate::app::ToolCallOutput {
                                 text: String::new(),
                                 truncated: false,
@@ -1706,8 +1710,9 @@ impl WtaClient {
                 ))
             })?;
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
-            acp::Error::internal_error()
-                .data(format!("failed to encode terminal action arguments: {error}"))
+            acp::Error::internal_error().data(format!(
+                "failed to encode terminal action arguments: {error}"
+            ))
         })?;
         if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
             let response = ProposalValidationResponse {
@@ -1761,24 +1766,20 @@ impl WtaClient {
                 .reject_validation(&proposal_id, false);
             return Err(acp::Error::internal_error().data("Helper UI is unavailable"));
         }
-        let decision = match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            validation_rx,
-        )
-        .await
-        {
-            Ok(Ok(decision)) => decision,
-            Ok(Err(_)) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper dropped the validation response".to_string()),
-                retryable: false,
-            },
-            Err(_) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper validation timed out".to_string()),
-                retryable: false,
-            },
-        };
+        let decision =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), validation_rx).await {
+                Ok(Ok(decision)) => decision,
+                Ok(Err(_)) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper dropped the validation response".to_string()),
+                    retryable: false,
+                },
+                Err(_) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper validation timed out".to_string()),
+                    retryable: false,
+                },
+            };
         if decision.status != ProposalValidationStatus::Accepted {
             let retryable = self
                 .state
@@ -2096,28 +2097,40 @@ async fn probe_private_usage(
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
 
-/// Process-wide owner tab StableId for this helper, seeded once at
-/// startup from `--owner-tab-id`. A helper process owns exactly one WT
-/// tab for its lifetime, so a `OnceLock` is the right shape: set once in
-/// `main()`, read by [`inject_wta_pane_meta`] on every `session/new` /
-/// `session/load` so master can record `owner_tab_id` on the routing
-/// entry and address `restart_agent_pane` recovery events by StableId.
-static HELPER_OWNER_TAB_ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+/// Process-wide owner tab StableId for this helper, seeded at startup and
+/// rekeyed when WT drags the tab into another window. Every later
+/// `session/new` / `session/load` reads the current value so master does not
+/// get re-poisoned with the pre-drag StableId.
+static HELPER_OWNER_TAB_ID: std::sync::OnceLock<std::sync::RwLock<Option<String>>> =
+    std::sync::OnceLock::new();
 
-/// Seed the process-wide owner tab StableId. Idempotent — only the first
-/// call wins (subsequent calls are ignored), matching the "one tab per
-/// helper for its whole life" invariant. Empty/blank ids are stored as
+/// Seed the process-wide owner tab StableId. Empty/blank ids are stored as
 /// `None`.
 pub fn set_helper_owner_tab_id(owner_tab_id: Option<&str>) {
     let normalized = owner_tab_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from);
-    let _ = HELPER_OWNER_TAB_ID.set(normalized);
+    *HELPER_OWNER_TAB_ID
+        .get_or_init(|| std::sync::RwLock::new(None))
+        .write()
+        .unwrap() = normalized;
 }
 
 fn helper_owner_tab_id() -> Option<String> {
-    HELPER_OWNER_TAB_ID.get().cloned().flatten()
+    HELPER_OWNER_TAB_ID
+        .get()
+        .and_then(|owner| owner.read().unwrap().clone())
+}
+
+fn rename_helper_owner_tab_id(old_tab_id: &str, new_tab_id: &str) {
+    let Some(owner) = HELPER_OWNER_TAB_ID.get() else {
+        return;
+    };
+    let mut owner = owner.write().unwrap();
+    if owner.as_deref() == Some(old_tab_id) {
+        *owner = Some(new_tab_id.to_string());
+    }
 }
 
 /// Inject `_meta.wta.pane_session_id = $WT_SESSION` (lowercased, no
@@ -2134,10 +2147,7 @@ fn helper_owner_tab_id() -> Option<String> {
 /// No-op for whichever fields are unavailable: `pane_session_id` when
 /// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
 /// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
-fn inject_wta_pane_meta(
-    meta: &mut Option<acp::schema::v1::Meta>,
-    proposal_mcp_enabled: bool,
-) {
+fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>, proposal_mcp_enabled: bool) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
     let pane_session_id = {
         let normalized = wt_session
@@ -2162,6 +2172,13 @@ fn inject_wta_pane_meta(
             ..Default::default()
         },
     );
+}
+
+fn take_retired_session_result(meta: &mut Option<acp::schema::v1::Meta>) -> bool {
+    crate::session_registry::extract_wta_meta(meta)
+        .session_result
+        .as_deref()
+        == Some("retired")
 }
 
 fn elapsed_ms_since(start: std::time::Instant) -> f64 {
@@ -2239,9 +2256,7 @@ async fn handle_load_failure(
     tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     error_message: String,
-    _proposal_channels: Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     if let Some(old) = old_sid {
@@ -2270,7 +2285,16 @@ async fn handle_load_failure(
     let fallback = conn.new_session(new_req).await;
     log_acp_new_session_result("HelperPipeFallback", fallback_started, &fallback);
     match fallback {
-        Ok(resp) => {
+        Ok(mut resp) => {
+            if take_retired_session_result(&mut resp.meta) {
+                tracing::info!(
+                    target: "acp_load_session",
+                    tab = %tab_id,
+                    session_id = %resp.session_id,
+                    "ignoring boot-time fallback session retired during tab reset or close"
+                );
+                return;
+            }
             let new_sid = resp.session_id.clone();
             tracing::info!(
                 target: "acp_load_session",
@@ -2701,8 +2725,7 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    let cloud_catalog =
-        crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+    let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
     {
@@ -2878,8 +2901,7 @@ pub async fn run_acp_client_over_pipe(
             .unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
     let (session_id, mut available_models, mut current_model_id, mut session_config, has_bootstrap) =
-        if let Some(load_sid) = initial_load_session_id.as_deref()
-        {
+        if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
             // sid as a placeholder so the App flips to Connected (and
             // binds session_id → owner_tab in `session_to_tab` early,
@@ -2916,7 +2938,7 @@ pub async fn run_acp_client_over_pipe(
                 new_session_started,
                 &new_session_result,
             );
-            let session = new_session_result.map_err(|e| {
+            let mut session = new_session_result.map_err(|e| {
                 let failure = AgentFailure::from_acp_error(&e);
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
@@ -2957,6 +2979,9 @@ pub async fn run_acp_client_over_pipe(
                 anyhow::Error::new(failure)
                     .context(format!("new_session over master pipe failed: {e}"))
             })?;
+            if take_retired_session_result(&mut session.meta) {
+                anyhow::bail!("bootstrap session retired during tab reset or close");
+            }
 
             let session_id = session.session_id.clone();
             startup_probe.log(&format!("Session created (over pipe): {}", session_id));
@@ -3213,10 +3238,16 @@ pub async fn run_acp_client_over_pipe(
                 );
             }
             Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
+                dispatch_drop_session(
+                    req,
+                    &conn,
+                    &tab_to_session,
+                    &template_memo,
+                    &cancel_signals,
+                ).await;
             }
             Some(req) = rename_session_rx.recv() => {
-                dispatch_rename_session(req, &tab_to_session);
+                dispatch_rename_session(req, &tab_to_session).await;
             }
             Some(prompt) = prompt_rx.recv() => {
                 dispatch_prompt(
@@ -3566,9 +3597,7 @@ fn dispatch_load_session(
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
     timeout: std::time::Duration,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -3636,7 +3665,16 @@ fn dispatch_load_session(
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
 
         match load_result {
-            Ok(Ok(resp)) => {
+            Ok(Ok(mut resp)) => {
+                if take_retired_session_result(&mut resp.meta) {
+                    tracing::info!(
+                        target: "acp_load_session",
+                        tab = %req.tab_id,
+                        session_id = %req.session_id,
+                        "ignoring session/load result retired during tab reset or close"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "acp_load_session",
                     tab = %req.tab_id,
@@ -3753,9 +3791,7 @@ async fn dispatch_load_failure(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     message: String,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     if use_load_failure_handler {
@@ -3804,9 +3840,7 @@ fn dispatch_new_session(
     is_agent_pane: bool,
     inject_pane_meta: bool,
     log_label: &'static str,
-    _proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -3855,7 +3889,7 @@ fn dispatch_new_session(
         let new_session_started = std::time::Instant::now();
         let new_session_result = conn.new_session(new_session_req).await;
         log_acp_new_session_result(log_label, new_session_started, &new_session_result);
-        let new_session = match new_session_result {
+        let mut new_session = match new_session_result {
             Ok(s) => s,
             Err(e) => {
                 let _ = event_tx.send(AppEvent::AgentError {
@@ -3866,6 +3900,15 @@ fn dispatch_new_session(
                 return;
             }
         };
+        if take_retired_session_result(&mut new_session.meta) {
+            tracing::info!(
+                target: "acp_new_session",
+                tab = %req.tab_id,
+                session_id = %new_session.session_id,
+                "ignoring session/new result retired during tab reset or close"
+            );
+            return;
+        }
 
         let new_sid = new_session.session_id.clone();
         if is_agent_pane {
@@ -3900,13 +3943,13 @@ fn dispatch_new_session(
     });
 }
 
-/// Drop a tab's ACP session binding without creating a replacement
-/// (Ctrl+C×2 close-pane path). Signals any in-flight prompt for that
-/// session to bail out of `conn.prompt().await`, forgets its template
-/// memo, and best-effort notifies the agent via `session/cancel`.
+/// Close a tab's ACP session without creating a replacement (tab close or
+/// Ctrl+C×2 close-pane path). Signals any in-flight prompt to bail out of
+/// `conn.prompt().await`, forgets its template memo, and asks master to
+/// physically release the session through master's close-by-tab extension.
 /// No-op when the tab holds no session. Called by
 /// `run_acp_client_over_pipe`.
-fn dispatch_drop_session(
+async fn dispatch_drop_session(
     req: DropSessionRequest,
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
@@ -3916,39 +3959,53 @@ fn dispatch_drop_session(
     tracing::info!(
         target: "acp_drop_session",
         tab = %req.tab_id,
-        "drop_session requested (no replacement)"
+        "close session requested (no replacement)"
     );
+    let old_sid = {
+        let mut sessions = tab_to_session.lock().await;
+        sessions.remove(&req.tab_id)
+    };
+    if let Some(old) = old_sid {
+        let old_str = old.to_string();
+        crate::protocol::acp::model_select::forget_session(&old_str);
+        template_memo.forget(&old_str).await;
+        if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
+            let _ = sig.send(());
+        }
+    }
+
+    if !req.notify_master {
+        return;
+    }
+
+    // The helper that owns the closing tab may be destroyed before it can
+    // process this event. Every surviving helper therefore asks master to
+    // resolve the stable tab id against its authoritative routing metadata.
+    // Duplicate requests are intentionally idempotent. Keep the bounded
+    // master RPC off the helper's main receive loop so sibling work remains
+    // responsive while the agent unwinds the cancelled turn.
+    let close_tab_request = crate::session_registry::build_close_tab_session_request(&req.tab_id);
     let conn = conn.clone();
-    let tab_to_session = Arc::clone(tab_to_session);
-    let template_memo = template_memo.clone();
-    let cancel_signals = Arc::clone(cancel_signals);
+    let tab_id = req.tab_id;
     tokio::task::spawn_local(async move {
-        let old_sid: Option<acp::schema::v1::SessionId> = {
-            let mut g = tab_to_session.lock().await;
-            g.remove(&req.tab_id)
-        };
-        if let Some(old) = old_sid {
-            // Signal any in-flight prompt for this session to bail out of
-            // conn.prompt().await immediately, then send a session/cancel
-            // to the agent. Mirrors the new_session cancel path, minus the
-            // new_session round-trip.
-            let old_str = old.to_string();
-            crate::protocol::acp::model_select::forget_session(&old_str);
-            template_memo.forget(&old_str).await;
-            if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
-                let _ = sig.send(());
-            }
-            if let Err(e) = conn
-                .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
-                .await
-            {
-                tracing::warn!(
-                    target: "acp_drop_session",
-                    tab = %req.tab_id,
-                    error = ?e,
-                    "session/cancel after drop failed (likely unsupported)"
-                );
-            }
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(18),
+            conn.ext_method(close_tab_request),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => tracing::warn!(
+                target: "acp_drop_session",
+                tab = %tab_id,
+                error = ?error,
+                "master close-by-tab request failed"
+            ),
+            Err(_) => tracing::warn!(
+                target: "acp_drop_session",
+                tab = %tab_id,
+                "master close-by-tab request timed out"
+            ),
         }
     });
 }
@@ -3988,27 +4045,25 @@ fn dispatch_cancel(
 /// `rename_session_rx` arm of `run_acp_client_over_pipe`, so the rekey
 /// can be unit-tested against
 /// the shared map. No-op when `old_tab_id` is absent.
-fn dispatch_rename_session(
+async fn dispatch_rename_session(
     req: RenameSessionRequest,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
 ) {
-    let tab_to_session = Arc::clone(tab_to_session);
-    tokio::task::spawn_local(async move {
-        let mut g = tab_to_session.lock().await;
-        let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
-            g.insert(req.new_tab_id.clone(), sid);
-            true
-        } else {
-            false
-        };
-        tracing::info!(
-            target: "acp_rename_session",
-            old_tab_id = %req.old_tab_id,
-            new_tab_id = %req.new_tab_id,
-            old_existed,
-            "tab_to_session rekeyed via drag"
-        );
-    });
+    rename_helper_owner_tab_id(&req.old_tab_id, &req.new_tab_id);
+    let mut g = tab_to_session.lock().await;
+    let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
+        g.insert(req.new_tab_id.clone(), sid);
+        true
+    } else {
+        false
+    };
+    tracing::info!(
+        target: "acp_rename_session",
+        old_tab_id = %req.old_tab_id,
+        new_tab_id = %req.new_tab_id,
+        old_existed,
+        "tab_to_session rekeyed via drag"
+    );
 }
 
 /// Assemble the ACP prompt content: the (already-templated) text block,
@@ -4137,7 +4192,7 @@ async fn dispatch_prompt_body(
                 new_session_started,
                 &new_session_result,
             );
-            let new_session = match new_session_result {
+            let mut new_session = match new_session_result {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = event_tx_task.send(AppEvent::AgentError {
@@ -4149,6 +4204,16 @@ async fn dispatch_prompt_body(
                     return;
                 }
             };
+            if take_retired_session_result(&mut new_session.meta) {
+                tracing::info!(
+                    target: "acp_new_session",
+                    tab = %tab_key_task,
+                    session_id = %new_session.session_id,
+                    "abandoning prompt because its lazy session was retired during tab reset or close"
+                );
+                in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                return;
+            }
             let new_sid = new_session.session_id.clone();
             if is_agent_pane {
                 let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
@@ -4366,9 +4431,9 @@ mod tests {
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
-        post_login_authenticate_error, session_mcp_tool_from_title, SessionMcpTool,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
-        PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
+        post_login_authenticate_error, session_mcp_tool_from_title, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4379,9 +4444,8 @@ mod tests {
 
     #[test]
     fn acp_error_detail_prefers_actionable_data() {
-        let error = acp::Error::internal_error().data(
-            "The saved API key was not found in Windows Credential Manager.",
-        );
+        let error = acp::Error::internal_error()
+            .data("The saved API key was not found in Windows Credential Manager.");
 
         assert_eq!(
             acp_error_detail(&error),
@@ -5160,8 +5224,8 @@ mod tests {
 
         // Outer future elapsed → Timeout, no ACP code.
         let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
-        .await
-        .expect_err("a zero-duration timeout over a pending future must elapse");
+            .await
+            .expect_err("a zero-duration timeout over a pending future must elapse");
         let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }

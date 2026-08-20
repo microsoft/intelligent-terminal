@@ -486,8 +486,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // cancels any in-flight prompt for it; the next prompt on that
-            // tab lazily creates a fresh session.
+            // closes the session after cancelling any in-flight prompt; the
+            // next prompt on that tab lazily creates a fresh session.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
