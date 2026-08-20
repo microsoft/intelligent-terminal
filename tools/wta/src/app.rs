@@ -1040,7 +1040,8 @@ pub struct App {
     pub(crate) input_dialog_area: Option<Rect>,
     pub(crate) pressed_input_dialog_tab: Option<String>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
-    pub(crate) painted_completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
+    pub(crate) painted_completed_turn_action_links:
+        Vec<crate::action_links::CompletedTurnActionLink>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -4301,13 +4302,21 @@ impl App {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let target_tab = params.get("tab_id").and_then(|v| v.as_str()).unwrap_or("");
+        let target_pane = params.get("pane_id").and_then(|v| v.as_str()).unwrap_or("");
         let our_window = self.window_id.as_deref().unwrap_or("");
         let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+        let our_pane = self.pane_id.as_deref().unwrap_or("");
+        let pane_matches = !target_pane.is_empty()
+            && !our_pane.is_empty()
+            && target_pane
+                .trim_matches(['{', '}'])
+                .eq_ignore_ascii_case(our_pane.trim_matches(['{', '}']));
 
         if target_window.is_empty()
             || target_tab.is_empty()
             || owner_tab.is_empty()
             || target_tab != owner_tab
+            || !pane_matches
             || (!our_window.is_empty() && target_window != our_window)
         {
             tracing::debug!(
@@ -4316,6 +4325,8 @@ impl App {
                 our_window,
                 target_tab,
                 owner_tab,
+                target_pane,
+                our_pane,
                 "ignoring paste event not targeted at this helper"
             );
             return None;
@@ -4327,7 +4338,7 @@ impl App {
     fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
         self.tab_sessions
             .get(target_tab)
-            .map(|tab| tab.current_view == View::Chat && tab.input_has_nav_focus())
+            .map(|tab| tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus())
             .unwrap_or(false)
     }
 
@@ -4372,10 +4383,11 @@ impl App {
         let byte_len = text.len();
         let line_count = text.split('\n').count();
         let tab = self.tab_mut(target_tab);
-        if tab.current_view != View::Chat || !tab.input_has_nav_focus() {
+        if !tab.pane_open || tab.current_view != View::Chat || !tab.input_has_nav_focus() {
             tracing::debug!(
                 target: "agent_paste",
                 tab_id = target_tab,
+                pane_open = tab.pane_open,
                 view = ?tab.current_view,
                 input_live = tab.input_has_nav_focus(),
                 byte_len,
@@ -4642,11 +4654,7 @@ impl App {
             candidates,
             selected: tab.command_popup_selected,
             pane_focused: self.pane_focused,
-            command_query: tab
-                .input
-                .trim_start()
-                .strip_prefix('/')
-                .unwrap_or_default(),
+            command_query: tab.input.trim_start().strip_prefix('/').unwrap_or_default(),
             current_model: self.current_model_display(),
         })
     }
@@ -5027,8 +5035,9 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -5073,8 +5082,9 @@ impl App {
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -5302,8 +5312,7 @@ impl App {
                 let offset = self.current_tab().rec_scroll.offset;
                 // `card_h` includes the inter-card gap, so subtracting it
                 // yields the rendered card's exclusive bottom row.
-                let rendered_bottom_exclusive =
-                    line_top.saturating_add(card_h.saturating_sub(1));
+                let rendered_bottom_exclusive = line_top.saturating_add(card_h.saturating_sub(1));
                 let viewport_bottom = offset.saturating_add(viewport_height);
                 if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
                     self.current_tab_mut().rec_scroll.set(line_top);
@@ -5495,6 +5504,7 @@ impl App {
                     entry = existing;
                 }
             }
+            entry.invalidate_pending_paste();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {

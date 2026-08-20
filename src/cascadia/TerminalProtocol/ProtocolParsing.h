@@ -35,6 +35,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
+        DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
@@ -84,6 +85,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "close_agent_pane")
             {
                 return SendEventRoute::CloseAgentPane;
+            }
+            if (method == "request_default_paste")
+            {
+                return SendEventRoute::DefaultPaste;
             }
             if (method == "agent_state_changed")
             {

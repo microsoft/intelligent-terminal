@@ -145,6 +145,11 @@ namespace TerminalApp
         void OnCloseAgentPaneRequested(String eventJson);
 
         // Inbound event from WTA carrying
+        // {method:"request_default_paste",params:{window_id,tab_id,pane_id}}.
+        // Routes WTA's no-selection right-click through the existing host paste action.
+        void OnDefaultPasteRequested(String eventJson);
+
+        // Inbound event from WTA carrying
         // {method:"agent_state_changed",params:{tab_id,view,pane_open}}.
         // Per-tab agent-pane UI snapshot — the page-side handler routes by
         // `tab_id` to the matching AgentPaneContent (creating or tearing

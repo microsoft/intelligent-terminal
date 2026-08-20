@@ -1075,6 +1075,9 @@ try
         // and tears down that tab's agent pane.
         _dispatchCloseAgentPaneToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::DefaultPaste:
+        _dispatchDefaultPasteToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentState:
         // Per-tab agent-pane UI snapshot from wta. Page-side handler
         // routes by `tab_id` to the matching AgentPaneContent (creating
@@ -1255,6 +1258,38 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchDefaultPasteToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnDefaultPasteRequested(eventJson);
+                }
+                catch (...)
+                {
                 }
             });
     }
