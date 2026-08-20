@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  மீண்டும் முயற்ச�
 chat.activity_thinking: "யோசிக்கிறது…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "அறிவாண் முனையம்-க்கு வரவேற்கிறோம்!"
-chat.welcome_disclaimer: "அறிவாண் முனையம் AI-ஐப் பயன்படுத்துகிறது"
+chat.welcome_disclaimer: "அறிவாண் முனையம் AI-ஐப் பயன்படுத்துகிறது."
 chat.plan_header: "திட்டம்:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

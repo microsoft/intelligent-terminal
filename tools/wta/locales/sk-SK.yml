@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Stlačením Enter to skúste znova alebo Esc 
 chat.activity_thinking: "Premýšľam..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Vitajte v Inteligentný Terminál!"
-chat.welcome_disclaimer: "Inteligentný Terminál používa AI"
+chat.welcome_disclaimer: "Inteligentný Terminál používa AI."
 chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

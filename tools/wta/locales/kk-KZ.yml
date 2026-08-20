@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Қайталау үшін Enter пернес�
 chat.activity_thinking: "Ойланып жатырмын…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Зияткер терминал-ға қош келдіңіз!"
-chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады"
+chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады."
 chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

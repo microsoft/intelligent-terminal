@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Brùth Enter airson feuchainn ris a-rithist, 
 chat.activity_thinking: "A' smaoineachadh…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Fàilte gu Tèirmineal Glic!"
-chat.welcome_disclaimer: "Bidh Tèirmineal Glic a' cleachdadh AI"
+chat.welcome_disclaimer: "Bidh Tèirmineal Glic a' cleachdadh AI."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

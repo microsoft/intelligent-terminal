@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Притиснете Enter за да се о�
 chat.activity_thinking: "Размислувам..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Добредојдовте во Интелигентен Терминал!"
-chat.welcome_disclaimer: "Интелигентен Терминал користи AI"
+chat.welcome_disclaimer: "Интелигентен Терминал користи AI."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

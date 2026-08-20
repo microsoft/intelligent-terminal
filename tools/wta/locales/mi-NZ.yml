@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pēhia Enter hei ngana anō, Esc rānei hei h
 chat.activity_thinking: "E whakaaro ana..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Nau mai ki Iho Atamai!"
-chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI"
+chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI."
 chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

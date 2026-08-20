@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Agħfas Enter biex terġa' tipprova, jew Esc 
 chat.activity_thinking: "Qed jaħseb…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Merħba fl-Terminal Intelliġenti!"
-chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI"
+chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI."
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  আবার চেষ্টা করতে 
 chat.activity_thinking: "ভাবছে…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ইন্টেলিজেন্ট টার্মিনাল-এ স্বাগতম!"
-chat.welcome_disclaimer: "ইন্টেলিজেন্ট টার্মিনাল AI ব্যবহার করে"
+chat.welcome_disclaimer: "ইন্টেলিজেন্ট টার্মিনাল AI ব্যবহার করে।"
 chat.plan_header: "পরিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

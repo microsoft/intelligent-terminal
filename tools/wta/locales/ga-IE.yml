@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Brúigh Enter chun triail a bhaint as arís, 
 chat.activity_thinking: "Ag smaoineamh…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Fáilte go Teirminéal Cliste!"
-chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI"
+chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI."
 chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

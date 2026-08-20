@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Paspauskite Enter, kad bandytumėte dar kart�
 chat.activity_thinking: "Mąsto..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Sveiki atvykę į Išmanusis Terminalas!"
-chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI"
+chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI."
 chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
