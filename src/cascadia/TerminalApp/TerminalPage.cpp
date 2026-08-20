@@ -1696,6 +1696,7 @@ namespace winrt::TerminalApp::implementation
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
             globals.EffectiveAutoFixEnabled(),
+            globals.RenderAgentMarkdown(),
         };
     }
 
@@ -1705,6 +1706,7 @@ namespace winrt::TerminalApp::implementation
     // without tearing down the agent pane. A single consolidated
     // `agent_config_changed` event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - render_agent_markdown : rich Markdown vs. raw agent text
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its restart-required selection.
@@ -1725,13 +1727,14 @@ namespace winrt::TerminalApp::implementation
 
         const auto& last = _lastAgentRuntimeConfig;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool renderAgentMarkdownChanged = last.renderAgentMarkdown != current.renderAgentMarkdown;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !renderAgentMarkdownChanged && !delegateChanged && !customModelsChanged)
         {
             return;
         }
@@ -1740,6 +1743,10 @@ namespace winrt::TerminalApp::implementation
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (renderAgentMarkdownChanged)
+        {
+            params["render_agent_markdown"] = current.renderAgentMarkdown;
         }
         if (delegateChanged)
         {

@@ -7,6 +7,7 @@ Describe 'Feature: Markdown rendering helper bootstrap' -Tag 'Feature' -Skip:(-n
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'copilot'
+            defaultProfile = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'
             renderAgentMarkdown = $false
         }
     }
@@ -30,5 +31,40 @@ Describe 'Feature: Markdown rendering helper bootstrap' -Tag 'Feature' -Skip:(-n
             $helper.CommandLine | Should -Match '(?:^|\s)--no-agent-markdown(?:\s|$)'
         }
         $masters[0].CommandLine | Should -Not -Match '(?:^|\s)--no-agent-markdown(?:\s|$)'
+    }
+
+    It 'hot-updates Markdown mode without restarting the helper or master' {
+        (Get-ActivePane -App $script:app).shell |
+            Should -Be 'pwsh' -Because 'Markdown integration tests require PowerShell 7'
+
+        $beforeIds = @(Get-DescendantWtaIds -RootPid $script:app.Pid | Sort-Object)
+        $beforeProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object { $beforeIds -contains [int]$_.ProcessId })
+        $beforeHelper = $beforeProcesses |
+            Where-Object { $_.CommandLine -match '(?:^|\s)--connect-master(?:\s|$)' } |
+            Select-Object -First 1
+        $beforeMaster = $beforeProcesses |
+            Where-Object { $_.CommandLine -match '(?:^|\s)--master(?:\s|$)' } |
+            Select-Object -First 1
+        $beforeHelper | Should -Not -BeNullOrEmpty
+        $beforeMaster | Should -Not -BeNullOrEmpty
+
+        Initialize-LogOffsets -App $script:app | Out-Null
+        Set-WtSetting -App $script:app -Key 'renderAgentMarkdown' -Value $true | Out-Null
+        Assert-Log -App $script:app -Name 'wta-main_helper-*.log' `
+            -Pattern 'agent Markdown rendering hot-reloaded from settings change' -TimeoutSec 15
+        @(Get-DescendantWtaIds -RootPid $script:app.Pid | Sort-Object) |
+            Should -Be $beforeIds -Because 'enabling Markdown must preserve helper and master identity'
+
+        $currentHelper = Get-CimInstance Win32_Process -Filter "ProcessId = $($beforeHelper.ProcessId)" -ErrorAction Stop
+        $currentHelper.CommandLine | Should -Be $beforeHelper.CommandLine
+        $currentHelper.CommandLine | Should -Match '(?:^|\s)--no-agent-markdown(?:\s|$)'
+
+        Initialize-LogOffsets -App $script:app | Out-Null
+        Set-WtSetting -App $script:app -Key 'renderAgentMarkdown' -Value $false | Out-Null
+        Assert-Log -App $script:app -Name 'wta-main_helper-*.log' `
+            -Pattern 'agent Markdown rendering hot-reloaded from settings change' -TimeoutSec 15
+        @(Get-DescendantWtaIds -RootPid $script:app.Pid | Sort-Object) |
+            Should -Be $beforeIds -Because 'disabling Markdown must preserve helper and master identity'
     }
 }
