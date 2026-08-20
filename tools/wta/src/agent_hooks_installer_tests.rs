@@ -1999,8 +1999,82 @@ fn bundle_resolve_source_returns_none_when_nothing_resolves() {
 /// as a test failure.
 #[test]
 fn schema_versions_are_pinned() {
-    assert_eq!(STATUS_SCHEMA_VERSION, 3);
+    assert_eq!(STATUS_SCHEMA_VERSION, 4);
     assert_eq!(UNINSTALL_SCHEMA_VERSION, 2);
+}
+
+// ---- installed-version reporting ------------------------------------
+
+/// Claude and Codex keep every version they have ever unpacked and mark the
+/// superseded ones with `.orphaned_at`. Reporting the plain maximum would
+/// claim an upgrade the CLI never actually loaded.
+#[test]
+fn newest_live_cached_version_ignores_orphaned_directories() {
+    let root = unique_dir("cached-version");
+    for v in ["0.1.4", "0.1.5", "0.1.6"] {
+        fs::create_dir_all(root.join(v)).unwrap();
+    }
+    // 0.1.5 and 0.1.6 were superseded; only 0.1.4 is still loaded.
+    fs::write(root.join("0.1.5").join(".orphaned_at"), "x").unwrap();
+    fs::write(root.join("0.1.6").join(".orphaned_at"), "x").unwrap();
+
+    assert_eq!(
+        newest_live_cached_version(&root).map(|v| v.to_string()),
+        Some("0.1.4".to_string()),
+    );
+}
+
+/// Highest wins among live directories, and non-semver junk in the cache
+/// (lock files, stray marker files) must not abort the scan.
+#[test]
+fn newest_live_cached_version_picks_the_highest_live_directory() {
+    let root = unique_dir("cached-version-max");
+    for v in ["0.1.4", "0.2.0", "0.1.9", "not-a-version"] {
+        fs::create_dir_all(root.join(v)).unwrap();
+    }
+    fs::write(root.join("stray-file"), "x").unwrap();
+
+    assert_eq!(
+        newest_live_cached_version(&root).map(|v| v.to_string()),
+        Some("0.2.0".to_string()),
+    );
+}
+
+/// A missing cache directory is the normal "never installed" state, not an
+/// error the caller has to handle.
+#[test]
+fn newest_live_cached_version_is_none_when_nothing_is_cached() {
+    let root = unique_dir("cached-version-empty");
+    assert!(newest_live_cached_version(&root.join("absent")).is_none());
+    assert!(newest_live_cached_version(&root).is_none());
+}
+
+/// The version rides along in the listing Claude already gives us, so status
+/// never has to spawn the CLI a second time just to learn it.
+#[test]
+fn claude_plugin_list_json_parser_reports_the_installed_version() {
+    let json = r#"[{"id":"wt-agent-hooks@wt-local","version":"0.1.7","enabled":true}]"#;
+    let parsed = parse_claude_plugin_list_json(json).expect("parses");
+    assert!(parsed.installed);
+    assert_eq!(parsed.version.map(|v| v.to_string()), Some("0.1.7".into()));
+}
+
+/// A listing without a parseable version must still report the install, with
+/// the version left unknown rather than defaulting to something invented.
+#[test]
+fn claude_plugin_list_json_parser_tolerates_a_missing_version() {
+    let json = r#"[{"id":"wt-agent-hooks@wt-local","enabled":true}]"#;
+    let parsed = parse_claude_plugin_list_json(json).expect("parses");
+    assert!(parsed.installed);
+    assert!(parsed.version.is_none());
+}
+
+#[test]
+fn gemini_extensions_list_json_parser_reports_the_installed_version() {
+    let json = r#"[{"name":"wt-agent-hooks","version":"0.1.5","isActive":true}]"#;
+    let parsed = parse_gemini_extensions_list_json(json).expect("parses");
+    assert!(parsed.installed);
+    assert_eq!(parsed.version.map(|v| v.to_string()), Some("0.1.5".into()));
 }
 
 // ---- run_plugin_cli idempotency (#17) -------------------------------
@@ -2435,6 +2509,8 @@ fn populate_marketplace_path_noop_without_home() {
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     populate_marketplace_path(&mut s, CliKind::Copilot, None);
@@ -2455,6 +2531,8 @@ fn cli_status_serializes_new_fields() {
         marketplace_path_valid: true,
         plugin_installed: true,
         plugin_enabled: true,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     let v = serde_json::to_value(&s).unwrap();
@@ -2641,6 +2719,8 @@ fn codex_fs_fallback_detects_install_dirs() {
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     codex_fs_fallback(&mut s, Some(&tmp_root));

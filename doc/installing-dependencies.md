@@ -422,7 +422,12 @@ Check the status report to confirm each agent CLI is wired up:
 wta hooks status
 ```
 
-You should see `installed` for the agent you selected. Then, back in
+You should see `installed` for the agent you selected, followed by the
+installed hook version (for example `v0.1.5`). When a CLI's hooks were
+registered by a different build, the row also names the version this
+Intelligent Terminal ships — `v0.1.4 (bundle v0.1.5)` means the CLI is
+loading older hooks and should be reinstalled with `wta hooks install`.
+Then, back in
 **Settings → AI Agents**, turn **Session management** back on (the FRE
 turns it off when hooks installation fails so you can save and continue
 without it) and restart Intelligent Terminal once.

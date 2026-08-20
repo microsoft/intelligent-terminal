@@ -36,6 +36,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesEmptyClisArray);
         TEST_METHOD(ParsesDetectionFallback);
         TEST_METHOD(ParsesBundleSourceNone);
+        TEST_METHOD(ParsesVersions);
         TEST_METHOD(IgnoresUnknownExtraFields);
 
         TEST_METHOD(FormatsCliNotOnPath);
@@ -57,19 +58,22 @@ namespace TerminalAppUnitTests
     };
 
     static constexpr std::string_view kHappyPathJson = R"({
-        "schema_version": 3,
+        "schema_version": 4,
         "clis": [
             { "name": "copilot", "binary_on_path": true,  "binary_path": "C:\\copilot.cmd",
               "marketplace_registered": true, "marketplace_path": "C:\\repo\\hooks\\copilot",
               "marketplace_path_valid": true,
-              "plugin_installed": true, "plugin_enabled": true },
+              "plugin_installed": true, "plugin_enabled": true,
+              "installed_version": "0.1.5", "bundle_version": "0.1.5" },
             { "name": "claude",  "binary_on_path": true,  "binary_path": "C:\\claude.exe",
               "marketplace_registered": true, "marketplace_path": "C:\\repo\\hooks\\claude",
               "marketplace_path_valid": true,
-              "plugin_installed": true, "plugin_enabled": true },
+              "plugin_installed": true, "plugin_enabled": true,
+              "installed_version": "0.1.4", "bundle_version": "0.1.5" },
             { "name": "gemini",  "binary_on_path": false,
               "marketplace_registered": false, "marketplace_path_valid": false,
-              "plugin_installed": false, "plugin_enabled": false },
+              "plugin_installed": false, "plugin_enabled": false,
+              "bundle_version": "0.1.5" },
             { "name": "opencode", "binary_on_path": true,
                "marketplace_registered": true, "marketplace_path": "C:\\Users\\test\\.config\\opencode\\plugins",
                "marketplace_path_valid": true,
@@ -82,7 +86,7 @@ namespace TerminalAppUnitTests
     {
         const auto report = ParseStatusJson(kHappyPathJson);
         VERIFY_IS_TRUE(report.has_value());
-        VERIFY_ARE_EQUAL(3u, report->schemaVersion);
+        VERIFY_ARE_EQUAL(4u, report->schemaVersion);
         VERIFY_ARE_EQUAL(size_t{ 4 }, report->clis.size());
 
         const auto* copilot = FindCli(*report, "copilot");
@@ -170,7 +174,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::RejectsMissingClis()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "bundle_source": { "kind": "none" }
         })";
         VERIFY_IS_FALSE(ParseStatusJson(js).has_value());
@@ -179,7 +183,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::RejectsMissingBundleSource()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "clis": []
         })";
         VERIFY_IS_FALSE(ParseStatusJson(js).has_value());
@@ -188,7 +192,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::ParsesEmptyClisArray()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "clis": [],
             "bundle_source": { "kind": "none" }
         })";
@@ -203,7 +207,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::ParsesDetectionFallback()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "clis": [
                 { "name": "copilot", "binary_on_path": true,
                   "marketplace_registered": true, "marketplace_path_valid": true,
@@ -221,7 +225,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::ParsesBundleSourceNone()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "clis": [],
             "bundle_source": { "kind": "none" }
         })";
@@ -231,13 +235,52 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(r->bundlePath.has_value());
     }
 
+    // v4: the version pair is the only part of the report that distinguishes
+    // "hooks are installed" from "the hooks this build ships are installed",
+    // so both halves must survive the parse — including the asymmetric case
+    // where a CLI has nothing installed but the bundle still has a version to
+    // offer.
+    void AgentHooksStatusTests::ParsesVersions()
+    {
+        const auto report = ParseStatusJson(kHappyPathJson);
+        VERIFY_IS_TRUE(report.has_value());
+
+        const auto* copilot = FindCli(*report, "copilot");
+        VERIFY_IS_NOT_NULL(copilot);
+        VERIFY_IS_TRUE(copilot->installedVersion.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "0.1.5" }, *copilot->installedVersion);
+        VERIFY_IS_TRUE(copilot->bundleVersion.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "0.1.5" }, *copilot->bundleVersion);
+
+        // Installed, but a build behind the bundle.
+        const auto* claude = FindCli(*report, "claude");
+        VERIFY_IS_NOT_NULL(claude);
+        VERIFY_ARE_EQUAL(std::string{ "0.1.4" }, *claude->installedVersion);
+        VERIFY_ARE_EQUAL(std::string{ "0.1.5" }, *claude->bundleVersion);
+
+        // Nothing installed: no installed version to report, but the bundle
+        // still names what an install would produce.
+        const auto* gemini = FindCli(*report, "gemini");
+        VERIFY_IS_NOT_NULL(gemini);
+        VERIFY_IS_FALSE(gemini->installedVersion.has_value());
+        VERIFY_IS_TRUE(gemini->bundleVersion.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "0.1.5" }, *gemini->bundleVersion);
+
+        // wta omits both fields when it can't establish them; that must read
+        // as "unknown", not as a malformed report.
+        const auto* openCode = FindCli(*report, "opencode");
+        VERIFY_IS_NOT_NULL(openCode);
+        VERIFY_IS_FALSE(openCode->installedVersion.has_value());
+        VERIFY_IS_FALSE(openCode->bundleVersion.has_value());
+    }
+
     void AgentHooksStatusTests::IgnoresUnknownExtraFields()
     {
         // Forward compatibility: wta may add fields in a future minor
         // bump. We must not reject them as long as schema_version still
         // matches the supported major.
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "future_field": "ignore me",
             "clis": [
                 { "name": "copilot", "binary_on_path": true,
@@ -382,7 +425,7 @@ namespace TerminalAppUnitTests
     void AgentHooksStatusTests::AnyBinaryOnPathFalseWhenNone()
     {
         constexpr std::string_view js = R"({
-            "schema_version": 3,
+            "schema_version": 4,
             "clis": [
                 { "name": "copilot", "binary_on_path": false,
                   "marketplace_registered": false, "marketplace_path_valid": false,
