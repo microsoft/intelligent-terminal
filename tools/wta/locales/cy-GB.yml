@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pwyswch Enter i roi cynnig arall, neu Esc i f
 chat.activity_thinking: "Yn meddwl…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Croeso i Terfynell Ddeallus!"
-chat.welcome_disclaimer: "Mae Terfynell Ddeallus yn defnyddio AI. Gwiriwch am gamgymeriadau."
+chat.welcome_disclaimer: "Mae Terfynell Ddeallus yn defnyddio AI."
 chat.plan_header: "Cynllun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

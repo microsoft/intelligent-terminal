@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  మళ్లీ ప్రయత్నిం�
 chat.activity_thinking: "ఆలోచిస్తోంది…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ఇంటెలిజెంట్ టెర్మినల్-కు స్వాగతం!"
-chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది. తప్పులు ఉన్నాయా తనిఖీ చేయండి."
+chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది."
 chat.plan_header: "ప్లాన్:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

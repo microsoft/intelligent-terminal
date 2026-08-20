@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Prima Enter para tentar novamente, ou Esc par
 chat.activity_thinking: "A pensar…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Bem-vindo ao Terminal Inteligente!"
-chat.welcome_disclaimer: "O Terminal Inteligente utiliza IA. Verifique se existem erros."
+chat.welcome_disclaimer: "O Terminal Inteligente utiliza IA."
 chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

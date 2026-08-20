@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  Enter を押して再試行するか、Esc �
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
 chat.welcome_title: "インテリジェント ターミナルへようこそ！"
-chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。誤りがないか確認してください。"
+chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。"
 chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

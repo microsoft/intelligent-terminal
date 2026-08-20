@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq kuti
 chat.activity_thinking: "Yuyachkan..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Allillanchu Yuyaysapa Terminal!"
-chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin. Pantaykunata qhaway."
+chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin."
 chat.plan_header: "Ruwana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

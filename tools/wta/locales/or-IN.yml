@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  ପୁଣି ଚେଷ୍ଟା କରିବ�
 chat.activity_thinking: "ଚିନ୍ତା କରୁଛି…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ କୁ ସ୍ୱାଗତ!"
-chat.welcome_disclaimer: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ AI ବ୍ୟବହାର କରେ। ଭୁଲ ଯାଞ୍ଚ କରନ୍ତୁ।"
+chat.welcome_disclaimer: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ AI ବ୍ୟବହାର କରେ।"
 chat.plan_header: "ଯୋଜନା:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

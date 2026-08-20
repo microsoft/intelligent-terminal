@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  ចុច Enter ដើម្បីព្យ�
 chat.activity_thinking: "កំពុងគិត…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "សូមស្វាគមន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
-chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។ ពិនិត្យមើលកំហុស។"
+chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។"
 # Header label for the AI agent’s step-by-step plan section
 chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}

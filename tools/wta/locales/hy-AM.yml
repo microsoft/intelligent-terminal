@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  Սեղմեք Enter՝ նորից փորձել�
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
 chat.welcome_title: "Բարի գալուստ Խելացի տերմինալ!"
-chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI: Ստուգեք սխալները."
+chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}

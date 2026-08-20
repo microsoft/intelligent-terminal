@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pindutin ang Enter para subukang muli, o Esc 
 chat.activity_thinking: "Nag-iisip…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Maligayang pagdating sa Matalinong Terminal!"
-chat.welcome_disclaimer: "Gumagamit ang Matalinong Terminal ng AI. Suriin ang mga pagkakamali."
+chat.welcome_disclaimer: "Gumagamit ang Matalinong Terminal ng AI."
 chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

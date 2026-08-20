@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  按 Enter 重试,或按 Esc 返回。"  # {Lo
 # ── 聊天视图 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
 chat.welcome_title: "欢迎使用智能终端！"
-chat.welcome_disclaimer: "智能终端使用 AI。请检查是否有误。"
+chat.welcome_disclaimer: "智能终端使用 AI。"
 chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

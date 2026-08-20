@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Ýttu á Enter til að reyna aftur eða Esc t
 chat.activity_thinking: "Hugsa..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Velkomin í Snjallútstöð!"
-chat.welcome_disclaimer: "Snjallútstöð notar AI. Athugaðu hvort villur séu."
+chat.welcome_disclaimer: "Snjallútstöð notar AI."
 chat.plan_header: "Áætlun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

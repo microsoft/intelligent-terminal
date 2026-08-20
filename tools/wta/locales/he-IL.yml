@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  הקש Enter כדי לנסות שוב, או E
 chat.activity_thinking: "חושב…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ברוכים הבאים ל-מסוף חכם!"
-chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI. בדוק אם יש שגיאות."
+chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI."
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}

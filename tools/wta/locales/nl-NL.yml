@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Druk op Enter om het opnieuw te proberen, of 
 chat.activity_thinking: "Bezig met nadenken…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Welkom bij Intelligente Terminal!"
-chat.welcome_disclaimer: "Intelligente Terminal maakt gebruik van AI. Controleer op fouten."
+chat.welcome_disclaimer: "Intelligente Terminal maakt gebruik van AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
