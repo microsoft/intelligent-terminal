@@ -10183,6 +10183,30 @@ fn clearing_completed_turns_renews_retained_layout_identity() {
 }
 
 #[test]
+fn render_chat_materializes_only_viewport_plus_overscan_turns() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..200 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("RETAINED_VIEWPORT_TURN_{index:03}"),
+            details: vec![ChatMessage::Agent(format!("ACK_{index:03}"))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    crate::ui::chat::reset_completed_turn_line_materialization_count();
+    let rendered = render_to_text(&mut app, 80, 16);
+    let materialized = crate::ui::chat::completed_turn_line_materialization_count();
+
+    assert!(rendered.contains("RETAINED_VIEWPORT_TURN_199"));
+    assert!(
+        (1..=48).contains(&materialized),
+        "a 16-row viewport plus 32-row overscan should materialize at most 48 turns; materialized {materialized}",
+    );
+}
+
+#[test]
 fn input_history_deduplicates_and_caps_at_fifty() {
     let mut tab = TabSession::default();
     for index in 0..55 {

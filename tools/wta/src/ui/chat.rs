@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -51,10 +52,7 @@ impl PreparedChatLayout {
 
 struct PreparedCompletedTurn {
     index: usize,
-    lines: Vec<Line<'static>>,
-    height: usize,
-    expanded: bool,
-    prompt_rows: Vec<PromptRowGeometry>,
+    layout: Rc<CachedCompletedTurn>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,7 +77,7 @@ struct CachedCompletedTurn {
 
 struct CompletedTurnCacheEntry {
     key: CompletedTurnCacheKey,
-    value: CachedCompletedTurn,
+    value: Rc<CachedCompletedTurn>,
     bytes: usize,
 }
 
@@ -90,17 +88,23 @@ struct CompletedTurnLayoutCache {
 }
 
 impl CompletedTurnLayoutCache {
-    fn get(&mut self, key: CompletedTurnCacheKey) -> Option<CachedCompletedTurn> {
+    fn get(&mut self, key: CompletedTurnCacheKey) -> Option<Rc<CachedCompletedTurn>> {
         let index = self.entries.iter().position(|entry| entry.key == key)?;
         let entry = self.entries.remove(index)?;
-        let value = entry.value.clone();
+        let value = Rc::clone(&entry.value);
         self.entries.push_back(entry);
         Some(value)
     }
 
-    fn insert(&mut self, key: CompletedTurnCacheKey, value: CachedCompletedTurn, bytes: usize) {
+    fn insert(
+        &mut self,
+        key: CompletedTurnCacheKey,
+        value: CachedCompletedTurn,
+        bytes: usize,
+    ) -> Rc<CachedCompletedTurn> {
+        let value = Rc::new(value);
         if bytes > MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES {
-            return;
+            return value;
         }
         if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
             if let Some(previous) = self.entries.remove(index) {
@@ -116,8 +120,12 @@ impl CompletedTurnLayoutCache {
             self.bytes = self.bytes.saturating_sub(evicted.bytes);
         }
         self.bytes = self.bytes.saturating_add(bytes);
-        self.entries
-            .push_back(CompletedTurnCacheEntry { key, value, bytes });
+        self.entries.push_back(CompletedTurnCacheEntry {
+            key,
+            value: Rc::clone(&value),
+            bytes,
+        });
+        value
     }
 }
 
@@ -129,6 +137,7 @@ thread_local! {
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static COMPLETED_TURN_LINE_MATERIALIZATION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -144,6 +153,21 @@ pub(crate) fn completed_turn_line_build_count() -> usize {
 #[cfg(test)]
 fn record_completed_turn_line_build() {
     COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_line_materialization_count() {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_line_materialization_count() -> usize {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_line_materialization() {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -349,17 +373,12 @@ pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
                         lines,
                     };
                     let bytes = completed_turn_cache_bytes(&value);
-                    COMPLETED_TURN_LAYOUT_CACHE.with(|cache| {
-                        cache.borrow_mut().insert(key, value.clone(), bytes);
-                    });
-                    value
+                    COMPLETED_TURN_LAYOUT_CACHE
+                        .with(|cache| cache.borrow_mut().insert(key, value, bytes))
                 });
             PreparedCompletedTurn {
                 index,
-                height: cached.height,
-                lines: cached.lines,
-                expanded: cached.expanded,
-                prompt_rows: cached.prompt_rows,
+                layout: cached,
             }
         })
         .collect();
@@ -389,7 +408,7 @@ pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
         .sum::<usize>()
         + completed_turns
             .iter()
-            .map(|turn| turn.height)
+            .map(|turn| turn.layout.height)
             .sum::<usize>()
         + rendered_lines_height(&pending_lines, wrap_width)
         + rendered_lines_height(&welcome_lines, wrap_width))
@@ -769,13 +788,12 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, prepared: PreparedCh
         let mut selection_reached = selection_target_idx.is_none();
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for prepared_turn in completed_turns.into_iter().rev() {
-            let PreparedCompletedTurn {
-                index: idx,
-                mut lines,
-                height: turn_height,
-                expanded,
-                prompt_rows,
-            } = prepared_turn;
+            let PreparedCompletedTurn { index: idx, layout } = prepared_turn;
+            #[cfg(test)]
+            record_completed_turn_line_materialization();
+            let turn_height = layout.height;
+            let expanded = layout.expanded;
+            let prompt_rows = layout.prompt_rows.clone();
             turn_hit_offsets.push((idx, rendered_rows_below, turn_height, expanded, prompt_rows));
             if selection_target_idx == Some(idx) {
                 let selected_end = rendered_rows_below.saturating_add(turn_height);
@@ -792,7 +810,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, prepared: PreparedCh
                     .saturating_add(32);
                 selection_reached = true;
             }
-            reversed_lines.extend(lines.drain(..).rev());
+            reversed_lines.extend(layout.lines.iter().rev().cloned());
             rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
             if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
