@@ -1591,6 +1591,19 @@ impl App {
                         self.autofix_enabled = enabled;
                     }
 
+                    if let Some(enabled) = params
+                        .get("render_agent_markdown")
+                        .and_then(|value| value.as_bool())
+                    {
+                        tracing::info!(
+                            target: "markdown",
+                            old = self.render_agent_markdown,
+                            new = enabled,
+                            "agent Markdown rendering hot-reloaded from settings change",
+                        );
+                        self.render_agent_markdown = enabled;
+                    }
+
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()

@@ -2489,6 +2489,41 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
 }
 
 #[test]
+fn markdown_rendering_hot_update_preserves_helper_and_session_identity() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("tab-owner".into());
+    app.current_agent_id = "copilot".into();
+    app.session_id = "session-1".into();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::Agent("# Raw **response**".into()));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({ "render_agent_markdown": false }),
+    });
+
+    assert!(!app.render_agent_markdown);
+    assert_eq!(app.owner_tab_id.as_deref(), Some("tab-owner"));
+    assert_eq!(app.current_agent_id, "copilot");
+    assert_eq!(app.session_id, "session-1");
+    assert!(matches!(
+        &app.current_tab().messages[0],
+        ChatMessage::Agent(text) if text == "# Raw **response**"
+    ));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({ "render_agent_markdown": true }),
+    });
+    assert!(app.render_agent_markdown);
+}
+
+#[test]
 fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
     let mut app = test_app();
     app.current_agent_id = "copilot".into();
