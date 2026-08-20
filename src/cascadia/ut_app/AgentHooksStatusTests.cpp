@@ -52,7 +52,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AnyBinaryOnPathTrueWhenAny);
         TEST_METHOD(AnyBinaryOnPathFalseWhenNone);
         TEST_METHOD(FindCliReturnsNullptrForMissing);
-        TEST_METHOD(ShowsDetectedCliWithoutHooks);
+        TEST_METHOD(HidesDetectedCliWithoutHooks);
         TEST_METHOD(ShowsHookStateWithoutCli);
         TEST_METHOD(HidesAbsentCliWithoutHooks);
     };
@@ -119,14 +119,17 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(report->bundlePath.has_value());
     }
 
-    void AgentHooksStatusTests::ShowsDetectedCliWithoutHooks()
+    // A CLI that's merely installed on the machine gets no row: the row only
+    // exists to carry the per-CLI Remove action, and there's nothing to
+    // remove. Regression guard for the OpenCode row that used to linger with
+    // a permanently-disabled Remove button after its hooks were uninstalled.
+    void AgentHooksStatusTests::HidesDetectedCliWithoutHooks()
     {
         CliStatus openCode{};
         openCode.name = "opencode";
         openCode.binaryOnPath = true;
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
-        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
     }
 
     void AgentHooksStatusTests::ShowsHookStateWithoutCli()
@@ -136,7 +139,6 @@ namespace TerminalAppUnitTests
         openCode.pluginInstalled = true;
 
         VERIFY_IS_TRUE(HasHookState(&openCode));
-        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
     }
 
     void AgentHooksStatusTests::HidesAbsentCliWithoutHooks()
@@ -145,8 +147,7 @@ namespace TerminalAppUnitTests
         openCode.name = "opencode";
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
-        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
-        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(nullptr));
+        VERIFY_IS_FALSE(HasHookState(nullptr));
     }
 
     void AgentHooksStatusTests::RejectsUnsupportedSchemaVersion()

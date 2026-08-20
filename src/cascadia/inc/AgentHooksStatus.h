@@ -203,14 +203,14 @@ namespace Microsoft::Terminal::AgentHooks
         return nullptr;
     }
 
+    // Drives per-CLI row visibility in Settings. A row exists only while the
+    // CLI has hook state to act on, so "Remove" is never offered against a
+    // CLI that has nothing installed. Merely having the CLI on PATH is not
+    // enough — installation is driven by the single "Install hooks" button,
+    // not per-row, so a detected-but-uninstalled row would carry no action.
     inline bool HasHookState(const CliStatus* cli)
     {
         return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
-    }
-
-    inline bool ShouldShowDetectedOrConfiguredHookRow(const CliStatus* cli)
-    {
-        return cli && (cli->binaryOnPath || HasHookState(cli));
     }
 
     // True when at least one CLI binary is on PATH — drives the

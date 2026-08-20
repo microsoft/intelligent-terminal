@@ -1237,7 +1237,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showGeminiHookRow = false;
             _showCodexHookRow = false;
             _showOpenCodeHookRow = false;
-            _openCodeHooksPresent = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
@@ -1262,8 +1261,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showClaudeHookRow = AgentHooks::HasHookState(claude);
             _showGeminiHookRow = AgentHooks::HasHookState(gemini);
             _showCodexHookRow = AgentHooks::HasHookState(codex);
-            _openCodeHooksPresent = AgentHooks::HasHookState(openCode);
-            _showOpenCodeHookRow = AgentHooks::ShouldShowDetectedOrConfiguredHookRow(openCode);
+            _showOpenCodeHookRow = AgentHooks::HasHookState(openCode);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
@@ -1280,7 +1278,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
                        L"CanRemoveAgentHooks",
-                       L"CanRemoveOpenCodeHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
