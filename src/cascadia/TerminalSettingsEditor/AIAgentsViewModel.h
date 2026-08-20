@@ -131,6 +131,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CurrentAcpModelEntry(const Editor::AcpModelEntry& value);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> CustomModelProviders() const { return _customModelProviders; }
+        bool ShowCustomModelProvidersExpander() const { return _isAddingCustomModelProvider || _customModelProviders.Size() != 0; }
         bool IsCustomModelProvidersExpanded() const { return _isCustomModelProvidersExpanded; }
         void IsCustomModelProvidersExpanded(bool value);
         bool IsAddingCustomModelProvider() const { return _isAddingCustomModelProvider; }
