@@ -15,6 +15,7 @@ use super::{TabAutofixState, TurnState};
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
 static NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+static NEXT_STREAMING_SOURCE_GENERATION: AtomicU64 = AtomicU64::new(1);
 const MAX_COMPLETED_TURN_LAYOUT_CHANGES: usize = 2048;
 
 pub(crate) struct CompletedTurnLayoutChanges {
@@ -567,7 +568,8 @@ impl TabSession {
     }
 
     fn start_streaming_source_index(&mut self, text: &str) {
-        self.streaming_source_generation = self.streaming_source_generation.wrapping_add(1).max(1);
+        self.streaming_source_generation =
+            NEXT_STREAMING_SOURCE_GENERATION.fetch_add(1, Ordering::Relaxed);
         self.streaming_source_revision = 1;
         self.streaming_indexed_bytes = text.len();
         self.streaming_grapheme_ends = text
@@ -914,7 +916,7 @@ impl TabSession {
                 } else {
                     self.streaming_grapheme_ends.clear();
                     self.streaming_source_generation =
-                        self.streaming_source_generation.wrapping_add(1).max(1);
+                        NEXT_STREAMING_SOURCE_GENERATION.fetch_add(1, Ordering::Relaxed);
                     self.streaming_source_revision = 1;
                 }
                 self.streaming_grapheme_ends.extend(

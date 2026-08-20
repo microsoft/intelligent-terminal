@@ -254,7 +254,8 @@ where
             let standalone = !starts_tag && !ends_tag && self.tag_depth == 0;
             if source.is_some() && self.tag_depth == 0 && (starts_tag || standalone) {
                 let source_start = source.as_ref().map_or(0, |source| source.start);
-                self.current_source_block = Some((source_start, self.text.lines.len()));
+                let line_start = self.text.lines.len() + usize::from(self.needs_newline);
+                self.current_source_block = Some((source_start, line_start));
             }
             if starts_tag {
                 self.tag_depth += 1;

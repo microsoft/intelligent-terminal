@@ -8,6 +8,8 @@ use std::rc::Rc;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tui_markdown::{Options as MarkdownOptions, StyleSheet};
+#[cfg(test)]
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
@@ -34,6 +36,7 @@ const MAX_TOOL_DETAIL_LINES: usize = 32;
 const MAX_COMPLETED_TURN_CACHE_ENTRIES: usize = 512;
 const MAX_COMPLETED_TURN_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES: usize = 256 * 1024;
+const MAX_STREAMING_MARKDOWN_CACHE_BYTES: usize = 256 * 1024;
 
 pub struct PreparedChatLayout {
     wrap_width: usize,
@@ -147,6 +150,18 @@ thread_local! {
         RefCell::new(CompletedTurnLayoutCache::default());
     static RETAINED_COMPLETED_TURN_INDEX: RefCell<Option<RetainedCompletedTurnIndex>> =
         const { RefCell::new(None) };
+    static STREAMING_MARKDOWN_PROJECTION_CACHE: RefCell<Option<StreamingMarkdownProjectionCache>> =
+        const { RefCell::new(None) };
+}
+
+struct StreamingMarkdownProjectionCache {
+    generation: u64,
+    revision: u64,
+    visible_source_len: usize,
+    stable_source_len: usize,
+    stable_lines: Vec<Line<'static>>,
+    projected_lines: Vec<Line<'static>>,
+    has_reference_definitions: bool,
 }
 
 #[cfg(test)]
@@ -154,6 +169,8 @@ thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
     static COMPLETED_TURN_LINE_MATERIALIZATION_COUNT: Cell<usize> = const { Cell::new(0) };
     static COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT: Cell<usize> = const { Cell::new(0) };
+    static STREAMING_MARKDOWN_PARSED_BYTES: Cell<usize> = const { Cell::new(0) };
+    static STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -199,6 +216,39 @@ pub(crate) fn completed_turn_descriptor_lookup_count() -> usize {
 #[cfg(test)]
 fn record_completed_turn_descriptor_lookup() {
     COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+fn reset_streaming_markdown_projection_cache() {
+    STREAMING_MARKDOWN_PROJECTION_CACHE.with(|cache| *cache.borrow_mut() = None);
+}
+
+#[cfg(test)]
+fn reset_streaming_markdown_parsed_bytes() {
+    STREAMING_MARKDOWN_PARSED_BYTES.with(|count| count.set(0));
+    STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn streaming_markdown_parsed_bytes() -> usize {
+    STREAMING_MARKDOWN_PARSED_BYTES.with(Cell::get)
+}
+
+#[cfg(test)]
+fn streaming_markdown_full_recompute_count() -> usize {
+    STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(Cell::get)
+}
+
+fn record_streaming_markdown_parse(bytes: usize, full_recompute: bool) {
+    #[cfg(test)]
+    {
+        STREAMING_MARKDOWN_PARSED_BYTES.with(|count| count.set(count.get() + bytes));
+        if full_recompute {
+            STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(|count| count.set(count.get() + 1));
+        }
+    }
+    #[cfg(not(test))]
+    let _ = (bytes, full_recompute);
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -715,11 +765,19 @@ fn wrap_markdown_line(line: Line<'_>, width: usize) -> Vec<Line<'static>> {
 fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<Line<'static>> {
     let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
     let markdown = tui_markdown::from_str_with_options(text.trim_start_matches('\n'), &options);
+    wrap_agent_markdown_lines(markdown.lines, wrap_width, dot_style)
+}
+
+fn wrap_agent_markdown_lines(
+    markdown_lines: Vec<Line<'_>>,
+    wrap_width: usize,
+    dot_style: Style,
+) -> Vec<Line<'static>> {
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut lines = Vec::new();
     let mut first_row = true;
 
-    for logical_line in markdown.lines {
+    for logical_line in markdown_lines {
         for mut line in wrap_markdown_line(logical_line, body_width) {
             if line.width() == 0 {
                 if !first_row {
@@ -740,6 +798,152 @@ fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<
         }
     }
     lines
+}
+
+fn streaming_markdown_cache_bytes(cache: &StreamingMarkdownProjectionCache) -> usize {
+    fn line_bytes(lines: &[Line<'_>], capacity: usize) -> usize {
+        capacity * std::mem::size_of::<Line<'static>>()
+            + lines
+                .iter()
+                .map(|line| {
+                    line.spans.capacity() * std::mem::size_of::<Span<'static>>()
+                        + line
+                            .spans
+                            .iter()
+                            .map(|span| match &span.content {
+                                Cow::Borrowed(_) => 0,
+                                Cow::Owned(content) => content.capacity(),
+                            })
+                            .sum::<usize>()
+                })
+                .sum::<usize>()
+    }
+
+    std::mem::size_of::<StreamingMarkdownProjectionCache>()
+        + line_bytes(&cache.stable_lines, cache.stable_lines.capacity())
+        + line_bytes(&cache.projected_lines, cache.projected_lines.capacity())
+}
+
+fn bounded_streaming_markdown_cache(
+    cache: StreamingMarkdownProjectionCache,
+) -> Option<StreamingMarkdownProjectionCache> {
+    (streaming_markdown_cache_bytes(&cache) <= MAX_STREAMING_MARKDOWN_CACHE_BYTES).then_some(cache)
+}
+
+fn source_mapped_markdown(source: &str) -> tui_markdown::SourceMappedText<'_> {
+    let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+    tui_markdown::from_str_with_options_and_source_map(source, &options)
+}
+
+fn cache_from_full_markdown_projection(
+    generation: u64,
+    revision: u64,
+    source_len: usize,
+    projection: tui_markdown::SourceMappedText<'_>,
+) -> StreamingMarkdownProjectionCache {
+    let projected_lines = own_lines(projection.text.lines);
+    let mutable_tail = projection.blocks.len().saturating_sub(2);
+    let (stable_source_len, stable_line_end) = projection
+        .blocks
+        .get(mutable_tail)
+        .map(|block| (block.source.start, block.lines.start))
+        .unwrap_or((0, 0));
+    StreamingMarkdownProjectionCache {
+        generation,
+        revision,
+        visible_source_len: source_len,
+        stable_source_len,
+        stable_lines: projected_lines[..stable_line_end].to_vec(),
+        projected_lines,
+        has_reference_definitions: projection.has_reference_definitions,
+    }
+}
+
+fn streaming_agent_markdown_lines(
+    tab: &crate::app::TabSession,
+    source: &str,
+    wrap_width: usize,
+    dot_style: Style,
+) -> Vec<Line<'static>> {
+    let generation = tab.streaming_source_generation();
+    let revision = tab.streaming_source_revision();
+    if generation == 0 {
+        return agent_markdown_lines(source, wrap_width, dot_style);
+    }
+    let logical_lines = STREAMING_MARKDOWN_PROJECTION_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.as_ref().filter(|cached| {
+            cached.generation == generation
+                && cached.revision <= revision
+                && cached.visible_source_len == source.len()
+        }) {
+            return cached.projected_lines.clone();
+        }
+
+        let can_append = cache.as_ref().is_some_and(|cached| {
+            cached.generation == generation
+                && cached.revision <= revision
+                && !cached.has_reference_definitions
+                && cached.visible_source_len <= source.len()
+                && cached.stable_source_len <= source.len()
+                && source.is_char_boundary(cached.stable_source_len)
+        });
+        if !can_append {
+            let reference_fallback = cache.as_ref().is_some_and(|cached| {
+                cached.generation == generation && cached.has_reference_definitions
+            });
+            record_streaming_markdown_parse(source.len(), reference_fallback);
+            let next = cache_from_full_markdown_projection(
+                generation,
+                revision,
+                source.len(),
+                source_mapped_markdown(source),
+            );
+            let result = next.projected_lines.clone();
+            *cache = bounded_streaming_markdown_cache(next);
+            return result;
+        }
+
+        let cached = cache.as_mut().expect("append-compatible cache");
+        let suffix = &source[cached.stable_source_len..];
+        record_streaming_markdown_parse(suffix.len(), false);
+        let projection = source_mapped_markdown(suffix);
+        if projection.has_reference_definitions {
+            record_streaming_markdown_parse(source.len(), true);
+            let next = cache_from_full_markdown_projection(
+                generation,
+                revision,
+                source.len(),
+                source_mapped_markdown(source),
+            );
+            let result = next.projected_lines.clone();
+            *cache = bounded_streaming_markdown_cache(next);
+            return result;
+        }
+
+        let suffix_lines = own_lines(projection.text.lines);
+        let mut projected_lines = cached.stable_lines.clone();
+        projected_lines.extend(suffix_lines.iter().cloned());
+        let mutable_tail = projection.blocks.len().saturating_sub(2);
+        if let Some(first_mutable_block) = projection.blocks.get(mutable_tail) {
+            cached.stable_lines.extend(
+                suffix_lines[..first_mutable_block.lines.start]
+                    .iter()
+                    .cloned(),
+            );
+            cached.stable_source_len += first_mutable_block.source.start;
+        }
+        cached.visible_source_len = source.len();
+        cached.revision = revision;
+        cached.projected_lines = projected_lines.clone();
+        cached.has_reference_definitions = false;
+        if streaming_markdown_cache_bytes(cached) > MAX_STREAMING_MARKDOWN_CACHE_BYTES {
+            *cache = None;
+        }
+        projected_lines
+    });
+
+    wrap_agent_markdown_lines(logical_lines, wrap_width, dot_style)
 }
 
 fn agent_response_lines(
@@ -1378,12 +1582,16 @@ fn build_pending_stream_lines_for_tab_with_mode<'a>(
             Cow::Borrowed(&text[..end])
         }
     };
-    agent_response_lines(
-        &revealed,
-        wrap_width,
-        theme::DOT_AGENT,
-        render_agent_markdown,
-    )
+    if render_agent_markdown {
+        streaming_agent_markdown_lines(
+            tab,
+            revealed.trim_start_matches('\n'),
+            wrap_width,
+            theme::DOT_AGENT,
+        )
+    } else {
+        agent_response_lines(&revealed, wrap_width, theme::DOT_AGENT, false)
+    }
 }
 
 fn build_message_lines<'a>(
@@ -1904,6 +2112,23 @@ mod tests {
     }
 
     #[test]
+    fn streaming_markdown_cache_bypasses_oversized_projection() {
+        let oversized = StreamingMarkdownProjectionCache {
+            generation: 1,
+            revision: 1,
+            visible_source_len: MAX_STREAMING_MARKDOWN_CACHE_BYTES + 1,
+            stable_source_len: 0,
+            stable_lines: Vec::new(),
+            projected_lines: vec![Line::from(
+                "x".repeat(MAX_STREAMING_MARKDOWN_CACHE_BYTES + 1),
+            )],
+            has_reference_definitions: false,
+        };
+
+        assert!(bounded_streaming_markdown_cache(oversized).is_none());
+    }
+
+    #[test]
     fn notices_render_distinct_markers_and_hanging_indents() {
         let cases = [
             (NoticeKind::Success, "✓"),
@@ -1972,6 +2197,8 @@ mod tests {
 
     #[test]
     fn agent_markdown_can_be_disabled_for_finalized_and_pending_responses() {
+        reset_streaming_markdown_projection_cache();
+        reset_streaming_markdown_parsed_bytes();
         let raw = "# Heading\n\nFirst **bold** line";
         let message = ChatMessage::Agent(raw.into());
 
@@ -2002,6 +2229,11 @@ mod tests {
             .iter()
             .any(|line| line_text(line) == "● # Heading"));
         assert!(matches!(&completed.details[0], ChatMessage::Agent(text) if text == raw));
+        assert_eq!(
+            streaming_markdown_parsed_bytes(),
+            0,
+            "raw projection must bypass the Markdown parser and cache",
+        );
     }
 
     #[test]
@@ -2445,8 +2677,7 @@ mod tests {
             },
         };
         if !buf.is_empty() {
-            tab.messages
-                .push(crate::app::ChatMessage::Agent(buf.to_string()));
+            tab.append_agent_chunk(buf);
         }
         tab.reveal_graphemes = reveal_graphemes;
         tab
@@ -2517,6 +2748,143 @@ mod tests {
         assert_eq!(
             reference_projection.last_top_level_block_start,
             references.find("Read")
+        );
+
+        for block_source in [
+            "| A | B |\n|---|---|\n| 1 | 2 |",
+            "```rust\nfn main() {}\n```",
+            "<div>html</div>",
+            "---",
+        ] {
+            let block_projection =
+                tui_markdown::from_str_with_options_and_source_map(block_source, &options);
+            assert_eq!(block_projection.blocks.len(), 1, "{block_source:?}");
+            assert_eq!(
+                block_projection.blocks[0].source,
+                0..block_source.len(),
+                "{block_source:?}",
+            );
+            assert_eq!(
+                block_projection.blocks[0].lines.start, 0,
+                "{block_source:?}"
+            );
+            assert!(
+                block_projection.blocks[0].lines.end <= block_projection.text.lines.len(),
+                "{block_source:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn streaming_markdown_reuses_stable_blocks_and_matches_cold_projection() {
+        reset_streaming_markdown_projection_cache();
+        reset_streaming_markdown_parsed_bytes();
+        let mut tab = streaming_tab("", 0);
+        let chunks = [
+            "# Heading\n\nFirst paragraph.",
+            "\n\nSecond **bo",
+            "ld** paragraph.",
+        ];
+        let mut cold_bytes = 0usize;
+
+        for chunk in chunks {
+            tab.append_agent_chunk(chunk);
+            tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+            let source = tab.streaming_agent_text().expect("streaming source");
+            cold_bytes += source.len();
+
+            let incremental = build_pending_stream_lines_for_tab(&tab, 80);
+            let cold = agent_markdown_lines(source, 80, theme::DOT_AGENT);
+            assert_eq!(incremental, cold, "growth point source: {source:?}");
+        }
+
+        assert!(
+            streaming_markdown_parsed_bytes() < cold_bytes,
+            "stable blocks must avoid reparsing every complete prefix",
+        );
+
+        let completed_source = tab.streaming_agent_text().expect("completed source");
+        let pending = build_pending_stream_lines_for_tab(&tab, 80);
+        let parsed_before_same_prefix = streaming_markdown_parsed_bytes();
+        assert_eq!(build_pending_stream_lines_for_tab(&tab, 80), pending);
+        assert_eq!(streaming_markdown_parsed_bytes(), parsed_before_same_prefix);
+        let completed_message = ChatMessage::Agent(completed_source.to_string());
+        let finalized = build_message_lines(&completed_message, false, false, None, 0, 80);
+        assert_eq!(pending, finalized[..finalized.len() - 1]);
+
+        let before_reference = streaming_markdown_full_recompute_count();
+        tab.append_agent_chunk("\n\n[docs]: https://example.com");
+        tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+        let source = tab.streaming_agent_text().expect("reference source");
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&tab, 80),
+            agent_markdown_lines(source, 80, theme::DOT_AGENT),
+        );
+        assert!(streaming_markdown_full_recompute_count() > before_reference);
+
+        let after_reference = streaming_markdown_full_recompute_count();
+        tab.append_agent_chunk("\n\nAfter reference.");
+        tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+        let source = tab.streaming_agent_text().expect("post-reference source");
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&tab, 80),
+            agent_markdown_lines(source, 80, theme::DOT_AGENT),
+        );
+        assert!(streaming_markdown_full_recompute_count() > after_reference);
+    }
+
+    #[test]
+    fn streaming_markdown_matches_cold_projection_across_chunk_boundaries() {
+        let corpora = [
+            "# Heading\n\nParagraph without trailing newline",
+            "- alpha\n- beta\n  - nested\n\nAfter list.",
+            "| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter table.",
+            "Before code.\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```",
+            "CRLF heading\r\n============\r\n\r\nCRLF paragraph.",
+            "Unicode 👩‍💻 and e\u{301}.\n\nSecond paragraph.",
+            "Read [docs].\n\n[docs]: https://example.com\n\nAfter reference.",
+        ];
+
+        for source in corpora {
+            reset_streaming_markdown_projection_cache();
+            let mut tab = streaming_tab("", 0);
+            let mut chunk = String::new();
+            let graphemes = source.graphemes(true).collect::<Vec<_>>();
+            for (index, grapheme) in graphemes.iter().enumerate() {
+                chunk.push_str(grapheme);
+                if index % 3 != 2 && index + 1 != graphemes.len() {
+                    continue;
+                }
+                tab.append_agent_chunk(&chunk);
+                chunk.clear();
+                tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+                let visible = tab.streaming_agent_text().expect("streaming source");
+                assert_eq!(
+                    build_pending_stream_lines_for_tab(&tab, 48),
+                    agent_markdown_lines(visible, 48, theme::DOT_AGENT),
+                    "source growth: {visible:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_markdown_cache_isolates_equal_length_sources() {
+        reset_streaming_markdown_projection_cache();
+        let first = streaming_tab("# Alpha", 7);
+        let second = streaming_tab("# Bravo", 7);
+
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&first, 80),
+            agent_markdown_lines("# Alpha", 80, theme::DOT_AGENT),
+        );
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&second, 80),
+            agent_markdown_lines("# Bravo", 80, theme::DOT_AGENT),
+        );
+        assert_ne!(
+            first.streaming_source_generation(),
+            second.streaming_source_generation(),
         );
     }
 
