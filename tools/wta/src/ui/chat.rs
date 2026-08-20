@@ -40,7 +40,7 @@ pub struct PreparedChatLayout {
     natural_height: u16,
     pending_lines: Vec<Line<'static>>,
     message_lines: Vec<Vec<Line<'static>>>,
-    completed_turns: Vec<PreparedCompletedTurn>,
+    completed_turns: Rc<Vec<PreparedCompletedTurn>>,
     welcome_lines: Vec<Line<'static>>,
 }
 
@@ -50,9 +50,22 @@ impl PreparedChatLayout {
     }
 }
 
+#[derive(Clone, Copy)]
 struct PreparedCompletedTurn {
     index: usize,
-    layout: Rc<CachedCompletedTurn>,
+    key: CompletedTurnCacheKey,
+    height: usize,
+}
+
+struct RetainedCompletedTurnIndex {
+    namespace: u64,
+    generation: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+    selected: Option<usize>,
+    turns: Rc<Vec<PreparedCompletedTurn>>,
+    total_height: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -132,12 +145,15 @@ impl CompletedTurnLayoutCache {
 thread_local! {
     static COMPLETED_TURN_LAYOUT_CACHE: RefCell<CompletedTurnLayoutCache> =
         RefCell::new(CompletedTurnLayoutCache::default());
+    static RETAINED_COMPLETED_TURN_INDEX: RefCell<Option<RetainedCompletedTurnIndex>> =
+        const { RefCell::new(None) };
 }
 
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
     static COMPLETED_TURN_LINE_MATERIALIZATION_COUNT: Cell<usize> = const { Cell::new(0) };
+    static COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -168,6 +184,21 @@ pub(crate) fn completed_turn_line_materialization_count() -> usize {
 #[cfg(test)]
 fn record_completed_turn_line_materialization() {
     COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_descriptor_lookup_count() {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_descriptor_lookup_count() -> usize {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_descriptor_lookup() {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(count.get() + 1));
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -313,13 +344,184 @@ fn tool_detail_lines(
     lines
 }
 
+fn completed_turn_cache_key(
+    tab: &crate::app::TabSession,
+    index: usize,
+    namespace: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+) -> Option<CompletedTurnCacheKey> {
+    let turn = tab.completed_turns.get(index)?;
+    let (item_id, revision) = tab.completed_turn_layout_item(index)?;
+    Some(CompletedTurnCacheKey {
+        namespace,
+        item_id,
+        revision,
+        wrap_width,
+        render_agent_markdown,
+        expanded: turn.expanded,
+        selected: tab.selected_completed_turn_idx == Some(index),
+        pane_focused,
+    })
+}
+
+fn cached_completed_turn_layout(
+    tab: &crate::app::TabSession,
+    index: usize,
+    key: CompletedTurnCacheKey,
+) -> Option<Rc<CachedCompletedTurn>> {
+    if let Some(cached) = COMPLETED_TURN_LAYOUT_CACHE.with(|cache| cache.borrow_mut().get(key)) {
+        return Some(cached);
+    }
+    let turn = tab.completed_turns.get(index)?;
+    let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
+        turn,
+        key.selected,
+        key.pane_focused,
+        key.wrap_width,
+        key.render_agent_markdown,
+    );
+    let lines = own_lines(lines);
+    let value = CachedCompletedTurn {
+        height: rendered_lines_height(&lines, key.wrap_width),
+        expanded: turn.expanded,
+        prompt_rows,
+        lines,
+    };
+    let bytes = completed_turn_cache_bytes(&value);
+    Some(COMPLETED_TURN_LAYOUT_CACHE.with(|cache| cache.borrow_mut().insert(key, value, bytes)))
+}
+
+fn prepare_completed_turn_index(
+    app: &mut App,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+) -> (Rc<Vec<PreparedCompletedTurn>>, usize) {
+    let previous = RETAINED_COMPLETED_TURN_INDEX.with(|retained| {
+        retained.borrow().as_ref().and_then(|index| {
+            (index.wrap_width == wrap_width
+                && index.render_agent_markdown == render_agent_markdown
+                && index.pane_focused == pane_focused)
+                .then_some((index.namespace, index.generation))
+        })
+    });
+    let changes = app
+        .current_tab_mut()
+        .completed_turn_layout_changes_since(previous);
+    let tab = app.current_tab();
+    let selected = tab.selected_completed_turn_idx;
+
+    RETAINED_COMPLETED_TURN_INDEX.with(|retained| {
+        let mut retained = retained.borrow_mut();
+        let compatible = retained.as_ref().is_some_and(|index| {
+            index.namespace == changes.namespace
+                && index.wrap_width == wrap_width
+                && index.render_agent_markdown == render_agent_markdown
+                && index.pane_focused == pane_focused
+                && changes.dirty_indices.is_some()
+        });
+
+        if !compatible {
+            let mut turns = Vec::with_capacity(changes.len);
+            let mut total_height = 0usize;
+            for index in 0..changes.len {
+                #[cfg(test)]
+                record_completed_turn_descriptor_lookup();
+                let Some(key) = completed_turn_cache_key(
+                    tab,
+                    index,
+                    changes.namespace,
+                    wrap_width,
+                    render_agent_markdown,
+                    pane_focused,
+                ) else {
+                    continue;
+                };
+                let Some(layout) = cached_completed_turn_layout(tab, index, key) else {
+                    continue;
+                };
+                total_height = total_height.saturating_add(layout.height);
+                turns.push(PreparedCompletedTurn {
+                    index,
+                    key,
+                    height: layout.height,
+                });
+            }
+            *retained = Some(RetainedCompletedTurnIndex {
+                namespace: changes.namespace,
+                generation: changes.generation,
+                wrap_width,
+                render_agent_markdown,
+                pane_focused,
+                selected,
+                turns: Rc::new(turns),
+                total_height,
+            });
+        } else if let Some(index) = retained.as_mut() {
+            let turns = Rc::make_mut(&mut index.turns);
+            let dirty_indices = changes.dirty_indices.as_deref().unwrap_or_default();
+            for &dirty_index in dirty_indices {
+                #[cfg(test)]
+                record_completed_turn_descriptor_lookup();
+                let Some(key) = completed_turn_cache_key(
+                    tab,
+                    dirty_index,
+                    changes.namespace,
+                    wrap_width,
+                    render_agent_markdown,
+                    pane_focused,
+                ) else {
+                    continue;
+                };
+                let Some(layout) = cached_completed_turn_layout(tab, dirty_index, key) else {
+                    continue;
+                };
+                let descriptor = PreparedCompletedTurn {
+                    index: dirty_index,
+                    key,
+                    height: layout.height,
+                };
+                if let Some(existing) = turns.get_mut(dirty_index) {
+                    index.total_height = index
+                        .total_height
+                        .saturating_sub(existing.height)
+                        .saturating_add(descriptor.height);
+                    *existing = descriptor;
+                } else if dirty_index == turns.len() {
+                    index.total_height = index.total_height.saturating_add(descriptor.height);
+                    turns.push(descriptor);
+                }
+            }
+            turns.truncate(changes.len);
+
+            if index.selected != selected {
+                let previous_selected = index.selected;
+                for changed_selection in [previous_selected, selected].into_iter().flatten() {
+                    if let Some(descriptor) = turns.get_mut(changed_selection) {
+                        descriptor.key.selected = selected == Some(changed_selection);
+                    }
+                }
+            }
+            index.generation = changes.generation;
+            index.selected = selected;
+        }
+
+        retained.as_ref().map_or_else(
+            || (Rc::new(Vec::new()), 0),
+            |index| (Rc::clone(&index.turns), index.total_height),
+        )
+    })
+}
+
 pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
     let render_agent_markdown = app.render_agent_markdown;
     let pane_focused = app.pane_focused;
-    let (layout_namespace, layout_metadata) =
-        app.current_tab_mut().completed_turn_layout_metadata();
-    let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
+    let (completed_turns, completed_turn_height) =
+        prepare_completed_turn_index(app, wrap_width, render_agent_markdown, pane_focused);
+    let tab = app.current_tab();
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
     let message_lines: Vec<Vec<Line<'static>>> = tab
@@ -337,49 +539,6 @@ pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
                 wrap_width,
                 app.render_agent_markdown,
             ))
-        })
-        .collect();
-    let completed_turns: Vec<PreparedCompletedTurn> = tab
-        .completed_turns
-        .iter()
-        .enumerate()
-        .map(|(index, turn)| {
-            let (item_id, revision) = layout_metadata[index];
-            let key = CompletedTurnCacheKey {
-                namespace: layout_namespace,
-                item_id,
-                revision,
-                wrap_width,
-                render_agent_markdown,
-                expanded: turn.expanded,
-                selected: tab.selected_completed_turn_idx == Some(index),
-                pane_focused,
-            };
-            let cached = COMPLETED_TURN_LAYOUT_CACHE
-                .with(|cache| cache.borrow_mut().get(key))
-                .unwrap_or_else(|| {
-                    let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
-                        turn,
-                        key.selected,
-                        pane_focused,
-                        wrap_width,
-                        render_agent_markdown,
-                    );
-                    let lines = own_lines(lines);
-                    let value = CachedCompletedTurn {
-                        height: rendered_lines_height(&lines, wrap_width),
-                        expanded: turn.expanded,
-                        prompt_rows,
-                        lines,
-                    };
-                    let bytes = completed_turn_cache_bytes(&value);
-                    COMPLETED_TURN_LAYOUT_CACHE
-                        .with(|cache| cache.borrow_mut().insert(key, value, bytes))
-                });
-            PreparedCompletedTurn {
-                index,
-                layout: cached,
-            }
         })
         .collect();
     let pending_lines = own_lines(build_pending_stream_lines(app, wrap_width));
@@ -406,10 +565,7 @@ pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
         .iter()
         .map(|lines| rendered_lines_height(lines, wrap_width))
         .sum::<usize>()
-        + completed_turns
-            .iter()
-            .map(|turn| turn.layout.height)
-            .sum::<usize>()
+        + completed_turn_height
         + rendered_lines_height(&pending_lines, wrap_width)
         + rendered_lines_height(&welcome_lines, wrap_width))
     .max(1)
@@ -787,11 +943,17 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, prepared: PreparedCh
     if !truncated {
         let mut selection_reached = selection_target_idx.is_none();
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
-        for prepared_turn in completed_turns.into_iter().rev() {
-            let PreparedCompletedTurn { index: idx, layout } = prepared_turn;
+        for prepared_turn in completed_turns.iter().rev() {
+            let PreparedCompletedTurn {
+                index: idx,
+                key,
+                height: turn_height,
+            } = *prepared_turn;
+            let Some(layout) = cached_completed_turn_layout(app.current_tab(), idx, key) else {
+                continue;
+            };
             #[cfg(test)]
             record_completed_turn_line_materialization();
-            let turn_height = layout.height;
             let expanded = layout.expanded;
             let prompt_rows = layout.prompt_rows.clone();
             turn_hit_offsets.push((idx, rendered_rows_below, turn_height, expanded, prompt_rows));

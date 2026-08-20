@@ -7966,7 +7966,7 @@ fn completed_turn_prompt_rows_expose_state_aware_action_links() {
             && link.end_column > triangle.start_column
     }));
 
-    app.current_tab_mut().completed_turns[0].expanded = false;
+    assert!(app.current_tab_mut().set_completed_turn_expanded(0, false));
     render_to_text(&mut app, 80, 16);
     assert_eq!(app.completed_turn_action_links.len(), 1);
     assert_eq!(
@@ -10116,34 +10116,40 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
 
     app.current_tab_mut().toggle_selected_completed_turn();
     crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
     let collapsed = render_to_text(&mut app, 80, 16);
     assert_eq!(
         crate::ui::chat::completed_turn_line_build_count(),
         1,
         "collapsing one completed turn must invalidate only that item",
     );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
     assert_ne!(collapsed, retained);
 
     app.current_tab_mut().toggle_selected_completed_turn();
     crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
     let expanded = render_to_text(&mut app, 80, 16);
     assert_eq!(
         crate::ui::chat::completed_turn_line_build_count(),
         1,
         "expanding one completed turn must invalidate only that item",
     );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
     assert!(expanded.contains("ACK_SELECT_SCROLL_TURN_00"));
 
     assert!(app
         .current_tab_mut()
         .set_last_completed_turn_trailing_marker("CACHED_MARKER".into()));
     crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
     let _ = render_to_text(&mut app, 80, 16);
     assert_eq!(
         crate::ui::chat::completed_turn_line_build_count(),
         1,
         "updating one trailing marker must invalidate only that item",
     );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
 
     for _ in 0..11 {
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -10178,8 +10184,36 @@ fn clearing_completed_turns_renews_retained_layout_identity() {
     tab.completed_turns.push(turn);
     let (same_namespace, after) = tab.completed_turn_layout_metadata();
 
-    assert_eq!(same_namespace, namespace);
+    assert_ne!(same_namespace, namespace);
     assert_ne!(after[0].0, before[0].0);
+}
+
+#[test]
+fn completed_turn_layout_change_log_wrap_and_overflow_force_safe_rebuilds() {
+    let mut tab = TabSession::default();
+    tab.completed_turns.push(CompletedTurn {
+        prompt: "turn".into(),
+        details: Vec::new(),
+        expanded: false,
+        trailing_marker: None,
+    });
+    let (namespace, _) = tab.completed_turn_layout_metadata();
+
+    tab.completed_turn_layout_generation = u64::MAX;
+    tab.mark_completed_turn_layout_dirty(0);
+    let wrapped = tab.completed_turn_layout_changes_since(Some((namespace, u64::MAX)));
+    assert_ne!(wrapped.namespace, namespace);
+    assert!(wrapped.dirty_indices.is_none());
+
+    let baseline = (wrapped.namespace, wrapped.generation);
+    for _ in 0..=2048 {
+        tab.mark_completed_turn_layout_dirty(0);
+    }
+    let overflowed = tab.completed_turn_layout_changes_since(Some(baseline));
+    assert!(
+        overflowed.dirty_indices.is_none(),
+        "falling behind the bounded change log must force a full rebuild",
+    );
 }
 
 #[test]
@@ -10203,6 +10237,30 @@ fn render_chat_materializes_only_viewport_plus_overscan_turns() {
     assert!(
         (1..=48).contains(&materialized),
         "a 16-row viewport plus 32-row overscan should materialize at most 48 turns; materialized {materialized}",
+    );
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let retained = render_to_text(&mut app, 80, 16);
+    assert_eq!(retained, rendered);
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        0,
+        "an unchanged bottom frame must reuse the retained height index without scanning history",
+    );
+
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "RETAINED_VIEWPORT_TURN_200".into(),
+        details: vec![ChatMessage::Agent("ACK_200".into())],
+        expanded: false,
+        trailing_marker: None,
+    });
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let appended = render_to_text(&mut app, 80, 16);
+    assert!(appended.contains("RETAINED_VIEWPORT_TURN_200"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        1,
+        "appending one turn must update only the new height-index item",
     );
 }
 

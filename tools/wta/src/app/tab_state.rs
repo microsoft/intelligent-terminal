@@ -12,6 +12,14 @@ use super::{TabAutofixState, TurnState};
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
 static NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+const MAX_COMPLETED_TURN_LAYOUT_CHANGES: usize = 2048;
+
+pub(crate) struct CompletedTurnLayoutChanges {
+    pub namespace: u64,
+    pub generation: u64,
+    pub len: usize,
+    pub dirty_indices: Option<Vec<usize>>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoticeKind {
@@ -407,6 +415,8 @@ pub struct TabSession {
     pub(crate) completed_turn_layout_ids: Vec<u64>,
     pub(crate) completed_turn_layout_revisions: Vec<u64>,
     pub(crate) next_completed_turn_layout_id: u64,
+    pub(crate) completed_turn_layout_generation: u64,
+    pub(crate) completed_turn_layout_changes: VecDeque<(u64, usize)>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -523,22 +533,50 @@ pub struct TabSession {
 }
 
 impl TabSession {
-    pub(crate) fn completed_turn_layout_metadata(&mut self) -> (u64, Vec<(u64, u64)>) {
+    fn record_completed_turn_layout_change(&mut self, index: usize) {
+        if self.completed_turn_layout_generation == u64::MAX {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+            self.completed_turn_layout_generation = 1;
+            self.completed_turn_layout_changes.clear();
+        } else {
+            self.completed_turn_layout_generation += 1;
+        }
+        self.completed_turn_layout_changes
+            .push_back((self.completed_turn_layout_generation, index));
+        while self.completed_turn_layout_changes.len() > MAX_COMPLETED_TURN_LAYOUT_CHANGES {
+            self.completed_turn_layout_changes.pop_front();
+        }
+    }
+
+    fn sync_completed_turn_layout_metadata(&mut self) {
         if self.completed_turn_layout_namespace == 0 {
             self.completed_turn_layout_namespace =
                 NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
         }
 
         let len = self.completed_turns.len();
+        if self.completed_turn_layout_ids.len() > len {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+            self.completed_turn_layout_generation = 0;
+            self.completed_turn_layout_changes.clear();
+        }
         self.completed_turn_layout_ids.truncate(len);
         self.completed_turn_layout_revisions.truncate(len);
         while self.completed_turn_layout_ids.len() < len {
+            let index = self.completed_turn_layout_ids.len();
             self.next_completed_turn_layout_id =
                 self.next_completed_turn_layout_id.wrapping_add(1).max(1);
             self.completed_turn_layout_ids
                 .push(self.next_completed_turn_layout_id);
             self.completed_turn_layout_revisions.push(0);
+            self.record_completed_turn_layout_change(index);
         }
+    }
+
+    pub(crate) fn completed_turn_layout_metadata(&mut self) -> (u64, Vec<(u64, u64)>) {
+        self.sync_completed_turn_layout_metadata();
 
         (
             self.completed_turn_layout_namespace,
@@ -550,17 +588,98 @@ impl TabSession {
         )
     }
 
+    pub(crate) fn completed_turn_layout_changes_since(
+        &mut self,
+        previous: Option<(u64, u64)>,
+    ) -> CompletedTurnLayoutChanges {
+        self.sync_completed_turn_layout_metadata();
+        let namespace = self.completed_turn_layout_namespace;
+        let generation = self.completed_turn_layout_generation;
+        let len = self.completed_turns.len();
+        let Some((previous_namespace, previous_generation)) = previous else {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        };
+        if previous_namespace != namespace {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        }
+        if previous_generation == generation {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: Some(Vec::new()),
+            };
+        }
+
+        let Some(first_retained_generation) = self
+            .completed_turn_layout_changes
+            .front()
+            .map(|(generation, _)| *generation)
+        else {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        };
+        if previous_generation.saturating_add(1) < first_retained_generation {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        }
+
+        let mut dirty_indices = self
+            .completed_turn_layout_changes
+            .iter()
+            .filter(|(change_generation, _)| *change_generation > previous_generation)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        dirty_indices.sort_unstable();
+        dirty_indices.dedup();
+        CompletedTurnLayoutChanges {
+            namespace,
+            generation,
+            len,
+            dirty_indices: Some(dirty_indices),
+        }
+    }
+
+    pub(crate) fn completed_turn_layout_item(&self, index: usize) -> Option<(u64, u64)> {
+        Some((
+            *self.completed_turn_layout_ids.get(index)?,
+            *self.completed_turn_layout_revisions.get(index)?,
+        ))
+    }
+
     pub(crate) fn mark_completed_turn_layout_dirty(&mut self, index: usize) {
-        let _ = self.completed_turn_layout_metadata();
+        self.sync_completed_turn_layout_metadata();
         if let Some(revision) = self.completed_turn_layout_revisions.get_mut(index) {
             *revision = revision.wrapping_add(1);
+            self.record_completed_turn_layout_change(index);
         }
     }
 
     pub fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
+        self.completed_turn_layout_namespace = 0;
         self.completed_turn_layout_ids.clear();
         self.completed_turn_layout_revisions.clear();
+        self.completed_turn_layout_generation = 0;
+        self.completed_turn_layout_changes.clear();
     }
 
     pub fn set_last_completed_turn_trailing_marker(&mut self, marker: String) -> bool {
