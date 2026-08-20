@@ -176,12 +176,15 @@ function Get-AgentHooksStatus {
     return $report
 }
 
-# v4 (#N): render the installed hook version, and the bundle version alongside
-# it when the two disagree. Every other column answers "are hooks installed?";
+# v4: render the installed hook version, and the bundle version alongside it
+# when the two disagree. Every other column answers "are hooks installed?";
 # this one answers "are they the hooks this wta ships?" — the question a
 # marketplace registered against a stale worktree leaves wrong while all the
-# boolean columns still read healthy. Older payloads omit the fields, which
-# renders as an empty column rather than an error.
+# boolean columns still read healthy.
+#
+# Both fields are optional *within* v4: wta omits them when it cannot establish
+# a version, so absence means "unknown here", not "older payload" — anything
+# below v4 was already rejected outright by Get-AgentHooksStatus.
 function Get-AgentHookVersionLabel {
     [CmdletBinding()]
     param(

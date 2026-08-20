@@ -190,17 +190,21 @@ fn format_status_human(r: &crate::agent_hooks_installer::StatusReport) {
     }
 }
 
-/// The single version this wta's bundle ships, or `None` when the per-CLI
-/// bundles disagree.
+/// The single version this wta's bundle ships, or `None` unless every CLI
+/// reports the same one.
 ///
-/// Every CLI subtree carries its own manifest, so a mixed bundle is
-/// representable. Claiming one number for the whole bundle in that case would
-/// be a lie, and the per-CLI column already tells the true story — so we say
-/// nothing on the header line instead.
+/// Every CLI subtree carries its own manifest, so both a mixed bundle and a
+/// partially-readable one are representable. Summarizing either as a single
+/// number would be a lie — and the more dangerous case is the partial one,
+/// because a CLI whose manifest we couldn't read shows no bundle suffix on its
+/// row, which reads exactly like "matches the bundle". Staying silent on the
+/// header line keeps the per-CLI column the only claim being made.
 fn unique_bundle_version(clis: &[crate::agent_hooks_installer::CliStatus]) -> Option<String> {
-    let mut versions = clis.iter().filter_map(|c| c.bundle_version.as_deref());
-    let first = versions.next()?;
-    versions.all(|v| v == first).then(|| format!("v{}", first))
+    let mut versions = clis.iter().map(|c| c.bundle_version.as_deref());
+    let first = versions.next()??;
+    versions
+        .all(|v| v == Some(first))
+        .then(|| format!("v{}", first))
 }
 
 fn format_bundle_source(kind: &str, version: Option<String>) -> String {
@@ -379,7 +383,7 @@ mod tests {
 
     /// "Installed but the version is unreadable" and "nothing installed" are
     /// different problems; collapsing them would hide the first one, which is
-    /// what an fs-fallback detection path actually produces.
+    /// what the fs-fallback detection path actually produces.
     #[test]
     fn version_column_distinguishes_unknown_from_absent() {
         assert_eq!(format_version_column(None, Some("0.1.5"), true), "v?");
@@ -417,6 +421,28 @@ mod tests {
 
         let unknown = [cli_with_bundle("copilot", None)];
         assert_eq!(super::unique_bundle_version(&unknown), None);
+    }
+
+    /// One unreadable manifest is enough to disqualify the header claim. This
+    /// is the dangerous case: the CLI we know nothing about shows no bundle
+    /// suffix on its row, which reads just like "matches the bundle", so a
+    /// confident header version would compound the error rather than expose it.
+    #[test]
+    fn one_unknown_bundle_version_suppresses_the_header_claim() {
+        let partial = [
+            cli_with_bundle("copilot", Some("0.1.5")),
+            cli_with_bundle("claude", None),
+        ];
+        assert_eq!(super::unique_bundle_version(&partial), None);
+
+        // Order must not matter — the unknown may come first.
+        let partial_reversed = [
+            cli_with_bundle("copilot", None),
+            cli_with_bundle("claude", Some("0.1.5")),
+        ];
+        assert_eq!(super::unique_bundle_version(&partial_reversed), None);
+
+        assert_eq!(super::unique_bundle_version(&[]), None);
     }
 
     /// An unresolvable bundle must still print its `kind`, because that is the
