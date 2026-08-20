@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ marketplace yolu güncel değil"
 hooks.installed_but_disabled: "⚠ yüklü ancak devre dışı"
 hooks.not_installed: "✗ yüklü değil"
 hooks.uninstall_skipped: "atlandı (CLI PATH'te değil)"
-hooks.install_attempted: "wt-agent-hooks yüklemesi denendi (idempotent). Sonucu incelemek için `wta hooks status` çalıştırın. İzleme günlüğü: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} için yüklü"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "az önce"
 time.minute_singular: "%{count} dakika önce"

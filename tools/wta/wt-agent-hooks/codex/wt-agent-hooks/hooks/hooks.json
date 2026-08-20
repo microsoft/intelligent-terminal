@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.session.start"
+            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.session.start } catch { }; exit 0"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.notification"
+            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.notification } catch { }; exit 0"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.prompt.submit"
+            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit } catch { }; exit 0"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource codex agent.stop"
+            "command": "try { wtcli.exe agent-hook --cli-source codex --event agent.stop } catch { }; exit 0"
           }
         ]
       }

@@ -7,6 +7,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cctype>
+#include <iterator>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -137,6 +140,314 @@ namespace wtcli
         outEvt["type"] = "event";
         outEvt["method"] = "agent_event";
         outEvt["params"] = params;
+        return true;
+    }
+
+    // ── Hook event wire budget ──
+    //
+    // `agent_event` is broadcast: `TerminalProtocolComServer::SendEvent` routes
+    // it to `s_NotifyEventToComClients`, which copies the serialized string into
+    // *every* connected subscriber's bounded queue (one per agent-pane helper,
+    // one for wta-master, plus any `wtcli listen`). That queue holds
+    // `s_maxQueuedEvents = 4096` entries with drop-oldest back-pressure, and a
+    // subscriber that stops draining (the documented case: wta not reading
+    // wtcli's stdout) backs its queue up to the full 4096.
+    //
+    // So the limit is a *memory* bound, not a latency one — the producer never
+    // blocks on delivery. Budgeting ~32 MB per stalled subscriber gives
+    // 32 MB / 4096 = 8 KB per event.
+    //
+    // This replaces a 25000 limit inherited from the PowerShell bridge, where
+    // the hook JSON travelled as a `CreateProcess` argv and the real ceiling was
+    // Windows' ~32768-char command line (25000 left room for worst-case
+    // `CommandLineToArgvW` backslash doubling). That constraint disappeared when
+    // the payload moved to stdin; nothing on this path reads an argv anymore.
+    inline constexpr size_t kMaxHookEventChars = 8192;
+
+    // Per-field ceiling applied when an event overflows `kMaxHookEventChars`.
+    // Sized so the reduced payload is always well under budget even if every
+    // retained member is at its limit (7 strings + 3 nested = 5 KB of values).
+    inline constexpr size_t kMaxRetainedFieldChars = 512;
+
+    // Members of the hook payload that WTA reads, and the members it reads out
+    // of `tool_input`. These mirror `app::CONSUMED_PAYLOAD_KEYS` and
+    // `app::CONSUMED_TOOL_INPUT_KEYS`; `hook_contract_tests` on the Rust side
+    // fails if they drift.
+    inline constexpr const char* kConsumedPayloadKeys[] = {
+        "cwd",
+        "tool_name",
+        "toolName",
+        "tool_input",
+        "message",
+        "notification_type",
+        "reason",
+        "error",
+    };
+    inline constexpr const char* kConsumedToolInputKeys[] = {
+        "question",
+        "prompt",
+        "message",
+    };
+
+    // Trim to at most `limit` bytes without splitting a UTF-8 sequence — the
+    // result is handed to `winrt::to_hstring`, which needs well-formed UTF-8.
+    inline std::string ClampUtf8(const std::string& value, const size_t limit)
+    {
+        if (value.size() <= limit)
+        {
+            return value;
+        }
+        auto end = limit;
+        while (end > 0 && (static_cast<unsigned char>(value[end]) & 0xC0) == 0x80)
+        {
+            --end;
+        }
+        return value.substr(0, end);
+    }
+
+    // Degrade an oversized hook payload while keeping what WTA actually reads.
+    //
+    // The former behavior replaced the entire payload with a bare marker, which
+    // threw away precisely the members the consumer needs (`cwd` for the session
+    // row, `message` for a notification, `error` for a failure). That trade made
+    // sense when the alternative was the event failing to spawn at all; now that
+    // the cap only bounds the broadcast queue, keep the consumed members —
+    // clamped — and drop the rest.
+    inline Json::Value ReduceOversizedHookPayload(const Json::Value& payload, const size_t originalSize)
+    {
+        Json::Value reduced{ Json::objectValue };
+        reduced["_truncated"] = true;
+        reduced["_original_size"] = Json::UInt64{ originalSize };
+        if (!payload.isObject())
+        {
+            return reduced;
+        }
+
+        for (const auto* key : kConsumedPayloadKeys)
+        {
+            const auto member = payload.get(key, Json::Value{});
+            if (member.isString())
+            {
+                reduced[key] = ClampUtf8(member.asString(), kMaxRetainedFieldChars);
+            }
+            else if (member.isObject())
+            {
+                // `tool_input` is the only structurally-consumed member; project
+                // it to the sub-members WTA reads so a large `choices` array or
+                // an unknown sibling field can't blow the budget on its own.
+                Json::Value projected{ Json::objectValue };
+                for (const auto* nested : kConsumedToolInputKeys)
+                {
+                    const auto value = member.get(nested, Json::Value{});
+                    if (value.isString())
+                    {
+                        projected[nested] = ClampUtf8(value.asString(), kMaxRetainedFieldChars);
+                    }
+                }
+                if (!projected.empty())
+                {
+                    reduced[key] = std::move(projected);
+                }
+            }
+        }
+        return reduced;
+    }
+
+    // Build an agent hook event directly from the hook JSON delivered on stdin.
+    // This is the native equivalent of the former PowerShell bridge.
+    //
+    // Returns false for malformed JSON or missing routing metadata and leaves
+    // outEvt untouched. Empty or whitespace-only stdin is accepted as a null
+    // payload because some lifecycle hooks do not provide a body. A body that
+    // parses but is not a JSON object is reduced to null — see the redaction
+    // note below.
+    inline bool BuildAgentHookEventJson(
+        const std::string& eventType,
+        const std::string& cliSource,
+        const std::string& hookJson,
+        const std::string& paneId,
+        const std::string& environmentSessionId,
+        Json::Value& outEvt)
+    {
+        if (eventType.empty() || cliSource.empty() || paneId.empty())
+        {
+            return false;
+        }
+
+        Json::Value payload{ Json::nullValue };
+        const auto hasJson = std::any_of(hookJson.begin(), hookJson.end(), [](const unsigned char ch) {
+            return std::isspace(ch) == 0;
+        });
+        if (hasJson)
+        {
+            Json::CharReaderBuilder reader;
+            std::string errors;
+            std::istringstream stream{ hookJson };
+            if (!Json::parseFromStream(reader, stream, &payload, &errors))
+            {
+                return false;
+            }
+        }
+
+        // The redaction below can only inspect and remove *object members*, so a
+        // body that parses as an array, string, or number would skip it entirely
+        // and reach the COM broadcast verbatim. Redaction here is a disclosure
+        // control (see "Event broadcast disclosure" in doc/security-model.md), so
+        // it has to fail closed. WTA reads nothing but object members out of the
+        // payload, so discarding a non-object body costs no functionality.
+        if (!payload.isNull() && !payload.isObject())
+        {
+            payload = Json::Value{ Json::nullValue };
+        }
+
+        std::string agentSessionId = environmentSessionId;
+        if (payload.isObject())
+        {
+            for (const auto* key : { "session_id", "sessionId" })
+            {
+                // get() rather than operator[]: jsoncpp's non-const operator[]
+                // *creates* a null member for every key it misses, which would
+                // then ride the broadcast as noise on every event.
+                const auto value = payload.get(key, Json::Value{});
+                if (value.isString())
+                {
+                    agentSessionId = value.asString();
+                    break;
+                }
+            }
+
+            static constexpr const char* alwaysStrip[] = {
+                "tool_result",
+                "tool_response",
+                "tool_output",
+                "toolResult",
+                "toolResponse",
+                "toolOutput",
+                "prompt",
+                "user_prompt",
+                "userPrompt",
+                "transcript_path",
+                "transcriptPath",
+                "hook_event_name",
+                "hookEventName",
+                "permission_mode",
+                "permissionMode",
+                "model",
+                "model_info",
+                "modelInfo",
+                "output_style",
+                "outputStyle",
+                "version",
+                "source",
+                "apiKeySource",
+                "transcript",
+                "messages",
+                "history",
+                "conversation",
+                "systemPrompt",
+                "system_prompt",
+                "instructions",
+                "context",
+                "files",
+                "attachments",
+                "events",
+                "chat",
+                "chatHistory",
+            };
+            for (const auto* key : alwaysStrip)
+            {
+                payload.removeMember(key);
+            }
+
+            std::string toolName;
+            for (const auto* key : { "tool_name", "toolName" })
+            {
+                // Non-mutating lookup, same reason as the session id above.
+                const auto value = payload.get(key, Json::Value{});
+                if (value.isString())
+                {
+                    toolName = value.asString();
+                    break;
+                }
+            }
+            std::transform(toolName.begin(), toolName.end(), toolName.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+
+            static constexpr const char* userInputTools[] = {
+                "ask_user",
+                "askuser",
+                "ask-user",
+                "ask_question",
+                "askquestion",
+                "askuserquestion",
+                "ask_user_question",
+                "ask_for_clarification",
+                "request_input",
+                "request_user_input",
+                "user_input",
+                "prompt_user",
+                "clarification_request",
+            };
+            const auto isUserInputTool = std::any_of(
+                std::begin(userInputTools),
+                std::end(userInputTools),
+                [&](const char* value) { return toolName == value; });
+            if (!isUserInputTool)
+            {
+                payload.removeMember("tool_input");
+                payload.removeMember("toolInput");
+            }
+        }
+
+        Json::Value params;
+        params["cli_source"] = cliSource;
+        params["agent_session_id"] = agentSessionId;
+        params["event"] = eventType;
+        params["pane_id"] = paneId;
+        params["payload"] = payload;
+
+        Json::Value event;
+        event["type"] = "event";
+        event["method"] = "agent_event";
+        event["params"] = std::move(params);
+
+        // Bound what actually goes on the wire. The routing fields are attached
+        // *before* measuring so the limit applies to the serialized envelope
+        // rather than a subset of it. See `kMaxHookEventChars` for the budget.
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto serialized = Json::writeString(writer, event);
+        if (serialized.size() > kMaxHookEventChars)
+        {
+            event["params"]["payload"] = ReduceOversizedHookPayload(payload, serialized.size());
+            // The reduction is bounded by construction, but the routing fields
+            // (`agent_session_id` in particular) come from the CLI and are not.
+            // Fall back to the bare marker so the function always returns an
+            // envelope that a subscriber's queue can budget for.
+            if (Json::writeString(writer, event).size() > kMaxHookEventChars)
+            {
+                Json::Value marker{ Json::objectValue };
+                marker["_truncated"] = true;
+                marker["_original_size"] = Json::UInt64{ serialized.size() };
+                event["params"]["payload"] = std::move(marker);
+
+                // Emptying the payload cannot save an envelope whose *routing*
+                // fields are themselves over budget, and those are read out of
+                // the hook JSON on stdin. Measured before this check: a 200 KB
+                // `session_id` rode a 200 KB envelope onto the COM broadcast
+                // while reporting `_truncated`. Publishing nothing is the only
+                // answer that keeps the promise made just above; the caller
+                // drops the event and the hook still exits 0, so a fail-closed
+                // CLI is unaffected.
+                if (Json::writeString(writer, event).size() > kMaxHookEventChars)
+                {
+                    return false;
+                }
+            }
+        }
+
+        outEvt = std::move(event);
         return true;
     }
 

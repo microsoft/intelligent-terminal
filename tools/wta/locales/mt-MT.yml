@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ triq tal-marketplace skaduta"
 hooks.installed_but_disabled: "⚠ installat imma diżattivat"
 hooks.not_installed: "✗ mhux installat"
 hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
-hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installat għal %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "issa stess"
 time.minute_singular: "%{count} minuta ilu"

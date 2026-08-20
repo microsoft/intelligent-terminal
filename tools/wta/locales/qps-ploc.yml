@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "[⚠ ḿåŕķéţṗĺåçé ṗåţĥ śţåĺ�
 hooks.installed_but_disabled: "[⚠ ïñśţåĺĺéď ƀûţ ďïśåƀĺéď!!!! !!!!]"
 hooks.not_installed: "[✗ ñöţ ïñśţåĺĺéď!!]"
 hooks.uninstall_skipped: "[śķïṗṗéď (CLI ñöţ öñ PATH)!!!! !!!!]"
-hooks.install_attempted: "[wt-agent-hooks ïñśţåĺĺ åţţéḿṗţéď (ïďéḿṗöţéñţ). Ŕûñ `wta hooks status` ţö ïñśṗéçţ ţĥé ŕéśûĺţ. Ţŕåçé ĺöğ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+hooks.install_succeeded: "[✓ wt-agent-hooks ïñśţåĺĺéď ƒöŕ %{clis}!!!! !!!! !!!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "just now"
 time.minute_singular: "%{count} minute ago"

@@ -192,7 +192,7 @@ hooks.marketplace_path_stale: "⚠ مسار المتجر قديم"
 hooks.installed_but_disabled: "⚠ مثبّت ولكن معطّل"
 hooks.not_installed: "✗ غير مثبّت"
 hooks.uninstall_skipped: "تم التخطي (CLI ليس في PATH)"
-hooks.install_attempted: "تمت محاولة تثبيت wt-agent-hooks (متساوي القوة). شغّل `wta hooks status` لفحص النتيجة. سجل التتبع: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ تم تثبيت wt-agent-hooks لـ %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "الآن"
 time.minute_singular: "منذ دقيقة واحدة"

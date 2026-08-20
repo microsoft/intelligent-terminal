@@ -173,7 +173,7 @@ hooks.marketplace_path_stale: "⚠ 商店路徑已過期"
 hooks.installed_but_disabled: "⚠ 已安裝但已停用"
 hooks.not_installed: "✗ 未安裝"
 hooks.uninstall_skipped: "已略過（CLI 不在 PATH 上）"
-hooks.install_attempted: "wt-agent-hooks 安裝已嘗試（冪等）。執行 `wta hooks status` 檢查結果。追蹤記錄：%LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ 已為 %{clis} 安裝 wt-agent-hooks"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "剛剛"
 time.minute_singular: "%{count} 分鐘前"

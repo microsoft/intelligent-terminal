@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ Устаревший путь к marketplace"
 hooks.installed_but_disabled: "⚠ Установлен, но отключён"
 hooks.not_installed: "✗ Не установлен"
 hooks.uninstall_skipped: "Пропущено (CLI не в PATH)"
-hooks.install_attempted: "Попытка установки wt-agent-hooks (идемпотентно). Выполните `wta hooks status` для проверки результата. Журнал трассировки: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks установлен для %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n has no CLDR plural support; Rust selects singular vs. other.

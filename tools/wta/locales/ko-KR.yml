@@ -173,7 +173,7 @@ hooks.marketplace_path_stale: "⚠ 마켓플레이스 경로가 오래됨"
 hooks.installed_but_disabled: "⚠ 설치되었지만 사용하지 않도록 설정됨"
 hooks.not_installed: "✗ 설치되지 않음"
 hooks.uninstall_skipped: "건너뜀(CLI가 PATH에 없음)"
-hooks.install_attempted: "wt-agent-hooks 설치가 시도되었습니다(멱등). 결과를 확인하려면 `wta hooks status`를 실행하세요. 추적 로그: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis}에 대해 wt-agent-hooks가 설치됨"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "방금"
 time.minute_singular: "%{count}분 전"

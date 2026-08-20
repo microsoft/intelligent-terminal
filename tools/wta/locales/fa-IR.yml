@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ مسیر فروشگاه قدیمی است"
 hooks.installed_but_disabled: "⚠ نصب شده اما غیرفعال"
 hooks.not_installed: "✗ نصب نشده"
 hooks.uninstall_skipped: "رد شد (CLI در PATH نیست)"
-hooks.install_attempted: "تلاش نصب wt-agent-hooks انجام شد (بی‌توان). برای بررسی نتیجه `wta hooks status` را اجرا کنید. گزارش ردیابی: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks برای %{clis} نصب شد"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "همین حالا"
 time.minute_singular: "1 دقیقه پیش"

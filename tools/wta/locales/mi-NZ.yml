@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ ara makete kua tawhito"
 hooks.installed_but_disabled: "⚠ kua tautahia engari kua monokia"
 hooks.not_installed: "✗ kaore i tautahia"
 hooks.uninstall_skipped: "kua pekehia (CLI kaore i runga i te PATH)"
-hooks.install_attempted: "Kua ngana ki te tauta i a wt-agent-hooks (idempotent). Whakahautia `wta hooks status` ki te tirotiro i te hua. Raarangi aroturuki: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ kua tautahia a wt-agent-hooks mo %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "inaianei tonu"
 time.minute_singular: "%{count} meneti ki muri"

@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ เส้นทาง marketplace ล้า�
 hooks.installed_but_disabled: "⚠ ติดตั้งแล้วแต่ถูกปิดใช้งาน"
 hooks.not_installed: "✗ ยังไม่ได้ติดตั้ง"
 hooks.uninstall_skipped: "ข้ามแล้ว (CLI ไม่อยู่ใน PATH)"
-hooks.install_attempted: "พยายามติดตั้ง wt-agent-hooks แล้ว (idempotent) เรียกใช้ `wta hooks status` เพื่อตรวจสอบผลลัพธ์ ไฟล์บันทึก: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ ติดตั้ง wt-agent-hooks แล้ว สำหรับ %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "เมื่อสักครู่"

@@ -342,6 +342,40 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
     crate::win32::open_url_in_default_browser(url)
 }
 
+/// Members of `params.payload` that [`route_agent_event_to_registry_with_hook_sink`]
+/// actually reads.
+///
+/// This is the other half of the cross-language contract described on
+/// [`crate::agent_sessions::USER_INPUT_TOOL_NAMES`]. The hook producer
+/// (`BuildAgentHookEventJson` in `src/tools/wtcli/wtcli_functions.h`) redacts
+/// the payload with a denylist before broadcasting it, so a key that lands in
+/// that denylist while still being read here goes silently empty — no error,
+/// no log, just a blank cwd or a lost notification message.
+/// `hook_contract_tests` asserts the denylist and this list stay disjoint.
+///
+/// Nested lookups (`tool_input.question` / `.prompt` / `.message`) are covered
+/// by their `tool_input` parent, which the producer strips only for tools
+/// outside `USER_INPUT_TOOL_NAMES`.
+pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
+    "cwd",
+    "tool_name",
+    "toolName",
+    "tool_input",
+    "message",
+    "notification_type",
+    "reason",
+    "error",
+];
+
+/// Members of `payload.tool_input` the routing function reads when the tool is
+/// a user-input tool.
+///
+/// The producer projects `tool_input` down to exactly these when an event
+/// overflows its wire budget (`ReduceOversizedHookPayload` in
+/// `src/tools/wtcli/wtcli_functions.h`), so a name missing here is dropped
+/// from the degraded payload and the notification loses its question text.
+pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
@@ -569,20 +603,57 @@ where
         // request, with many tool pairs in between). So ignore tool completions
         // here and let `agent.stop` own the turn-end → Idle, mirroring the
         // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
-        // hook events at all, so this only affects Copilot/Gemini.
+        // ignore `tool.execution_complete`.
+        //
+        // Because these are dropped, no bundle subscribes them any more: each
+        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
+        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
+        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
+        // `tool.execute.after` were all removed. The arm stays so an older
+        // installed bundle that still emits them is ignored rather than
+        // mis-routed.
         "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
             return reg.take_dirty();
         }
         "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => SessionEvent::Notification {
-            key,
-            message: payload
-                .get("message")
+        "agent.notification" => {
+            // Not every notification means "the agent is blocked on you".
+            // Claude's `Notification` hook covers two cases, distinguished by
+            // `notification_type`:
+            //
+            //   * `permission_prompt` — the agent wants approval for a tool.
+            //     Genuinely Attention: nothing proceeds until the user acts.
+            //   * `idle_prompt` — the agent already finished its turn and has
+            //     simply been sitting at an empty prompt for 60s. It fires
+            //     *after* `agent.stop` has correctly moved the row to Idle, so
+            //     treating it as Attention parks every session at "Claude is
+            //     waiting for your input" between turns.
+            //
+            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
+            // turn-end transition, the same division of labour the tool
+            // completion arm above relies on. Deliberately *not* mapped to
+            // Idle: an unanswered `permission_prompt` also goes idle after
+            // 60s, and demoting that row would hide a pending approval.
+            //
+            // Unknown types stay Attention on purpose. Over-reporting costs a
+            // stale badge the next event clears; under-reporting loses a
+            // permission request with no other signal that it happened.
+            let notification_type = payload
+                .get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                return reg.take_dirty();
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
             key,
             reason: payload

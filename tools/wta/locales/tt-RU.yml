@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ marketplace юлы искергән"
 hooks.installed_but_disabled: "⚠ урнатылган ләкин сүндерелгән"
 hooks.not_installed: "✗ урнатылмаган"
 hooks.uninstall_skipped: "калдырылды (CLI PATH-та түгел)"
-hooks.install_attempted: "wt-agent-hooks урнату тырышылды (idempotent). Нәтиҗәне тикшерү өчен `wta hooks status` башкарыгыз. Эз журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} өчен урнатылды"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "яңа гына"
 time.minute_singular: "%{count} минут элек"

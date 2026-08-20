@@ -5,9 +5,8 @@
 // WTA runtime log directory.
 //
 // Mirrors wta's Rust `runtime_paths::intelligent_terminal_local_root()` exactly
-// so every writer of the WTA logs — the Rust wta processes, the C++ agent-pane
-// logger / bug-report-zip action, and the conpty environment injection that
-// lets agent-CLI PowerShell hooks find the dir — all target the same folder.
+// so the Rust wta processes and the C++ agent-pane logger / bug-report-zip
+// action target the same folder.
 //
 // Header-only `inline` so each translation unit picks up its own copy without
 // ODR conflicts. Lives in `src/cascadia/inc/` so both TerminalApp and
@@ -61,9 +60,8 @@ namespace IntelligentTerminal
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads
-    // the same value via `GetCurrentPackageId`, so the Rust processes, this
-    // C++ logger, and (through `WTA_HOOK_LOG_DIR`) the PowerShell hooks all
-    // resolve to the same `logs\<pkgver>\` folder.
+    // the same value via `GetCurrentPackageId`, so the Rust processes and this
+    // C++ logger resolve to the same `logs\<pkgver>\` folder.
     inline std::wstring PackageVersionDir()
     {
         UINT32 length = 0;
@@ -99,5 +97,44 @@ namespace IntelligentTerminal
         }
         const auto version = PackageVersionDir();
         return version.empty() ? root : (root / version);
+    }
+
+    // Absolute path to the `wtcli.exe` that ships beside this process, or an
+    // empty path when it cannot be found.
+    //
+    // Hook integrations normally invoke `wtcli.exe` off PATH, where it is
+    // supplied by the MSIX app-execution alias. That alias is a zero-byte
+    // reparse point, which `CreateProcess` resolves but a launcher doing its
+    // own PATH lookup does not: OpenCode's plugin spawns an argv array through
+    // Bun, whose resolver rejects it with "Executable not found in $PATH", and
+    // the plugin's catch-all swallows the failure. Handing out the real path
+    // lets such a launcher skip PATH resolution entirely.
+    //
+    // Resolved at run time rather than recorded at install time because the
+    // packaged path carries the version (…\WindowsApps\<name>_<version>_…), so
+    // anything persisted goes stale on the next upgrade — and the mechanism
+    // that would refresh it is the hook auto-upgrade, which is exactly what
+    // cannot be relied on when a CLI holds its plugin directory open.
+    inline std::filesystem::path BridgeExecutable()
+    {
+        std::wstring buffer(MAX_PATH, L'\0');
+        for (;;)
+        {
+            const auto written = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+            if (written == 0)
+            {
+                return {};
+            }
+            if (written < buffer.size())
+            {
+                buffer.resize(written);
+                break;
+            }
+            buffer.resize(buffer.size() * 2);
+        }
+
+        std::error_code ec;
+        auto candidate = std::filesystem::path{ buffer }.parent_path() / L"wtcli.exe";
+        return std::filesystem::exists(candidate, ec) ? candidate : std::filesystem::path{};
     }
 }
