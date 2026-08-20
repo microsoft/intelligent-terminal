@@ -2990,8 +2990,8 @@
     <value>지능형 터미널이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM 공급자</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>BYOK 공급자</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용합니다. GitHub Copilot 및 OpenCode를 지원합니다.</value>
@@ -3000,6 +3000,14 @@
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0}은(는) OpenAI 호환 사용자 지정 Chat Completions 공급자를 지원하지 않습니다. 저장된 공급자는 GitHub Copilot 또는 OpenCode로 전환하면 계속 사용할 수 있습니다.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>API 키가 없습니다. 이 공급자를 제거한 후 다시 추가하세요.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>Windows 자격 증명 관리자에서 저장된 API 키를 제거할 수 없습니다. "{0}"이라는 일반 자격 증명을 수동으로 제거한 후 다시 시도하세요.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>제거</value>
@@ -3012,6 +3020,10 @@
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>모델 ID</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>API 키(선택 사항)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>새로 추가</value>
@@ -3026,8 +3038,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 호환</value>

@@ -8,6 +8,7 @@ mod agent_registry;
 mod agent_sessions;
 mod agent_source;
 mod agent_tools;
+mod action_links;
 mod app;
 mod app_contracts;
 mod cli;

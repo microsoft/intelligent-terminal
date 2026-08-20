@@ -12,6 +12,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/CustomModelCredential.h"
 #include "../inc/IntelligentTerminalPaths.h"
 #include "../inc/WtaProcess.h"
 
@@ -27,6 +28,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _provider{ std::move(provider) },
         _remove{ std::move(remove) }
     {
+        if (_provider.ApiKeyRequired() &&
+            ::Microsoft::Terminal::CustomModels::ResolvedLocation(_provider) == L"cloud")
+        {
+            try
+            {
+                _isApiKeyMissing = !::Microsoft::Terminal::CustomModels::HasApiKey(_provider.ApiKeyCredential());
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        }
     }
 
     winrt::hstring CustomModelProviderEntry::ModelsDisplayText() const
@@ -44,6 +57,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             const auto hr = wil::ResultFromCaughtException();
             LOG_HR(hr);
+            const auto target = ::Microsoft::Terminal::CustomModels::CredentialTarget(_provider.ApiKeyCredential());
+            _removalErrorMessage = RS_fmt(L"AIAgents_CustomProviderCredentialRemovalFailed", target);
+            _NotifyChanges(L"RemovalErrorMessage", L"HasRemovalError");
+            return;
         }
         _remove();
     }
@@ -193,7 +210,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             });
         // A Settings page must not depend on an agent pane having connected
         // first. Always refresh the native catalog in a clean environment so
-        // BYOM entries supplement cloud models instead of replacing them.
+        // BYOK entries supplement cloud models instead of replacing them.
         _TriggerAcpModelProbe();
 
         // Delegate agents — same GPO-filtered + install-filter rule.
@@ -307,10 +324,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.CustomModelProviders(providers);
         _originalCustomModelProviders = std::move(mergedProviders);
 
-        // The clean cloud catalog is independent of configured BYOM providers.
-        // Rebuild the combined list without launching another agent process.
-        _RebuildAcpModelListFromCache();
-        _NotifyChanges(L"CustomModelProviders");
+        // Refresh the clean cloud catalog after adding or removing a provider.
+        _TriggerAcpModelProbe();
+        _NotifyChanges(L"CustomModelProviders", L"ShowCustomModelProvidersExpander");
     }
 
     void AIAgentsViewModel::_RemoveCustomModelProvider(const winrt::hstring& id)
@@ -355,6 +371,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::NewCustomModelProviderApiKey(const winrt::hstring& value)
+    {
+        _newCustomModelProviderApiKey = value;
+    }
+
     void AIAgentsViewModel::IsCustomModelProvidersExpanded(const bool value)
     {
         if (_isCustomModelProvidersExpanded != value)
@@ -368,7 +389,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         IsCustomModelProvidersExpanded(true);
         _isAddingCustomModelProvider = true;
-        _NotifyChanges(L"IsAddingCustomModelProvider");
+        _NotifyChanges(L"IsAddingCustomModelProvider", L"ShowCustomModelProvidersExpander");
     }
 
     bool AIAgentsViewModel::_HasNonWhitespace(const std::wstring_view value) noexcept
@@ -399,6 +420,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         const auto baseUrl = _TrimWhitespace(_newCustomModelProviderBaseUrl);
         const auto modelId = _TrimWhitespace(_newCustomModelId);
+        const auto apiKey = _TrimWhitespace(_newCustomModelProviderApiKey);
         if (baseUrl.empty() || modelId.empty())
         {
             return;
@@ -419,6 +441,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
 
+        winrt::hstring credentialId;
+        if (!apiKey.empty())
+        {
+            credentialId = ::Microsoft::Terminal::CustomModels::StoreApiKey(
+                {},
+                apiKey);
+            provider.ApiKeyCredential(credentialId);
+            provider.ApiKeyRequired(true);
+        }
+        auto removeUncommittedCredential = wil::scope_exit([&]() noexcept {
+            if (!credentialId.empty())
+            {
+                LOG_IF_FAILED(wil::ResultFromException([&]() {
+                    ::Microsoft::Terminal::CustomModels::RemoveApiKey(credentialId);
+                }));
+            }
+        });
+
         auto weakThis = get_weak();
         _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
             provider,
@@ -429,6 +469,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }));
         _CommitCustomModelProviders();
+        removeUncommittedCredential.release();
         CancelCustomModelProvider();
     }
 
@@ -437,10 +478,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _isAddingCustomModelProvider = false;
         _newCustomModelProviderBaseUrl.clear();
         _newCustomModelId.clear();
+        _newCustomModelProviderApiKey.clear();
         _NotifyChanges(
             L"IsAddingCustomModelProvider",
+            L"ShowCustomModelProvidersExpander",
             L"NewCustomModelProviderBaseUrl",
             L"NewCustomModelId",
+            L"NewCustomModelProviderApiKey",
             L"CanSaveCustomModelProvider");
     }
 
@@ -1438,6 +1482,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _acpProbing = true;
         _RebuildAcpModelListFromCache();
         const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeStarted",
+            TraceLoggingDescription("A clean ACP model catalog probe started"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+            TraceLoggingUInt64(cacheRevision, "CacheRevision"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
         _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
     }
 
@@ -1490,16 +1543,35 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         co_await wil::resume_foreground(dispatcher);
 
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
+
         // Drop stale results — a newer probe is already in flight
         // for a different agent and we'd clobber its eventual write.
         if (generation != _acpProbeGeneration)
         {
+            TraceLoggingWrite(
+                g_hTerminalSettingsEditorProvider,
+                "AcpModelProbeDiscarded",
+                TraceLoggingDescription("An ACP model catalog probe result was superseded"),
+                TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+                TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
             co_return;
         }
 
         _acpProbing = false;
+        const auto probeSucceeded = catalog && !parsed.empty();
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeCompleted",
+            TraceLoggingDescription("A clean ACP model catalog probe completed"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+            TraceLoggingBool(probeSucceeded, "Succeeded"),
+            TraceLoggingUInt32(gsl::narrow_cast<uint32_t>(parsed.size()), "ModelCount"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
 
-        if (catalog && !parsed.empty())
+        if (probeSucceeded)
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
             if (!Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId))

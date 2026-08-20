@@ -979,7 +979,7 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
-    /// BYOM-only projection used by the `/model` command. Cloud/native models
+    /// BYOK-only projection used by the `/model` command. Cloud/native models
     /// remain in `available_models` for Settings but are not shown in-pane.
     model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
@@ -1034,6 +1034,13 @@ pub struct App {
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
     pub(crate) text_selection: crate::text_selection::TextSelection,
+    pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
+    pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
+    pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) pressed_input_dialog_tab: Option<String>,
+    pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
+    pub(crate) painted_completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1330,6 +1337,13 @@ impl App {
             show_debug_panel: false,
             debug_scroll: 0,
             text_selection: crate::text_selection::TextSelection::default(),
+            completed_turn_hits: Vec::new(),
+            pressed_completed_turn: None,
+            last_completed_turn_click: None,
+            input_dialog_area: None,
+            pressed_input_dialog_tab: None,
+            completed_turn_action_links: Vec::new(),
+            painted_completed_turn_action_links: Vec::new(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -1755,7 +1769,7 @@ impl App {
             });
             merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
-                name: format!("{} (BYOM)", custom.model_id),
+                name: format!("{} (BYOK)", custom.model_id),
                 description: None,
             });
         }
@@ -2309,7 +2323,7 @@ impl App {
     }
 
     /// `/model [id]` — show models from the mode selected in Settings. Cloud
-    /// mode shows only agent/cloud models; local mode shows only BYOM models.
+    /// mode shows only agent/cloud models; custom-provider mode shows only BYOK models.
     /// Crossing modes requires changing Settings and restarting the agent.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
@@ -4010,6 +4024,11 @@ impl App {
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         self.text_selection.snapshot_and_render(frame.buffer_mut());
+        let action_overlay = crate::action_links::build_overlay(
+            frame.buffer_mut(),
+            &self.painted_completed_turn_action_links,
+            &self.completed_turn_action_links,
+        );
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`
@@ -4027,6 +4046,10 @@ impl App {
         });
 
         terminal.swap_buffers();
+
+        crate::action_links::paint(terminal.backend_mut(), &action_overlay)?;
+        self.painted_completed_turn_action_links
+            .clone_from(&self.completed_turn_action_links);
 
         let backend_flush_started = std::time::Instant::now();
         terminal.backend_mut().flush()?;
@@ -4369,6 +4392,44 @@ impl App {
             "inserted pasted text into agent input"
         );
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompletedTurnHitKind {
+    Triangle,
+    UserInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletedTurnHitRegion {
+    pub(crate) start_column: u16,
+    pub(crate) end_column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) kind: CompletedTurnHitKind,
+}
+
+impl CompletedTurnHitRegion {
+    pub(crate) fn contains(self, column: u16, row: u16) -> bool {
+        self.row == row && column >= self.start_column && column < self.end_column
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PressedCompletedTurn {
+    pub(crate) tab_id: String,
+    pub(crate) hit: CompletedTurnHitRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompletedTurnClickRecord {
+    pub(crate) tab_id: String,
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) previous_selected_index: Option<usize>,
+    pub(crate) previous_selection_pending: bool,
+    pub(crate) previous_expanded: bool,
 }
 
 #[path = "app_events.rs"]
@@ -4979,7 +5040,7 @@ impl App {
     /// `/fix [hint]` — run the auto-fix prompt on demand against the active
     /// terminal pane. Reuses the error-triggered autofix pipeline
     /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
-    /// template plus the working pane's recent output, and any `hint` typed
+    /// instruction overlay plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
@@ -5255,6 +5316,9 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(

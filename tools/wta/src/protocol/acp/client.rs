@@ -358,6 +358,15 @@ fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
 
+fn acp_error_detail(error: &acp::Error) -> String {
+    error
+        .data
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&error.message)
+        .to_string()
+}
+
 /// Log potentially-sensitive content (user prompt / agent message text,
 /// previews, full ACP payloads) at **trace only**, so it never lands in
 /// shipping (`info`) or default-troubleshooting (`debug`) logs. Enable with
@@ -2685,7 +2694,11 @@ pub async fn run_acp_client_over_pipe(
                 error = %e,
                 "ACP initialize over master pipe failed"
             );
-            anyhow::anyhow!("initialize over master pipe failed: {}", e)
+            anyhow::Error::new(AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Initialize,
+                detail: acp_error_detail(&e),
+            })
+            .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
     let cloud_catalog =
@@ -4176,9 +4189,7 @@ async fn dispatch_prompt_body(
     } else {
         TemplateKind::Planner
     };
-    let include_template = template_memo
-        .should_ship(&prompt_session_id_str, kind)
-        .await;
+    let include_base_prompt = template_memo.should_ship_base(&prompt_session_id_str).await;
 
     prompt_timing_task.activate(
         &prompt_session_id_str,
@@ -4191,7 +4202,7 @@ async fn dispatch_prompt_body(
         prompt.submitted_at_unix_s,
         &prompt.text,
         prompt.autofix_text_kind,
-        include_template,
+        include_base_prompt,
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
@@ -4236,7 +4247,7 @@ async fn dispatch_prompt_body(
         prompt.id,
         &prompt_session_id_str,
         kind,
-        include_template,
+        include_base_prompt,
         &text,
     );
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
@@ -4353,9 +4364,9 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::acp;
     use super::{
-        acp_result_failure_fields, bounded_tool_output_parts, complete_prompt_request,
-        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_title, SessionMcpTool,
+        acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
+        complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
+        post_login_authenticate_error, session_mcp_tool_from_title, SessionMcpTool,
         timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
         PromptTimingState, PromptUsageIdentity, SoftStopReason, WtaClient,
     };
@@ -4365,6 +4376,18 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn acp_error_detail_prefers_actionable_data() {
+        let error = acp::Error::internal_error().data(
+            "The saved API key was not found in Windows Credential Manager.",
+        );
+
+        assert_eq!(
+            acp_error_detail(&error),
+            "The saved API key was not found in Windows Credential Manager."
+        );
+    }
 
     #[test]
     fn bounded_tool_output_parts_keeps_unicode_tail_without_joining_full_input() {

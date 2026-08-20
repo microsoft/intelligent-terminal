@@ -2425,10 +2425,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
 
     app.cmd_model("gpt-5.4".into());
 
-    assert_eq!(
-        app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4")
-    );
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Notice {
@@ -2437,10 +2434,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         })
     ));
     match master_rx.try_recv().expect("live model switch request") {
-        crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-            session_id,
-            model,
-        } => {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionModel { session_id, model } => {
             assert_eq!(session_id.expect("target session").0.as_ref(), "sid-1");
             assert_eq!(model, "gpt-5.4");
         }
@@ -2771,7 +2765,7 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
         .all(|model| model.id != "custom:old:model-b"));
     assert!(app.available_models.iter().any(|model| {
         model.id == "custom:new:model-c"
-            && model.name == "model-c (BYOM)"
+            && model.name == "model-c (BYOK)"
             && model.description.is_none()
     }));
     let new_provider = app
@@ -5457,8 +5451,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5524,8 +5518,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5769,6 +5763,47 @@ fn permission_request_replaces_thinking_until_dismissed() {
     assert!(!app.current_tab().should_show_thinking());
 }
 
+#[test]
+fn surfaced_autofix_turn_accepts_follow_up_permission_request() {
+    let mut app = test_app();
+    let prompt = SubmittedPrompt {
+        id: 1,
+        text: "autofix".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: Some(AutofixContext { generation: 0 }),
+    };
+    app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::ChatTurn,
+        end_pending: false,
+    };
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+
+    app.handle_event(AppEvent::PermissionRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        tool_call_id: "follow-up-tool".into(),
+        description: "Run the next diagnostic".into(),
+        title: "Run the next diagnostic".into(),
+        kind_label: Some("$".into()),
+        target: Some("winget search PowerToys".into()),
+        target_is_command: true,
+        options: vec![PermOption {
+            id: "allow-once".into(),
+            name: "Allow once".into(),
+            kind: "AllowOnce".into(),
+        }],
+        responder,
+    });
+
+    assert_eq!(app.current_tab().permission.len(), 1);
+    assert_eq!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "WTA must wait for the user instead of implicitly cancelling"
+    );
+}
+
 fn begin_user_input_test(app: &mut App) {
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Submitted(SubmittedPrompt {
         id: 1,
@@ -5777,6 +5812,31 @@ fn begin_user_input_test(app: &mut App) {
         context: TurnContext::default(),
         autofix: None,
     });
+}
+
+#[test]
+fn session_load_preserves_user_input_request() {
+    let mut app = test_app();
+    app.current_tab_mut().loading_session = true;
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "resume-clarification".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which goal should I resume?".into(),
+            choices: vec!["Build".into(), "Test".into()],
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    assert_eq!(app.current_tab().user_input.len(), 1);
+    assert_eq!(
+        response.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+        "session load must not implicitly cancel a live clarification request"
+    );
 }
 
 #[test]
@@ -5995,8 +6055,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -6076,8 +6136,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -6205,16 +6265,12 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
     });
 
     let details = &app.current_tab().completed_turns[0].details;
-    assert!(
-        matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file.")
-    );
+    assert!(matches!(&details[0], ChatMessage::Agent(text) if text == "I will update the file."));
     assert!(matches!(
         &details[1],
         ChatMessage::ToolCall { title, .. } if title == "apply_patch"
     ));
-    assert!(
-        matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete.")
-    );
+    assert!(matches!(&details[2], ChatMessage::Agent(text) if text == "The update is complete."));
 }
 
 #[test]
@@ -6301,9 +6357,28 @@ fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
-        .draw(|frame| crate::ui::render(frame, app))
+        .draw(|frame| {
+            crate::ui::render(frame, app);
+            app.text_selection.snapshot_and_render(frame.buffer_mut());
+        })
         .expect("render must not panic");
-    let buf = terminal.backend().buffer();
+    buffer_to_text(terminal.backend().buffer())
+}
+
+fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    use ratatui::{backend::TestBackend, Terminal};
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| {
+            crate::ui::render(frame, app);
+            app.text_selection.snapshot_and_render(frame.buffer_mut());
+        })
+        .expect("render must not panic");
+    terminal.backend().buffer().clone()
+}
+
+fn buffer_to_text(buf: &ratatui::buffer::Buffer) -> String {
     let w = buf.area.width as usize;
     let mut out = String::new();
     for (i, cell) in buf.content.iter().enumerate() {
@@ -6551,16 +6626,16 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: cloud mode lists cloud models and omits BYOM rows. Lifts
+/// Render: cloud mode lists cloud models and omits BYOK rows. Lifts
 /// `ui/model_popup.rs`; local-mode filtering is covered by slash-command tests.
 #[test]
 fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -6569,13 +6644,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -6587,8 +6662,8 @@ fn render_model_picker_lists_models() {
         "the cloud-mode model picker must show cloud models; rendered:\n{text}"
     );
     assert!(
-        !text.contains("shared-model (BYOM)"),
-        "the cloud-mode model picker must omit BYOM rows; rendered:\n{text}"
+        !text.contains("shared-model (BYOK)"),
+        "the cloud-mode model picker must omit BYOK rows; rendered:\n{text}"
     );
     assert!(
         !text.contains('●'),
@@ -7642,6 +7717,799 @@ fn render_chat_completed_turn_expanded_with_marker() {
     }
 }
 
+#[test]
+fn clicking_completed_turn_triangle_toggles_details() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MOUSE_TOGGLE_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_TOGGLE_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().selected_completed_turn_idx = Some(0);
+
+    let before = render_to_text(&mut app, 80, 16);
+    let (row, column) = before
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.contains("MOUSE_TOGGLE_PROMPT").then(|| {
+                let column = line
+                    .chars()
+                    .position(|character| character == '▼')
+                    .expect("expanded turn header must paint its triangle");
+                (row as u16, column as u16)
+            })
+        })
+        .expect("completed turn must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    assert!(
+        !app.current_tab().completed_turns[0].expanded,
+        "clicking the rendered triangle must collapse the completed turn",
+    );
+    let collapsed = render_to_text(&mut app, 80, 16);
+    assert!(collapsed.contains("MOUSE_TOGGLE_PROMPT"));
+    assert!(!collapsed.contains("MOUSE_TOGGLE_DETAIL"));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+}
+
+#[test]
+fn clicking_multiline_completed_turn_prompt_selects_and_reuses_enter_toggle() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MULTILINE_FIRST\nMULTILINE_SECOND internal space AUTO_WRAP_TARGET".into(),
+        details: vec![ChatMessage::Agent("MULTILINE_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let before = render_to_text(&mut app, 24, 16);
+    let (row, column) = before
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MULTILINE_SECOND")
+                .map(|column| (row as u16, column as u16 + 2))
+        })
+        .expect("expanded prompt second line must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    assert!(
+        !app.current_tab().completed_turns[0].expanded,
+        "clicking the rendered second prompt line must collapse the turn",
+    );
+    assert_eq!(
+        app.current_tab().selected_completed_turn_idx,
+        Some(0),
+        "mouse click must reuse completed-turn keyboard selection",
+    );
+
+    let selected_buffer = render_to_buffer(&mut app, 80, 16);
+    let selected_text = buffer_to_text(&selected_buffer);
+    let (selected_row, selected_column) = selected_text
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MULTILINE_FIRST")
+                .map(|column| (row as u16, column as u16))
+        })
+        .expect("selected collapsed prompt must be visible");
+    assert_eq!(
+        selected_buffer
+            .cell((selected_column, selected_row))
+            .expect("selected prompt cell must exist")
+            .style()
+            .fg,
+        Some(ratatui::style::Color::Cyan),
+        "mouse selection must use the same cyan style as keyboard selection",
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "Enter must toggle the turn selected by mouse click",
+    );
+}
+
+#[test]
+fn completed_turn_user_input_hits_follow_rendered_text_boundaries() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "BOUNDARY_FIRST\nBOUNDARY_SECOND  x AUTO_WRAP_TARGET_MORE\n\nBOUNDARY_LAST".into(),
+        details: vec![ChatMessage::Agent("BOUNDARY_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 24, 18);
+    let regions: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .collect();
+    assert!(
+        regions.len() >= 4,
+        "multiline and wrapped prompt rows need separate hit ranges"
+    );
+
+    let locate = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| line.find(needle).map(|column| (row as u16, column as u16)))
+            .unwrap_or_else(|| panic!("{needle:?} must be visible; rendered:\n{rendered}"))
+    };
+    let (first_row, first_column) = locate("BOUNDARY_FIRST");
+    let (second_row, second_column) = locate("BOUNDARY_SECOND");
+    let (wrap_row, wrap_column) = locate("AUTO_WRAP");
+    let (last_row, last_column) = locate("BOUNDARY_LAST");
+    let (detail_row, detail_column) = locate("BOUNDARY_DETAIL");
+
+    for (row, column) in [
+        (first_row, first_column + 2),
+        (second_row, second_column + 2),
+        (wrap_row, wrap_column + 2),
+        (last_row, last_column + 2),
+    ] {
+        assert!(regions.iter().any(|hit| hit.contains(column, row)));
+    }
+
+    let internal_space_column = rendered
+        .lines()
+        .nth(second_row as usize)
+        .expect("second row")
+        .find("BOUNDARY_SECOND  x")
+        .expect("internal spaces") as u16
+        + "BOUNDARY_SECOND ".len() as u16;
+    assert!(regions
+        .iter()
+        .any(|hit| hit.contains(internal_space_column, second_row)));
+
+    let first_line = rendered.lines().nth(first_row as usize).expect("first row");
+    let prefix_byte = first_line.find('>').expect("prompt prefix");
+    let prefix_column = unicode_width::UnicodeWidthStr::width(&first_line[..prefix_byte]) as u16;
+    assert!(regions
+        .iter()
+        .any(|hit| hit.contains(prefix_column, first_row)));
+    assert!(!regions
+        .iter()
+        .any(|hit| hit.contains(detail_column, detail_row)));
+    for hit in &regions {
+        assert_eq!(hit.start_column, 1);
+        assert_eq!(hit.end_column, 23);
+        assert!(hit.contains(hit.end_column - 1, hit.row));
+        assert!(!hit.contains(hit.end_column, hit.row));
+    }
+    assert!(regions.iter().any(|hit| hit.row == last_row - 1));
+
+    let click = |app: &mut App, row, column| {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+    };
+    click(&mut app, second_row, second_column + 2);
+    assert!(!app.current_tab().completed_turns[0].expanded);
+    render_to_text(&mut app, 80, 18);
+    let summary_hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .expect("collapsed summary must expose its rendered prompt text");
+    click(&mut app, summary_hit.row, summary_hit.start_column);
+    assert!(app.current_tab().completed_turns[0].expanded);
+}
+
+#[test]
+fn clicking_input_dialog_restores_input_navigation_after_mouse_turn_selection() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "INPUT_FOCUS_PROMPT".into(),
+        details: vec![ChatMessage::Agent("INPUT_FOCUS_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (prompt_row, _) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("INPUT_FOCUS_PROMPT")
+                .map(|column| (row as u16, column))
+        })
+        .expect("completed prompt must be visible");
+    let input_row = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| line.contains("Ask anything").then_some(row as u16))
+        .expect("input placeholder must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: 70,
+            row: prompt_row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+    assert!(!app.current_tab().completed_turns[0].expanded);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: 8,
+            row: input_row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "x");
+}
+
+#[test]
+fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    for click_count in [2, 3] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "MULTI_CLICK_FIRST\nMULTI_CLICK_PROMPT_WORD".into(),
+            details: vec![ChatMessage::Agent("MULTI_CLICK_DETAIL".into())],
+            expanded: true,
+            trailing_marker: None,
+        });
+        let rendered = render_to_text(&mut app, 80, 16);
+        let (row, column) = rendered
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find("MULTI_CLICK_PROMPT_WORD")
+                    .map(|column| (row as u16, column as u16 + 2))
+            })
+            .expect("multi-click prompt must be visible");
+
+        for click_index in 0..click_count {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+            if click_index == 0 {
+                assert_eq!(app.text_selection.click_count(), Some(1));
+            }
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+            if click_index == 0 {
+                assert_eq!(app.text_selection.click_count(), Some(1));
+                assert!(
+                    app.last_completed_turn_click.is_some(),
+                    "first user-input click must retain rollback state",
+                );
+            }
+            render_to_text(&mut app, 80, 16);
+        }
+
+        assert!(
+            app.current_tab().completed_turns[0].expanded,
+            "multi-click selection must restore the initial expanded state",
+        );
+        assert_eq!(
+            app.current_tab().selected_completed_turn_idx,
+            None,
+            "{click_count}-click selection must restore the initial turn selection",
+        );
+        let selected_text = app
+            .text_selection
+            .selected_text()
+            .expect("double/triple click must preserve text selection");
+        assert!(selected_text.contains("MULTI_CLICK_PROMPT_WORD"));
+    }
+}
+
+#[test]
+fn completed_turn_user_input_hit_spans_full_row_with_wide_cells() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "界 A".into(),
+        details: Vec::new(),
+        expanded: true,
+        trailing_marker: None,
+    });
+    render_to_text(&mut app, 80, 16);
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .expect("wide prompt must have a user-input hit range");
+    assert_eq!(hit.start_column, 1);
+    assert_eq!(hit.end_column, 79);
+    for column in hit.start_column..hit.end_column {
+        assert!(hit.contains(column, hit.row));
+    }
+    assert!(!hit.contains(hit.end_column, hit.row));
+}
+
+#[test]
+fn completed_turn_prompt_rows_expose_state_aware_action_links() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "ACTION_LINK_FIRST\nACTION_LINK_SECOND".into(),
+        details: vec![ChatMessage::Agent("ACTION_LINK_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    render_to_text(&mut app, 80, 16);
+    let prompt_rows = app
+        .completed_turn_hits
+        .iter()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::UserInput)
+        .count();
+    assert_eq!(app.completed_turn_action_links.len(), prompt_rows);
+    assert!(app
+        .completed_turn_action_links
+        .iter()
+        .all(|link| link.action == crate::action_links::CompletedTurnAction::Collapse));
+    let triangle = app
+        .completed_turn_hits
+        .iter()
+        .find(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .expect("completed-turn triangle must be visible");
+    assert!(app.completed_turn_action_links.iter().any(|link| {
+        link.row == triangle.row
+            && link.start_column <= triangle.start_column
+            && link.end_column > triangle.start_column
+    }));
+
+    app.current_tab_mut().completed_turns[0].expanded = false;
+    render_to_text(&mut app, 80, 16);
+    assert_eq!(app.completed_turn_action_links.len(), 1);
+    assert_eq!(
+        app.completed_turn_action_links[0].action,
+        crate::action_links::CompletedTurnAction::Expand,
+    );
+}
+
+#[test]
+fn completed_turn_triangle_click_ignores_text_drag_and_hidden_chat() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "MOUSE_GUARD_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_GUARD_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, triangle_column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.contains("MOUSE_GUARD_PROMPT").then(|| {
+                let column = line
+                    .chars()
+                    .position(|character| character == '▼')
+                    .expect("expanded turn header must paint its triangle");
+                (row as u16, column as u16)
+            })
+        })
+        .expect("completed turn must be visible");
+    let prefix_column = triangle_column + 2;
+    let prompt_column = triangle_column + 4;
+    let row_end_column = 78;
+
+    let send_mouse = |app: &mut App, kind, column| {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    };
+
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        prefix_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        prefix_column,
+    );
+    assert!(!app.current_tab().completed_turns[0].expanded);
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        row_end_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        row_end_column,
+    );
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        prompt_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    app.current_tab_mut().current_view = View::Agents;
+    render_to_text(&mut app, 80, 16);
+    assert!(app.completed_turn_action_links.is_empty());
+    assert!(app.input_dialog_area.is_none());
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "a stale chat coordinate must not toggle a turn when chat is hidden",
+    );
+
+    app.current_tab_mut().current_view = View::Chat;
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.help_overlay_visible = true;
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "an overlay must prevent clicks from reaching a triangle beneath it",
+    );
+    app.help_overlay_visible = false;
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.handle_event(AppEvent::Resize(100, 20));
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "resize must cancel an in-progress triangle click",
+    );
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    send_mouse(&mut app, MouseEventKind::ScrollUp, triangle_column);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "scrolling must cancel an in-progress triangle click",
+    );
+
+    render_to_text(&mut app, 80, 16);
+    send_mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        triangle_column,
+    );
+    app.switch_tab_session("other-tab".into());
+    app.switch_tab_session(DEFAULT_TAB_ID.into());
+    send_mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        triangle_column,
+    );
+    assert!(
+        app.current_tab().completed_turns[0].expanded,
+        "switching away and back must cancel an in-progress triangle click",
+    );
+}
+
+#[test]
+fn completed_turn_mouse_selection_continues_with_keyboard_navigation() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for prompt in ["MOUSE_SELECT_OLDER", "MOUSE_SELECT_NEWER"] {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: prompt.into(),
+            details: vec![ChatMessage::Agent(format!("DETAIL_{prompt}"))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("MOUSE_SELECT_OLDER")
+                .map(|column| (row as u16, column as u16))
+        })
+        .expect("older prompt must be visible");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(1));
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+}
+
+#[test]
+fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..12 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("MOUSE_VISIBLE_TURN_{index:02}"),
+            details: vec![ChatMessage::Agent(format!(
+                "MOUSE_VISIBLE_DETAIL_{index:02}"
+            ))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    let before = render_to_text(&mut app, 80, 10);
+    let initial_hits: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .collect();
+    assert!(!initial_hits.is_empty());
+    assert!(initial_hits.len() < app.current_tab().completed_turns.len());
+    for hit in &initial_hits {
+        assert!(before.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
+        assert!(hit.row < 10);
+    }
+
+    let target = initial_hits[0];
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: target.start_column,
+            row: target.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    for (index, turn) in app.current_tab().completed_turns.iter().enumerate() {
+        assert_eq!(turn.expanded, index == target.turn_index);
+    }
+
+    app.current_tab_mut().chat_scroll.by(3);
+    let after_scroll = render_to_text(&mut app, 80, 10);
+    let scrolled_hits: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .collect();
+    assert_ne!(scrolled_hits, initial_hits);
+    for hit in &scrolled_hits {
+        assert!(after_scroll.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
+        assert!(hit.row < 10);
+    }
+}
+
+#[test]
+fn completed_turn_prompt_hits_survive_a_clipped_header_row() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: (0..8)
+            .map(|index| format!("CLIPPED_PROMPT_ROW_{index}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        details: vec![ChatMessage::Agent("CLIPPED_PROMPT_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let mut visible_target = None;
+    for offset in 0..12 {
+        app.current_tab_mut().chat_scroll.offset = offset;
+        let rendered = render_to_text(&mut app, 80, 8);
+        if !rendered.contains("CLIPPED_PROMPT_ROW_0") {
+            visible_target = (1..8).find_map(|index| {
+                let marker = format!("CLIPPED_PROMPT_ROW_{index}");
+                rendered
+                    .lines()
+                    .position(|line| line.contains(&marker))
+                    .map(|row| (row as u16, marker))
+            });
+            if visible_target.is_some() {
+                break;
+            }
+        }
+    }
+
+    let (row, marker) =
+        visible_target.expect("a continuation row must remain visible after the header is clipped");
+    assert!(
+        app.completed_turn_hits.iter().any(|hit| {
+            hit.kind == CompletedTurnHitKind::UserInput && hit.row == row && hit.turn_index == 0
+        }),
+        "visible continuation row {marker:?} must retain its click target",
+    );
+    assert!(
+        app.completed_turn_action_links
+            .iter()
+            .any(|link| link.row == row),
+        "visible continuation row {marker:?} must retain its hand-cursor metadata",
+    );
+}
+
+#[test]
+fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "▼ ▶ MOUSE_GLYPH_PROMPT".into(),
+        details: vec![ChatMessage::Agent("MOUSE_GLYPH_DETAIL".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .expect("triangle hit must exist");
+    let header = rendered
+        .lines()
+        .nth(hit.row as usize)
+        .expect("hit row must exist");
+    let triangle_columns: Vec<u16> = header
+        .chars()
+        .enumerate()
+        .filter_map(|(column, character)| (character == '▼').then_some(column as u16))
+        .collect();
+    assert!(triangle_columns.len() >= 2);
+    assert_eq!(hit.start_column, triangle_columns[0]);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: hit.start_column,
+            row: hit.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert!(!app.current_tab().completed_turns[0].expanded);
+}
+
 /// Render: while the helper is still connecting, the fixed activity row must
 /// paint the animated "Connecting…" label.
 #[test]
@@ -7779,10 +8647,7 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    install_recs(
-        &mut app,
-        vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")],
-    );
+    install_recs(&mut app, vec![rec_send("echo COMPACT_RECOMMENDATION_XYZ")]);
 
     let text = render_to_text(&mut app, 80, 7);
     assert!(
@@ -8328,7 +9193,10 @@ fn expanded_tool_call_renders_typed_details() {
         "TERM_TYPED_OUTPUT",
         "image/png",
     ] {
-        assert!(text.contains(needle), "missing {needle:?}; rendered:\n{text}");
+        assert!(
+            text.contains(needle),
+            "missing {needle:?}; rendered:\n{text}"
+        );
     }
 }
 
@@ -8617,8 +9485,7 @@ fn stage_direct_proposal(
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
         payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        source:
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+        source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });
     assert_eq!(
@@ -9346,17 +10213,13 @@ fn empty_completed_turn_navigation_clears_pending_visibility() {
         .completed_turn_selection_visible_pending = true;
     app.current_tab_mut().select_older_completed_turn();
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-    assert!(!app
-        .current_tab()
-        .completed_turn_selection_visible_pending);
+    assert!(!app.current_tab().completed_turn_selection_visible_pending);
 
     app.current_tab_mut()
         .completed_turn_selection_visible_pending = true;
     app.current_tab_mut().select_newer_completed_turn();
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-    assert!(!app
-        .current_tab()
-        .completed_turn_selection_visible_pending);
+    assert!(!app.current_tab().completed_turn_selection_visible_pending);
 }
 
 #[test]
@@ -9495,7 +10358,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -9714,9 +10577,7 @@ fn typing_returns_to_input_after_clearing_selection() {
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
     assert!(
-        !app
-            .current_tab()
-            .completed_turn_selection_visible_pending,
+        !app.current_tab().completed_turn_selection_visible_pending,
         "clearing selection must also clear its pending visibility request",
     );
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
@@ -9917,10 +10778,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -9938,21 +10799,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },
