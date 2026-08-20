@@ -175,13 +175,19 @@ function Install-Config {
         Get-RepoFileAt -Revision "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1' |
             Set-Content -LiteralPath $BridgePs1 -Encoding utf8
         # Absolute path rather than the plugin-root placeholder: this writes the
-        # *installed* copy directly, so no expansion step runs over it. The path
-        # is JSON-escaped first -- a Windows path's single backslashes are
-        # invalid escapes inside a JSON string.
+        # *installed* copy directly, so no expansion step runs over it.
+        #
+        # `String.Replace`, not `-replace`, on both sides: the pattern would have
+        # to escape regex metacharacters, and the replacement would treat `$` as
+        # a capture-group reference -- so a path containing `$` (legal on
+        # Windows, e.g. a `$`-suffixed account name) would silently corrupt the
+        # manifest. Ordinal replacement has no special characters at all. The
+        # backslash doubling is the JSON escape, which is still needed because
+        # this builds a JSON string value by hand.
         $json = Get-RepoFileAt -Revision "${LegacyCommit}^" -RepoPath 'tools/wta/wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json'
-        $escaped = $BridgePs1 -replace '\\', '\\'
-        $json = $json -replace '\$\{CLAUDE_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
-        $json = $json -replace '\$\{COPILOT_PLUGIN_ROOT\}/hooks/send-event\.ps1', $escaped
+        $escaped = $BridgePs1.Replace('\', '\\')
+        $json = $json.Replace('${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1', $escaped)
+        $json = $json.Replace('${COPILOT_PLUGIN_ROOT}/hooks/send-event.ps1', $escaped)
         $null = $json | ConvertFrom-Json   # fail loudly rather than benchmarking a broken manifest
         $json | Set-Content -LiteralPath $HooksJson -Encoding utf8
         return
