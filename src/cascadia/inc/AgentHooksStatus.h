@@ -27,14 +27,19 @@
 namespace Microsoft::Terminal::AgentHooks
 {
     // Major schema version this code understands. The wta-side type is
-    // pinned at 3 (see STATUS_SCHEMA_VERSION in agent_hooks_installer.rs);
+    // pinned at 4 (see STATUS_SCHEMA_VERSION in agent_hooks_installer.rs);
     // mismatch produces a parse failure rather than silent mis-render.
+    //
+    // v4 added `installed_version` / `bundle_version` per CLI — the boolean
+    // flags say whether hooks are installed, these say *which build*, which
+    // is the part a stale marketplace path or a skipped upgrade leaves
+    // wrong while every other field still reads healthy.
     //
     // v3 added `marketplace_path` and `marketplace_path_valid` per CLI
     // (#25) — `marketplace_registered: true` no longer implies the
     // registered `source.path` actually exists on disk; consumers should
     // consult `marketplacePathValid` for that.
-    inline constexpr uint32_t SupportedStatusSchemaVersion = 3;
+    inline constexpr uint32_t SupportedStatusSchemaVersion = 4;
 
     // One entry of `clis[]` from the JSON report.
     struct CliStatus
@@ -54,6 +59,14 @@ namespace Microsoft::Terminal::AgentHooks
         bool marketplacePathValid{ false };
         bool pluginInstalled{ false };
         bool pluginEnabled{ false };
+        // v4: `MAJOR.MINOR.PATCH` of the hook plugin the CLI currently has
+        // installed. Absent when nothing is installed, or when neither the
+        // CLI nor its on-disk records name a version — "unknown version" is
+        // an ordinary state, not an error.
+        std::optional<std::string> installedVersion;
+        // v4: `MAJOR.MINOR.PATCH` the wta that produced this report would
+        // install. Absent when its hook bundle is unresolvable.
+        std::optional<std::string> bundleVersion;
         std::optional<std::string> detectionFallback; // e.g. "fs"
     };
 
@@ -141,6 +154,14 @@ namespace Microsoft::Terminal::AgentHooks
             if (entry.isMember("marketplace_path") && entry["marketplace_path"].isString())
             {
                 cli.marketplacePath = entry["marketplace_path"].asString();
+            }
+            if (entry.isMember("installed_version") && entry["installed_version"].isString())
+            {
+                cli.installedVersion = entry["installed_version"].asString();
+            }
+            if (entry.isMember("bundle_version") && entry["bundle_version"].isString())
+            {
+                cli.bundleVersion = entry["bundle_version"].asString();
             }
             if (entry.isMember("detection_fallback") && entry["detection_fallback"].isString())
             {

@@ -75,7 +75,7 @@ Set-StrictMode -Version Latest
 # Schema version this script understands. Mirrors STATUS_SCHEMA_VERSION
 # in tools/wta/src/agent_hooks_installer.rs and SupportedStatusSchemaVersion
 # in src/cascadia/inc/AgentHooksStatus.h. Bump in lockstep.
-$script:SupportedStatusSchemaVersion = 3
+$script:SupportedStatusSchemaVersion = 4
 
 $script:CliDisplayNames = @{
     copilot = 'Copilot CLI'
@@ -176,20 +176,54 @@ function Get-AgentHooksStatus {
     return $report
 }
 
+# v4 (#N): render the installed hook version, and the bundle version alongside
+# it when the two disagree. Every other column answers "are hooks installed?";
+# this one answers "are they the hooks this wta ships?" — the question a
+# marketplace registered against a stale worktree leaves wrong while all the
+# boolean columns still read healthy. Older payloads omit the fields, which
+# renders as an empty column rather than an error.
+function Get-AgentHookVersionLabel {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][psobject]$Cli,
+        [Parameter(Mandatory)][bool]$PluginInstalled
+    )
+
+    if (-not $PluginInstalled) { return '' }
+
+    $installed = $null
+    if (Get-Member -InputObject $Cli -Name installed_version -ErrorAction SilentlyContinue) {
+        $installed = $Cli.installed_version
+    }
+    # "Installed but won't say which build" is a real state (fs-fallback
+    # detection), and it is not the same as "nothing installed".
+    if (-not $installed) { return 'v?' }
+
+    $bundle = $null
+    if (Get-Member -InputObject $Cli -Name bundle_version -ErrorAction SilentlyContinue) {
+        $bundle = $Cli.bundle_version
+    }
+    if ($bundle -and $bundle -ne $installed) {
+        return "v$installed (bundle v$bundle)"
+    }
+    return "v$installed"
+}
+
 # Render one row of the table as a hashtable (consumed by Format-Table /
 # Write-Host). Returns:
-#   @{ CLI = 'copilot'; OnPath = $true; State = 'installed'; Color = 'Green'; Detail = '...' }
+#   @{ CLI = 'copilot'; OnPath = $true; State = 'installed'; Color = 'Green'; Detail = '...'; Version = 'v0.1.5' }
 function Get-AgentHookCliRow {
     [CmdletBinding()]
     param([Parameter(Mandatory)][psobject]$Cli)
 
     if (-not $Cli.binary_on_path) {
         return @{
-            CLI    = $Cli.name
-            OnPath = $false
-            State  = 'CLI not on PATH'
-            Color  = 'DarkGray'
-            Detail = ''
+            CLI     = $Cli.name
+            OnPath  = $false
+            State   = 'CLI not on PATH'
+            Color   = 'DarkGray'
+            Detail  = ''
+            Version = ''
         }
     }
 
@@ -223,11 +257,12 @@ function Get-AgentHookCliRow {
     }
 
     $row = @{
-        CLI    = $Cli.name
-        OnPath = $true
-        State  = $state
-        Color  = $color
-        Detail = if ($state -eq 'PARTIAL') { $detail } else { '' }
+        CLI     = $Cli.name
+        OnPath  = $true
+        State   = $state
+        Color   = $color
+        Detail  = if ($state -eq 'PARTIAL') { $detail } else { '' }
+        Version = Get-AgentHookVersionLabel -Cli $Cli -PluginInstalled $plugin
     }
 
     if ((Get-Member -InputObject $Cli -Name detection_fallback -ErrorAction SilentlyContinue) -and $Cli.detection_fallback) {
@@ -261,7 +296,10 @@ function Format-AgentHooksTable {
     foreach ($cli in $Report.clis) {
         $row = Get-AgentHookCliRow -Cli $cli
         $name = if ($script:CliDisplayNames.ContainsKey($row.CLI)) { $script:CliDisplayNames[$row.CLI] } else { $row.CLI }
-        $line = '  {0,-13} {1}' -f $name, $row.State
+        $line = '  {0,-13} {1,-16}' -f $name, $row.State
+        if ($row.Version) {
+            $line += "  $($row.Version)"
+        }
         if ($row.Detail) {
             $line += "  ($($row.Detail))"
         }

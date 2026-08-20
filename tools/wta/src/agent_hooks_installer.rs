@@ -145,7 +145,13 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
 ///
-/// v3 (this version): added `marketplace_path` and `marketplace_path_valid`
+/// v4 (this version): added the per-CLI `installed_version` and
+/// `bundle_version` fields. Every other field answers "is something
+/// installed?"; neither answered "is it the build this wta ships?", which is
+/// the question a half-finished upgrade or a marketplace pointed at a stale
+/// worktree actually leaves open. Both are omitted when unknown.
+///
+/// v3: added `marketplace_path` and `marketplace_path_valid`
 /// per-CLI fields (#25). `marketplace_registered: true` no longer implies the
 /// registered `source.path` actually exists on disk; consumers should consult
 /// `marketplace_path_valid` for that.
@@ -153,7 +159,7 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// v2: `bundle_source.kind` no longer includes `"embedded"` (the embedded
 /// `include_str!` fallback was removed in #20). Possible kinds are
 /// `env` / `exe-sibling` / `dev-tree` / `none`.
-const STATUS_SCHEMA_VERSION: u32 = 3;
+const STATUS_SCHEMA_VERSION: u32 = 4;
 
 /// Schema version of the JSON returned by [`uninstall`].
 ///
@@ -191,6 +197,8 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     let Some(home) = home else { return out };
@@ -310,6 +318,11 @@ impl CliScope {
 ///     valid (validity isn't local-filesystem-shaped). `false` when no entry
 ///     was found or the directory has been pruned out from under us
 ///     (the #21 staleness symptom this field exists to catch).
+///
+/// `installed_version` / `bundle_version` (schema v4) are the two halves of
+/// "is the CLI running the hooks this wta ships?". They are deliberately
+/// separate from the boolean flags: a CLI can be fully, validly installed and
+/// still be a release behind, which every other field reports as healthy.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliStatus {
     pub name: &'static str,
@@ -322,6 +335,17 @@ pub struct CliStatus {
     pub marketplace_path_valid: bool,
     pub plugin_installed: bool,
     pub plugin_enabled: bool,
+    /// `MAJOR.MINOR.PATCH` of the hook plugin the CLI currently has
+    /// installed. `None` when nothing is installed, or when the CLI and its
+    /// on-disk records both decline to say — "unknown version" is a normal
+    /// state here, never an error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<String>,
+    /// `MAJOR.MINOR.PATCH` this wta's own hook bundle would install for the
+    /// CLI. `None` when the bundle is unresolvable (`bundle_source.kind ==
+    /// "none"`) or its manifest carries no parseable version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detection_fallback: Option<&'static str>,
 }
@@ -342,6 +366,8 @@ impl CliStatus {
             marketplace_path_valid: false,
             plugin_installed: false,
             plugin_enabled: false,
+            installed_version: None,
+            bundle_version: None,
             detection_fallback: None,
         }
     }
@@ -1273,13 +1299,85 @@ pub fn status_scoped(scope: CliScope) -> StatusReport {
 
 fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
     let (on_path, bin_path) = locate_binary(cli);
-    match cli {
+    let mut out = match cli {
         CliKind::Copilot => copilot_status(on_path, bin_path, home),
         CliKind::Claude => claude_status(on_path, bin_path, home),
         CliKind::Gemini => gemini_status(on_path, bin_path, home),
         CliKind::Codex => codex_status(on_path, bin_path, home),
         CliKind::OpenCode => opencode_status(on_path, bin_path, home),
+    };
+    // Read unconditionally: the bundle version is the only half of the
+    // comparison that still means something when nothing is installed
+    // ("`hooks install` would give you 0.1.5").
+    out.bundle_version = read_bundled_version(cli).map(|v| v.to_string());
+    // The per-CLI query above already answered this for the CLIs whose
+    // listing carries a version. For the rest — and for every path that fell
+    // back to fs heuristics because the CLI wouldn't answer — read it off
+    // disk instead of spawning the CLI a second time.
+    if out.plugin_installed && out.installed_version.is_none() {
+        out.installed_version = installed_version_from_disk(cli, home).map(|v| v.to_string());
     }
+    out
+}
+
+/// Read the installed hook version from the CLI's own on-disk records.
+///
+/// Spawn-free by design. `status` already pays for one CLI query per CLI
+/// (~1-3s of Node startup for Claude/Copilot/Gemini); a second query issued
+/// purely to learn a version number would roughly double the wall-clock of
+/// `wta hooks status`, which is the command people run *because* something is
+/// already slow or broken.
+///
+/// `None` whenever the version can't be established — callers render that as
+/// "unknown", never as an error.
+fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Version> {
+    let home = home?;
+    match cli {
+        CliKind::Copilot => read_installed_copilot(home).ok().flatten()?.version,
+        CliKind::Gemini => read_installed_gemini(home).ok().flatten()?.version,
+        CliKind::OpenCode => read_installed_opencode(home).ok().flatten()?.version,
+        // Claude and Codex both unpack into `<cache>/<plugin>/<version>/`.
+        CliKind::Claude => newest_live_cached_version(&claude_plugin_cache_dir(home)),
+        CliKind::Codex => newest_live_cached_version(&codex_plugin_cache_dir(home)),
+    }
+}
+
+/// Highest version directory under a plugin cache root that is still live.
+///
+/// Superseded versions are not deleted at upgrade time — Claude leaves the old
+/// directory in place and drops an `.orphaned_at` marker inside it. Taking the
+/// plain maximum would therefore keep reporting a version the CLI stopped
+/// loading (a real machine here had 0.1.4 through 0.1.7 side by side, three of
+/// them orphaned).
+fn newest_live_cached_version(plugin_cache_dir: &Path) -> Option<Version> {
+    let entries = fs::read_dir(plugin_cache_dir).ok()?;
+    entries
+        .flatten()
+        .filter(|e| {
+            let path = e.path();
+            path.is_dir() && !path.join(".orphaned_at").exists()
+        })
+        .filter_map(|e| {
+            let name = e.file_name();
+            name.to_str()?.parse::<Version>().ok()
+        })
+        .max()
+}
+
+fn claude_plugin_cache_dir(home: &Path) -> PathBuf {
+    home.join(".claude")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME)
+}
+
+fn codex_plugin_cache_dir(home: &Path) -> PathBuf {
+    home.join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME)
 }
 
 fn locate_binary(cli: CliKind) -> (bool, Option<String>) {
@@ -1299,6 +1397,8 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1497,6 +1597,8 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1533,6 +1635,7 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
     if let (Some(p), Some(m)) = (plugin_json, mkt_json) {
         out.plugin_installed = p.installed;
         out.plugin_enabled = p.enabled;
+        out.installed_version = p.version.map(|v| v.to_string());
         out.marketplace_registered = m;
     } else {
         claude_fs_fallback(&mut out, home);
@@ -1556,12 +1659,7 @@ fn claude_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
     // Claude copies the plugin into ~/.claude/plugins/cache/<marketplace>/
     // <plugin>/<version>/ at install time; presence of any version dir is
     // a good fs-only "is installed" signal.
-    let plugin_cache_root = home
-        .join(".claude")
-        .join("plugins")
-        .join("cache")
-        .join(MARKETPLACE_NAME)
-        .join(PLUGIN_NAME);
+    let plugin_cache_root = claude_plugin_cache_dir(home);
     let plugin_dir_exists = plugin_cache_root
         .read_dir()
         .map(|mut iter| iter.next().is_some())
@@ -1585,6 +1683,8 @@ fn gemini_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1606,6 +1706,7 @@ fn gemini_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
             if let Some(p) = parse_gemini_extensions_list_json(payload) {
                 out.plugin_installed = p.installed;
                 out.plugin_enabled = p.enabled;
+                out.installed_version = p.version.map(|v| v.to_string());
                 out.marketplace_registered = p.installed;
                 populate_marketplace_path(&mut out, CliKind::Gemini, home);
                 return out;
@@ -1789,6 +1890,10 @@ fn parse_copilot_plugin_list(stdout: &str) -> PluginPresence {
     PluginPresence {
         installed: entry.is_some(),
         enabled: entry.is_some_and(|line| !line.to_ascii_lowercase().contains("[disabled]")),
+        // Copilot CLI 1.0.44-2 prints no version column here; the version
+        // comes from `~/.copilot/config.json` instead, which is a plain file
+        // read and therefore cheaper than a second `copilot` invocation.
+        version: None,
     }
 }
 
@@ -1824,6 +1929,11 @@ fn parse_copilot_marketplace_list(stdout: &str) -> bool {
 struct PluginPresence {
     installed: bool,
     enabled: bool,
+    /// Version the CLI itself reported, when its listing carries one.
+    /// `None` means "this CLI's list output doesn't say" (Copilot's plain-text
+    /// listing) — the caller falls back to the CLI's on-disk records rather
+    /// than paying a second spawn just to learn a version number.
+    version: Option<Version>,
 }
 
 /// Parse `claude plugin list --json` output. Returns `None` if the JSON
@@ -1846,12 +1956,17 @@ fn parse_claude_plugin_list_json(stdout: &str) -> Option<PluginPresence> {
             return Some(PluginPresence {
                 installed: true,
                 enabled,
+                version: entry
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| s.parse::<Version>().ok()),
             });
         }
     }
     Some(PluginPresence {
         installed: false,
         enabled: false,
+        version: None,
     })
 }
 
@@ -1882,12 +1997,17 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
             return Some(PluginPresence {
                 installed: true,
                 enabled,
+                version: entry
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| s.parse::<Version>().ok()),
             });
         }
     }
     Some(PluginPresence {
         installed: false,
         enabled: false,
+        version: None,
     })
 }
 
@@ -3152,6 +3272,8 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -3186,16 +3308,24 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
         &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
     )
     .filter(|o| o.success)
-    .map(|o| parse_codex_plugin_list(&o.stdout));
+    .map(|o| {
+        // Two views of the same stdout: the boolean the install verifier has
+        // always used, and the richer row that carries the version column.
+        (
+            parse_codex_plugin_list(&o.stdout),
+            parse_codex_plugin_list_entry(&o.stdout).and_then(|i| i.version),
+        )
+    });
 
     match (mkt, plugin) {
-        (Some((registered, path)), Some(installed)) => {
+        (Some((registered, path)), Some((installed, version))) => {
             out.marketplace_registered = registered;
             if path.is_some() {
                 out.marketplace_path = path;
             }
             out.plugin_installed = installed;
             out.plugin_enabled = installed;
+            out.installed_version = version.map(|v| v.to_string());
         }
         _ => {
             codex_fs_fallback(&mut out, home);
@@ -3219,7 +3349,7 @@ fn codex_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
     // a prior remove should not count.
     out.marketplace_registered = dir_has_entries(&cache_root);
 
-    let plugin_root = cache_root.join(PLUGIN_NAME);
+    let plugin_root = codex_plugin_cache_dir(home);
     let installed = dir_has_entries(&plugin_root);
     out.plugin_installed = installed;
     out.plugin_enabled = installed; // Codex has no separate enable flag.
