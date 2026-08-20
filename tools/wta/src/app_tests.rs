@@ -10634,7 +10634,7 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     let argv = cmd.argv.join(" ");
     assert!(
         argv.contains(
-            "wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""
+            "wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lic \"copilot --resume abc-123\""
         ),
         "expected in-distro resume; argv: {argv}"
     );

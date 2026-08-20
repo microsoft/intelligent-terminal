@@ -1,7 +1,7 @@
 //! WSL historical agent-session discovery via ACP `session/list`.
 //!
 //! For each *running* WSL distro, spawns the distro's agent CLI in ACP
-//! mode through `wsl.exe` (`wsl -d <distro> -- bash -lc "<cli> --acp …"`)
+//! mode through `wsl.exe` (`wsl -d <distro> -- bash -lic "<cli> --acp …"`)
 //! and asks it for `session/list`. The CLI enumerates and parses its own
 //! on-disk transcripts inside the distro, so we get structured rows
 //! (id / title / cwd / updated_at) without reading distro files or parsing
@@ -184,21 +184,28 @@ fn acp_command_for(cli: &CliSource) -> Option<String> {
     Some(crate::agent_registry::build_acp_command(id, None))
 }
 
-/// Argv for `wsl -d <distro> -- bash -lc "<acp_cmd>"`.
+/// Argv for launching `<acp_cmd>` through an interactive login shell.
 ///
-/// A **login** shell (`bash -lc`) is required: `wsl.exe -- <cmd>` runs the
-/// command under a non-login `bash -c`, where a PATH-installed CLI
-/// (npm `~/.local/...`, snap `/snap/bin`) is not found. `acp_cmd` is a
-/// single argv element so its internal spaces survive intact (no quoting
-/// games).
+/// An **interactive login** shell (`bash -lic`) is required: `wsl.exe --
+/// <cmd>` runs the command under a non-login `bash -c`, where PATH-installed
+/// CLIs from login profiles or version managers such as nvm are not found.
+/// The non-interactive outer shell discards startup stdout until the inner
+/// shell execs the agent, preventing profile output from corrupting ACP.
 fn wsl_acp_argv(distro: &str, acp_cmd: &str) -> Vec<String> {
+    let inner = format!("exec 1>&3 3>&-; exec {acp_cmd}");
+    let script = format!(
+        "bash -lic {} 3>&1 >/dev/null",
+        crate::coordinator::sh_quote(&inner)
+    );
     vec![
         "-d".to_string(),
         distro.to_string(),
         "--".to_string(),
         "bash".to_string(),
-        "-lc".to_string(),
-        acp_cmd.to_string(),
+        "--noprofile".to_string(),
+        "--norc".to_string(),
+        "-c".to_string(),
+        script,
     ]
 }
 
@@ -305,16 +312,22 @@ mod tests {
     }
 
     #[test]
-    fn wsl_acp_argv_uses_login_shell_and_single_cmd_arg() {
+    fn wsl_acp_argv_uses_interactive_login_shell_and_preserves_acp_stdout() {
         let argv = wsl_acp_argv("Ubuntu", "copilot --acp --stdio");
         assert_eq!(
             argv,
-            vec!["-d", "Ubuntu", "--", "bash", "-lc", "copilot --acp --stdio"]
+            vec![
+                "-d",
+                "Ubuntu",
+                "--",
+                "bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                "bash -lic 'exec 1>&3 3>&-; exec copilot --acp --stdio' 3>&1 >/dev/null"
+            ]
         );
-        // The whole ACP command must be ONE argv element (login shell sees
-        // it as the script string), not split on spaces.
-        assert_eq!(argv.len(), 6);
-        assert_eq!(argv[5], "copilot --acp --stdio");
+        assert_eq!(argv.len(), 8);
     }
 
     #[test]

@@ -2764,11 +2764,11 @@ impl App {
         //     `"Ubuntu"`. Distro names from `wsl -l` are space-free, so bare
         //     `-d <distro>` is safe. The `--cd` path keeps its quotes (it can
         //     contain spaces and quoting works fine there).
-        //   * The CLI is launched through a **login shell** (`bash -lc`) so the
-        //     user's PATH is set up — a snap-installed Copilot lives in
-        //     `/snap/bin`, which a bare `wsl -- copilot` misses ("command not
-        //     found"). A login shell sources the profile that adds it.
-        let login_invocation = format!("bash -lc \"{resume_invocation}\"");
+        //   * The CLI is launched through an **interactive login shell**
+        //     (`bash -lic`) so both login profiles and version managers such as
+        //     nvm set up PATH. A bare `wsl -- copilot` misses both snap and
+        //     nvm-installed CLIs.
+        let login_invocation = format!("bash -lic \"{resume_invocation}\"");
         let commandline = match &s.location {
             crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
                 Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),

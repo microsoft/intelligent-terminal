@@ -408,19 +408,19 @@ fn active_pane_wsl_distro_rejects_non_wsl_shells() {
 }
 
 #[test]
-fn wsl_agent_probe_script_prints_command_v_resolution() {
-    // Emits `command -v <exe>` straight to stdout (the caller captures it and
-    // rejects empty or /mnt results). Deliberately NOT wrapped in `$(…)`, which
-    // returns empty for snap apps. sh_quote single-quotes the exe.
+fn wsl_agent_probe_script_prints_executable_path_resolution() {
+    // `type -P` returns only executable paths, excluding aliases and functions
+    // loaded by the interactive shell. The caller rejects empty, relative, and
+    // /mnt results. sh_quote single-quotes the exe.
     assert_eq!(
         crate::agent_check::wsl_agent_probe_script("copilot"),
-        "printf '__WTA_PROBE_BEGIN__\\n'; command -v 'copilot' 2>/dev/null; \
+        "printf '__WTA_PROBE_BEGIN__\\n'; type -P 'copilot' 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'"
     );
     // An agent identity with shell metacharacters stays contained in the quotes.
     assert_eq!(
         crate::agent_check::wsl_agent_probe_script("my agent; rm -rf /"),
-        "printf '__WTA_PROBE_BEGIN__\\n'; command -v 'my agent; rm -rf /' 2>/dev/null; \
+        "printf '__WTA_PROBE_BEGIN__\\n'; type -P 'my agent; rm -rf /' 2>/dev/null; \
          printf '__WTA_PROBE_END__\\n'"
     );
 }

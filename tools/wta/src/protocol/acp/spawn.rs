@@ -540,7 +540,7 @@ fn wsl_agent_launch_script(parts: &[String], environment_policy: ChildEnvironmen
         unset_names.join(" ")
     );
     format!(
-        "bash -lc {} 3>&1 >/dev/null",
+        "bash -lic {} 3>&1 >/dev/null",
         crate::coordinator::sh_quote(&inner)
     )
 }
@@ -688,7 +688,7 @@ mod tests {
         ];
         assert_eq!(
             wsl_agent_launch_script(&parts, ChildEnvironmentPolicy::ApplySharedProvider),
-            "bash -lc 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
+            "bash -lic 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
              '\\''--model'\\'' '\\''model; touch /tmp/nope'\\''' 3>&1 >/dev/null"
         );
     }
