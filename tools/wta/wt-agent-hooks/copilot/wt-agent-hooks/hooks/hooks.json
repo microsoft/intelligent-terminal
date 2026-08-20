@@ -44,17 +44,6 @@
         }]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [{
-          "type": "command",
-          "powershell": "try { wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting } catch { }; exit 0",
-          "bash": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting; exit 0",
-          "timeoutSec": 5
-        }]
-      }
-    ],
     "StopFailure": [
       {
         "matcher": ".*",

@@ -1248,9 +1248,8 @@ fn previous_hook_command_spellings_are_rejected() {
     }
 }
 
-/// Both CLIs must carry the common event set. Copilot additionally
-/// subscribes to tool-use hooks; claude dropped them in #81 for
-/// latency. `ErrorOccurred` must NOT appear (undocumented legacy
+/// Both CLIs must carry the common event set, and neither may subscribe a
+/// per-tool-call hook. `ErrorOccurred` must NOT appear (undocumented legacy
 /// name; the documented equivalent is `StopFailure`).
 #[test]
 fn claude_and_copilot_carry_full_event_catalog() {
@@ -1262,11 +1261,26 @@ fn claude_and_copilot_carry_full_event_catalog() {
         "StopFailure",
         "Stop",
     ];
-    // Only `PreToolUse` remains: it drives Working plus the user-input-tool
-    // Attention path. The completion events were dropped because `app.rs`
-    // discards them — `agent.stop` owns the turn-end — so each one was a shell
-    // spawn and a COM round trip per tool call for nothing.
-    const COPILOT_EXTRA_EVENTS: &[&str] = &["PreToolUse"];
+    // Copilot's `PreToolUse` was the last per-tool-call subscription, kept for
+    // the Attention path that `app.rs` synthesizes when `tool_name` is a
+    // user-input tool. Copilot 1.0.81-2 fires `Notification` for the same
+    // question — both carrying the question text, ~0.9s apart — so the tool
+    // hook only bought a duplicate. It cost a PowerShell start per tool call
+    // (~536 ms measured, ~388 ms of it `pwsh` startup) on the fail-closed path,
+    // where the CLI blocks until the hook returns. The completion events went
+    // earlier for the same reason: `app.rs` discards them because `agent.stop`
+    // owns the turn-end.
+    //
+    // Turn-level Working is unaffected: `UserPromptSubmit` already maps to
+    // `ToolStarting`. What is given up is per-tool granularity in the session
+    // row — the tool's name, not its status.
+    const NO_PER_TOOL_EVENTS: &[&str] = &[
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "BeforeTool",
+        "AfterTool",
+    ];
     for (label, hooks) in [
         ("claude", CLAUDE_HOOKS_JSON),
         ("copilot", COPILOT_HOOKS_JSON),
@@ -1281,12 +1295,14 @@ fn claude_and_copilot_carry_full_event_catalog() {
             !hooks.contains("\"ErrorOccurred\":"),
             "{label} hooks.json still references undocumented ErrorOccurred"
         );
-    }
-    for event in COPILOT_EXTRA_EVENTS {
-        assert!(
-            COPILOT_HOOKS_JSON.contains(&format!("\"{event}\":")),
-            "copilot hooks.json missing event {event}"
-        );
+        for event in NO_PER_TOOL_EVENTS {
+            assert!(
+                !hooks.contains(&format!("\"{event}\":")),
+                "{label} hooks.json subscribes {event}, which fires once per tool \
+                 call and costs a shell start each time; the Attention path it \
+                 used to serve is covered by Notification"
+            );
+        }
     }
 }
 
@@ -1314,11 +1330,9 @@ fn strip_per_cli_hook_fields(value: &mut Value) {
     }
 }
 
-/// Claude and Copilot share the same hook-event schema for their common
-/// events even though Copilot now uses the native bridge. Copilot carries
-/// additional tool-use hooks that Claude dropped in #81, plus the per-shell
-/// command fields that keep its fail-closed `preToolUse` hook from denying
-/// tool calls once the bridge is uninstalled.
+/// Claude and Copilot now share the same hook-event set exactly, differing
+/// only in the per-CLI fields that carry their uninstall-resilience layer.
+/// Copilot's tool-use hooks were the last divergence.
 #[test]
 fn claude_and_copilot_hooks_json_are_parity_identical() {
     let mut normalized_claude: Value = serde_json::from_str(CLAUDE_HOOKS_JSON).unwrap();
@@ -1326,16 +1340,9 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
     strip_per_cli_hook_fields(&mut normalized_claude);
     strip_per_cli_hook_fields(&mut normalized_copilot);
 
-    let copilot_hooks = normalized_copilot
-        .get_mut("hooks")
-        .and_then(Value::as_object_mut)
-        .unwrap();
-    for event in ["PreToolUse"] {
-        copilot_hooks.remove(event);
-    }
     assert_eq!(
         normalized_claude, normalized_copilot,
-        "claude/ and copilot/ hook schemas must match modulo bridge command and copilot-only tool-use hooks"
+        "claude/ and copilot/ hook schemas must match modulo the bridge command"
     );
 }
 
@@ -1358,8 +1365,15 @@ fn copilot_uses_native_plugin_layout() {
     );
 }
 
+/// The five bundles ship as one unit, so the installer's
+/// `bundled_version > installed_version` check only pushes a change to every
+/// CLI when they move together. `copilot_uses_native_plugin_layout` separately
+/// requires claude's and copilot's marketplace files to be byte-identical, and
+/// the version lives in those too — so a single-CLI bump is not expressible
+/// here even when only one bundle's content changed.
 #[test]
 fn native_hook_bundle_versions_stay_in_sync() {
+    const BUNDLE_VERSION: &str = "0.1.6";
     let manifests = [
         CLAUDE_PLUGIN_JSON,
         COPILOT_PLUGIN_JSON,
@@ -1371,7 +1385,7 @@ fn native_hook_bundle_versions_stay_in_sync() {
         let value: Value = serde_json::from_str(manifest).unwrap();
         assert_eq!(
             value.get("version").and_then(Value::as_str),
-            Some("0.1.5")
+            Some(BUNDLE_VERSION)
         );
     }
 
@@ -1384,7 +1398,7 @@ fn native_hook_bundle_versions_stay_in_sync() {
                 .and_then(|plugins| plugins.first())
                 .and_then(|plugin| plugin.get("version"))
                 .and_then(Value::as_str),
-            Some("0.1.5")
+            Some(BUNDLE_VERSION)
         );
     }
 }
