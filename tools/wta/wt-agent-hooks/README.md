@@ -106,13 +106,19 @@ names. Event vocabularies differ per CLI:
 | `agent.tool.starting`   | *(not subscribed)*     | *(not subscribed)*     | `BeforeTool`     |
 | `agent.error`           | `StopFailure`          | `StopFailure`          | *(not emitted)*  |
 | `agent.stop`            | `Stop`                 | `Stop`                 | `AfterAgent`     |
-| `agent.subagent.stop`   | `SubagentStop`         | `SubagentStop`         | *(not emitted)*  |
+| `agent.subagent.stop`   | *(not subscribed)*     | *(not subscribed)*     | *(not emitted)*  |
 
 All event names are validated against each CLI's documented hook catalog.
 `StopFailure` is the Claude-documented name for "turn ended due to API
 error" — earlier wta builds shipped an undocumented `ErrorOccurred` name
 which is no longer used. Gemini's manifest has no native equivalents for
 the failure topics, so those rows are silent on Gemini.
+
+Two topics have no subscriber in any shipped manifest today but keep their
+routing arm in `app.rs`: `agent.subagent.stop`, which no bundle has claimed
+since the Claude and Copilot manifests converged, and `agent.tool.starting` on
+those same two. The arms stay so a CLI that adds the event later, or a bundle a
+user installed earlier, is routed rather than mis-handled.
 
 **Tool-completion events are deliberately not subscribed.** `app.rs` discards
 `agent.tool.finished` / `agent.tool.failed`: tool completion does not end a
