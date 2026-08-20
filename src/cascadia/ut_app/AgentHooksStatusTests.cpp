@@ -54,6 +54,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(FindCliReturnsNullptrForMissing);
         TEST_METHOD(HidesDetectedCliWithoutHooks);
         TEST_METHOD(ShowsHookStateWithoutCli);
+        TEST_METHOD(ShowsPartiallyInstalledCli);
         TEST_METHOD(HidesAbsentCliWithoutHooks);
 
         TEST_METHOD(ParsesInstallReport);
@@ -130,7 +131,9 @@ namespace TerminalAppUnitTests
     // A CLI that's merely installed on the machine gets no row: the row only
     // exists to carry the per-CLI Remove action, and there's nothing to
     // remove. Regression guard for the OpenCode row that used to linger with
-    // a permanently-disabled Remove button after its hooks were uninstalled.
+    // a permanently-disabled Remove button after its hooks were uninstalled —
+    // asserted against ShouldShowHookRow, the predicate the ViewModel calls,
+    // so reintroducing the `binaryOnPath ||` term fails here.
     void AgentHooksStatusTests::HidesDetectedCliWithoutHooks()
     {
         CliStatus openCode{};
@@ -138,6 +141,7 @@ namespace TerminalAppUnitTests
         openCode.binaryOnPath = true;
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
+        VERIFY_IS_FALSE(ShouldShowHookRow(&openCode));
     }
 
     void AgentHooksStatusTests::ShowsHookStateWithoutCli()
@@ -147,6 +151,20 @@ namespace TerminalAppUnitTests
         openCode.pluginInstalled = true;
 
         VERIFY_IS_TRUE(HasHookState(&openCode));
+        VERIFY_IS_TRUE(ShouldShowHookRow(&openCode));
+    }
+
+    // A marketplace registered without the plugin (or vice-versa) is the
+    // partially-installed state the subtitle describes. The row must stay
+    // visible for it — that's the state the user most needs to act on.
+    void AgentHooksStatusTests::ShowsPartiallyInstalledCli()
+    {
+        CliStatus codex{};
+        codex.name = "codex";
+        codex.binaryOnPath = true;
+        codex.marketplaceRegistered = true;
+
+        VERIFY_IS_TRUE(ShouldShowHookRow(&codex));
     }
 
     void AgentHooksStatusTests::HidesAbsentCliWithoutHooks()
@@ -156,6 +174,8 @@ namespace TerminalAppUnitTests
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
         VERIFY_IS_FALSE(HasHookState(nullptr));
+        VERIFY_IS_FALSE(ShouldShowHookRow(&openCode));
+        VERIFY_IS_FALSE(ShouldShowHookRow(nullptr));
     }
 
     void AgentHooksStatusTests::RejectsUnsupportedSchemaVersion()
@@ -550,11 +570,11 @@ namespace TerminalAppUnitTests
     {
         constexpr std::string_view js = R"({
             "schema_version": 1,
-            "clis": [ { "name": "newcli", "outcome": "failed" } ]
+            "clis": [ { "name": "unknown-cli", "outcome": "failed" } ]
         })";
         const auto r = ParseInstallReportJson(js);
         VERIFY_IS_TRUE(r.has_value());
-        VERIFY_ARE_EQUAL(std::wstring{ L"newcli" }, FormatFailedCliList(*r));
+        VERIFY_ARE_EQUAL(std::wstring{ L"unknown-cli" }, FormatFailedCliList(*r));
     }
 
     void AgentHooksStatusTests::RejectsUnsupportedInstallSchemaVersion()

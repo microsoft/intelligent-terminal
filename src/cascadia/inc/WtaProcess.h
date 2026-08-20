@@ -81,8 +81,8 @@ namespace Microsoft::Terminal::WtaProcess
         std::string output;
     };
 
-    // Spawn `wta.exe <argsAfterExe>` and capture its combined stdout+stderr
-    // regardless of exit code. Synchronous — call from a background thread.
+    // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
+    // exit code. Synchronous — call from a background thread.
     // Optionally accepts a custom environment block (double-null-terminated
     // wide string); pass nullptr to inherit the current environment.
     //
@@ -90,10 +90,21 @@ namespace Microsoft::Terminal::WtaProcess
     // produced by a *failing* run: `wta hooks install --json` prints its
     // per-CLI report and then exits non-zero, so the exit-0-only helper
     // would throw away the very breakdown the caller needs.
+    //
+    // `mergeStderr` controls whether the child's stderr joins stdout in the
+    // captured text. Pass false when parsing machine-readable stdout: a wta
+    // subcommand that fails prints its report to stdout and then lets
+    // `main()` return Err, which makes the Rust runtime write `Error: ...`
+    // to stderr. Merged, that trails (or, depending on flush order, leads)
+    // the JSON and defeats the parse. Non-merged stderr goes to NUL rather
+    // than a second pipe — it would otherwise need its own drain to avoid
+    // deadlocking a chatty child, and every wta subcommand already mirrors
+    // its diagnostics into the wta logs.
     inline CaptureResult RunWtaCapture(const std::wstring& wtaPath,
                                        const std::wstring& argsAfterExe,
                                        DWORD timeoutMs,
-                                       wchar_t* envBlock = nullptr)
+                                       wchar_t* envBlock = nullptr,
+                                       bool mergeStderr = true)
     {
         CaptureResult result;
         if (wtaPath.empty())
@@ -121,8 +132,28 @@ namespace Microsoft::Terminal::WtaProcess
         si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
         si.wShowWindow = SW_HIDE;
         si.hStdOutput = writeHandle.get();
-        si.hStdError = writeHandle.get();
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+        wil::unique_handle nullHandle;
+        if (mergeStderr)
+        {
+            si.hStdError = writeHandle.get();
+        }
+        else
+        {
+            nullHandle.reset(CreateFileW(L"NUL",
+                                         GENERIC_WRITE,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                         &sa,
+                                         OPEN_EXISTING,
+                                         0,
+                                         nullptr));
+            if (!nullHandle)
+            {
+                return result;
+            }
+            si.hStdError = nullHandle.get();
+        }
 
         std::wstring cmdline = L"\"" + wtaPath + L"\" " + argsAfterExe;
         std::wstring mutableCmd = cmdline;

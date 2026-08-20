@@ -1257,11 +1257,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _codexCliDetected = codex && codex->binaryOnPath;
             _openCodeCliDetected = openCode && openCode->binaryOnPath;
 
-            _showCopilotHookRow = AgentHooks::HasHookState(copilot);
-            _showClaudeHookRow = AgentHooks::HasHookState(claude);
-            _showGeminiHookRow = AgentHooks::HasHookState(gemini);
-            _showCodexHookRow = AgentHooks::HasHookState(codex);
-            _showOpenCodeHookRow = AgentHooks::HasHookState(openCode);
+            _showCopilotHookRow = AgentHooks::ShouldShowHookRow(copilot);
+            _showClaudeHookRow = AgentHooks::ShouldShowHookRow(claude);
+            _showGeminiHookRow = AgentHooks::ShouldShowHookRow(gemini);
+            _showCodexHookRow = AgentHooks::ShouldShowHookRow(codex);
+            _showOpenCodeHookRow = AgentHooks::ShouldShowHookRow(openCode);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
@@ -1415,8 +1415,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             // Ask for the structured report so a failure can name the CLIs
             // that failed. wta prints it and *then* exits non-zero, so we
-            // capture output independently of the exit code.
-            const auto run = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath, wtaArgs + L" --json", 60'000);
+            // capture output independently of the exit code — and keep
+            // stderr out of it, since the failing run also writes an
+            // `Error: ...` line there that would break the JSON parse.
+            const auto run = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath,
+                                                                             wtaArgs + L" --json",
+                                                                             60'000,
+                                                                             nullptr,
+                                                                             /* mergeStderr */ false);
             ok = run.completed && run.exitCode == 0;
             if (ok)
             {

@@ -673,7 +673,8 @@ mod tests {
     }
 
     /// The C++ parser rejects an unexpected `schema_version` outright, so the
-    /// version this code emits is part of the contract, not an detail.
+    /// version this code emits is part of the contract, not an implementation
+    /// detail.
     #[test]
     fn install_report_pins_its_schema_version() {
         let report =

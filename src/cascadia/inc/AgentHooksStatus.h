@@ -214,6 +214,20 @@ namespace Microsoft::Terminal::AgentHooks
         return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
     }
 
+    // The row-visibility decision itself, named so the five call sites in
+    // AIAgentsViewModel share one predicate instead of each re-deriving it.
+    //
+    // Deliberately NOT `cli->binaryOnPath || HasHookState(cli)`. OpenCode
+    // used to be special-cased that way so new users could discover the
+    // integration, which left its row on screen after an uninstall with a
+    // permanently disabled Remove button — the only per-row action there is.
+    // Keep this as the single seam so that regression stays covered by
+    // ShouldShowHookRow's tests.
+    inline bool ShouldShowHookRow(const CliStatus* cli)
+    {
+        return HasHookState(cli);
+    }
+
     // True when at least one CLI binary is on PATH — drives the
     // "Install hooks" button enabled state.
     inline bool AnyBinaryOnPath(const StatusReport& report)
