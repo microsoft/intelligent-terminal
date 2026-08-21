@@ -280,6 +280,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
                 bound_helpers: Mutex::new(HashSet::from([helper_id])),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let (complete_tx, complete_rx) = tokio::sync::oneshot::channel();
             start_clean_cloud_catalog_probe(
@@ -380,6 +381,7 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
                 bound_helpers: Mutex::new(HashSet::from([helper_id])),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             start_clean_cloud_catalog_probe(
                 Arc::clone(&state),
@@ -1337,6 +1339,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
 
             let b_config_hit = Arc::new(AtomicBool::new(false));
@@ -1357,6 +1360,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
 
             for (session_id, config_id) in [("session-a", "model-a"), ("session-b", "model-b")] {
@@ -1417,6 +1421,7 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let response: acp::schema::v1::LoadSessionResponse = serde_json::from_str(
                 r#"{
@@ -1474,6 +1479,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
                 helper_id: HelperId(1),
@@ -1571,6 +1577,7 @@ async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -1657,6 +1664,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -1772,6 +1780,7 @@ async fn helper_close_session_physically_closes_and_retires_owned_session() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -1897,6 +1906,7 @@ async fn master_reset_tab_session_resolves_owner_and_physically_retires_session(
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
             assert!(cell.set(Arc::clone(&agent)).is_ok());
@@ -2137,6 +2147,7 @@ async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() 
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
             assert!(cell.set(Arc::clone(&agent)).is_ok());
@@ -2262,6 +2273,7 @@ async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_slot = Arc::new(OnceLock::new());
             assert!(agent_slot.set(agent).is_ok());
@@ -2342,6 +2354,7 @@ async fn close_by_tab_resolves_pre_registered_load_route_without_last_session_me
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let cell = Arc::new(tokio::sync::OnceCell::new());
             assert!(cell.set(Arc::clone(&agent)).is_ok());
@@ -2532,6 +2545,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -2711,6 +2725,7 @@ async fn unsupported_session_close_capability_cancels_and_logically_retires_sess
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let pooled_agent = Arc::new(tokio::sync::OnceCell::new());
@@ -2882,6 +2897,7 @@ async fn advertised_but_unimplemented_session_close_cancels_and_logically_retire
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
             let agent_cell = Arc::new(tokio::sync::OnceCell::new());
             assert!(agent_cell.set(Arc::clone(&agent)).is_ok());
@@ -3042,6 +3058,7 @@ async fn close_failure_keeps_predecessor_and_does_not_create_replacement() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -3239,6 +3256,7 @@ async fn load_close_failure_restores_target_route_and_capability() {
                         cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                         bound_helpers: Mutex::new(HashSet::new()),
                         host_list_cache: Mutex::new(None),
+                        listed_ever: Mutex::new(HashSet::new()),
                     }))
                     .is_ok()
             );
@@ -3384,6 +3402,7 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -3503,6 +3522,7 @@ async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_
             cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
             bound_helpers: Mutex::new(HashSet::new()),
             host_list_cache: Mutex::new(None),
+            listed_ever: Mutex::new(HashSet::new()),
         }))
         .is_ok());
     let handler = HelperHandler {
@@ -3650,6 +3670,7 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -3780,6 +3801,7 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
                     cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                     bound_helpers: Mutex::new(HashSet::new()),
                     host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
                 }))
                 .is_ok());
             let handler = HelperHandler {
@@ -4166,6 +4188,7 @@ async fn prompt_forward_survives_reentrant_permission() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
                 helper_id: HelperId(1),
@@ -4933,6 +4956,7 @@ async fn replaced_session_already_rebound_is_not_physically_closed() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             };
 
             assert_eq!(
@@ -4998,6 +5022,7 @@ async fn physical_close_allows_agent_callback_route_lookup_before_response() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             };
 
             let cleanup = tokio::time::timeout(
@@ -5070,6 +5095,7 @@ async fn physical_close_blocks_rebind_until_retirement_completes() {
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
                 host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
             });
 
             let close_state = Arc::clone(&state);
@@ -6021,6 +6047,7 @@ fn listing_agent_with_cli(
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
         bound_helpers: Mutex::new(HashSet::new()),
         host_list_cache: Mutex::new(None),
+        listed_ever: Mutex::new(HashSet::new()),
     })
 }
 
@@ -6072,7 +6099,8 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
 fn is_stale_host_history_row_reconcile_rules() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use std::collections::HashSet;
-    let listed: HashSet<String> = ["kept".to_string()].into_iter().collect();
+    // Ids the listing agent previously returned and no longer returns.
+    let prunable: HashSet<String> = ["gone".to_string()].into_iter().collect();
     let copilot = Some(&CliSource::Copilot);
     let mk = |id: &str| {
         let mut r = crate::session_registry::SessionInfo::new(
@@ -6084,24 +6112,64 @@ fn is_stale_host_history_row_reconcile_rules() {
         r.cli_source = Some(CliSource::Copilot);
         r
     };
-    // Terminal Class-B host row NOT in session/list → stale (drop).
-    assert!(is_stale_host_history_row(&mk("gone"), &listed, copilot));
-    // Still listed → keep.
-    assert!(!is_stale_host_history_row(&mk("kept"), &listed, copilot));
-    // Live (Idle/Working) → keep even if not listed.
+    // Terminal Class-B host row the agent dropped from session/list → stale.
+    assert!(is_stale_host_history_row(&mk("gone"), &prunable, copilot));
+    // Still listed (never entered the prunable set) → keep.
+    assert!(!is_stale_host_history_row(&mk("kept"), &prunable, copilot));
+    // Live (Idle/Working) → keep even when dropped from the listing.
     let mut live = mk("gone");
     live.status = Some(AgentStatus::Idle);
-    assert!(!is_stale_host_history_row(&live, &listed, copilot));
+    assert!(!is_stale_host_history_row(&live, &prunable, copilot));
     // Agent pane → never reconciled.
     let mut pane = mk("gone");
     pane.origin = Some(SessionOrigin::AgentPane);
-    assert!(!is_stale_host_history_row(&pane, &listed, copilot));
+    assert!(!is_stale_host_history_row(&pane, &prunable, copilot));
     // WSL row → host can't authoritatively list distro sessions.
     let mut wsl = mk("gone");
     wsl.location = SessionLocation::Wsl {
         distro: "Ubuntu".to_string(),
     };
-    assert!(!is_stale_host_history_row(&wsl, &listed, copilot));
+    assert!(!is_stale_host_history_row(&wsl, &prunable, copilot));
+}
+
+/// `CliSource` is not a session universe. Host Copilot, Copilot in WSL Debian,
+/// and Copilot in WSL Ubuntu all stamp `Some(Copilot)` but list disjoint
+/// sessions, so reconcile must be scoped to ids the listing agent itself has
+/// seen. Testing "not in the current listing" instead had each agent delete the
+/// other's rows on every 5 s poll while the other re-added them — an unbounded
+/// thrash that produced ~52k `reconcile: dropped host row` lines in one
+/// session's master log.
+#[test]
+fn reconcile_never_prunes_a_same_cli_agents_unseen_rows() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
+    use std::collections::HashSet;
+
+    let mut other_agents_row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("in-distro-copilot-row".to_string()),
+        std::path::PathBuf::from("C:\\Users\\dev"),
+    );
+    other_agents_row.status = Some(AgentStatus::Historical);
+    other_agents_row.origin = Some(SessionOrigin::Unknown);
+    other_agents_row.cli_source = Some(CliSource::Copilot);
+
+    // The host Copilot agent has never listed this id, so it is not prunable
+    // even though the CLI stamp matches and the row is absent from its listing.
+    let prunable: HashSet<String> = HashSet::new();
+    assert!(!is_stale_host_history_row(
+        &other_agents_row,
+        &prunable,
+        Some(&CliSource::Copilot)
+    ));
+
+    // The agent that DID list it once, and no longer does, may drop it.
+    let prunable: HashSet<String> = ["in-distro-copilot-row".to_string()]
+        .into_iter()
+        .collect();
+    assert!(is_stale_host_history_row(
+        &other_agents_row,
+        &prunable,
+        Some(&CliSource::Copilot)
+    ));
 }
 
 /// A pooled agent's `session/list` is authority over ITS OWN rows only. Master
@@ -6113,8 +6181,6 @@ fn is_stale_host_history_row_reconcile_rules() {
 fn is_stale_host_history_row_never_prunes_another_clis_rows() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
     use std::collections::HashSet;
-    // Codex listed nothing; a Claude row must survive its reconcile.
-    let listed: HashSet<String> = HashSet::new();
     let mut claude_row = crate::session_registry::SessionInfo::new(
         acp::schema::v1::SessionId::new("claude-row".to_string()),
         std::path::PathBuf::from("C:\\Users\\dev"),
@@ -6122,16 +6188,19 @@ fn is_stale_host_history_row_never_prunes_another_clis_rows() {
     claude_row.status = Some(AgentStatus::Historical);
     claude_row.origin = Some(SessionOrigin::Unknown);
     claude_row.cli_source = Some(CliSource::Claude);
+    // The row is prunable as far as the id set goes; only the CLI guard should
+    // decide, so this isolates that guard.
+    let prunable: HashSet<String> = ["claude-row".to_string()].into_iter().collect();
 
     assert!(!is_stale_host_history_row(
         &claude_row,
-        &listed,
+        &prunable,
         Some(&CliSource::Codex)
     ));
     // Its own CLI may still prune it.
     assert!(is_stale_host_history_row(
         &claude_row,
-        &listed,
+        &prunable,
         Some(&CliSource::Claude)
     ));
 
@@ -6141,12 +6210,12 @@ fn is_stale_host_history_row_never_prunes_another_clis_rows() {
     unstamped.cli_source = None;
     assert!(!is_stale_host_history_row(
         &unstamped,
-        &listed,
+        &prunable,
         Some(&CliSource::Claude)
     ));
     // ...and an agent with no resolved CLI has no authority over anything.
-    assert!(!is_stale_host_history_row(&claude_row, &listed, None));
-    assert!(!is_stale_host_history_row(&unstamped, &listed, None));
+    assert!(!is_stale_host_history_row(&claude_row, &prunable, None));
+    assert!(!is_stale_host_history_row(&unstamped, &prunable, None));
 }
 
 /// A `custom:<name>` provider has `AgentCli::cli_source == None`, but
@@ -6163,7 +6232,7 @@ fn custom_agent_reconciles_rows_stamped_with_the_collapsed_cli() {
     let custom = stamped_cli(None);
     assert_eq!(custom, CliSource::Unknown("custom".into()));
 
-    let listed: HashSet<String> = HashSet::new();
+    let prunable: HashSet<String> = ["custom-row".to_string()].into_iter().collect();
     let mut row = crate::session_registry::SessionInfo::new(
         acp::schema::v1::SessionId::new("custom-row".to_string()),
         std::path::PathBuf::from("C:\\Users\\dev"),
@@ -6172,11 +6241,11 @@ fn custom_agent_reconciles_rows_stamped_with_the_collapsed_cli() {
     row.origin = Some(SessionOrigin::Unknown);
     row.cli_source = Some(custom.clone());
 
-    assert!(is_stale_host_history_row(&row, &listed, Some(&custom)));
+    assert!(is_stale_host_history_row(&row, &prunable, Some(&custom)));
     // A recognized CLI still has no authority over a custom row.
     assert!(!is_stale_host_history_row(
         &row,
-        &listed,
+        &prunable,
         Some(&CliSource::Copilot)
     ));
 }

@@ -1042,6 +1042,16 @@ struct AgentCli {
             Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
         )>,
     >,
+    /// Session ids THIS agent's `session/list` has returned at least once.
+    ///
+    /// Reconcile may only drop rows from this set. `cli_source` does not
+    /// identify a session universe: host Copilot, Copilot in WSL Debian, and
+    /// Copilot in WSL Ubuntu all stamp `Some(Copilot)` yet list disjoint
+    /// sessions. Keying the prune on "ids I previously listed and no longer
+    /// list" is what stops two such agents from deleting each other's rows on
+    /// every 5 s poll — which otherwise thrashes forever, since each one
+    /// re-adds what the other just dropped.
+    listed_ever: Mutex<HashSet<String>>,
     source: crate::agent_source::AgentSource,
     /// The pool key (agent command line) this CLI was spawned under —
     /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
@@ -4343,6 +4353,7 @@ async fn spawn_one_agent(
         cloud_catalog: Mutex::new(cloud_catalog),
         bound_helpers: Mutex::new(HashSet::new()),
         host_list_cache: Mutex::new(None),
+        listed_ever: Mutex::new(HashSet::new()),
     });
 
     // Seed THIS CLI's history. Every agent entering the pool seeds, not just
@@ -5089,6 +5100,17 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
     // rows and reconcile would silently never prune.
     let listing_cli = stamped_cli(agent.cli_source.as_ref());
     let listing_cli = Some(&listing_cli);
+    // Ids THIS agent listed before and no longer lists — the only rows it may
+    // drop. `cli_source` alone is not a session universe: host Copilot and an
+    // in-distro Copilot both stamp `Some(Copilot)` while listing disjoint
+    // sessions, so a set-difference against the whole registry would have each
+    // one delete the other's rows on every poll, forever.
+    let prunable_ids: std::collections::HashSet<String> = {
+        let mut ever = agent.listed_ever.lock().await;
+        let prunable = ever.difference(&listed_ids).cloned().collect();
+        ever.extend(listed_ids.iter().cloned());
+        prunable
+    };
 
     // Snapshot once; compute existing ids for the add pass and reconcile the
     // terminal Class-B host rows in the same pass.
@@ -5114,13 +5136,13 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
     // lock, so a row a hook/watcher flips live between the snapshot above and
     // the remove below is never deleted out from under that update.
     for row in &snapshot {
-        if !is_stale_host_history_row(row, &listed_ids, listing_cli) {
+        if !is_stale_host_history_row(row, &prunable_ids, listing_cli) {
             continue;
         }
         let removed = state
             .registry
             .remove_if(&row.session_id, &|cur| {
-                is_stale_host_history_row(cur, &listed_ids, listing_cli)
+                is_stale_host_history_row(cur, &prunable_ids, listing_cli)
             })
             .await;
         if removed.is_some() {
@@ -5139,20 +5161,28 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
 
 /// Whether a registry row is a stale host-history row to drop during reconcile:
 /// a terminal (Historical / Ended) Class-B **host** row belonging to
-/// `listing_cli` whose id is NOT in that CLI's authoritative `session/list` set.
-/// Live rows (Working / Idle), agent panes (ACP-driven), and WSL rows are never
+/// `listing_cli` whose id is in `prunable_ids` — the set the listing agent
+/// previously returned from `session/list` and no longer returns. Live rows
+/// (Working / Idle), agent panes (ACP-driven), and WSL rows are never
 /// reconciled away. Pure for unit testing.
 ///
-/// The `listing_cli` guard is what keeps a multi-agent master (and the
-/// machine-wide, cross-CLI file watcher) honest: an agent enumerates only its
-/// OWN sessions, so its listing says nothing about another CLI's rows and must
-/// never be treated as authority to delete them. Deliberately stricter than
-/// [`row_refreshable_by_connected_agent`], which governs a *non-destructive*
-/// title upgrade: pruning requires both sides known and equal, so an unstamped
-/// row is kept rather than deleted by whichever agent happens to poll first.
+/// Two guards, and both are load-bearing:
+///
+/// * `listing_cli` keeps a multi-agent master (and the machine-wide,
+///   cross-CLI file watcher) honest — an agent enumerates only its OWN
+///   sessions, so its listing is no authority over another CLI's rows.
+///   Deliberately stricter than [`row_refreshable_by_connected_agent`], which
+///   governs a *non-destructive* title upgrade: pruning requires both sides
+///   known and equal, so an unstamped row is kept rather than deleted by
+///   whichever agent polls first.
+/// * `prunable_ids` is scoped to what the listing agent itself has seen,
+///   because `CliSource` is NOT a session universe: host Copilot and an
+///   in-distro (WSL) Copilot both stamp `Some(Copilot)` while listing disjoint
+///   sessions. A plain "not in the current listing" test would have each drop
+///   the other's rows on every 5 s poll while the other re-added them.
 fn is_stale_host_history_row(
     row: &crate::session_registry::SessionInfo,
-    listed_ids: &std::collections::HashSet<String>,
+    prunable_ids: &std::collections::HashSet<String>,
     listing_cli: Option<&crate::agent_sessions::CliSource>,
 ) -> bool {
     use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
@@ -5172,7 +5202,7 @@ fn is_stale_host_history_row(
     if listing_cli.is_none() || row.cli_source.as_ref() != listing_cli {
         return false;
     }
-    !listed_ids.contains(row.session_id.0.as_ref())
+    prunable_ids.contains(row.session_id.0.as_ref())
 }
 
 /// Seed + reconcile `agent`'s host history against its `session/list`,
