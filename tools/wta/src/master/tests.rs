@@ -721,7 +721,6 @@ fn make_state() -> Arc<MasterStateInner> {
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
         allowed_agent_ids: None,
-        cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
         pending_session_helpers: Mutex::new(HashMap::new()),
@@ -730,8 +729,6 @@ fn make_state() -> Arc<MasterStateInner> {
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
-        wsl_titles_seed_at: Mutex::new(HashMap::new()),
-        wsl_seed_in_flight: Mutex::new(HashSet::new()),
     })
 }
 
@@ -5493,7 +5490,6 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
         allowed_agent_ids: None,
-        cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
         pending_session_helpers: Mutex::new(HashMap::new()),
@@ -5502,8 +5498,6 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
-        wsl_titles_seed_at: Mutex::new(HashMap::new()),
-        wsl_seed_in_flight: Mutex::new(HashSet::new()),
     })
 }
 
@@ -5782,165 +5776,6 @@ async fn refresh_synthetic_titles_from_skips_when_id_absent() {
             .title
             .as_deref(),
         Some("project")
-    );
-}
-
-// ── WSL delegate title refresh (born-bound "-" rows) ─────────────
-
-fn wsl_scan_row(id: &str, title: &str) -> crate::agent_sessions::AgentSession {
-    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
-    crate::agent_sessions::AgentSession {
-        key: id.into(),
-        cli_source: CliSource::Copilot,
-        pane_session_id: Some("pane-guid".into()),
-        window_id: None,
-        tab_id: None,
-        title: title.to_string(),
-        cwd: std::path::PathBuf::from("/home/user/proj"),
-        started_at: std::time::SystemTime::UNIX_EPOCH,
-        last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status: AgentStatus::Idle,
-        last_error: None,
-        current_tool: None,
-        attention_reason: None,
-        log_path: None,
-        origin: SessionOrigin::Unknown,
-        location: SessionLocation::Wsl {
-            distro: "Ubuntu".into(),
-        },
-    }
-}
-
-#[test]
-fn wsl_titles_from_scan_filters_empty_and_injected_echo() {
-    // A CLI can briefly echo the delegate's baked first message (which
-    // embeds the `## Terminal Context (pane …)` marker) as a session title
-    // before generating a real summary; that echo must be dropped so the
-    // born-bound row keeps waiting rather than adopting a leaky title.
-    let echo = format!(
-        "hi test\n\n{}ABCDEF01-2345-6789-ABCD-EF0123456789)\n```\nPowerShell 7\n```",
-        crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER
-    );
-    let scanned = vec![
-        wsl_scan_row("s-real", "Fix the failing build"),
-        wsl_scan_row("s-empty", ""),
-        wsl_scan_row("s-echo", &echo),
-    ];
-    let map = wsl_titles_from_scan(&scanned);
-    assert_eq!(map.len(), 1, "only the real title survives the filters");
-    assert_eq!(
-        map.get("s-real").map(String::as_str),
-        Some("Fix the failing build")
-    );
-    assert!(!map.contains_key("s-empty"), "empty titles dropped");
-    assert!(!map.contains_key("s-echo"), "injected-context echo dropped");
-}
-
-fn live_synthetic_pane_row(id: &str) -> crate::session_registry::SessionInfo {
-    use crate::agent_sessions::{AgentStatus, SessionLocation};
-    let mut row = crate::session_registry::SessionInfo::new(
-        acp::schema::v1::SessionId::new(id.to_string()),
-        std::path::PathBuf::from("/home/user/proj"),
-    );
-    // Synthetic (None title), live, pane-bound, WSL-located — the born-bound
-    // WSL-delegate shape.
-    row.pane_session_id = Some("pane-guid".to_string());
-    row.status = Some(AgentStatus::Idle);
-    row.location = SessionLocation::Wsl {
-        distro: "Ubuntu".to_string(),
-    };
-    row
-}
-
-#[test]
-fn wsl_title_seed_warranted_only_for_live_pane_bound_non_host_synthetic() {
-    use crate::agent_sessions::{AgentStatus, SessionLocation};
-    use std::collections::HashSet;
-
-    // A born-bound WSL delegate row: synthetic, live, pane-bound, WSL-located,
-    // and its id is NOT in the host session/list → warrants a WSL scan.
-    let wsl_row = live_synthetic_pane_row("wsl-sid");
-    let no_host: HashSet<String> = HashSet::new();
-    assert!(wsl_title_seed_warranted(
-        std::slice::from_ref(&wsl_row),
-        &no_host
-    ));
-
-    // Same row, but the host CLI lists it (a host delegate not yet titled) →
-    // the host title refresh owns it, no WSL scan.
-    let host_ids: HashSet<String> = ["wsl-sid".to_string()].into_iter().collect();
-    assert!(!wsl_title_seed_warranted(
-        std::slice::from_ref(&wsl_row),
-        &host_ids
-    ));
-
-    // A Host-located row with the same live/synthetic/pane-bound shape must
-    // NOT warrant a scan, even when the host list is empty (temporarily
-    // unavailable) — only in-distro rows can be titled by a WSL scan.
-    let mut host_row = live_synthetic_pane_row("host-sid");
-    host_row.location = SessionLocation::Host;
-    assert!(!wsl_title_seed_warranted(
-        std::slice::from_ref(&host_row),
-        &no_host
-    ));
-
-    // A non-synthetic row never warrants a scan.
-    let mut titled = live_synthetic_pane_row("titled-sid");
-    titled.title = Some("Real Title".to_string());
-    assert!(!wsl_title_seed_warranted(
-        std::slice::from_ref(&titled),
-        &no_host
-    ));
-
-    // Historical / ended synthetic rows are excluded so an untitled old row
-    // can't drive perpetual scans.
-    let mut ended = live_synthetic_pane_row("ended-sid");
-    ended.status = Some(AgentStatus::Ended);
-    assert!(!wsl_title_seed_warranted(
-        std::slice::from_ref(&ended),
-        &no_host
-    ));
-
-    // A synthetic live row with no pane binding (not born-bound) is excluded.
-    let mut unbound = live_synthetic_pane_row("unbound-sid");
-    unbound.pane_session_id = None;
-    assert!(!wsl_title_seed_warranted(
-        std::slice::from_ref(&unbound),
-        &no_host
-    ));
-}
-
-#[tokio::test]
-async fn wsl_scan_upgrades_born_bound_wsl_title() {
-    // End-to-end of the fix at the registry level: a born-bound WSL row
-    // (registered Host-located with an empty title, as `register_launched_
-    // session_with_master` does) gets its title from the scanned WSL session
-    // that shares its id, via `spawn_wsl_seed`'s synthetic-title refresh.
-    let state = make_state();
-    let mut born = crate::session_registry::SessionInfo::new(
-        acp::schema::v1::SessionId::new("wsl-delegate-sid".to_string()),
-        std::path::PathBuf::from("/home/user/proj"),
-    );
-    born.title = Some(String::new());
-    born.pane_session_id = Some("pane-guid".to_string());
-    born.status = Some(crate::agent_sessions::AgentStatus::Idle);
-    state.registry.upsert(born).await;
-
-    // Directly drive the title refresh the worker performs from a scan.
-    let scanned = vec![wsl_scan_row("wsl-delegate-sid", "Investigate flaky test")];
-    let titles = wsl_titles_from_scan(&scanned);
-    assert!(refresh_synthetic_titles_from(&*state.registry, &titles).await);
-    assert_eq!(
-        state
-            .registry
-            .lookup(&acp::schema::v1::SessionId::new(
-                "wsl-delegate-sid".to_string()
-            ))
-            .await
-            .unwrap()
-            .title
-            .as_deref(),
-        Some("Investigate flaky test")
     );
 }
 

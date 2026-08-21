@@ -248,20 +248,6 @@ struct MasterStateInner {
     /// falls back to the trusted default. Either way the master reconstructs
     /// the command from the id and never spawns a string taken off the pipe.
     pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
-    /// The CLI provider master was LAUNCHED with (`--agent-id`, else parsed
-    /// from `--agent`).
-    ///
-    /// This is only a FALLBACK for call sites that have no agent in hand (a
-    /// `sessions/list` from `wta sessions`, which never binds one). It must NOT
-    /// be used to stamp or reconcile host session history: master survives a
-    /// Settings agent switch — the helper reconnects and the pool spawns the
-    /// new CLI — so this value goes stale the moment the user picks a different
-    /// agent. Host history is sourced and stamped per [`AgentCli`].
-    ///
-    /// `None` only when running with an agent CLI we don't recognize, which is
-    /// tracked in `CliSource::Unknown` but not surfaced as a known session
-    /// management filter.
-    pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
     /// Per-helper crash-recovery metadata, keyed by `HelperId`.
     ///
     /// Populated/refreshed by the `new_session` + `load_session`
@@ -331,23 +317,6 @@ struct MasterStateInner {
     /// the session into `hook_owned` and out of here, after which the watcher
     /// fully backs off.
     born_bound: Mutex<HashSet<acp::schema::v1::SessionId>>,
-    /// Last time a poll-triggered WSL title seed was dispatched, keyed by the
-    /// CLI it scanned for. Throttles the expensive per-distro `wsl.exe` ACP
-    /// scan so the 5 s `sessions/list` poll can't turn it into a scan storm
-    /// while a synthetic WSL delegate row waits for its in-distro title.
-    /// Per-CLI because each pooled agent scans its own distro CLI: one agent's
-    /// recent scan must not suppress another's first one. Absent until that
-    /// CLI's first poll-triggered seed; the explicit F5 rescan + startup
-    /// discovery seeds don't touch it.
-    wsl_titles_seed_at:
-        Mutex<HashMap<Option<crate::agent_sessions::CliSource>, std::time::Instant>>,
-    /// CLIs with a WSL ACP scan ([`spawn_wsl_seed`]) currently running, so the
-    /// startup / F5 / poll seeds never overlap **for the same CLI**. A scan can
-    /// outlive the poll throttle (a cold snap distro pays a 40 s ACP init), so
-    /// a time throttle alone can't prevent concurrent `wsl.exe` processes —
-    /// this guard does. Keyed per CLI so a copilot scan in flight can't
-    /// silently swallow the codex scan a freshly switched agent needs.
-    wsl_seed_in_flight: Mutex<HashSet<Option<crate::agent_sessions::CliSource>>>,
 }
 
 async fn session_lifecycle_gate(
@@ -3734,12 +3703,6 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
         allowed_agent_ids,
-        cli_source: crate::agent_sessions::CliSource::from_agent_id(
-            config
-                .agent_id
-                .as_deref()
-                .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&config.agent)),
-        ),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
         pending_session_helpers: Mutex::new(HashMap::new()),
@@ -3748,8 +3711,6 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
-        wsl_titles_seed_at: Mutex::new(HashMap::new()),
-        wsl_seed_in_flight: Mutex::new(HashSet::new()),
     });
     {
         let session_mcp_state = Arc::clone(&inner);
@@ -4424,7 +4385,6 @@ async fn spawn_one_agent(
                 count,
                 "agent ACP history seed complete"
             );
-            spawn_wsl_seed(&state, agent.cli_source.clone()).await;
         });
     }
 
@@ -5262,10 +5222,8 @@ fn is_stale_host_history_row(
     prunable_ids.contains(row.session_id.0.as_ref())
 }
 
-/// Seed + reconcile `agent`'s host history against its `session/list`,
-/// broadcasting when anything changed. WSL is seeded separately
-/// ([`spawn_wsl_seed`]) so a slow/wedged distro never blocks host rows. Returns
-/// the listed host count.
+/// Seed + reconcile `agent`'s history against its own `session/list`,
+/// broadcasting when anything changed. Returns the listed count.
 async fn seed_host_and_broadcast(
     state: &std::sync::Arc<MasterStateInner>,
     agent: &AgentCli,
@@ -5281,189 +5239,6 @@ async fn seed_host_and_broadcast(
         .await;
     }
     count
-}
-
-/// Fire-and-forget the WSL history scan on the master's LocalSet so a 40s distro
-/// timeout can't stall host rows. Discovers new rows + upgrades synthetic titles
-/// (e.g. a born-bound `?<prompt>` WSL delegate row that registered with an empty
-/// title before the in-distro CLI generated its summary), broadcasting when
-/// either lands. No-op when WSL sessions are disabled — the whole WSL surface,
-/// born-bound rows included, is gated on `wsl_sessions_enabled()`.
-///
-/// **Non-overlapping, per CLI.** The `wsl_seed_in_flight` set serializes WSL
-/// scans (startup / F5 / poll) *for a given CLI*: a scan can outlive the poll
-/// throttle (a cold snap distro pays a 40 s ACP init), so without this a later
-/// poll could spawn a second scan while the first is still running and double
-/// the `wsl.exe` ACP processes. It is keyed by CLI rather than global so a
-/// long-running scan for one pooled agent can't swallow the first scan a
-/// freshly switched-to agent needs. When a scan for `cli` is already running,
-/// this is a no-op.
-///
-/// Returns `true` iff a scan was actually dispatched (the slot was free), so a
-/// caller can avoid side effects — e.g. arming a throttle — when the scan was
-/// skipped because another is already running. Claiming the slot awaits the
-/// lock rather than trying it: every caller is already async, and treating
-/// momentary contention as "already running" would silently drop a scan that
-/// nothing was actually running, delaying a user-visible title until the next
-/// poll.
-async fn spawn_wsl_seed(
-    state: &std::sync::Arc<MasterStateInner>,
-    cli: Option<crate::agent_sessions::CliSource>,
-) -> bool {
-    if !crate::history_loader::wsl_sessions_enabled() {
-        return false;
-    }
-    // Claim this CLI's scan slot; skip when a scan for this CLI is already
-    // running. `insert` returns false when the slot was already taken.
-    if !state.wsl_seed_in_flight.lock().await.insert(cli.clone()) {
-        return false;
-    }
-    let inner = std::sync::Arc::clone(state);
-    tokio::task::spawn_local(async move {
-        let started = std::time::Instant::now();
-        let wsl = crate::wsl_acp::scan_running_distros_acp(cli.as_ref()).await;
-        let count = wsl.len();
-        for s in &wsl {
-            let info = crate::session_registry::agent_session_to_session_info(s);
-            inner.registry.upsert_if_absent(info).await;
-        }
-        // Upgrade synthetic titles from the scan. A born-bound WSL delegate row
-        // registers with an empty title before the in-distro CLI generates its
-        // summary; `upsert_if_absent` above can't update the already-present row,
-        // and the host `session/list` never lists an in-distro session, so this
-        // is the only path that gives such a row a real title.
-        let titles = wsl_titles_from_scan(&wsl);
-        let titles_changed = refresh_synthetic_titles_from(&*inner.registry, &titles).await;
-        tracing::info!(
-            target: "master_history",
-            cli = ?cli,
-            count,
-            titles = titles.len(),
-            titles_changed,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "WSL ACP history seed complete"
-        );
-        if count > 0 || titles_changed {
-            broadcast_ext_to_helpers(
-                &inner,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
-        }
-        // Release this CLI's scan slot for the next startup / F5 / poll seed.
-        inner.wsl_seed_in_flight.lock().await.remove(&cli);
-    });
-    true
-}
-
-/// Build a `session_id → title` map from a WSL ACP scan, applying the same
-/// filters as [`host_titles_via_acp`]: drop empty titles and the delegate's
-/// injected first-message echo (the `## Terminal Context (pane …)` block a CLI
-/// can briefly surface as a session's title before generating its real summary).
-fn wsl_titles_from_scan(
-    scanned: &[crate::agent_sessions::AgentSession],
-) -> std::collections::HashMap<String, String> {
-    scanned
-        .iter()
-        .filter(|s| {
-            !s.title.is_empty()
-                && !crate::session_registry::title_is_injected_context_echo(&s.title)
-        })
-        .map(|s| (s.key.clone(), s.title.clone()))
-        .collect()
-}
-
-/// Whether a poll-triggered WSL title seed is warranted: a **live, pane-bound,
-/// WSL-located** row whose title is still synthetic and whose id the host
-/// `session/list` doesn't know about. That is the signature of a born-bound WSL
-/// delegate row waiting for its in-distro title — a host session (even one whose
-/// title hasn't been generated yet) appears in `host_ids`, and historical /
-/// ended rows are excluded so an untitled old row can't trigger perpetual scans.
-/// The explicit `SessionLocation::Wsl` gate matters when the host `session/list`
-/// is temporarily unavailable (empty `host_ids`): without it, any live
-/// pane-bound synthetic *host* row would satisfy the predicate and needlessly
-/// spawn a `wsl.exe` scan. Pure for unit testing.
-fn wsl_title_seed_warranted(
-    sessions: &[crate::session_registry::SessionInfo],
-    host_ids: &std::collections::HashSet<String>,
-) -> bool {
-    use crate::agent_sessions::AgentStatus;
-    sessions.iter().any(|s| {
-        s.location.is_wsl()
-            && crate::session_registry::title_is_synthetic(s)
-            && s.pane_session_id.is_some()
-            && matches!(
-                s.status,
-                Some(
-                    AgentStatus::Idle
-                        | AgentStatus::Working
-                        | AgentStatus::Attention
-                        | AgentStatus::Error
-                )
-            )
-            && !host_ids.contains(s.session_id.0.as_ref())
-    })
-}
-
-/// `agent`'s `session/list` id set (includes untitled rows). Used by
-/// [`wsl_title_seed_warranted`] to tell a synthetic row the host CLI knows about
-/// apart from an in-distro (WSL) one it can never title. Empty when the agent
-/// can't list.
-async fn host_session_id_set(agent: &AgentCli) -> std::collections::HashSet<String> {
-    host_session_list_raw(agent)
-        .await
-        .map(|rows| rows.iter().map(|r| r.session_id.to_string()).collect())
-        .unwrap_or_default()
-}
-
-/// Poll-path counterpart to the host synthetic-title refresh: fire a throttled,
-/// fire-and-forget WSL seed when a born-bound WSL delegate row is waiting for
-/// its in-distro title (see [`wsl_title_seed_warranted`]). Strictly gated on
-/// `wsl_sessions_enabled()` — when WSL sessions are disabled there is no WSL row
-/// to title (the delegate skips its born-bound registration entirely) and we
-/// never touch a distro. Throttled because each seed spawns a `wsl.exe` ACP
-/// process per running distro (tens of seconds of init), so the 5 s poll must
-/// not turn it into a scan storm. The throttle is per CLI, matching the scan.
-async fn maybe_spawn_wsl_title_seed(
-    state: &std::sync::Arc<MasterStateInner>,
-    agent: &AgentCli,
-    sessions: &[crate::session_registry::SessionInfo],
-) {
-    if !crate::history_loader::wsl_sessions_enabled() {
-        return;
-    }
-    let host_ids = host_session_id_set(agent).await;
-    if !wsl_title_seed_warranted(sessions, &host_ids) {
-        return;
-    }
-    let cli = agent.cli_source.clone();
-    const WSL_TITLE_SEED_THROTTLE: std::time::Duration = std::time::Duration::from_secs(30);
-    {
-        // Read-only throttle check — don't arm it yet. Arming before dispatch
-        // would extend the throttle window even when `spawn_wsl_seed` no-ops
-        // (a scan already in flight), needlessly delaying a later needed scan.
-        let last = state.wsl_titles_seed_at.lock().await;
-        if let Some(at) = last.get(&cli) {
-            if at.elapsed() < WSL_TITLE_SEED_THROTTLE {
-                return;
-            }
-        }
-    }
-    tracing::debug!(
-        target: "master_history",
-        cli = ?cli,
-        "poll: born-bound WSL row awaiting title — dispatching throttled WSL title seed"
-    );
-    // Only arm the throttle when a scan was actually dispatched. If one was
-    // already in flight (`spawn_wsl_seed` returns false), leave the timestamp
-    // untouched so the next poll can dispatch as soon as that scan finishes.
-    if spawn_wsl_seed(state, cli.clone()).await {
-        state
-            .wsl_titles_seed_at
-            .lock()
-            .await
-            .insert(cli, std::time::Instant::now());
-    }
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -5484,17 +5259,16 @@ async fn handle_sessions_list(
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
     if let Some(agent) = agent {
         if parsed.rescan {
-            // Host is fast: re-pull + broadcast inline. WSL can be slow / wedged
-            // (40s distro timeout), so fire it asynchronously — it broadcasts again
-            // when it lands rather than blocking this response on it.
+            // Re-pull this agent's own `session/list` and broadcast. Each pooled
+            // agent — host or in-distro — enumerates its own sessions, so an
+            // F5 in a WSL pane refreshes that distro through its own CLI.
             let count = seed_host_and_broadcast(state, agent).await;
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
                 count,
-                "sessions/list rescan: reloaded host history via ACP (WSL async)"
+                "sessions/list rescan: reloaded history via ACP"
             );
-            spawn_wsl_seed(state, agent.cli_source.clone()).await;
         } else {
             // Periodic poll: reconcile host rows against `session/list` (the source
             // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
@@ -5523,13 +5297,6 @@ async fn handle_sessions_list(
             if refresh_synthetic_titles_from(&*state.registry, &titles).await {
                 sessions = state.registry.snapshot().await;
             }
-            // Host `session/list` can't title an in-distro (WSL) session, so a
-            // synthetic row it doesn't list is likely a born-bound WSL delegate row
-            // (`?<prompt>` in a WSL pane) still waiting for its in-distro title.
-            // Fire a throttled, fire-and-forget WSL scan to fetch it; it broadcasts
-            // `sessions/changed` when a title lands, which re-lists. The current
-            // response returns immediately so a slow distro can't stall the view.
-            maybe_spawn_wsl_title_seed(state, agent, &sessions).await;
         }
     }
 
