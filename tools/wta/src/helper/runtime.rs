@@ -72,7 +72,11 @@ fn install_descendant_job() {
         // This process must retain the only job handle for its entire lifetime.
         // Windows closes it on every exit path, including TerminateProcess, and
         // KILL_ON_JOB_CLOSE then reclaims wtcli and other helper descendants.
-        tracing::info!(target: "helper", "helper descendant job installed");
+        tracing::info!(
+            target: "helper",
+            helper_pid = std::process::id(),
+            "helper descendant job installed"
+        );
     }
 }
 
