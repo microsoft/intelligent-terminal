@@ -444,7 +444,11 @@ fn merge_paths(fresh: &str, current: &str) -> String {
 pub fn check_agent(agent_id: &str) -> AgentStatus {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
     let cli_path = find_exe(agent_id);
-    let cli_found = cli_path.is_some();
+    let cli_found = host_requirements_available(
+        profile,
+        cli_path.is_some(),
+        || find_exe("npx").is_some(),
+    );
 
     AgentStatus {
         id: agent_id.to_string(),
@@ -455,6 +459,22 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
         auth_hint: profile.auth_hint.to_string(),
         auto_installable: agent_id == "copilot",
     }
+}
+
+fn host_requirements_available(
+    profile: &agent_registry::AgentProfile,
+    cli_found: bool,
+    find_npx: impl FnOnce() -> bool,
+) -> bool {
+    cli_found && (!profile.acp_launch_command.starts_with("npx ") || find_npx())
+}
+
+/// Whether a built-in agent has every Host-side executable required to start
+/// its configured ACP command. Adapter-backed agents need both their native
+/// CLI and npx; this is the same gate used by preflight and exposed to the
+/// Terminal settings surfaces through `probe-host-agents`.
+pub fn host_agent_available(agent_id: &str) -> bool {
+    check_agent(agent_id).cli_found
 }
 
 pub async fn check_agent_in_source(
@@ -740,6 +760,17 @@ mod tests {
             find_configured_executable(Some(OsStr::new(r"C:\Missing\codex.exe")), |_| false),
             None
         );
+    }
+
+    #[test]
+    fn host_adapter_requires_both_native_cli_and_npx() {
+        let claude = agent_registry::lookup_profile_by_id("claude");
+        assert!(host_requirements_available(claude, true, || true));
+        assert!(!host_requirements_available(claude, true, || false));
+        assert!(!host_requirements_available(claude, false, || true));
+
+        let copilot = agent_registry::lookup_profile_by_id("copilot");
+        assert!(host_requirements_available(copilot, true, || false));
     }
 
     #[test]

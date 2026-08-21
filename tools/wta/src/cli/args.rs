@@ -418,6 +418,11 @@ pub(crate) enum Command {
         #[arg(long)]
         wsl_distro: String,
     },
+    /// List built-in ACP agents that WTA can launch on the Windows host.
+    /// Used by FRE, Settings, and automatic agent selection so those surfaces
+    /// share WTA's executable resolution with the actual ACP spawn path.
+    #[command(hide = true)]
+    ProbeHostAgents,
     /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
     /// `session/list` (`list_sessions`) and print what it returns.
     /// Used to evaluate whether ACP session enumeration can replace

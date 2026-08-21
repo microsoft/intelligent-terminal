@@ -18,6 +18,7 @@
 #include "../../types/inc/utils.hpp"
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../inc/AcpModelUtils.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
@@ -880,8 +881,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Method Description:
-    // - Auto-detects an installed agent CLI by iterating the GPO-filtered
-    //   built-in agent list and searching the system PATH for each.
+    // - Auto-detects a Host agent that WTA can launch by iterating the
+    //   GPO-filtered built-in list against WTA's authoritative probe.
     // Arguments:
     // - <none>
     // Return Value:
@@ -890,17 +891,15 @@ namespace winrt::TerminalApp::implementation
     //   through _BuildAgentCommandLine to get a launchable command.
     winrt::hstring TerminalPage::_DetectAgentCli() const
     {
-        wchar_t buffer[MAX_PATH];
-
         // Walk the policy-filtered agent list so we never auto-detect an
         // agent that is blocked by GPO.  FilteredAcpAgents() returns only
         // agents whose id passes AgentPolicy::IsAgentAllowed(); when no
         // AllowedAgents policy is configured it returns all built-in agents.
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
         for (const auto& agent : Reg::FilteredAcpAgents())
         {
-            if (SearchPathW(nullptr, agent.id.data(), L".exe", MAX_PATH, buffer, nullptr) > 0 ||
-                SearchPathW(nullptr, agent.id.data(), L".cmd", MAX_PATH, buffer, nullptr) > 0)
+            if (availableAgents.contains(std::wstring{ agent.id }))
             {
                 return winrt::hstring{ agent.id };
             }

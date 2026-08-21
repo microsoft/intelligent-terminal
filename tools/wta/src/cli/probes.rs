@@ -58,6 +58,29 @@ struct AgentSourceProbeResult {
     agents: Vec<AgentSourceProbeEntry>,
 }
 
+#[derive(serde::Serialize)]
+struct HostAgentProbeResult {
+    agents: Vec<AgentSourceProbeEntry>,
+}
+
+pub(crate) fn run_host_agents() -> Result<()> {
+    let agents = crate::agent_registry::KNOWN_AGENTS
+        .iter()
+        .filter(|profile| crate::agent_check::host_agent_available(profile.id))
+        .map(|profile| AgentSourceProbeEntry {
+            id: profile.id,
+            display_name: profile.display_name,
+        })
+        .collect();
+
+    println!(
+        "{}",
+        serde_json::to_string(&HostAgentProbeResult { agents })
+            .context("serialize Host agent probe")?
+    );
+    Ok(())
+}
+
 pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
     let distro = wsl_distro.trim();
     anyhow::ensure!(!distro.is_empty(), "--wsl-distro must not be empty");
