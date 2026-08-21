@@ -487,7 +487,7 @@ pub enum WtaExtRequest {
     /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
     /// semantics). The second field is the WSL distro when the born-bound
     /// session runs inside a distro (delegate `?<prompt>` from a WSL pane), so
-    /// the master can stamp the row `Wsl { distro }` for the `[WSL-…]` prefix.
+    /// the master can stamp the row `Wsl { distro }` for the distro suffix.
     SessionBornBound(crate::agent_sessions::SessionEvent, Option<String>),
     /// `_intellterm.wta/session_resume_dispatched` — optimistic resume flip.
     SessionResumeDispatched(SessionResumeDispatchedParams),
@@ -902,7 +902,7 @@ pub fn build_born_bound_request(
 /// Like [`build_born_bound_request`] but tags the session as running inside a
 /// WSL distro. The master stamps the created row `SessionLocation::Wsl {
 /// distro }` (the reducer defaults `SessionStarted` to `Host`) so the session
-/// view renders the `[WSL-<distro>]` prefix — used by the `?<prompt>` delegate
+/// view names the distro in the row suffix — used by the `?<prompt>` delegate
 /// path when the active pane is a WSL pane.
 pub fn build_born_bound_request_wsl(
     event: &crate::agent_sessions::SessionEvent,
@@ -1158,7 +1158,7 @@ pub trait SessionRegistry: Send + Sync {
     /// `true` iff the value actually changed. Used to stamp a born-bound WSL
     /// delegate row as `Wsl { distro }` after the reducer creates it (the
     /// reducer defaults every `SessionStarted` to `Host`), so the session view
-    /// renders the `[WSL-<distro>]` prefix.
+    /// names the distro in the row suffix.
     async fn set_location(
         &self,
         sid: &acp::schema::v1::SessionId,
