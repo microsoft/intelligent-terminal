@@ -52,7 +52,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
-    TEST_METHOD(PowerShell_ScriptContent_UsesTransactionalV7State);
+    TEST_METHOD(PowerShell_ScriptContent_UsesTransactionalV8Generations);
+    TEST_METHOD(PowerShell_ScriptContent_ArmsBoundedOmpRuntimeRebind);
     TEST_METHOD(PowerShell_ScriptContent_PreservesDelegatedPromptSemantics);
 
     // Install scenarios.
@@ -444,33 +445,28 @@ void ShellIntegrationTests::BuildBlock_HonoursEolParameter()
 void ShellIntegrationTests::PowerShell_ScriptContent_HandlesNullLastExitCode()
 {
     const auto script = ShellIntegrationScriptContent();
-    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
+    const auto promptStart = script.find("$wrapper = {");
     const auto successCheck = script.find("$gle = if ($?)", promptStart);
     const auto guard = script.find("$null -ne $LastExitCode -and $LastExitCode -ne 0", successCheck);
     const auto nativeValue = script.find("$LastExitCode", guard + 1);
     const auto sentinelValue = script.find("-1", nativeValue);
-    const auto stateAccess = script.find("$state = $Global:__ShellInteg_State", sentinelValue);
+    const auto controllerAccess = script.find("$controller.BindingInProgress", sentinelValue);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, promptStart);
     VERIFY_IS_TRUE(promptStart < successCheck &&
                        successCheck < guard &&
                        guard < nativeValue &&
                        nativeValue < sentinelValue &&
-                       sentinelValue < stateAccess,
-                   L"The v7 prompt must capture status before state access, preserve a non-zero native code, and use a numeric sentinel otherwise");
+                       sentinelValue < controllerAccess,
+                   L"The v8 prompt must capture status before controller access, preserve a non-zero native code, and use a numeric sentinel otherwise");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 {
     const auto script = ShellIntegrationScriptContent();
-    const auto readLineWrapper = script.find("$__ShellInteg_ReadLineWrapper =");
-    const auto driftCheck = script.find("$function:prompt -ne $state.PromptWrapper", readLineWrapper);
-    const auto repairSignal = script.find("]9001;ShellIntegrationRepair;${shellName};prompt-changed", driftCheck);
-    const auto generationAdvanced = script.find("$state.SubmissionGeneration++", repairSignal);
-    const auto lineStored = script.find("$state.LastSubmittedLine =", generationAdvanced);
-    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
-    const auto lineCaptured = script.find("$submittedLine = $state.LastSubmittedLine", promptStart);
-    const auto generationCaptured = script.find("$submissionGeneration = $state.SubmissionGeneration", lineCaptured);
+    const auto promptStart = script.find("$wrapper = {");
+    const auto lineCaptured = script.find("$submittedLine = $controller.LastSubmittedLine", promptStart);
+    const auto generationCaptured = script.find("$submissionGeneration = $controller.SubmissionGeneration", lineCaptured);
     const auto capture = script.find("$errorRecord", lineCaptured);
     const auto historyCheck = script.find("$historyAdvanced =", capture);
     const auto errorCheck = script.find("$newErrorRecord =", historyCheck);
@@ -480,15 +476,15 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto parserFlagSet = script.find("$inputHadParserError = $parseErrors.Count -gt 0", parseInput);
     const auto staleZeroCheck = script.find("if ($inputHadParserError -and $gle -eq 0)", parserFlagSet);
     const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
-    const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
-    const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
-    const auto downstreamPrompt = script.find("& $state.DownstreamPrompt", combinedCheck);
-    const auto finallyBlock = script.find("finally {", downstreamPrompt);
-    const auto consumeError = script.find("$state.LastErrorRecord = $Error[0]", finallyBlock);
-    const auto generationGuard = script.find("if ($state.SubmissionGeneration -eq $submissionGeneration)", consumeError);
-    const auto consumeLine = script.find("$state.LastSubmittedLine = $null", generationGuard);
+    const auto completionObserved = script.find("$completionObserved =", sentinelAssignment);
+    const auto emissionGuard = script.find("$submissionGeneration -gt $controller.LastEmittedSubmissionGeneration", completionObserved);
+    const auto historyReservation = script.find("$controller.LastHistoryId = $entry.Id", emissionGuard);
+    const auto generationGuard = script.find("if ($controller.SubmissionGeneration -eq $submissionGeneration)", historyReservation);
+    const auto consumeLine = script.find("$controller.LastSubmittedLine = $null", generationGuard);
+    const auto consumeToken = script.find("$controller.LastEmittedSubmissionGeneration = $submissionGeneration", consumeLine);
+    const auto downstreamPrompt = script.find("& $generation.Downstream @args", consumeToken);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, downstreamPrompt);
     VERIFY_IS_TRUE(promptStart < lineCaptured &&
                        lineCaptured < generationCaptured &&
                        generationCaptured < capture &&
@@ -500,30 +496,28 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                        parseInput < parserFlagSet &&
                        parserFlagSet < staleZeroCheck &&
                        staleZeroCheck < sentinelAssignment &&
-                       sentinelAssignment < untrackedErrorCheck &&
-                       untrackedErrorCheck < combinedCheck &&
-                       combinedCheck < downstreamPrompt &&
-                       downstreamPrompt < finallyBlock &&
-                       finallyBlock < consumeError &&
-                       consumeError < generationGuard &&
+                       sentinelAssignment < completionObserved &&
+                       completionObserved < emissionGuard &&
+                       emissionGuard < historyReservation &&
+                       historyReservation < generationGuard &&
                        generationGuard < consumeLine &&
-                       readLineWrapper < driftCheck &&
-                       driftCheck < repairSignal &&
-                       repairSignal < generationAdvanced &&
-                       generationAdvanced < lineStored,
-                   L"ReadLine must diagnose prompt drift without rebinding; submitted input must be generation-tracked, parsed lazily, and consumed from finally");
+                       consumeLine < consumeToken &&
+                       consumeToken < downstreamPrompt,
+                   L"v8 must reserve completion evidence before downstream prompt invocation so nested prompt renders cannot duplicate D");
 }
 
-void ShellIntegrationTests::PowerShell_ScriptContent_UsesTransactionalV7State()
+void ShellIntegrationTests::PowerShell_ScriptContent_UsesTransactionalV8Generations()
 {
     const auto script = ShellIntegrationScriptContent();
     const auto shellType = script.find("]9001;ShellType;${__ShellInteg_ShellName};");
     const auto stateLookup = script.find("Get-Variable -Name __ShellInteg_State -Scope Global", shellType);
-    const auto v7Check = script.find("$__ShellInteg_ExistingState.Version -eq 7", stateLookup);
-    const auto completeCheck = script.find("$__ShellInteg_ExistingState.InstallComplete -eq $true", v7Check);
-    const auto identityCheck = script.find("$function:prompt -eq $__ShellInteg_ExistingState.PromptWrapper", completeCheck);
-    const auto v6Refusal = script.find("Get-Variable -Name __ShellInteg_Installed -Scope Global", identityCheck);
-    const auto statePublish = script.find("New-Variable -Name __ShellInteg_State -Scope Global", v6Refusal);
+    const auto v8Check = script.find("$__ShellInteg_ExistingState.Version -eq 8", stateLookup);
+    const auto completeCheck = script.find("$__ShellInteg_ExistingState.InstallComplete -eq $true", v8Check);
+    const auto identityCheck = script.find("$__ShellInteg_ExistingState.ActiveGeneration.Wrapper", completeCheck);
+    const auto v7Refusal = script.find("$__ShellInteg_ExistingState.Version -eq 7", identityCheck);
+    const auto generationFactory = script.find("$__ShellInteg_GenerationFactory = {", v7Refusal);
+    const auto closure = script.find("}.GetNewClosure()", generationFactory);
+    const auto statePublish = script.find("New-Variable -Name __ShellInteg_State -Scope Global", closure);
     const auto readLineInstall = script.find("Set-Item -LiteralPath Function:\\global:PSConsoleHostReadLine", statePublish);
     const auto promptInstall = script.find("Set-Item -LiteralPath Function:\\global:prompt", readLineInstall);
     const auto rollback = script.find("Remove-Variable -Name __ShellInteg_State -Scope Global -Force", promptInstall);
@@ -531,29 +525,62 @@ void ShellIntegrationTests::PowerShell_ScriptContent_UsesTransactionalV7State()
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, ready);
     VERIFY_IS_TRUE(shellType < stateLookup &&
-                       stateLookup < v7Check &&
-                       v7Check < completeCheck &&
+                       stateLookup < v8Check &&
+                       v8Check < completeCheck &&
                        completeCheck < identityCheck &&
-                       identityCheck < v6Refusal &&
-                       v6Refusal < statePublish &&
+                       identityCheck < v7Refusal &&
+                       v7Refusal < generationFactory &&
+                       generationFactory < closure &&
+                       closure < statePublish &&
                        statePublish < readLineInstall &&
                        readLineInstall < promptInstall &&
                        promptInstall < rollback &&
                        rollback < ready,
-                   L"v7 must establish shell identity first, no-op only for a complete live wrapper, refuse v6 hot migration, install prompt last, and roll back on failure");
+                   L"v8 must use captured generations, refuse v7 hot migration, install prompt last, and roll back owned bindings");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_ArmsBoundedOmpRuntimeRebind()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto matcher = script.find("$__ShellInteg_OmpMatcher = {");
+    const auto exactStatements = script.find("$ast.EndBlock.Statements.Count -ne 1", matcher);
+    const auto exactPipeline = script.find("$statement.PipelineElements.Count -ne 2", exactStatements);
+    const auto appIdentity = script.find("[System.Management.Automation.ApplicationInfo]", exactPipeline);
+    const auto ompLeaf = script.find("$leftLeaf -ine 'oh-my-posh.exe'", appIdentity);
+    const auto cmdletIdentity = script.find("[System.Management.Automation.CmdletInfo]", ompLeaf);
+    const auto pending = script.find("$state.PendingRebind = @{", cmdletIdentity);
+    const auto bindGuard = script.find("$controller.BindingInProgress = $true", cmdletIdentity);
+    const auto identityVerification = script.find("$function:prompt -ne $candidate.Wrapper", bindGuard);
+    const auto publish = script.find("$controller.ActiveGeneration = $candidate", identityVerification);
+    const auto consumeInit = script.find("$controller.LastEmittedSubmissionGeneration =", publish);
+    const auto runtimeSignal = script.find("]9001;ShellIntegrationRuntime;${shellName};rebound", consumeInit);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, runtimeSignal);
+    VERIFY_IS_TRUE(matcher < exactStatements &&
+                       exactStatements < exactPipeline &&
+                       exactPipeline < appIdentity &&
+                       appIdentity < ompLeaf &&
+                       ompLeaf < cmdletIdentity &&
+                       cmdletIdentity < bindGuard &&
+                       bindGuard < identityVerification &&
+                       identityVerification < publish &&
+                       publish < consumeInit &&
+                       consumeInit < runtimeSignal &&
+                       cmdletIdentity < pending,
+                   L"v8 runtime recovery must arm only a strict OMP pipeline and publish a verified generation before reporting pane-local success");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_PreservesDelegatedPromptSemantics()
 {
     const auto script = ShellIntegrationScriptContent();
-    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
-    const auto prefixWrite = script.find("Write-Host -Object $prefix -NoNewline", promptStart);
+    const auto promptStart = script.find("$wrapper = {");
+    const auto prefixWrite = script.find("-Object $prefix -NoNewline", promptStart);
     const auto failureCheck = script.find("if ($gle -ne 0)", prefixWrite);
     const auto statusRestore = script.find("Microsoft.PowerShell.Utility\\Write-Error", failureCheck);
     const auto tryBlock = script.find("try {", statusRestore);
-    const auto downstream = script.find("$downstreamOutput = & $state.DownstreamPrompt", tryBlock);
+    const auto downstream = script.find("$downstreamOutput = & $generation.Downstream @args", tryBlock);
     const auto catchBlock = script.find("catch {", downstream);
-    const auto exceptionalSuffix = script.find("Write-Host -Object $suffix -NoNewline", catchBlock);
+    const auto exceptionalSuffix = script.find("-Object $suffix -NoNewline", catchBlock);
     const auto rethrow = script.find("throw", exceptionalSuffix);
     const auto finallyBlock = script.find("finally {", rethrow);
     const auto successfulSuffix = script.find("return \"${downstreamOutput}${suffix}\"", finallyBlock);
@@ -569,17 +596,17 @@ void ShellIntegrationTests::PowerShell_ScriptContent_PreservesDelegatedPromptSem
                        exceptionalSuffix < rethrow &&
                        rethrow < finallyBlock &&
                        finallyBlock < successfulSuffix,
-                   L"v7 must host-write OSC before invoking the downstream prompt, restore failure status immediately before delegation, and return one prompt string while closing B on throw");
+                   L"v8 must host-write OSC before invoking the captured downstream prompt, restore failure status immediately before delegation, and return one prompt string while closing B on throw");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
 {
     const auto script = ShellIntegrationScriptContent();
     const auto languageMode = script.find("$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'");
-    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {", languageMode);
-    const auto errorRecordGuard = script.find("$newErrorRecord = $state.CanInspectErrors", promptStart);
+    const auto promptStart = script.find("$wrapper = {", languageMode);
+    const auto errorRecordGuard = script.find("$newErrorRecord = $controller.CanInspectErrors", promptStart);
     const auto referenceCheck = script.find("[object]::ReferenceEquals", errorRecordGuard);
-    const auto lazyParseGuard = script.find("if ($state.CanInspectErrors -and", referenceCheck);
+    const auto lazyParseGuard = script.find("if ($controller.CanInspectErrors -and", referenceCheck);
     const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
     const auto readLineGuard = script.find("$__ShellInteg_CanInspectErrors -and", parseInput);
 

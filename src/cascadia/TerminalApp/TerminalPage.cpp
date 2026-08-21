@@ -6754,6 +6754,22 @@ namespace winrt::TerminalApp::implementation
                                 {
                                     return;
                                 }
+                                // Runtime rebind is pane-local and intentionally
+                                // never mutates persisted profile repair state.
+                                if (diagnostic->kind ==
+                                    ::Microsoft::Terminal::ShellIntegration::Diagnostics::SignalKind::Runtime)
+                                {
+                                    if (diagnostic->runtimeOutcome ==
+                                            ::Microsoft::Terminal::ShellIntegration::Diagnostics::RuntimeOutcome::RebindFailed &&
+                                        page->_GetActiveControl() == term2 &&
+                                        term2.HasFocus())
+                                    {
+                                        page->_ShowShellIntegrationDialog(
+                                            RS_(L"ShellIntegrationRuntimeRebindFailedTitle"),
+                                            RS_(L"ShellIntegrationRuntimeRebindFailedMessage"));
+                                    }
+                                    return;
+                                }
                                 const bool promptChanged =
                                     diagnostic->repairReason ==
                                     ::Microsoft::Terminal::ShellIntegration::Diagnostics::RepairReason::PromptChanged;

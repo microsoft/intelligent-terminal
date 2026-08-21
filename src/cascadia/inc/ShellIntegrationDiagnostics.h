@@ -32,6 +32,13 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
     {
         Ready,
         Repair,
+        Runtime,
+    };
+
+    enum class RuntimeOutcome
+    {
+        Rebound,
+        RebindFailed,
     };
 
     struct ParsedSignal
@@ -39,6 +46,7 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
         SignalKind kind;
         ShellTarget target;
         std::optional<RepairReason> repairReason;
+        std::optional<RuntimeOutcome> runtimeOutcome;
     };
 
     namespace details
@@ -100,6 +108,19 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
             }
             return std::nullopt;
         }
+
+        [[nodiscard]] constexpr std::optional<RuntimeOutcome> ParseRuntimeOutcome(std::string_view token) noexcept
+        {
+            if (token == "rebound")
+            {
+                return RuntimeOutcome::Rebound;
+            }
+            if (token == "rebind-failed")
+            {
+                return RuntimeOutcome::RebindFailed;
+            }
+            return std::nullopt;
+        }
     }
 
     [[nodiscard]] constexpr std::optional<ParsedSignal> ParseSignal(std::string_view input) noexcept
@@ -123,7 +144,7 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
 
         if (fields[1] == "ShellIntegrationReady")
         {
-            if (fields[3] != "7")
+            if (fields[3] != "7" && fields[3] != "8")
             {
                 return std::nullopt;
             }
@@ -132,6 +153,7 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
                 .kind = SignalKind::Ready,
                 .target = *target,
                 .repairReason = std::nullopt,
+                .runtimeOutcome = std::nullopt,
             };
         }
 
@@ -147,6 +169,23 @@ namespace Microsoft::Terminal::ShellIntegration::Diagnostics
                 .kind = SignalKind::Repair,
                 .target = *target,
                 .repairReason = *reason,
+                .runtimeOutcome = std::nullopt,
+            };
+        }
+
+        if (fields[1] == "ShellIntegrationRuntime")
+        {
+            const auto outcome = details::ParseRuntimeOutcome(fields[3]);
+            if (!outcome.has_value())
+            {
+                return std::nullopt;
+            }
+
+            return ParsedSignal{
+                .kind = SignalKind::Runtime,
+                .target = *target,
+                .repairReason = std::nullopt,
+                .runtimeOutcome = *outcome,
             };
         }
 

@@ -381,8 +381,13 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // throws; and restore failure semantics immediately before delegating so
     // status-sensitive prompts such as Oh My Posh still observe the user's
     // original failure.
+    //
+    // v8: recognize a directly submitted, static Oh My Posh initializer and
+    // transactionally wrap the replacement prompt at the next ReadLine entry.
+    // Prompt generations capture their downstream by identity so runtime
+    // recovery never mutates an existing wrapper chain.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 7;
+    inline constexpr int kVersion = 8;
 
     inline std::wstring ScriptFileName()
     {
@@ -426,8 +431,8 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 # sequences WITHOUT altering the visual appearance of the user's prompt.
 #
 # Compatible with Windows PowerShell 5.1+ and PowerShell 7+.
-# Safe to source multiple times. A changed live prompt is deliberately not
-# rewrapped: wrapper-chain ownership cannot be inferred safely at runtime.
+# Safe to source multiple times. Runtime rebinding is limited to a directly
+# submitted, statically recognized Oh My Posh initializer.
 
 $__ShellInteg_E = [char]0x1B
 $__ShellInteg_B = [char]0x07
@@ -442,14 +447,21 @@ $__ShellInteg_StateVariable =
 if ($null -ne $__ShellInteg_StateVariable) {
     $__ShellInteg_ExistingState = $__ShellInteg_StateVariable.Value
     if ($__ShellInteg_ExistingState -is [hashtable] -and
-        $__ShellInteg_ExistingState.Version -eq 7 -and
+        $__ShellInteg_ExistingState.Version -eq 8 -and
         $__ShellInteg_ExistingState.InstallComplete -eq $true -and
-        $function:prompt -eq $__ShellInteg_ExistingState.PromptWrapper -and
+        $null -ne $__ShellInteg_ExistingState.ActiveGeneration -and
+        $function:prompt -eq $__ShellInteg_ExistingState.ActiveGeneration.Wrapper -and
         ($null -eq $__ShellInteg_ExistingState.ReadLineWrapper -or
             $function:PSConsoleHostReadLine -eq $__ShellInteg_ExistingState.ReadLineWrapper)) {
         $__ShellInteg_ExistingState.RepairSignaled = $false
         Microsoft.PowerShell.Utility\Write-Host -Object (
-            "${__ShellInteg_E}]9001;ShellIntegrationReady;${__ShellInteg_ShellName};7${__ShellInteg_B}") `
+            "${__ShellInteg_E}]9001;ShellIntegrationReady;${__ShellInteg_ShellName};8${__ShellInteg_B}") `
+            -NoNewline -InformationAction Continue
+    }
+    elseif ($__ShellInteg_ExistingState -is [hashtable] -and
+        $__ShellInteg_ExistingState.Version -eq 7) {
+        Microsoft.PowerShell.Utility\Write-Host -Object (
+            "${__ShellInteg_E}]9001;ShellIntegrationRepair;${__ShellInteg_ShellName};restart-required${__ShellInteg_B}") `
             -NoNewline -InformationAction Continue
     }
     else {
@@ -475,135 +487,470 @@ if ($null -ne $__ShellInteg_V6State -and $__ShellInteg_V6State.Value -eq $true) 
     return
 }
 
-$__ShellInteg_OriginalPrompt = $function:prompt
+$__ShellInteg_OriginalPrompt =
+    Get-Item -LiteralPath Function:\prompt -ErrorAction Ignore
 $__ShellInteg_OriginalReadLine =
-    if (Test-Path Function:\PSConsoleHostReadLine) { $function:PSConsoleHostReadLine } else { $null }
+    if (Test-Path Function:\PSConsoleHostReadLine) {
+        Get-Item -LiteralPath Function:\PSConsoleHostReadLine -ErrorAction Ignore
+    }
+    else {
+        $null
+    }
 $__ShellInteg_CanInspectErrors =
     $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
 
+$__ShellInteg_GenerationFactory = {
+    param($controller, [long]$generationId, $downstream)
+
+    $downstreamScript = $downstream.ScriptBlock
+    if ($null -eq $downstreamScript) {
+        return $null
+    }
+    $generation = @{
+        Id = $generationId
+        Downstream = $downstreamScript
+        Wrapper = $null
+    }
+    $wrapper = {
+        # Capture status before controller or generation access can clobber it.
+        $gle = if ($?) {
+            0
+        }
+        elseif ($null -ne $LastExitCode -and $LastExitCode -ne 0) {
+            $LastExitCode
+        }
+        else {
+            -1
+        }
+        $savedLastExitCode = $global:LASTEXITCODE
+
+        # An older generation may be retained by a prompt framework that
+        # captured the prior prompt. It becomes a transparent pass-through.
+        if ($controller.BindingInProgress -or
+            $controller.ActiveGenerationId -ne $generation.Id) {
+            $global:LASTEXITCODE = $savedLastExitCode
+            if ($gle -ne 0) {
+                Microsoft.PowerShell.Utility\Write-Error `
+                    -Message '__it_status_restore__' -ErrorAction Ignore
+            }
+            return & $generation.Downstream @args
+        }
+
+        $controller.PromptDepth++
+        try {
+            # A downstream prompt can invoke prompt again. Only the outermost
+            # active invocation owns terminal marks and shared tracking.
+            if ($controller.PromptDepth -ne 1) {
+                $global:LASTEXITCODE = $savedLastExitCode
+                if ($gle -ne 0) {
+                    Microsoft.PowerShell.Utility\Write-Error `
+                        -Message '__it_status_restore__' -ErrorAction Ignore
+                }
+                return & $generation.Downstream @args
+            }
+
+            $submittedLine = $controller.LastSubmittedLine
+            $submissionGeneration = $controller.SubmissionGeneration
+            $errorRecord = $Error[0]
+            $entry = Get-History -Count 1 -ErrorAction Ignore
+            $loc = $executionContext.SessionState.Path.CurrentLocation
+            $E = [char]0x1B
+            $B = [char]0x07
+
+            $historyAdvanced = $entry -and $entry.Id -gt $controller.LastHistoryId
+            $newErrorRecord = $controller.CanInspectErrors -and
+                $null -ne $errorRecord -and
+                -not [object]::ReferenceEquals($errorRecord, $controller.LastErrorRecord)
+            $inputHadParserError = $false
+            if ($controller.CanInspectErrors -and
+                $gle -eq 0 -and
+                $null -ne $submittedLine -and
+                ($newErrorRecord -or -not $historyAdvanced)) {
+                $tokens = $null
+                $parseErrors = $null
+                [void][System.Management.Automation.Language.Parser]::ParseInput(
+                    $submittedLine,
+                    [ref]$tokens,
+                    [ref]$parseErrors)
+                $inputHadParserError = $parseErrors.Count -gt 0
+            }
+            if ($inputHadParserError -and $gle -eq 0) {
+                $gle = -1
+            }
+
+            $newUntrackedError =
+                -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord
+            $completionObserved =
+                $historyAdvanced -or $newUntrackedError -or $inputHadParserError
+            $emitCompletion =
+                $completionObserved -and
+                $submissionGeneration -gt $controller.LastEmittedSubmissionGeneration
+
+            # Reserve completion state before invoking a downstream prompt
+            # that may synchronously call prompt again.
+            if ($historyAdvanced) {
+                $controller.LastHistoryId = $entry.Id
+            }
+            $controller.LastErrorRecord = $errorRecord
+            if ($controller.SubmissionGeneration -eq $submissionGeneration) {
+                $controller.LastSubmittedLine = $null
+            }
+            if ($emitCompletion) {
+                $controller.LastEmittedSubmissionGeneration = $submissionGeneration
+            }
+
+            $prefix = ''
+            if ($emitCompletion) {
+                $prefix += "${E}]133;D;${gle}${B}"
+            }
+            $prefix += "${E}]133;A${B}"
+            $prefix += "${E}]9;9;`"${loc}`"${B}"
+            $shellName =
+                if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+            $prefix +=
+                "${E}]9001;ShellType;${shellName};$($PSVersionTable.PSVersion)${B}"
+            $suffix = "${E}]133;B${B}"
+
+            Microsoft.PowerShell.Utility\Write-Host `
+                -Object $prefix -NoNewline -InformationAction Continue
+            $global:LASTEXITCODE = $savedLastExitCode
+            if ($gle -ne 0) {
+                Microsoft.PowerShell.Utility\Write-Error `
+                    -Message '__it_status_restore__' -ErrorAction Ignore
+            }
+
+            try {
+                $downstreamOutput = & $generation.Downstream @args
+            }
+            catch {
+                Microsoft.PowerShell.Utility\Write-Host `
+                    -Object $suffix -NoNewline -InformationAction Continue
+                throw
+            }
+            finally {
+                $controller.LastErrorRecord = $Error[0]
+            }
+
+            # Prompt callbacks are string-valued. Returning one combined record
+            # keeps PSReadLine's transient-prompt path from falling back to PS>.
+            return "${downstreamOutput}${suffix}"
+        }
+        finally {
+            $controller.PromptDepth--
+        }
+    }.GetNewClosure()
+
+    $generation.Wrapper = $wrapper
+    return ,$generation
+}.GetNewClosure()
+
+$__ShellInteg_OmpMatcher = {
+    param([string]$line)
+
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return $null
+    }
+
+    try {
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+            $line,
+            [ref]$tokens,
+            [ref]$parseErrors)
+        if ($parseErrors.Count -ne 0 -or
+            $null -eq $ast.EndBlock -or
+            $ast.EndBlock.Statements.Count -ne 1) {
+            return $null
+        }
+
+        $statement = $ast.EndBlock.Statements[0]
+        if (-not ($statement -is [System.Management.Automation.Language.PipelineAst]) -or
+            $statement.PipelineElements.Count -ne 2) {
+            return $null
+        }
+
+        $right = $statement.PipelineElements[1]
+        if (-not ($right -is [System.Management.Automation.Language.CommandAst]) -or
+            $right.Redirections.Count -ne 0 -or
+            $right.CommandElements.Count -ne 1) {
+            return $null
+        }
+        $rightName = $right.GetCommandName()
+        if ($null -eq $rightName -or
+            ($rightName -ine 'Invoke-Expression' -and $rightName -ine 'iex')) {
+            return $null
+        }
+
+        $leftCommands = @($statement.PipelineElements[0].FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst]
+        }, $true))
+        if ($leftCommands.Count -ne 1) {
+            return $null
+        }
+
+        $left = $leftCommands[0]
+        if ($left.Redirections.Count -ne 0 -or $left.CommandElements.Count -lt 3) {
+            return $null
+        }
+        $leftName = $left.GetCommandName()
+        if ($null -eq $leftName -or $leftName.IndexOfAny([char[]]'*?[]') -ge 0) {
+            return $null
+        }
+        $verb = $left.CommandElements[1]
+        $shell = $left.CommandElements[2]
+        if (-not ($verb -is [System.Management.Automation.Language.StringConstantExpressionAst]) -or
+            -not ($shell -is [System.Management.Automation.Language.StringConstantExpressionAst]) -or
+            $verb.Value -ine 'init' -or
+            ($shell.Value -ine 'pwsh' -and $shell.Value -ine 'powershell')) {
+            return $null
+        }
+
+        # Get-Command without -CommandType follows the same precedence as
+        # execution, so a same-name function or alias is rejected.
+        $leftResolved = @(Microsoft.PowerShell.Core\Get-Command `
+            -Name $leftName -ErrorAction Ignore)
+        if ($leftResolved.Count -ne 1 -or
+            -not ($leftResolved[0] -is [System.Management.Automation.ApplicationInfo])) {
+            return $null
+        }
+        $leftLeaf = [System.IO.Path]::GetFileName($leftResolved[0].Path)
+        if ($leftLeaf -ine 'oh-my-posh.exe') {
+            return $null
+        }
+
+        $rightResolved = @(Microsoft.PowerShell.Core\Get-Command `
+            -Name $rightName -ErrorAction Ignore)
+        if ($rightResolved.Count -ne 1) {
+            return $null
+        }
+        $rightCommand = $rightResolved[0]
+        if ($rightCommand -is [System.Management.Automation.AliasInfo]) {
+            $rightCommand = $rightCommand.ResolvedCommand
+        }
+        if (-not ($rightCommand -is [System.Management.Automation.CmdletInfo]) -or
+            $rightCommand.Name -ine 'Invoke-Expression' -or
+            $rightCommand.Source -ine 'Microsoft.PowerShell.Utility') {
+            return $null
+        }
+
+        return @{
+            Executable = $leftResolved[0].Path
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+$__ShellInteg_RuntimeBind = {
+    param($controller, $downstream)
+
+    if ($controller.BindingInProgress -or
+        $null -eq $downstream -or
+        $function:PSConsoleHostReadLine -ne $controller.ReadLineWrapper) {
+        return $false
+    }
+
+    $oldGeneration = $controller.ActiveGeneration
+    $oldGenerationId = $controller.ActiveGenerationId
+    $oldNextGenerationId = $controller.NextGenerationId
+    $oldLastHistoryId = $controller.LastHistoryId
+    $oldLastErrorRecord = $controller.LastErrorRecord
+    $oldLastSubmittedLine = $controller.LastSubmittedLine
+    $oldLastEmittedSubmissionGeneration =
+        $controller.LastEmittedSubmissionGeneration
+    $oldPendingRebind = $controller.PendingRebind
+    $oldFailedRuntimePrompt = $controller.FailedRuntimePrompt
+    $oldRepairSignaled = $controller.RepairSignaled
+    $oldRuntimeFailureSignaled = $controller.RuntimeFailureSignaled
+    $candidateId = $controller.NextGenerationId
+    $candidate = & $controller.GenerationFactory $controller $candidateId $downstream
+    if ($null -eq $candidate -or $null -eq $candidate.Wrapper) {
+        return $false
+    }
+
+    $installed = $false
+    $controller.BindingInProgress = $true
+    try {
+        Set-Item -LiteralPath Function:\global:prompt `
+            -Value $candidate.Wrapper -ErrorAction Stop
+        $installed = $true
+        if ($function:prompt -ne $candidate.Wrapper) {
+            throw 'Runtime prompt identity mismatch'
+        }
+
+        $controller.ActiveGeneration = $candidate
+        $controller.ActiveGenerationId = $candidateId
+        $controller.NextGenerationId = $candidateId + 1
+        $entry = Get-History -Count 1 -ErrorAction Ignore
+        if ($entry -and $entry.Id -gt $controller.LastHistoryId) {
+            $controller.LastHistoryId = $entry.Id
+        }
+        $controller.LastErrorRecord = $Error[0]
+        $controller.LastSubmittedLine = $null
+        $controller.LastEmittedSubmissionGeneration =
+            $controller.SubmissionGeneration
+        $controller.PendingRebind = $null
+        $controller.FailedRuntimePrompt = $null
+        $controller.RepairSignaled = $false
+        $controller.RuntimeFailureSignaled = $false
+        return $true
+    }
+    catch {
+        if ($installed -and $function:prompt -eq $candidate.Wrapper) {
+            Set-Item -LiteralPath Function:\global:prompt `
+                -Value $downstream.ScriptBlock -ErrorAction Ignore
+        }
+        $controller.ActiveGeneration = $oldGeneration
+        $controller.ActiveGenerationId = $oldGenerationId
+        $controller.NextGenerationId = $oldNextGenerationId
+        $controller.LastHistoryId = $oldLastHistoryId
+        $controller.LastErrorRecord = $oldLastErrorRecord
+        $controller.LastSubmittedLine = $oldLastSubmittedLine
+        $controller.LastEmittedSubmissionGeneration =
+            $oldLastEmittedSubmissionGeneration
+        $controller.PendingRebind = $oldPendingRebind
+        $controller.FailedRuntimePrompt = $oldFailedRuntimePrompt
+        $controller.RepairSignaled = $oldRepairSignaled
+        $controller.RuntimeFailureSignaled = $oldRuntimeFailureSignaled
+        return $false
+    }
+    finally {
+        $controller.BindingInProgress = $false
+    }
+}
+
 $__ShellInteg_CandidateState = @{
-    Version = 7
+    Version = 8
     InstallComplete = $false
-    DownstreamPrompt = $__ShellInteg_OriginalPrompt
-    OriginalReadLine = $__ShellInteg_OriginalReadLine
-    PromptWrapper = $null
+    OriginalReadLine =
+        if ($null -ne $__ShellInteg_OriginalReadLine) {
+            $__ShellInteg_OriginalReadLine.ScriptBlock
+        }
+        else {
+            $null
+        }
     ReadLineWrapper = $null
     CanInspectErrors = $__ShellInteg_CanInspectErrors
+    GenerationFactory = $__ShellInteg_GenerationFactory
+    OmpMatcher = $__ShellInteg_OmpMatcher
+    RuntimeBind = $__ShellInteg_RuntimeBind
+    ActiveGeneration = $null
+    ActiveGenerationId = 0L
+    NextGenerationId = 2L
+    BindingInProgress = $false
+    PromptDepth = 0
+    InReadLine = $false
+    PendingRebind = $null
+    FailedRuntimePrompt = $null
     LastHistoryId = -1
     LastErrorRecord = $Error[0]
     LastSubmittedLine = $null
     SubmissionGeneration = 0L
+    LastEmittedSubmissionGeneration = 0L
     RepairSignaled = $false
+    RuntimeFailureSignaled = $false
 }
 
-$__ShellInteg_PromptWrapper = {
-    # Capture status first, before accessing integration state can clobber `$?`.
-    $gle = if ($?) {
-        0
-    }
-    elseif ($null -ne $LastExitCode -and $LastExitCode -ne 0) {
-        $LastExitCode
-    }
-    else {
-        -1
-    }
-
-    $state = $Global:__ShellInteg_State
-    $submittedLine = $state.LastSubmittedLine
-    $submissionGeneration = $state.SubmissionGeneration
-    $errorRecord = $Error[0]
-    $entry = Get-History -Count 1 -ErrorAction Ignore
-    $loc = $executionContext.SessionState.Path.CurrentLocation
-    $E = [char]0x1B
-    $B = [char]0x07
-
-    $historyAdvanced = $entry -and $entry.Id -gt $state.LastHistoryId
-    $newErrorRecord = $state.CanInspectErrors -and
-        $null -ne $errorRecord -and
-        -not [object]::ReferenceEquals($errorRecord, $state.LastErrorRecord)
-    $inputHadParserError = $false
-    if ($state.CanInspectErrors -and
-        $gle -eq 0 -and
-        $null -ne $submittedLine -and
-        ($newErrorRecord -or -not $historyAdvanced)) {
-        $tokens = $null
-        $parseErrors = $null
-        [void][System.Management.Automation.Language.Parser]::ParseInput(
-            $submittedLine,
-            [ref]$tokens,
-            [ref]$parseErrors)
-        $inputHadParserError = $parseErrors.Count -gt 0
-    }
-    if ($inputHadParserError -and $gle -eq 0) {
-        $gle = -1
-    }
-
-    $prefix = ''
-    $newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord
-    if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError) {
-        $prefix += "${E}]133;D;${gle}${B}"
-    }
-    $prefix += "${E}]133;A${B}"
-    $prefix += "${E}]9;9;`"${loc}`"${B}"
-    $shellName = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
-    $prefix += "${E}]9001;ShellType;${shellName};$($PSVersionTable.PSVersion)${B}"
-    $suffix = "${E}]133;B${B}"
-
-    # Host-write the prefix before delegated prompts that render with
-    # Write-Host. Module qualification prevents a user function from
-    # shadowing either status restoration or OSC output.
-    Microsoft.PowerShell.Utility\Write-Host -Object $prefix -NoNewline -InformationAction Continue
-    if ($gle -ne 0) {
-        Microsoft.PowerShell.Utility\Write-Error -Message '__it_status_restore__' -ErrorAction Ignore
-    }
-
-    try {
-        $downstreamOutput = & $state.DownstreamPrompt
-    }
-    catch {
-        Microsoft.PowerShell.Utility\Write-Host -Object $suffix -NoNewline -InformationAction Continue
-        throw
-    }
-    finally {
-        if ($entry -and $entry.Id -gt $state.LastHistoryId) {
-            $state.LastHistoryId = $entry.Id
-        }
-        $state.LastErrorRecord = $Error[0]
-        if ($state.SubmissionGeneration -eq $submissionGeneration) {
-            $state.LastSubmittedLine = $null
-        }
-    }
-
-    # Prompt callbacks are string-valued. Returning one combined record keeps
-    # PSReadLine's programmatic InvokePrompt path (used by transient prompts)
-    # from falling back to the default prompt.
-    return "${downstreamOutput}${suffix}"
-}
+$__ShellInteg_InitialGeneration =
+    & $__ShellInteg_GenerationFactory `
+        $__ShellInteg_CandidateState 1L $__ShellInteg_OriginalPrompt
+$__ShellInteg_CandidateState.ActiveGeneration = $__ShellInteg_InitialGeneration
+$__ShellInteg_CandidateState.ActiveGenerationId = 1L
 
 $__ShellInteg_ReadLineWrapper = if ($__ShellInteg_CanInspectErrors -and
     $null -ne $__ShellInteg_OriginalReadLine) {
     {
         $state = $Global:__ShellInteg_State
-        if ($function:prompt -ne $state.PromptWrapper -and -not $state.RepairSignaled) {
-            $shellName = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
-            $E = [char]0x1B
-            $B = [char]0x07
-            Microsoft.PowerShell.Utility\Write-Host -Object (
-                "${E}]9001;ShellIntegrationRepair;${shellName};prompt-changed${B}") `
-                -NoNewline -InformationAction Continue
-            $state.RepairSignaled = $true
+        $active = $state.ActiveGeneration
+        if ($function:prompt -ne $active.Wrapper) {
+            $pending = $state.PendingRebind
+            if ($null -ne $pending -and
+                $pending.GenerationId -eq $state.ActiveGenerationId -and
+                $pending.PromptWrapper -eq $active.Wrapper -and
+                $function:PSConsoleHostReadLine -eq $state.ReadLineWrapper) {
+                $history = Get-History -Count 1 -ErrorAction Ignore
+                $historyFailed =
+                    $history -and
+                    $history.Id -gt $pending.HistoryBaseline -and
+                    ($history.ExecutionStatus -eq 'Failed' -or
+                        $history.ExecutionStatus -eq 'Stopped')
+                $rebound = $false
+                if (-not $historyFailed) {
+                    $replacement =
+                        Get-Item -LiteralPath Function:\prompt -ErrorAction Ignore
+                    $rebound = & $state.RuntimeBind $state $replacement
+                }
+
+                $shellName =
+                    if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+                $E = [char]0x1B
+                $B = [char]0x07
+                if ($rebound) {
+                    Microsoft.PowerShell.Utility\Write-Host -Object (
+                        "${E}]9001;ShellIntegrationRuntime;${shellName};rebound${B}") `
+                        -NoNewline -InformationAction Continue
+                }
+                elseif (-not $state.RuntimeFailureSignaled) {
+                    $state.FailedRuntimePrompt = $function:prompt
+                    Microsoft.PowerShell.Utility\Write-Host -Object (
+                        "${E}]9001;ShellIntegrationRuntime;${shellName};rebind-failed${B}") `
+                        -NoNewline -InformationAction Continue
+                    $state.RuntimeFailureSignaled = $true
+                    $state.PendingRebind = $null
+                }
+            }
+            elseif ($null -ne $state.FailedRuntimePrompt -and
+                $function:prompt -eq $state.FailedRuntimePrompt) {
+                # This exact prompt already produced a pane-local runtime
+                # failure. Do not misclassify it as a persisted profile issue.
+            }
+            elseif (-not $state.RepairSignaled) {
+                $state.FailedRuntimePrompt = $null
+                $shellName =
+                    if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+                $E = [char]0x1B
+                $B = [char]0x07
+                Microsoft.PowerShell.Utility\Write-Host -Object (
+                    "${E}]9001;ShellIntegrationRepair;${shellName};prompt-changed${B}") `
+                    -NoNewline -InformationAction Continue
+                $state.RepairSignaled = $true
+            }
         }
-        $line = & $state.OriginalReadLine @args
+
+        $state.InReadLine = $true
+        try {
+            $line = & $state.OriginalReadLine @args
+        }
+        finally {
+            $state.InReadLine = $false
+        }
+
         $state.SubmissionGeneration++
         $state.LastSubmittedLine = if ($line -is [string]) { $line } else { $null }
+        $match =
+            if ($line -is [string]) { & $state.OmpMatcher $line } else { $null }
+        if ($null -ne $match -and
+            $function:prompt -eq $state.ActiveGeneration.Wrapper) {
+            $history = Get-History -Count 1 -ErrorAction Ignore
+            $state.PendingRebind = @{
+                GenerationId = $state.ActiveGenerationId
+                PromptWrapper = $state.ActiveGeneration.Wrapper
+                HistoryBaseline = if ($history) { $history.Id } else { -1 }
+            }
+        }
+        else {
+            $state.PendingRebind = $null
+        }
         return $line
-    }
+    }.GetNewClosure()
 }
 else {
     $null
 }
 
-$__ShellInteg_CandidateState.PromptWrapper = $__ShellInteg_PromptWrapper
 $__ShellInteg_CandidateState.ReadLineWrapper = $__ShellInteg_ReadLineWrapper
 
 try {
@@ -611,16 +958,16 @@ try {
     if ($null -ne $__ShellInteg_ReadLineWrapper) {
         Set-Item -LiteralPath Function:\global:PSConsoleHostReadLine -Value $__ShellInteg_ReadLineWrapper -ErrorAction Stop
     }
-    Set-Item -LiteralPath Function:\global:prompt -Value $__ShellInteg_PromptWrapper -ErrorAction Stop
+    Set-Item -LiteralPath Function:\global:prompt -Value $__ShellInteg_InitialGeneration.Wrapper -ErrorAction Stop
     $__ShellInteg_CandidateState.InstallComplete = $true
 }
 catch {
-    if ($function:prompt -eq $__ShellInteg_PromptWrapper) {
-        Set-Item -LiteralPath Function:\global:prompt -Value $__ShellInteg_OriginalPrompt -ErrorAction Ignore
+    if ($function:prompt -eq $__ShellInteg_InitialGeneration.Wrapper) {
+        Set-Item -LiteralPath Function:\global:prompt -Value $__ShellInteg_OriginalPrompt.ScriptBlock -ErrorAction Ignore
     }
     if ($null -ne $__ShellInteg_ReadLineWrapper -and
         $function:PSConsoleHostReadLine -eq $__ShellInteg_ReadLineWrapper) {
-        Set-Item -LiteralPath Function:\global:PSConsoleHostReadLine -Value $__ShellInteg_OriginalReadLine -ErrorAction Ignore
+        Set-Item -LiteralPath Function:\global:PSConsoleHostReadLine -Value $__ShellInteg_OriginalReadLine.ScriptBlock -ErrorAction Ignore
     }
     $__ShellInteg_PublishedState = Get-Variable -Name __ShellInteg_State -Scope Global -ErrorAction Ignore
     if ($null -ne $__ShellInteg_PublishedState -and
@@ -634,19 +981,23 @@ catch {
         __ShellInteg_StateVariable, __ShellInteg_OriginalPrompt,
         __ShellInteg_OriginalReadLine, __ShellInteg_CanInspectErrors,
         __ShellInteg_V6State,
-        __ShellInteg_CandidateState, __ShellInteg_PromptWrapper,
+        __ShellInteg_GenerationFactory, __ShellInteg_OmpMatcher,
+        __ShellInteg_RuntimeBind, __ShellInteg_CandidateState,
+        __ShellInteg_InitialGeneration,
         __ShellInteg_ReadLineWrapper, __ShellInteg_PublishedState -ErrorAction Ignore
     return
 }
 
 Microsoft.PowerShell.Utility\Write-Host -Object (
-    "${__ShellInteg_E}]9001;ShellIntegrationReady;${__ShellInteg_ShellName};7${__ShellInteg_B}") `
+    "${__ShellInteg_E}]9001;ShellIntegrationReady;${__ShellInteg_ShellName};8${__ShellInteg_B}") `
     -NoNewline -InformationAction Continue
 Remove-Variable __ShellInteg_E, __ShellInteg_B, __ShellInteg_ShellName,
     __ShellInteg_StateVariable, __ShellInteg_OriginalPrompt,
     __ShellInteg_OriginalReadLine, __ShellInteg_CanInspectErrors,
     __ShellInteg_V6State,
-    __ShellInteg_CandidateState, __ShellInteg_PromptWrapper,
+    __ShellInteg_GenerationFactory, __ShellInteg_OmpMatcher,
+    __ShellInteg_RuntimeBind, __ShellInteg_CandidateState,
+    __ShellInteg_InitialGeneration,
     __ShellInteg_ReadLineWrapper -ErrorAction Ignore
 )"
         };

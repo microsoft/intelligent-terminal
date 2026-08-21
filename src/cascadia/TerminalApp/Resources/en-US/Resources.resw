@@ -1161,6 +1161,13 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>{}: Restart this shell. If it persists, move the complete Intelligent Terminal managed marker block after Oh My Posh, then open a new shell.</value>
     <comment>{Locked="{}","Intelligent Terminal managed marker block","Oh My Posh"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
   </data>
+  <data name="ShellIntegrationRuntimeRebindFailedTitle" xml:space="preserve">
+    <value>PowerShell integration needs a restart</value>
+  </data>
+  <data name="ShellIntegrationRuntimeRebindFailedMessage" xml:space="preserve">
+    <value>Oh My Posh started, but Intelligent Terminal couldn't restore Rich Tabs in this PowerShell session. Open a new PowerShell pane to restore shell integration.</value>
+    <comment>{Locked="Oh My Posh","Intelligent Terminal","Rich Tabs","PowerShell"}</comment>
+  </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>Automatic error suggestion</value>
     <comment>Header for the toggle that lets the agent automatically suggest fixes for detected errors. Depends on automatic error detection being on.</comment>
