@@ -861,11 +861,13 @@ fn install_for_claude(home: &Path) -> InstallOutcome {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli(
+    if let Err(e) = run_plugin_cli_unlocking(
         "claude",
         &["plugin", "install", &plugin_ref],
-        "agent_hooks",
         &[],
+        &[],
+        CliKind::Claude,
+        installed_plugin_dir(CliKind::Claude, home).as_deref(),
     ) {
         tracing::warn!(
             target: "agent_hooks",
@@ -890,7 +892,7 @@ fn install_for_claude(home: &Path) -> InstallOutcome {
 /// Trust step: after install, the user must run `/hooks` inside Codex
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
-fn install_for_codex(_home: &Path) -> InstallOutcome {
+fn install_for_codex(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Codex) {
         tracing::debug!(
             target: "agent_hooks",
@@ -936,11 +938,13 @@ fn install_for_codex(_home: &Path) -> InstallOutcome {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
+    match run_plugin_cli_unlocking(
         "codex",
         &["plugin", "add", &plugin_ref],
-        "agent_hooks",
         &[],
+        &[],
+        CliKind::Codex,
+        installed_plugin_dir(CliKind::Codex, home).as_deref(),
     ) {
         Ok(()) => InstallOutcome::Installed,
         Err(e) => {
@@ -1054,11 +1058,13 @@ fn install_for_copilot(home: &Path) -> InstallOutcome {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli(
+    if let Err(e) = run_plugin_cli_unlocking(
         "copilot",
         &["plugin", "install", &plugin_ref],
-        "copilot_hooks",
         &[],
+        &[],
+        CliKind::Copilot,
+        installed_plugin_dir(CliKind::Copilot, home).as_deref(),
     ) {
         tracing::warn!(
             target: "copilot_hooks",
@@ -1093,7 +1099,7 @@ fn install_for_copilot(home: &Path) -> InstallOutcome {
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
-fn install_for_gemini(_home: &Path) -> InstallOutcome {
+fn install_for_gemini(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Gemini) {
         tracing::debug!(
             target: "gemini_hooks",
@@ -1148,7 +1154,7 @@ fn install_for_gemini(_home: &Path) -> InstallOutcome {
     // exit code `0xC0000409`. The extension files are already on disk
     // at that point, so match the success line to avoid a misleading
     // `gemini extensions install failed` warning in the trace log.
-    match run_plugin_cli_with_env(
+    match run_plugin_cli_unlocking(
         "gemini",
         &[
             "extensions",
@@ -1158,8 +1164,9 @@ fn install_for_gemini(_home: &Path) -> InstallOutcome {
             "--skip-settings",
         ],
         &[("GEMINI_CLI_TRUST_WORKSPACE", "true")],
-        "gemini_hooks",
         &["already installed", "installed successfully and enabled"],
+        CliKind::Gemini,
+        installed_plugin_dir(CliKind::Gemini, home).as_deref(),
     ) {
         Ok(()) => InstallOutcome::Installed,
         Err(e) => {
@@ -2228,11 +2235,14 @@ fn copilot_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     if which::which("copilot").is_ok() {
         out.attempted = true;
-        let cli_removed = spawn_step(
+        let cli_removed = spawn_step_unlocking(
             &mut out.messages,
             "copilot",
             &["plugin", "uninstall", &plugin_ref],
             &["is not installed"],
+            CliKind::Copilot,
+            home.and_then(|h| installed_plugin_dir(CliKind::Copilot, h))
+                .as_deref(),
         );
         let config_clean = cleanup_copilot_plugin_config(home, &mut out.messages);
         out.plugin_uninstalled = Some(cli_removed && config_clean);
@@ -2328,11 +2338,14 @@ fn claude_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     if which::which("claude").is_ok() {
         out.attempted = true;
-        out.plugin_uninstalled = Some(spawn_step(
+        out.plugin_uninstalled = Some(spawn_step_unlocking(
             &mut out.messages,
             "claude",
             &["plugin", "uninstall", &plugin_ref],
             &[],
+            CliKind::Claude,
+            home.and_then(|h| installed_plugin_dir(CliKind::Claude, h))
+                .as_deref(),
         ));
         out.marketplace_removed = Some(spawn_step(
             &mut out.messages,
@@ -2399,11 +2412,14 @@ fn gemini_uninstall(home: Option<&Path>) -> CliUninstallResult {
         // Either substring matching converts the failure to a clean
         // `ok` line so `wta hooks uninstall` and the Settings UI's
         // status report don't mislead users.
-        out.plugin_uninstalled = Some(spawn_step(
+        out.plugin_uninstalled = Some(spawn_step_unlocking(
             &mut out.messages,
             "gemini",
             &["extensions", "uninstall", GEMINI_EXTENSION_DIR_NAME],
             &["successfully uninstalled", "extension not found"],
+            CliKind::Gemini,
+            home.and_then(|h| installed_plugin_dir(CliKind::Gemini, h))
+                .as_deref(),
         ));
     } else {
         out.messages
@@ -2908,30 +2924,61 @@ fn run_plugin_cli_with_env(
     idempotency_substrings: &[&str],
 ) -> std::io::Result<()> {
     let outcome = run_plugin_cli_capture_with_env(exe, args, env)?;
-    if !outcome.success {
-        if matches_idempotency_substring(&outcome.stdout, &outcome.stderr, idempotency_substrings) {
-            tracing::info!(
-                target: "agent_hooks",
-                exe = exe,
-                args = ?args,
-                "plugin CLI exited non-zero but matched idempotency substring; treating as success",
-            );
-            return Ok(());
-        }
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "{} {} exited {}",
-                exe,
-                args.join(" "),
-                outcome
-                    .status_code
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "?".into()),
-            ),
-        ));
+    if plugin_cli_reached_goal(&outcome, exe, args, idempotency_substrings) {
+        return Ok(());
     }
-    Ok(())
+    Err(plugin_cli_exit_error(exe, args, &outcome))
+}
+
+/// Whether a finished plugin CLI run reached its goal state: either a
+/// clean exit, or a non-zero exit whose output matches one of the
+/// caller's `idempotency_substrings` (see [`run_plugin_cli`] for what
+/// those mean per call site).
+fn plugin_cli_reached_goal(
+    outcome: &CliRunOutcome,
+    exe: &str,
+    args: &[&str],
+    idempotency_substrings: &[&str],
+) -> bool {
+    if outcome.success {
+        return true;
+    }
+    if matches_idempotency_substring(&outcome.stdout, &outcome.stderr, idempotency_substrings) {
+        tracing::info!(
+            target: "agent_hooks",
+            exe = exe,
+            args = ?args,
+            "plugin CLI exited non-zero but matched idempotency substring; treating as success",
+        );
+        return true;
+    }
+    false
+}
+
+/// Error returned for a plugin CLI that ran to completion but did not
+/// reach its goal state. Carries the CLI's own message so the reason is
+/// visible wherever the error is logged or surfaced to the user.
+fn plugin_cli_exit_error(exe: &str, args: &[&str], outcome: &CliRunOutcome) -> std::io::Error {
+    let detail = if outcome.stderr.trim().is_empty() {
+        outcome.stdout.trim()
+    } else {
+        outcome.stderr.trim()
+    };
+    let code = outcome
+        .status_code
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "?".into());
+    if detail.is_empty() {
+        std::io::Error::other(format!("{} {} exited {}", exe, args.join(" "), code))
+    } else {
+        std::io::Error::other(format!(
+            "{} {} exited {}: {}",
+            exe,
+            args.join(" "),
+            code,
+            detail,
+        ))
+    }
 }
 
 /// Lower-cased substring search across the captured stdout+stderr for
@@ -2946,6 +2993,248 @@ fn matches_idempotency_substring(stdout: &str, stderr: &str, needles: &[&str]) -
     needles
         .iter()
         .any(|n| combined.contains(&n.to_ascii_lowercase()))
+}
+
+// ---------------------------------------------------------------------------
+// Locked plugin-directory recovery
+// ---------------------------------------------------------------------------
+//
+// Symptom: with an agent CLI already running elsewhere — most commonly
+// VS Code, which keeps several `copilot` processes alive for the whole
+// editor session — every hook install / update / uninstall fails:
+//
+//     > copilot plugin install wt-agent-hooks@wt-local
+//     Failed to install plugin: Error: Failed to install plugin: Access is denied. (os error 5)
+//
+// A live CLI process holds an open handle on the plugin directory it
+// loaded at startup, so the CLI's "replace the installed plugin folder"
+// step can neither rename nor remove that directory. The handle only
+// blocks operations on the *directory itself*: creating, overwriting,
+// and deleting entries *inside* it all still succeed.
+//
+// Recovery is therefore to empty the directory ourselves — file-level
+// deletes, which the handle does not block — and re-run the same CLI
+// command against the now-empty (but still present) directory. Verified
+// against Copilot CLI 1.0.81 with twelve live `copilot` processes:
+// installing into the populated directory fails every time, and
+// installing into the same directory after clearing succeeds.
+//
+// The contents are copied aside before clearing and put back when the
+// retry still fails, so a failure we cannot recover from leaves the
+// user's existing hooks exactly as they were.
+
+/// Subdirectory (under the IntelligentTerminal local cache root) holding
+/// the copy taken before a locked plugin directory is cleared.
+const PLUGIN_DIR_RECOVERY_SUBDIR: &str = "hook-plugin-recovery";
+
+/// Output snippets that identify the locked-directory failure. The exact
+/// spelling depends on which operation the CLI attempted and on its
+/// runtime: Copilot CLI 1.0.81 reports `Access is denied. (os error 5)`
+/// against a plugin directory a sibling `copilot` process loaded, while
+/// a plain sharing violation on the same directory surfaces as `The
+/// process cannot access the file because it is being used by another
+/// process. (os error 32)`. Node-based CLIs (Claude, Gemini) surface
+/// libuv's `EPERM` / `EBUSY` spellings for the same conditions.
+///
+/// Matching is case-insensitive, so these are written lower-cased.
+const LOCKED_PLUGIN_DIR_NEEDLES: &[&str] = &[
+    "access is denied",
+    "os error 5",
+    "os error 32",
+    "being used by another process",
+    "eperm",
+    "ebusy",
+    "operation not permitted",
+    "resource busy",
+];
+
+/// Directory the CLI copies our plugin into, and therefore the one it
+/// must replace on install / update / uninstall.
+///
+/// `None` for OpenCode, whose hooks are a plain file copy performed by
+/// wta itself: there is no CLI-owned directory-replace step to recover.
+fn installed_plugin_dir(cli: CliKind, home: &Path) -> Option<PathBuf> {
+    let dir = match cli {
+        CliKind::Copilot => home
+            .join(".copilot")
+            .join("installed-plugins")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+        CliKind::Claude => home
+            .join(".claude")
+            .join("plugins")
+            .join("cache")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+        CliKind::Codex => home
+            .join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+        CliKind::Gemini => gemini_extension_dir(home),
+        CliKind::OpenCode => return None,
+    };
+    Some(dir)
+}
+
+/// True when the CLI output looks like the locked-directory failure
+/// described above.
+fn is_locked_plugin_dir_failure(stdout: &str, stderr: &str) -> bool {
+    matches_idempotency_substring(stdout, stderr, LOCKED_PLUGIN_DIR_NEEDLES)
+}
+
+/// Delete every entry inside `dir` while leaving `dir` itself in place.
+/// This is precisely the set of operations a live CLI's directory handle
+/// does *not* block, and the reason the recovery below works at all.
+fn clear_dir_contents(dir: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            fs::remove_dir_all(&path)?;
+        } else {
+            fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy `dir`'s contents to a scratch location, then empty `dir`.
+/// Returns the scratch path so the caller can restore it on failure or
+/// discard it on success.
+fn stash_plugin_dir_contents(cli: CliKind, dir: &Path) -> std::io::Result<PathBuf> {
+    let root = crate::runtime_paths::intelligent_terminal_local_root()
+        .ok_or_else(|| std::io::Error::other("IntelligentTerminal local root unavailable"))?;
+    let stash = root.join(PLUGIN_DIR_RECOVERY_SUBDIR).join(cli.dir_name());
+    restage_bundle_dir(dir, &stash)?;
+    clear_dir_contents(dir)?;
+    Ok(stash)
+}
+
+/// Put a stash taken by [`stash_plugin_dir_contents`] back and discard
+/// it. Best-effort: a failure is logged at error because it leaves the
+/// plugin directory empty, with the only surviving copy in the stash.
+fn restore_plugin_dir_contents(stash: &Path, dir: &Path) {
+    match copy_dir_recursive(stash, dir) {
+        Ok(()) => discard_plugin_dir_stash(stash),
+        Err(e) => tracing::error!(
+            target: "agent_hooks",
+            err = %e,
+            stash = %stash.display(),
+            dir = %dir.display(),
+            "failed to restore plugin directory contents; the previous contents remain in `stash`",
+        ),
+    }
+}
+
+/// Remove a stash we no longer need. Leftovers are harmless (the next
+/// recovery overwrites the directory), so failures only trace.
+fn discard_plugin_dir_stash(stash: &Path) {
+    if let Err(e) = fs::remove_dir_all(stash) {
+        tracing::debug!(
+            target: "agent_hooks",
+            err = %e,
+            stash = %stash.display(),
+            "failed to discard plugin directory stash; non-fatal",
+        );
+    }
+}
+
+/// [`run_plugin_cli`] plus recovery from the locked-plugin-directory
+/// failure documented above.
+///
+/// `plugin_dir` is the directory the CLI replaces; pass `None` to opt
+/// out. Behavior is identical to [`run_plugin_cli`] unless *all* of the
+/// following hold, in which case the directory is cleared and the
+/// command runs a second time:
+///
+///   * the CLI ran but did not reach its goal state,
+///   * its output matches [`is_locked_plugin_dir_failure`], and
+///   * `plugin_dir` exists and is non-empty.
+fn run_plugin_cli_unlocking(
+    exe: &str,
+    args: &[&str],
+    env: &[(&str, &str)],
+    idempotency_substrings: &[&str],
+    cli: CliKind,
+    plugin_dir: Option<&Path>,
+) -> std::io::Result<()> {
+    let outcome = run_plugin_cli_capture_with_env(exe, args, env)?;
+    if plugin_cli_reached_goal(&outcome, exe, args, idempotency_substrings) {
+        return Ok(());
+    }
+
+    let Some(dir) = plugin_dir.filter(|d| dir_has_entries(d)) else {
+        return Err(plugin_cli_exit_error(exe, args, &outcome));
+    };
+    if !is_locked_plugin_dir_failure(&outcome.stdout, &outcome.stderr) {
+        return Err(plugin_cli_exit_error(exe, args, &outcome));
+    }
+
+    tracing::warn!(
+        target: "agent_hooks",
+        exe = exe,
+        args = ?args,
+        dir = %dir.display(),
+        "plugin directory is held open by a running agent CLI; clearing its contents and retrying",
+    );
+
+    let stash = match stash_plugin_dir_contents(cli, dir) {
+        Ok(stash) => stash,
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                dir = %dir.display(),
+                "could not clear the locked plugin directory; reporting the original failure",
+            );
+            return Err(plugin_cli_exit_error(exe, args, &outcome));
+        }
+    };
+
+    let retry = run_plugin_cli_capture_with_env(exe, args, env);
+    if let Ok(retry) = &retry {
+        if plugin_cli_reached_goal(retry, exe, args, idempotency_substrings) {
+            discard_plugin_dir_stash(&stash);
+            tracing::info!(
+                target: "agent_hooks",
+                exe = exe,
+                args = ?args,
+                "retry succeeded after clearing the locked plugin directory",
+            );
+            return Ok(());
+        }
+    }
+
+    restore_plugin_dir_contents(&stash, dir);
+    match retry {
+        Ok(retry) => Err(plugin_cli_exit_error(exe, args, &retry)),
+        Err(e) => Err(e),
+    }
+}
+
+/// [`spawn_step`] with the locked-plugin-directory recovery from
+/// [`run_plugin_cli_unlocking`]. Used by the uninstall flows, which
+/// collect human-readable messages instead of returning errors.
+fn spawn_step_unlocking(
+    messages: &mut Vec<String>,
+    exe: &str,
+    args: &[&str],
+    success_substrings: &[&str],
+    cli: CliKind,
+    plugin_dir: Option<&Path>,
+) -> bool {
+    match run_plugin_cli_unlocking(exe, args, &[], success_substrings, cli, plugin_dir) {
+        Ok(()) => {
+            messages.push(format!("ok: {} {}", exe, args.join(" ")));
+            true
+        }
+        Err(e) => {
+            messages.push(format!("fail: {} {} :: {}", exe, args.join(" "), e));
+            false
+        }
+    }
 }
 
 /// Return the discovered home directory from `USERPROFILE`/`HOME`.
@@ -3459,11 +3748,13 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
     result.attempted = true;
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
+    match run_plugin_cli_unlocking(
         "codex",
         &["plugin", "remove", &plugin_ref],
-        "agent_hooks",
+        &[],
         &["not installed"],
+        CliKind::Codex,
+        installed_plugin_dir(CliKind::Codex, home).as_deref(),
     ) {
         Ok(()) => {
             result.plugin_uninstalled = Some(true);
@@ -4371,7 +4662,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
             }
         },
         UpgradeAction::CodexReinstall => upgrade_codex(home),
-        UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
+        UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(home),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
         UpgradeAction::OpenCodeCopy => install_for_opencode(home).installed(),
     }
@@ -4391,11 +4682,13 @@ fn upgrade_copilot(home: &Path) -> bool {
         );
     }
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
+    match run_plugin_cli_unlocking(
         "copilot",
         &["plugin", "update", &plugin_ref],
-        "copilot_hooks",
         &[],
+        &[],
+        CliKind::Copilot,
+        installed_plugin_dir(CliKind::Copilot, home).as_deref(),
     ) {
         Ok(()) => true,
         Err(e) => {
@@ -4433,11 +4726,13 @@ fn upgrade_claude(home: &Path) -> bool {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
+    match run_plugin_cli_unlocking(
         "claude",
         &["plugin", "update", &plugin_ref],
-        "agent_hooks",
         &[],
+        &[],
+        CliKind::Claude,
+        installed_plugin_dir(CliKind::Claude, home).as_deref(),
     ) {
         Ok(()) => true,
         Err(e) => {
@@ -4484,17 +4779,18 @@ fn upgrade_codex(home: &Path) -> bool {
     install_for_codex(home).installed()
 }
 
-fn upgrade_gemini_in_place() -> bool {
+fn upgrade_gemini_in_place(home: &Path) -> bool {
     // `extensions update` upstream yargs does NOT accept `--consent` /
     // `--skip-settings` (those are install-only flags). Keep
     // GEMINI_CLI_TRUST_WORKSPACE which is honored as a generic
     // headless-mode signal.
-    match run_plugin_cli_with_env(
+    match run_plugin_cli_unlocking(
         "gemini",
         &["extensions", "update", GEMINI_EXTENSION_DIR_NAME],
         &[("GEMINI_CLI_TRUST_WORKSPACE", "true")],
-        "gemini_hooks",
         &[],
+        CliKind::Gemini,
+        installed_plugin_dir(CliKind::Gemini, home).as_deref(),
     ) {
         Ok(()) => true,
         Err(e) => {
@@ -4533,11 +4829,13 @@ fn upgrade_gemini_reinstall(home: &Path) -> bool {
     };
 
     // 2. Uninstall — tolerate "extension not found" idempotency.
-    let uninstall_succeeded = match run_plugin_cli(
+    let uninstall_succeeded = match run_plugin_cli_unlocking(
         "gemini",
         &["extensions", "uninstall", GEMINI_EXTENSION_DIR_NAME],
-        "gemini_hooks",
+        &[],
         &["extension not found", "successfully uninstalled"],
+        CliKind::Gemini,
+        installed_plugin_dir(CliKind::Gemini, home).as_deref(),
     ) {
         Ok(()) => true,
         Err(e) => {

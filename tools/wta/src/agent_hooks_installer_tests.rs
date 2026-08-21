@@ -3450,3 +3450,191 @@ fn gemini_source_under_bundle_walks_ancestors() {
     let outside = unique_dir("gemini-outside");
     assert!(!gemini_source_under_bundle(&outside, &bundle));
 }
+
+// ---- locked plugin-directory recovery -----------------------------
+
+/// The verbatim message Copilot CLI 1.0.81 prints when a live
+/// `copilot` process (typically one VS Code keeps alive) holds the
+/// installed plugin directory open.
+#[test]
+fn locked_plugin_dir_failure_matches_copilot_access_denied() {
+    assert!(is_locked_plugin_dir_failure(
+        "",
+        "Failed to install plugin: Error: Failed to install plugin: Access is denied. (os error 5)",
+    ));
+}
+
+/// Node-based CLIs surface the same condition as libuv's `EPERM`.
+#[test]
+fn locked_plugin_dir_failure_matches_node_eperm() {
+    assert!(is_locked_plugin_dir_failure(
+        "",
+        "EPERM: operation not permitted, rename 'C:\\Users\\u\\.claude\\plugins\\cache\\wt-local'",
+    ));
+}
+
+/// The same held directory handle surfaces as a plain sharing violation
+/// when the CLI's replace step trips on it before the rename.
+#[test]
+fn locked_plugin_dir_failure_matches_sharing_violation() {
+    assert!(is_locked_plugin_dir_failure(
+        "",
+        "Failed to install plugin: Error: Failed to install plugin: The process cannot access \
+         the file because it is being used by another process. (os error 32)",
+    ));
+}
+
+/// Failures we cannot fix by clearing the directory must not trigger
+/// the destructive recovery path.
+#[test]
+fn locked_plugin_dir_failure_ignores_unrelated_errors() {
+    assert!(!is_locked_plugin_dir_failure(
+        "",
+        "Failed to install plugin: Error: Marketplace \"wt-local\" not found",
+    ));
+    assert!(!is_locked_plugin_dir_failure(
+        "",
+        "Failed to add marketplace: Error: source path does not exist",
+    ));
+}
+
+#[test]
+fn installed_plugin_dir_matches_each_cli_layout() {
+    let home = Path::new(r"C:\Users\u");
+    assert_eq!(
+        installed_plugin_dir(CliKind::Copilot, home).unwrap(),
+        home.join(".copilot")
+            .join("installed-plugins")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+    );
+    assert_eq!(
+        installed_plugin_dir(CliKind::Claude, home).unwrap(),
+        home.join(".claude")
+            .join("plugins")
+            .join("cache")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+    );
+    assert_eq!(
+        installed_plugin_dir(CliKind::Codex, home).unwrap(),
+        home.join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join(MARKETPLACE_NAME)
+            .join(PLUGIN_NAME),
+    );
+    assert_eq!(
+        installed_plugin_dir(CliKind::Gemini, home).unwrap(),
+        gemini_extension_dir(home),
+    );
+    // OpenCode hooks are a wta-owned file copy: no CLI-owned
+    // directory-replace step, so nothing to recover.
+    assert!(installed_plugin_dir(CliKind::OpenCode, home).is_none());
+}
+
+/// The recovery hinges on emptying the directory *without* removing it,
+/// since removing it is exactly what the live CLI's handle blocks.
+#[test]
+fn clear_dir_contents_empties_dir_but_keeps_it() {
+    let dir = unique_dir("clear-contents");
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(dir.join("plugin.json"), "{}").unwrap();
+    fs::write(dir.join("hooks").join("hooks.json"), "{}").unwrap();
+
+    clear_dir_contents(&dir).unwrap();
+
+    assert!(dir.is_dir(), "the directory itself must survive");
+    assert!(!dir_has_entries(&dir), "the directory must be empty");
+}
+
+#[test]
+fn clear_dir_contents_is_a_noop_on_an_empty_dir() {
+    let dir = unique_dir("clear-contents-empty");
+    clear_dir_contents(&dir).unwrap();
+    assert!(dir.is_dir());
+}
+
+/// Restoring must put every file back where it was, so a retry that
+/// still fails leaves the user's existing hooks untouched.
+#[test]
+fn restore_plugin_dir_contents_round_trips_and_discards_the_stash() {
+    let dir = unique_dir("restore-plugin-dir");
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(dir.join("plugin.json"), "manifest").unwrap();
+    fs::write(dir.join("hooks").join("hooks.json"), "hooks").unwrap();
+
+    let stash = unique_dir("restore-plugin-stash").join("stash");
+    restage_bundle_dir(&dir, &stash).unwrap();
+    clear_dir_contents(&dir).unwrap();
+    assert!(!dir_has_entries(&dir));
+
+    restore_plugin_dir_contents(&stash, &dir);
+
+    assert_eq!(
+        fs::read_to_string(dir.join("plugin.json")).unwrap(),
+        "manifest"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("hooks").join("hooks.json")).unwrap(),
+        "hooks",
+    );
+    assert!(!stash.exists(), "stash is discarded once restored");
+}
+
+fn outcome(success: bool, status_code: Option<i32>, stdout: &str, stderr: &str) -> CliRunOutcome {
+    CliRunOutcome {
+        success,
+        status_code,
+        stdout: stdout.to_string(),
+        stderr: stderr.to_string(),
+    }
+}
+
+#[test]
+fn plugin_cli_reached_goal_accepts_clean_exit_and_idempotent_failure() {
+    assert!(plugin_cli_reached_goal(
+        &outcome(true, Some(0), "", ""),
+        "copilot",
+        &["plugin", "install"],
+        &[],
+    ));
+    assert!(plugin_cli_reached_goal(
+        &outcome(
+            false,
+            Some(1),
+            "",
+            "Marketplace \"wt-local\" already registered"
+        ),
+        "copilot",
+        &["plugin", "marketplace", "add"],
+        &["already registered"],
+    ));
+    assert!(!plugin_cli_reached_goal(
+        &outcome(false, Some(1), "", "Access is denied. (os error 5)"),
+        "copilot",
+        &["plugin", "install"],
+        &["already registered"],
+    ));
+}
+
+/// The CLI's own message has to survive into the error so
+/// `wta-install-hooks.log` says *why* a step failed.
+#[test]
+fn plugin_cli_exit_error_carries_the_cli_message() {
+    let err = plugin_cli_exit_error(
+        "copilot",
+        &["plugin", "install", "wt-agent-hooks@wt-local"],
+        &outcome(false, Some(1), "", "Access is denied. (os error 5)"),
+    );
+    let text = err.to_string();
+    assert!(text.contains("copilot plugin install wt-agent-hooks@wt-local"));
+    assert!(text.contains("exited 1"));
+    assert!(text.contains("Access is denied. (os error 5)"));
+}
+
+#[test]
+fn plugin_cli_exit_error_omits_the_detail_when_the_cli_said_nothing() {
+    let err = plugin_cli_exit_error("codex", &["plugin", "add"], &outcome(false, None, "", ""));
+    assert_eq!(err.to_string(), "codex plugin add exited ?");
+}
