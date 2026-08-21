@@ -4593,13 +4593,17 @@ async fn session_notification_unknown_session_is_noop() {
 #[tokio::test]
 async fn drop_sessions_for_helper_retains_only_other_helpers() {
     let state = make_state();
+    let sid_a1 = SessionId::new("a1");
+    let sid_a2 = SessionId::new("a2");
+    let sid_b1 = SessionId::new("b1");
+    let sid_c1 = SessionId::new("c1");
     let (tx_a, _rx_a) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let (tx_b, _rx_b) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let (tx_c, _rx_c) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     {
         let mut map = state.session_to_helper.lock().await;
         map.insert(
-            SessionId::new("a1"),
+            sid_a1.clone(),
             HelperRoute {
                 helper_id: HelperId(1),
                 agent_instance_id: AgentInstanceId::nil(),
@@ -4609,7 +4613,7 @@ async fn drop_sessions_for_helper_retains_only_other_helpers() {
             },
         );
         map.insert(
-            SessionId::new("a2"),
+            sid_a2.clone(),
             HelperRoute {
                 helper_id: HelperId(1),
                 agent_instance_id: AgentInstanceId::nil(),
@@ -4619,7 +4623,7 @@ async fn drop_sessions_for_helper_retains_only_other_helpers() {
             },
         );
         map.insert(
-            SessionId::new("b1"),
+            sid_b1.clone(),
             HelperRoute {
                 helper_id: HelperId(2),
                 agent_instance_id: AgentInstanceId::nil(),
@@ -4629,7 +4633,7 @@ async fn drop_sessions_for_helper_retains_only_other_helpers() {
             },
         );
         map.insert(
-            SessionId::new("c1"),
+            sid_c1.clone(),
             HelperRoute {
                 helper_id: HelperId(3),
                 agent_instance_id: AgentInstanceId::nil(),
@@ -4639,17 +4643,53 @@ async fn drop_sessions_for_helper_retains_only_other_helpers() {
             },
         );
     }
+    let owner = AgentInstanceId::new_v4();
+    let capability_a = state
+        .session_mcp_capabilities
+        .prepare(owner, None)
+        .await;
+    assert!(
+        state
+            .session_mcp_capabilities
+            .bind(&capability_a, sid_a1.clone())
+            .await
+    );
+    let capability_b = state
+        .session_mcp_capabilities
+        .prepare(owner, None)
+        .await;
+    assert!(
+        state
+            .session_mcp_capabilities
+            .bind(&capability_b, sid_b1.clone())
+            .await
+    );
 
     let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
     assert_eq!(dropped.len(), 2);
-    assert!(dropped.contains(&SessionId::new("a1")));
-    assert!(dropped.contains(&SessionId::new("a2")));
+    assert!(dropped.contains(&sid_a1));
+    assert!(dropped.contains(&sid_a2));
 
     let map = state.session_to_helper.lock().await;
-    assert!(!map.contains_key(&SessionId::new("a1")));
-    assert!(!map.contains_key(&SessionId::new("a2")));
-    assert!(map.contains_key(&SessionId::new("b1")));
-    assert!(map.contains_key(&SessionId::new("c1")));
+    assert!(!map.contains_key(&sid_a1));
+    assert!(!map.contains_key(&sid_a2));
+    assert!(map.contains_key(&sid_b1));
+    assert!(map.contains_key(&sid_c1));
+    drop(map);
+    assert!(
+        !state
+            .session_mcp_capabilities
+            .remove_session(&sid_a1)
+            .await,
+        "disconnect cleanup must revoke the dropped session's MCP capability"
+    );
+    assert!(
+        state
+            .session_mcp_capabilities
+            .remove_session(&sid_b1)
+            .await,
+        "disconnect cleanup must preserve another helper's MCP capability"
+    );
 }
 
 /// Companion invariant to `drop_sessions_for_helper_retains_only_other_helpers`:

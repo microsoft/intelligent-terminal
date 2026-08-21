@@ -2611,14 +2611,8 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        // Either way the transport is dead. Report the typed failure for
-        // diagnostics, then terminate the helper instead of retaining a
-        // disconnected pane or attempting to restore its session.
-        let _ = io_event_tx.send(AppEvent::AgentError {
-            session_id: None,
-            failure: AgentFailure::TransportLost,
-            message: t!("connection.lost").into_owned(),
-        });
+        // Either way the transport is dead. Terminate the helper instead of
+        // retaining a disconnected pane or attempting to restore its session.
         let _ = io_event_tx.send(AppEvent::MasterDisconnected);
     });
 

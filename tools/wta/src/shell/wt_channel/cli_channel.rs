@@ -389,8 +389,17 @@ impl CliChannel {
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
                 .kill_on_drop(true);
-            let Ok(mut child) = command.spawn() else {
-                return;
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(err) => {
+                    tracing::warn!(
+                        target: "wtcli",
+                        path = %wtcli,
+                        %err,
+                        "WT protocol event listener spawn failed"
+                    );
+                    return;
+                }
             };
             tracing::info!(
                 target: "wtcli",

@@ -4731,8 +4731,8 @@ async fn serve_helper(
 }
 
 /// Remove every `session_to_helper` entry owned by `helper_id` and return
-/// the dropped `SessionId`s (used for the `sessions_dropped` disconnect
-/// log line). Factored out of `serve_helper` so the cleanup is
+/// the dropped `SessionId`s (used for disconnect diagnostics). Factored out
+/// of `serve_helper` so the cleanup is
 /// unit-testable without a real named pipe.
 async fn drop_sessions_for_helper(
     state: &MasterStateInner,
@@ -4764,6 +4764,10 @@ async fn drop_sessions_for_helper(
             continue;
         }
         state.pending_usage.lock().await.remove(&session_id);
+        state
+            .session_mcp_capabilities
+            .remove_session(&session_id)
+            .await;
         state.registry.remove(&session_id).await;
         // Broadcast removal so every still-attached helper drops the
         // row from its mirror. The disconnecting helper itself has
