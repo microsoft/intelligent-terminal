@@ -262,6 +262,14 @@ struct MasterStateInner {
     /// Used to source HOST session history via `session/list` instead of
     /// reading the CLI's on-disk files.
     agent_conn: OnceLock<conn::ClientLink>,
+    /// Execution source of the agent behind `agent_conn`, captured in the
+    /// same step. The "host" history bridge is really "whatever the first
+    /// lazily spawned agent is", and that agent can be WSL-hosted
+    /// (`wsl.exe -d <distro> -- … --acp`). Its `session/list` then returns
+    /// in-distro sessions with POSIX cwds, so stamping them
+    /// `SessionLocation::Host` would make the picker resume them as a plain
+    /// Windows command line instead of `wsl -d <distro> -- …`.
+    host_agent_source: OnceLock<crate::agent_source::AgentSource>,
     /// The CLI provider master is multiplexing. Resolved once at
     /// startup from `config.agent` via `agent_registry::resolve_agent_id_from_cmd`.
     /// Used to stamp `cli_source` on every SessionInfo upserted from
@@ -3719,6 +3727,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         allowed_agent_ids,
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
+        host_agent_source: OnceLock::new(),
         cli_source: crate::agent_sessions::CliSource::from_agent_id(
             config
                 .agent_id
@@ -4333,6 +4342,10 @@ async fn spawn_one_agent(
     // from the bound AgentCli below.
     let _ = state.cached_init_resp.set(init_resp.clone());
     if state.agent_conn.set(conn.clone()).is_ok() {
+        // Same slot, same agent: the history scan must stamp its rows with the
+        // source this CLI actually runs in, or a WSL-hosted default agent
+        // reports its in-distro sessions as host sessions.
+        let _ = state.host_agent_source.set(source.clone());
         let state_for_history = Arc::clone(state);
         tokio::task::spawn_local(async move {
             let count = seed_host_and_broadcast(&state_for_history).await;
@@ -4970,6 +4983,17 @@ async fn host_session_list_raw(
     outcome
 }
 
+/// Where the rows returned by [`host_session_list_raw`] actually live. The
+/// history bridge's agent is the first lazily spawned CLI, which may itself be
+/// WSL-hosted; `Host` only when that agent runs on Windows.
+fn host_scan_location(state: &MasterStateInner) -> crate::agent_sessions::SessionLocation {
+    state
+        .host_agent_source
+        .get()
+        .map(crate::agent_source::AgentSource::session_location)
+        .unwrap_or_default()
+}
+
 /// Host history from the already-running agent's `session/list`, gated on the
 /// `sessionCapabilities.list` capability. `None` when unsupported (Gemini,
 /// non-ACP custom) / not connected / failed — distinct from `Some(vec![])`
@@ -4995,7 +5019,7 @@ async fn host_history_via_acp(
     Some(crate::session_history::classify_and_map(
         &sessions,
         &idx,
-        crate::agent_sessions::SessionLocation::Host,
+        host_scan_location(state),
         &cli,
     ))
 }
@@ -5043,6 +5067,7 @@ async fn host_titles_via_acp(
 /// agent couldn't be listed.
 async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     let rows = host_history_via_acp(state).await?;
+    let scan_location = host_scan_location(state);
     let listed_ids: std::collections::HashSet<String> =
         rows.iter().map(|r| r.key.clone()).collect();
 
@@ -5070,13 +5095,13 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     // lock, so a row a hook/watcher flips live between the snapshot above and
     // the remove below is never deleted out from under that update.
     for row in &snapshot {
-        if !is_stale_host_history_row(row, &listed_ids) {
+        if !is_stale_host_history_row(row, &listed_ids, &scan_location) {
             continue;
         }
         let removed = state
             .registry
             .remove_if(&row.session_id, &|cur| {
-                is_stale_host_history_row(cur, &listed_ids)
+                is_stale_host_history_row(cur, &listed_ids, &scan_location)
             })
             .await;
         if removed.is_some() {
@@ -5092,16 +5117,19 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     Some((changed, rows.len()))
 }
 
-/// Whether a registry row is a stale host-history row to drop during reconcile:
-/// a terminal (Historical / Ended) Class-B **host** row whose id is NOT in the
-/// authoritative `session/list` set. Live rows (Working / Idle), agent panes
-/// (ACP-driven), and WSL rows are never reconciled away. Pure for unit testing.
+/// Whether a registry row is a stale history row to drop during reconcile:
+/// a terminal (Historical / Ended) Class-B row **from the scanned location**
+/// whose id is NOT in the authoritative `session/list` set. Live rows
+/// (Working / Idle), agent panes (ACP-driven), and rows located anywhere other
+/// than the scan's own source (another distro, or any WSL row when the history
+/// agent runs on Windows) are never reconciled away. Pure for unit testing.
 fn is_stale_host_history_row(
     row: &crate::session_registry::SessionInfo,
     listed_ids: &std::collections::HashSet<String>,
+    scan_location: &crate::agent_sessions::SessionLocation,
 ) -> bool {
-    use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
-    if !matches!(row.location, SessionLocation::Host) {
+    use crate::agent_sessions::{AgentStatus, SessionOrigin};
+    if row.location != *scan_location {
         return false;
     }
     if row.origin == Some(SessionOrigin::AgentPane) {

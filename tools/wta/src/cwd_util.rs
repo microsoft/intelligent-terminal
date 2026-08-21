@@ -8,6 +8,11 @@
 //! and network UNC paths pass through unchanged: they can't be checked
 //! against the Windows fs without false-rejecting valid WSL paths, and
 //! WSL/network UNC can stall `fs::metadata` for seconds (see GH#9541).
+//!
+//! Launchers that hand the value to a **Windows** process (`wtcli new-tab
+//! -d`, a WT tab's `startingDirectory`) must use
+//! [`validate_windows_starting_directory`] instead: a POSIX path is a valid
+//! cwd for an in-distro agent but not for `CreateProcessW`.
 
 use std::path::{Component, Path, Prefix};
 
@@ -26,6 +31,42 @@ pub fn validate_starting_directory<P: AsRef<Path>>(path: P) -> Option<String> {
     match std::fs::metadata(p) {
         Ok(meta) if meta.is_dir() => Some(s.into_owned()),
         _ => None,
+    }
+}
+
+/// [`validate_starting_directory`] plus a POSIX-path rejection, for
+/// launchers whose target is a **Windows** process.
+///
+/// A session's recorded cwd can be POSIX (`/home/me`) even when the row is
+/// stamped `SessionLocation::Host` — an agent CLI that syncs its sessions
+/// from a backend reports the cwd of the machine that created them, so a
+/// Linux-created session shows up in a Windows CLI's `session/list`.
+/// Handing that path to `wtcli new-tab -d` (or to a tab's
+/// `startingDirectory`) fails the launch outright with
+/// `ERROR_DIRECTORY (0x8007010b)` — WT deliberately passes "linux-y" paths
+/// through verbatim (`Utils::EvaluateStartingDirectory`, GH#592) so only a
+/// WSL profile can mangle them. Dropping the cwd lets the launcher fall
+/// back to the profile default and the CLI report its own resume result.
+pub fn validate_windows_starting_directory<P: AsRef<Path>>(path: P) -> Option<String> {
+    let p = path.as_ref();
+    if is_posix_style_path(p) {
+        return None;
+    }
+    validate_starting_directory(p)
+}
+
+/// `true` for paths that only resolve on a Unix host (a WSL distro): POSIX
+/// absolute (`/`, `/home/me`) and home-relative (`~`, `~/proj`) forms.
+/// These are exactly the shapes WT treats as "linux-y" and refuses to
+/// resolve against the Windows filesystem. Forward-slash UNC
+/// (`//server/share`) is NOT POSIX-style — Windows opens it fine.
+fn is_posix_style_path(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    let bytes = s.as_bytes();
+    match bytes.first() {
+        Some(b'/') => bytes.get(1) != Some(&b'/'),
+        Some(b'~') => matches!(bytes.get(1), None | Some(b'/') | Some(b'\\')),
+        _ => false,
     }
 }
 
@@ -168,6 +209,84 @@ mod tests {
         // Missing extended-length path → None.
         let _ = fs::remove_dir_all(&dir);
         assert_eq!(validate_starting_directory(&ext), None);
+    }
+
+    /// The Windows-strict variant must drop POSIX cwds. A cloud-synced
+    /// agent session created inside WSL is listed by the *Windows* CLI with
+    /// its Linux cwd, so the row is `SessionLocation::Host` but its cwd
+    /// only exists in the distro. Passing it to `wtcli new-tab -d` fails
+    /// the whole launch with `ERROR_DIRECTORY (0x8007010b)`.
+    #[test]
+    fn windows_variant_rejects_posix_style_paths() {
+        for s in ["/home/user/proj", "/", "/tmp", "~", "~/work", r"~\work"] {
+            assert_eq!(
+                validate_windows_starting_directory(s),
+                None,
+                "POSIX-style path `{}` must not be used as a Windows starting directory",
+                s
+            );
+            assert_eq!(
+                validate_starting_directory(s),
+                Some(s.to_string()),
+                "the lenient variant must still pass `{}` through for in-distro use",
+                s
+            );
+        }
+    }
+
+    /// Everything the lenient variant accepts and that Windows can actually
+    /// open must survive the strict variant unchanged.
+    #[test]
+    fn windows_variant_keeps_windows_resolvable_paths() {
+        let dir = unique_temp_dir("win_ok");
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(
+            validate_windows_starting_directory(&dir),
+            Some(dir.to_string_lossy().into_owned())
+        );
+        let _ = fs::remove_dir_all(&dir);
+
+        for s in [
+            r"\\wsl$\Ubuntu\home\user\proj",
+            r"\\wsl.localhost\Ubuntu\home\user\proj",
+            r"\\server\share\proj",
+            "//server/share/proj",
+            r"foo\bar",
+            "~tilde-prefixed-name",
+        ] {
+            assert_eq!(
+                validate_windows_starting_directory(s),
+                Some(s.to_string()),
+                "`{}` is Windows-resolvable and must be kept",
+                s
+            );
+        }
+
+        assert_eq!(validate_windows_starting_directory(""), None);
+    }
+
+    #[test]
+    fn posix_style_path_classification() {
+        for s in ["/", "/home/user", "/mnt/c/src", "~", "~/proj", r"~\proj"] {
+            assert!(is_posix_style_path(Path::new(s)), "should be POSIX: {}", s);
+        }
+        for s in [
+            "",
+            r"C:\foo",
+            "C:/foo",
+            r"\\wsl$\Ubuntu\home",
+            r"\\server\share",
+            "//server/share",
+            r"\foo",
+            "foo/bar",
+            "~tilde-prefixed-name",
+        ] {
+            assert!(
+                !is_posix_style_path(Path::new(s)),
+                "should NOT be POSIX: {}",
+                s
+            );
+        }
     }
 
     #[test]

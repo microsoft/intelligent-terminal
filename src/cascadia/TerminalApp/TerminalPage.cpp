@@ -6127,10 +6127,33 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Step 1: create a new tab.
+        //
+        // The session's cwd can be POSIX (`/home/<user>`) even for a row the
+        // registry stamped as a host session: an agent CLI that syncs its
+        // sessions from a backend reports the cwd of the machine that created
+        // them, so a Linux-created session surfaces in the Windows CLI's
+        // listing. Handing such a path to `startingDirectory` fails the whole
+        // tab launch with ERROR_DIRECTORY (0x8007010b) because WT passes
+        // "linux-y" paths through verbatim (Utils::EvaluateStartingDirectory,
+        // GH#592) and only a WSL profile can mangle them. Skip it and let the
+        // profile default win — `_pendingLoadSessions` still carries the raw
+        // cwd, which is what the in-distro `session/load` needs.
         Settings::Model::NewTerminalArgs newTerminalArgs{};
-        if (!cwdStr.empty())
+        // POSIX absolute (`/home/me`, but not the `//server/share` UNC form)
+        // and home-relative (`~`, `~/proj`) — exactly what WT treats as
+        // "linux-y".
+        const bool cwdIsPosixStyle =
+            !cwdStr.empty() &&
+            ((cwdStr.front() == '/' && !(cwdStr.size() > 1 && cwdStr[1] == '/')) ||
+             (cwdStr.front() == '~' && (cwdStr.size() == 1 || cwdStr[1] == '/' || cwdStr[1] == '\\')));
+        if (!cwdStr.empty() && !cwdIsPosixStyle)
         {
             newTerminalArgs.StartingDirectory(winrt::to_hstring(cwdStr));
+        }
+        else if (cwdIsPosixStyle)
+        {
+            _agentPaneLog("OnResumeInNewAgentTabRequested: session cwd '" + cwdStr +
+                          "' is not a Windows path; using the profile default for the new tab");
         }
         const auto hr = _OpenNewTab(newTerminalArgs, /*openInBackground*/ false);
         if (FAILED(hr))

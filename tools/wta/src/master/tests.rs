@@ -719,6 +719,7 @@ fn make_state() -> Arc<MasterStateInner> {
         allowed_agent_ids: None,
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
+        host_agent_source: OnceLock::new(),
         cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -5445,6 +5446,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         allowed_agent_ids: None,
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
+        host_agent_source: OnceLock::new(),
         cli_source: Some(crate::agent_sessions::CliSource::Copilot),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -5930,6 +5932,10 @@ fn is_stale_host_history_row_reconcile_rules() {
     use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
     use std::collections::HashSet;
     let listed: HashSet<String> = ["kept".to_string()].into_iter().collect();
+    let host = SessionLocation::Host;
+    let ubuntu = SessionLocation::Wsl {
+        distro: "Ubuntu".to_string(),
+    };
     let mk = |id: &str| {
         let mut r = crate::session_registry::SessionInfo::new(
             acp::schema::v1::SessionId::new(id.to_string()),
@@ -5940,23 +5946,31 @@ fn is_stale_host_history_row_reconcile_rules() {
         r
     };
     // Terminal Class-B host row NOT in session/list → stale (drop).
-    assert!(is_stale_host_history_row(&mk("gone"), &listed));
+    assert!(is_stale_host_history_row(&mk("gone"), &listed, &host));
     // Still listed → keep.
-    assert!(!is_stale_host_history_row(&mk("kept"), &listed));
+    assert!(!is_stale_host_history_row(&mk("kept"), &listed, &host));
     // Live (Idle/Working) → keep even if not listed.
     let mut live = mk("gone");
     live.status = Some(AgentStatus::Idle);
-    assert!(!is_stale_host_history_row(&live, &listed));
+    assert!(!is_stale_host_history_row(&live, &listed, &host));
     // Agent pane → never reconciled.
     let mut pane = mk("gone");
     pane.origin = Some(SessionOrigin::AgentPane);
-    assert!(!is_stale_host_history_row(&pane, &listed));
-    // WSL row → host can't authoritatively list distro sessions.
+    assert!(!is_stale_host_history_row(&pane, &listed, &host));
+    // WSL row → a Windows-hosted agent can't authoritatively list distro
+    // sessions.
     let mut wsl = mk("gone");
-    wsl.location = SessionLocation::Wsl {
-        distro: "Ubuntu".to_string(),
+    wsl.location = ubuntu.clone();
+    assert!(!is_stale_host_history_row(&wsl, &listed, &host));
+    // A WSL-hosted history agent reconciles ITS distro's rows...
+    assert!(is_stale_host_history_row(&wsl, &listed, &ubuntu));
+    // ...but never the host's, nor another distro's.
+    assert!(!is_stale_host_history_row(&mk("gone"), &listed, &ubuntu));
+    let mut debian = mk("gone");
+    debian.location = SessionLocation::Wsl {
+        distro: "Debian".to_string(),
     };
-    assert!(!is_stale_host_history_row(&wsl, &listed));
+    assert!(!is_stale_host_history_row(&debian, &listed, &ubuntu));
 }
 
 #[test]

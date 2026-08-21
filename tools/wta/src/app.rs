@@ -2881,20 +2881,25 @@ impl App {
         // reset guarantees any post-failure output isn't tinted /
         // blinking.
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
-        // Drop stale cwd so wtcli falls back to the profile default
-        // rather than failing CreateProcessW with ERROR_DIRECTORY.
+        // Drop unusable cwd so wtcli falls back to the profile default
+        // rather than failing the launch with ERROR_DIRECTORY (0x8007010b).
         // WSL rows use `wsl --cd` inside the distro command; passing
         // the Linux path as a Windows `-d` flag to wtcli would fail.
+        // Host rows need the *Windows-strict* check: a cloud-synced agent
+        // session created inside a distro is listed by the Windows CLI with
+        // its POSIX cwd (`/home/<user>`), so a `Host` row can still carry a
+        // path only WSL can resolve.
         let valid_cwd = if s.location.is_wsl() {
             None
         } else {
-            crate::cwd_util::validate_starting_directory(&s.cwd)
+            crate::cwd_util::validate_windows_starting_directory(&s.cwd)
         };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
                 key = %key,
-                "dispatch_resume: stored cwd is no longer a valid directory; falling back to profile default",
+                wsl = s.location.is_wsl(),
+                "dispatch_resume: stored cwd is not usable as a Windows starting directory; falling back to profile default",
             );
         }
         let short_key: String = key.chars().take(8).collect();

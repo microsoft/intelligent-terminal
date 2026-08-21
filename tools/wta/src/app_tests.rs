@@ -11238,6 +11238,100 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     );
 }
 
+/// A `Host` row can still carry a POSIX cwd: an agent CLI that syncs its
+/// sessions from a backend lists sessions created on another machine, so a
+/// Linux-created session shows up in the Windows CLI's `session/list` with
+/// `/home/<user>` as its cwd. Passing that to `wtcli new-tab -d` fails the
+/// whole launch with `ERROR_DIRECTORY (0x8007010b)` — WT never resolves a
+/// "linux-y" path for a non-WSL profile — so it must be dropped and the
+/// profile default used instead.
+#[test]
+fn enter_on_host_row_with_posix_cwd_drops_the_starting_directory() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let row = crate::agent_sessions::AgentSession {
+        key: "bae9051a-b7e5".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/yuazha"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
+        last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
+        attention_reason: None,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
+        location: SessionLocation::Host,
+    };
+    let mut app = test_app();
+    app.agent_sessions.merge_historical(vec![row]);
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let cmd = app
+        .last_dispatched_command_for_test()
+        .expect("a command was dispatched");
+    assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+    assert!(
+        !cmd.argv.iter().any(|a| a == "-d"),
+        "a POSIX cwd must not become a Windows starting directory; argv: {:?}",
+        cmd.argv
+    );
+    // The resume itself still happens — the CLI resolves the session by id.
+    let argv = cmd.argv.join(" ");
+    assert!(
+        argv.contains("copilot --resume bae9051a-b7e5"),
+        "expected the host resume command; argv: {argv}"
+    );
+}
+
+/// An existing Windows cwd is still forwarded — the POSIX guard must not
+/// regress the common case.
+#[test]
+fn enter_on_host_row_keeps_a_real_windows_cwd() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let cwd = std::env::temp_dir();
+    let row = crate::agent_sessions::AgentSession {
+        key: "win-1".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: cwd.clone(),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
+        last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
+        attention_reason: None,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
+        location: SessionLocation::Host,
+    };
+    let mut app = test_app();
+    app.agent_sessions.merge_historical(vec![row]);
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let cmd = app
+        .last_dispatched_command_for_test()
+        .expect("a command was dispatched");
+    let argv = cmd.argv.join(" ");
+    assert!(
+        cmd.argv.iter().any(|a| a == "-d"),
+        "an existing Windows cwd must be forwarded; argv: {argv}"
+    );
+    assert!(argv.contains(&cwd.to_string_lossy().to_string()));
+}
+
 fn usage_snapshot() -> crate::usage::UsageSnapshot {
     crate::usage::UsageSnapshot {
         context: Some(crate::usage::UsageContext {
