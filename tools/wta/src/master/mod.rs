@@ -4363,7 +4363,7 @@ async fn spawn_one_agent(
                 count,
                 "agent ACP history seed complete"
             );
-            spawn_wsl_seed(&state, agent.cli_source.clone());
+            spawn_wsl_seed(&state, agent.cli_source.clone()).await;
         });
     }
 
@@ -5214,8 +5214,12 @@ async fn seed_host_and_broadcast(
 ///
 /// Returns `true` iff a scan was actually dispatched (the slot was free), so a
 /// caller can avoid side effects — e.g. arming a throttle — when the scan was
-/// skipped because another is already running.
-fn spawn_wsl_seed(
+/// skipped because another is already running. Claiming the slot awaits the
+/// lock rather than trying it: every caller is already async, and treating
+/// momentary contention as "already running" would silently drop a scan that
+/// nothing was actually running, delaying a user-visible title until the next
+/// poll.
+async fn spawn_wsl_seed(
     state: &std::sync::Arc<MasterStateInner>,
     cli: Option<crate::agent_sessions::CliSource>,
 ) -> bool {
@@ -5223,14 +5227,8 @@ fn spawn_wsl_seed(
         return false;
     }
     // Claim this CLI's scan slot; skip when a scan for this CLI is already
-    // running. `try_lock` is sound here: the set is only ever held across an
-    // insert or a remove, never across an await, so contention is transient —
-    // and a missed dispatch is recovered by the next poll.
-    let claimed = match state.wsl_seed_in_flight.try_lock() {
-        Ok(mut in_flight) => in_flight.insert(cli.clone()),
-        Err(_) => false,
-    };
-    if !claimed {
+    // running. `insert` returns false when the slot was already taken.
+    if !state.wsl_seed_in_flight.lock().await.insert(cli.clone()) {
         return false;
     }
     let inner = std::sync::Arc::clone(state);
@@ -5372,7 +5370,7 @@ async fn maybe_spawn_wsl_title_seed(
     // Only arm the throttle when a scan was actually dispatched. If one was
     // already in flight (`spawn_wsl_seed` returns false), leave the timestamp
     // untouched so the next poll can dispatch as soon as that scan finishes.
-    if spawn_wsl_seed(state, cli.clone()) {
+    if spawn_wsl_seed(state, cli.clone()).await {
         state
             .wsl_titles_seed_at
             .lock()
@@ -5409,7 +5407,7 @@ async fn handle_sessions_list(
                 count,
                 "sessions/list rescan: reloaded host history via ACP (WSL async)"
             );
-            spawn_wsl_seed(state, agent.cli_source.clone());
+            spawn_wsl_seed(state, agent.cli_source.clone()).await;
         } else {
             // Periodic poll: reconcile host rows against `session/list` (the source
             // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
