@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Paina Enter yrittääksesi uudelleen tai Esc 
 chat.activity_thinking: "Ajattelee..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Tervetuloa Älykäs Pääteiin!"
-chat.welcome_disclaimer: "Älykäs Pääte käyttää tekoälyä. Tarkista virheet."
+chat.welcome_disclaimer: "Älykäs Pääte käyttää tekoälyä."
 chat.plan_header: "Suunnitelma:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "juuri nyt"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "Agentin vaihtaminen ei ole käytettävissä Wi
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}
+commands.config.summary: "Määritä tämä agentti-istunto"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Siirrä tämän välilehden agenttipaneeli (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
 system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Istunnon määritys (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Yhdistetty agentti ei ilmoittanut mitään määritettävissä olevia istuntovaihtoehtoja."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Kohteen %{option} päivittäminen epäonnistui: %{error}"
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  ಮತ್ತೆ ಪ್ರಯತ್ನಿಸ�
 chat.activity_thinking: "ಯೋಚಿಸುತ್ತಿದೆ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್-ಗೆ ಸ್ವಾಗತ!"
-chat.welcome_disclaimer: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ AI ಬಳಸುತ್ತದೆ. ತಪ್ಪುಗಳನ್ನು ಪರಿಶೀಲಿಸಿ."
+chat.welcome_disclaimer: "ಇಂಟೆಲಿಜೆಂಟ್ ಟರ್ಮಿನಲ್ AI ಬಳಸುತ್ತದೆ."
 chat.plan_header: "ಯೋಜನೆ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ ಮಾರುಕಟ್ಟೆ ಪಥ ಹಳೆ�
 hooks.installed_but_disabled: "⚠ ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿದೆ ಆದರೆ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ"
 hooks.not_installed: "✗ ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿಲ್ಲ"
 hooks.uninstall_skipped: "ಬಿಟ್ಟುಬಿಡಲಾಗಿದೆ (CLI PATH ನಲ್ಲಿ ಇಲ್ಲ)"
-hooks.install_attempted: "wt-agent-hooks ಇನ್‌ಸ್ಟಾಲ್ ಪ್ರಯತ್ನಿಸಲಾಗಿದೆ (ಐಡೆಂಪೊಟೆಂಟ್). ಫಲಿತಾಂಶವನ್ನು ಪರಿಶೀಲಿಸಲು `wta hooks status` ಚಲಾಯಿಸಿ. ಟ್ರೇಸ್ ಲಾಗ್: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} ಗಾಗಿ ಇನ್‌ಸ್ಟಾಲ್ ಆಗಿದೆ"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ಈಗಷ್ಟೇ"
@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ಈ ಏಜೆಂಟ್ ಸೆಷನ್ ಸಂರಚಿಸಿ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ಈ ಟ್ಯಾಬ್‌ನ ಏಜೆಂ트 ಪೇನ್ ಅನ್ನು ಸರಿಸಿ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ಸೆಷನ್ ಸಂರಚನೆ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಸಂರಚಿಸಬಹುದಾದ ಸೆಷನ್ ಆಯ್ಕೆಗಳನ್ನು ಜಾಹೀರಾತು ಮಾಡಿಲ್ಲ."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} ಅಪ್‌ಡೇಟ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ: %{error}"
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}

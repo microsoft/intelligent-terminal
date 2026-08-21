@@ -25,6 +25,17 @@ namespace Microsoft.Terminal.Settings.Editor
         String Description { get; };
     }
 
+    runtimeclass CustomModelProviderEntry : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        String Id { get; };
+        String BaseUrl { get; };
+        String ModelsDisplayText { get; };
+        Boolean IsApiKeyMissing { get; };
+        String RemovalErrorMessage { get; };
+        Boolean HasRemovalError { get; };
+        void Remove();
+    }
+
     runtimeclass AIAgentsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         AIAgentsViewModel(Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings);
@@ -66,15 +77,28 @@ namespace Microsoft.Terminal.Settings.Editor
         // free-form TextBox should take its place. Avoids needing a
         // bool-to-bool converter resource in the page.
         Boolean ShowAcpModelTextBox { get; };
-        // ComboBox SelectedItem binding target. Setter writes the entry's
-        // Id back to AcpModel; getter resolves AcpModel back to the
-        // matching entry (or null when AcpModel doesn't appear in the list).
+        // ComboBox SelectedItem binding target. Native models are stored in
+        // AcpModel; shared provider models are stored independently so they
+        // survive agent switches.
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
+        Windows.Foundation.Collections.IObservableVector<CustomModelProviderEntry> CustomModelProviders { get; };
+        Boolean ShowCustomModelProvidersExpander { get; };
+        Boolean IsCustomModelProvidersExpanded;
+        Boolean IsAddingCustomModelProvider { get; };
+        String NewCustomModelProviderBaseUrl;
+        String NewCustomModelId;
+        String NewCustomModelProviderApiKey;
+        Boolean CanSaveCustomModelProvider { get; };
+        String CustomModelProviderUnsupportedMessage { get; };
+        void AddCustomModelProvider();
+        void SaveCustomModelProvider();
+        void CancelCustomModelProvider();
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoErrorDetectionEnabled);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoFixEnabled);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, ShowTokenUsageAndCost);
         // Whether the auto-suggest toggle should be enabled: detection must be
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
@@ -133,7 +157,6 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean ShowOpenCodeHooksSubtitle { get; };
         Boolean CanInstallAgentHooks { get; };
         Boolean CanRemoveAgentHooks { get; };
-        Boolean CanRemoveOpenCodeHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
         // True iff AgentHooksInstallSummary is non-empty — gates the

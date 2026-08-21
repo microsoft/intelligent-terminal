@@ -37,7 +37,18 @@ fn publish_blocking(json_payload: &str) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .stdin(std::process::Stdio::null());
-    if let Ok(mut child) = command.spawn() {
-        let _ = child.wait();
+    match command.spawn() {
+        Ok(mut child) => match child.wait() {
+            Ok(status) if !status.success() => {
+                tracing::warn!(target: "wt_protocol", ?status, "wtcli publish failed");
+            }
+            Err(error) => {
+                tracing::warn!(target: "wt_protocol", %error, "failed waiting for wtcli publish");
+            }
+            _ => {}
+        },
+        Err(error) => {
+            tracing::warn!(target: "wt_protocol", %error, "failed to start wtcli publish");
+        }
     }
 }

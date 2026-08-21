@@ -112,7 +112,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Swap the bar between two modes:
-    //   * chat / connecting / etc. (active=false) — agent logo + "<name> <version>"
+    //   * chat / connecting / etc. (active=false) — agent logo + agent/model label
     //   * session management view (active=true)  — no logo, "Agent sessions"
     // Idempotent so callers don't need to dedupe.
     void AgentPaneContent::SetSessionsView(bool active)
@@ -171,6 +171,11 @@ namespace winrt::TerminalApp::implementation
             }
         }
         StateChanged.raise(*this, nullptr);
+    }
+
+    bool AgentPaneContent::ApplyAgentUsage(const Json::Value& usage)
+    {
+        return ::TerminalApp::AgentUsage::TryUpdateCache(_agentUsage, usage);
     }
 
     void AgentPaneContent::SetAgentPanePosition(const winrt::hstring& position)
@@ -243,9 +248,9 @@ namespace winrt::TerminalApp::implementation
                 text += L" ";
                 text += _agentVersion;
             }
-            else if (!_agentModel.empty())
+            if (_agentState == L"connected" && !_agentModel.empty())
             {
-                text += L" ";
+                text += L" \u00B7 ";
                 text += _agentModel;
             }
         }
@@ -287,21 +292,34 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
-        // Re-pick up the pane position in case settings changed it.
-        SetAgentPanePosition(settings.GlobalSettings().AgentPanePosition());
+
+        const winrt::Microsoft::Terminal::Control::KeyChord ctrlV{ Windows::System::VirtualKeyModifiers::Control, 'V', 0 };
+        if (const auto actionMap = settings.ActionMap())
+        {
+            const auto command = actionMap.GetActionByKeyChord(ctrlV);
+            const auto isPasteAction = command && command.ActionAndArgs().Action() == ShortcutAction::PasteText;
+            GetTermControl().EnableAgentPasteShortcutFallback(
+                !actionMap.IsKeyChordExplicitlyUnbound(ctrlV) && (!command || isPasteAction));
+        }
+        else
+        {
+            GetTermControl().EnableAgentPasteShortcutFallback(false);
+        }
     }
 
     winrt::Windows::Foundation::Size AgentPaneContent::MinimumSize()
     {
-        // Reserve 36px (top bar) on top of the inner control's minimum.
-        // The bottom bar is window-level chrome now, so it isn't part of
-        // this pane's minimum size.
+        // The responsive TUI's hard floor is seven rows: input(3),
+        // activity(1), chat(1), and a compact recommendation(2). Reserve
+        // six additional grid rows beyond TermControl's existing one-row
+        // minimum, plus the fixed 36px agent bar.
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             const auto inner = impl->MinimumSize();
-            return { inner.Width, inner.Height + 36.0f };
+            const auto rowHeight = std::max(1.0f, impl->GridUnitSize().Height);
+            return { inner.Width, inner.Height + (6.0f * rowHeight) + 36.0f };
         }
-        return { 1, 36.0f };
+        return { 1, 43.0f };
     }
 
     void AgentPaneContent::Focus(winrt::Windows::UI::Xaml::FocusState reason)

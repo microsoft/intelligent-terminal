@@ -280,6 +280,65 @@ async fn run_acp_app(
         .run_until(async move {
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let proposal_channels =
+                Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+            let (proposal_pipe_tx, mut proposal_pipe_rx) =
+                tokio::sync::mpsc::unbounded_channel();
+            let proposal_server_manager = Arc::clone(&proposal_channels);
+            let proposal_server_lifecycle = Arc::clone(&proposal_channels);
+            tokio::task::spawn_local(async move {
+                if let Err(error) =
+                    crate::agent_tools::action_proposal::pipe::run_server(
+                        proposal_server_manager,
+                        proposal_pipe_tx,
+                    )
+                    .await
+                {
+                    proposal_server_lifecycle.set_pipe_available(false);
+                    tracing::error!(
+                        target: "proposal_pipe",
+                        error = %format!("{error:#}"),
+                        "proposal pipe server stopped"
+                    );
+                }
+            });
+            let proposal_event_tx = event_tx.clone();
+            tokio::task::spawn_local(async move {
+                while let Some(event) = proposal_pipe_rx.recv().await {
+                    let app_event = match event {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Validate {
+                            context,
+                            payload,
+                            source,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposal {
+                            context,
+                            payload,
+                            source,
+                            responder,
+                        },
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Commit {
+                            proposal_id,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposalCommit {
+                            proposal_id,
+                            responder,
+                        },
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Invalidate {
+                            proposal_id,
+                            session_id,
+                        } => app::AppEvent::DirectTerminalActionProposalInvalidate {
+                            proposal_id,
+                            session_id,
+                        },
+                    };
+                    if proposal_event_tx.send(app_event).is_err() {
+                        break;
+                    }
+                }
+            });
 
             let evt_tx = event_tx.clone();
             tokio::task::spawn_local(event::read_crossterm_events(evt_tx));
@@ -427,8 +486,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // cancels any in-flight prompt for it; the next prompt on that
-            // tab lazily creates a fresh session.
+            // closes the session after cancelling any in-flight prompt; the
+            // next prompt on that tab lazily creates a fresh session.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
@@ -531,6 +590,29 @@ async fn run_acp_app(
                 None => None,
             };
             let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+            let is_host_agent_source =
+                matches!(&agent_source, crate::agent_source::AgentSource::Host);
+            // This snapshot was probed by the Windows host. A WSL agent must
+            // advertise/probe its own catalog rather than inheriting Host models.
+            let cloud_models = if is_host_agent_source {
+                config
+                    .cloud_models
+                    .as_deref()
+                    .and_then(|models| match serde_json::from_str(models) {
+                        Ok(models) => Some(models),
+                        Err(error) => {
+                            tracing::error!(
+                                target: "cloud_models",
+                                %error,
+                                "invalid --cloud-models metadata"
+                            );
+                            None
+                        }
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
@@ -607,19 +689,19 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = config.acp_model.clone();
-                // Per-tab agent identity passed through to the multi-agent
-                // master via the initialize handshake. The helper receives
-                // this from the CLI boundary; pre-multi-agent it dropped it
-                // (master owned the single agent CLI).
+                let cloud_models_for_client = cloud_models.clone();
+                // Pass per-tab agent identity through the initialize handshake.
                 let agent_id = config.agent_id.clone();
                 let agent_source_for_client = agent_source.clone();
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
                         source_cwd,
@@ -638,6 +720,7 @@ async fn run_acp_app(
                         shell_mgr_for_pipe,
                         wt_connected,
                         false, // post_login_reconnect: first connection, no authenticate needed
+                        proposal_channels_for_pipe,
                     )
                     .await
                     {
@@ -656,10 +739,17 @@ async fn run_acp_app(
                             &e,
                             protocol::acp::failure::HandshakeStage::Initialize,
                         );
+                        let message = match &failure {
+                            protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                detail,
+                                ..
+                            } => detail.clone(),
+                            _ => format!("helper ACP transport failed: {e:#}"),
+                        };
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
                             failure,
-                            message: format!("helper ACP transport failed: {e:#}"),
+                            message,
                         });
                     }
                 });
@@ -693,6 +783,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
@@ -703,7 +794,42 @@ async fn run_acp_app(
                 Arc::clone(&delegate_agents),
                 config.agent.clone(),
                 config.acp_model.clone(),
+                config.follows_global_acp_model,
             );
+            app_state.set_cloud_models(cloud_models);
+            if is_host_agent_source {
+                match config.custom_models.as_deref() {
+                    Some(custom_models) => match serde_json::from_str(custom_models) {
+                        Ok(models) => app_state.set_custom_model_config(
+                            models,
+                            config.custom_model_selection.clone(),
+                        ),
+                        Err(error) => tracing::error!(
+                            target: "custom_models",
+                            %error,
+                            "invalid --custom-models metadata"
+                        ),
+                    },
+                    None => app_state.set_custom_model_config(
+                        Vec::new(),
+                        config.custom_model_selection.clone(),
+                    ),
+                }
+            } else {
+                if config.custom_models.is_some() || config.custom_model_selection.is_some() {
+                    tracing::warn!(
+                        target: "custom_models",
+                        agent_source = %agent_source,
+                        "ignoring Host custom-provider startup metadata for WSL helper"
+            );
+                }
+                app_state.set_custom_model_config(Vec::new(), None);
+            }
+            // Backward compatibility: older Terminal builds supplied the full
+            // custom catalog on argv. New builds deliver it after Connected
+            // over agent_config_changed, so the initial status requests it.
+            app_state
+                .set_host_catalog_ready(!is_host_agent_source || config.custom_models.is_some());
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial
@@ -1032,6 +1158,18 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+            else if let Some(pane_id) = std::env::var("WT_SESSION")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+            {
+                tracing::info!(
+                    target: "tab_session",
+                    pane_id = %pane_id,
+                    "seeded app_state.pane_id from WT_SESSION fallback"
+                );
+                app_state.pane_id = Some(pane_id);
             }
 
             // WT knows the owning window authoritatively when it creates the

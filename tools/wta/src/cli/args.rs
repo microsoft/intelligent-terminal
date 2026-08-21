@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 
-use crate::{agent_hooks_installer, agent_registry, agent_sessions, resolve_command};
+use crate::{
+    agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -77,6 +79,29 @@ pub(crate) struct Cli {
     /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     pub(crate) acp_model: Option<String>,
+
+    /// This helper inherited `acp_model` from the global agent settings rather
+    /// than a per-tab/profile pin. Hidden because TerminalPage is the
+    /// authoritative source of this scope.
+    #[arg(long, hide = true)]
+    pub(crate) follows_global_acp_model: bool,
+
+    /// Model configured through an Intelligent Terminal custom provider.
+    /// Bounded helper bootstrap metadata; provider credentials remain
+    /// master-only and the full catalog arrives over the protocol.
+    #[arg(long, hide = true)]
+    pub(crate) custom_model_selection: Option<String>,
+
+    /// Legacy compatibility flag for old hosts that placed the full
+    /// credential-free custom-provider catalog on argv. New hosts deliver it
+    /// after helper connection over `agent_config_changed`.
+    #[arg(long, hide = true)]
+    pub(crate) custom_models: Option<String>,
+
+    /// Legacy compatibility flag for old hosts that placed the cloud/native
+    /// model catalog on argv. New hosts deliver it after helper connection.
+    #[arg(long, hide = true)]
+    pub(crate) cloud_models: Option<String>,
 
     /// Delegate agent CLI command (e.g. "codex")
     #[arg(long)]
@@ -233,10 +258,10 @@ pub(crate) enum Command {
     /// Identify a command using sources applicable to the active shell
     ResolveCommand {
         /// Command name to identify (without arguments or a path)
-        #[arg(value_parser = resolve_command::parse_non_empty)]
+        #[arg(value_parser = command_resolution::parse_non_empty)]
         token: String,
         /// Active shell identity; PowerShell hosts also load their user profile
-        #[arg(long, default_value = "pwsh.exe", value_parser = resolve_command::parse_non_empty)]
+        #[arg(long, default_value = "pwsh.exe", value_parser = command_resolution::parse_non_empty)]
         shell: String,
         /// Working directory to inspect
         #[arg(long)]
@@ -348,6 +373,13 @@ pub(crate) enum Command {
         /// Model override for the delegate agent
         #[arg(long)]
         delegate_model: Option<String>,
+        /// Exact execution source (host or wsl). Defaults to host when
+        /// omitted; never inferred from the active pane's shell/distro
+        #[arg(long)]
+        delegate_source: Option<String>,
+        /// WSL distro for an explicit --delegate-source wsl selection
+        #[arg(long)]
+        delegate_wsl_distro: Option<String>,
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
@@ -419,6 +451,19 @@ pub(crate) enum Command {
         #[arg(long)]
         cli: Option<String>,
     },
+    /// Submit a typed terminal-action proposal directly to the Helper that
+    /// owns the current turn. Intended to be run by an agent session using
+    /// the exact canonical command injected into its prompt.
+    #[command(hide = true)]
+    ProposeTerminalActions {
+        /// Opaque per-turn channel from the Helper's runtime instruction.
+        #[arg(long)]
+        channel: String,
+        /// Compact versioned proposal JSON. stdin and payload files are
+        /// intentionally unsupported so permission matching has one form.
+        #[arg(long)]
+        payload_json: String,
+    },
 }
 
 /// Subcommands for `wta sessions`.
@@ -468,7 +513,8 @@ impl SessionsOriginArg {
 #[derive(Subcommand, Debug)]
 pub(crate) enum HooksAction {
     /// (Re-)install the wt-agent-hooks bridge. Installs for all supported
-    /// CLIs by default, or a single CLI with `--cli`.
+    /// CLIs by default, or a single CLI with `--cli`. With `--json` returns
+    /// a structured per-CLI outcome report.
     Install {
         /// Which CLI to install for. Default: `all`.
         #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]

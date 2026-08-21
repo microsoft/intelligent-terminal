@@ -1602,6 +1602,20 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             return true;
         }
 
+        if (_agentPasteShortcutFallbackEnabled &&
+            vkey == 'V' &&
+            modifiers.IsCtrlPressed() &&
+            !modifiers.IsShiftPressed() &&
+            !modifiers.IsAltPressed() &&
+            !modifiers.IsWinPressed())
+        {
+            if (keyDown)
+            {
+                _interactivity.RequestPasteTextFromClipboard();
+            }
+            return true;
+        }
+
         // Short-circuit isReadOnly check to avoid warning dialog
         if (_core.IsInReadOnlyMode())
         {
@@ -1780,6 +1794,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // character, it's not an alt-up event, and we still have an ongoing composition.
             _altNumpadState = {};
         }
+
+        // If a composition just ended, its text is still queued up inside TSF. Hand it to
+        // the connection now, so that a key the IME passed on to us can't reach the
+        // connection before the text it finalized - neither by being forwarded to the PTY,
+        // nor by triggering an action bound to it. GH#20244
+        GetTSFHandle().FlushPendingComposition();
 
         // GH#2235: Terminal::Settings hasn't been modified to differentiate
         // between AltGr and Ctrl+Alt yet.
@@ -2041,6 +2061,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                                                        TermControl::GetPointerUpdateKind(point),
                                                                        ControlKeyStates(args.KeyModifiers()),
                                                                        pixelPosition);
+            _reassertCompletedTurnActionPointer();
 
             // GH#9109 - Only start an auto-scroll when the drag actually
             // started within our bounds. Otherwise, someone could start a drag
@@ -2656,6 +2677,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         if (!_IsClosing())
         {
             _closing = true;
+            _restoreCompletedTurnActionPointer();
             if (_automationPeer)
             {
                 auto autoPeerImpl{ winrt::get_self<implementation::TermControlAutomationPeer>(_automationPeer) };
@@ -3478,6 +3500,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::_PointerExitedHandler(const Windows::Foundation::IInspectable& /*sender*/,
                                             const Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
     {
+        _restoreCompletedTurnActionPointer();
         _core.ClearHoveredCell();
     }
 
@@ -3486,11 +3509,20 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         const auto lastHoveredCell = _core.HoveredCell();
         if (!lastHoveredCell)
         {
+            _setCompletedTurnActionHover(CompletedTurnAction::None);
             return;
         }
 
         auto uriText = _core.HoveredUriText();
         if (uriText.empty())
+        {
+            _setCompletedTurnActionHover(CompletedTurnAction::None);
+            return;
+        }
+
+        const auto completedTurnAction = ParseCompletedTurnActionHyperlink(uriText);
+        _setCompletedTurnActionHover(completedTurnAction);
+        if (completedTurnAction != CompletedTurnAction::None)
         {
             return;
         }
@@ -3548,6 +3580,53 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // Move the border to the top left corner of the cell
         OverlayCanvas().SetLeft(HyperlinkTooltipBorder(), locationInDIPs.X - offset.x);
         OverlayCanvas().SetTop(HyperlinkTooltipBorder(), locationInDIPs.Y - offset.y);
+    }
+
+    void TermControl::_setCompletedTurnActionHover(const CompletedTurnAction action)
+    {
+        const auto hoveringAction = action != CompletedTurnAction::None;
+        if (hoveringAction)
+        {
+            LinkTip().IsOpen(false);
+            if (const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread())
+            {
+                if (!_completedTurnActionHovered)
+                {
+                    _completedTurnPriorPointerCursor = coreWindow.PointerCursor();
+                }
+                coreWindow.PointerCursor(Windows::UI::Core::CoreCursor{ Windows::UI::Core::CoreCursorType::Hand, 0 });
+                _completedTurnActionHovered = true;
+            }
+        }
+        else if (!hoveringAction)
+        {
+            _restoreCompletedTurnActionPointer();
+        }
+    }
+
+    void TermControl::_restoreCompletedTurnActionPointer()
+    {
+        if (!_completedTurnActionHovered)
+        {
+            return;
+        }
+        if (const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread())
+        {
+            coreWindow.PointerCursor(_completedTurnPriorPointerCursor);
+        }
+        _completedTurnPriorPointerCursor = nullptr;
+        _completedTurnActionHovered = false;
+    }
+
+    void TermControl::_reassertCompletedTurnActionPointer()
+    {
+        if (_completedTurnActionHovered)
+        {
+            if (const auto coreWindow = Windows::UI::Core::CoreWindow::GetForCurrentThread())
+            {
+                coreWindow.PointerCursor(Windows::UI::Core::CoreCursor{ Windows::UI::Core::CoreCursorType::Hand, 0 });
+            }
+        }
     }
 
     safe_void_coroutine TermControl::_updateSelectionMarkers(IInspectable /*sender*/, Control::UpdateSelectionMarkersEventArgs args)
@@ -3860,6 +3939,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void TermControl::_coreOutputIdle(const IInspectable& /*sender*/, const IInspectable& /*args*/)
     {
+        get_self<ControlCore>(_core)->RefreshHoveredCell();
         _refreshSearch();
     }
 

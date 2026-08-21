@@ -8,6 +8,7 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:local="using:Microsoft.Terminal.Settings.Editor"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:mtu="using:Microsoft.Terminal.UI"
       xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
       mc:Ignorable="d">
 
@@ -168,6 +169,117 @@
                 </Grid>
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="EmptyCustomModelProviders"
+                                    x:Uid="AIAgents_CustomModels"
+                                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
+                <StackPanel MaxWidth="400"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button x:Uid="AIAgents_CustomProviderAdd"
+                            HorizontalAlignment="Right"
+                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
+                </StackPanel>
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="CustomModelProvidersExpander"
+                                    x:Uid="AIAgents_CustomModels"
+                                    StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}"
+                                    Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
+                <local:SettingContainer.CurrentValue>
+                    <Button x:Uid="AIAgents_CustomProviderAdd"
+                            VerticalAlignment="Center"
+                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                </local:SettingContainer.CurrentValue>
+                <StackPanel>
+                    <TextBlock Margin="0,12,0,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:CustomModelProviderEntry">
+                                <Border BorderThickness="0,1,0,0"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        Padding="0,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{x:Bind ModelsDisplayText, Mode=OneWay}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Opacity="0.6"
+                                                       Text="{x:Bind BaseUrl, Mode=OneWay}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="6"
+                                                        Visibility="{x:Bind IsApiKeyMissing, Mode=OneWay}">
+                                                <FontIcon FontSize="12"
+                                                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                          Glyph="&#xE814;" />
+                                                <TextBlock x:Uid="AIAgents_CustomProviderApiKeyMissing"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                x:Uid="AIAgents_CustomProviderRemove"
+                                                VerticalAlignment="Center"
+                                                Click="{x:Bind Remove}"
+                                                MinWidth="120" />
+                                        <muxc:InfoBar Grid.Row="1"
+                                                      Grid.ColumnSpan="2"
+                                                      Margin="0,12,0,0"
+                                                      IsClosable="False"
+                                                      IsOpen="{x:Bind HasRemovalError, Mode=OneWay}"
+                                                      Message="{x:Bind RemovalErrorMessage, Mode=OneWay}"
+                                                      Severity="Error"
+                                                      Visibility="{x:Bind HasRemovalError, Mode=OneWay}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="0,16,0,16"
+                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                        <StackPanel Spacing="8">
+                            <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                                     Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox x:Uid="AIAgents_CustomModelId"
+                                     Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                         Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Uid="AIAgents_CustomProviderSave"
+                                        IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
+                                        Click="{x:Bind ViewModel.SaveCustomModelProvider}"
+                                        Style="{StaticResource AccentButtonStyle}" />
+                                <Button x:Uid="AIAgents_CustomProviderCancel"
+                                        Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </local:SettingContainer>
+
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
                                     x:Uid="AIAgents_PanePosition">
@@ -176,6 +288,14 @@
                           ItemsSource="{x:Bind ViewModel.AgentPanePositionList, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.CurrentAgentPanePosition, Mode=TwoWay}"
                           Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
+                        x:Uid="AIAgents_ShowTokenUsageAndCost">
+                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  Automatic error detection (parent) + Automatic error
@@ -315,8 +435,8 @@
                         </StackPanel>
                     </Border>
                     <!--  Per-CLI rows surface installed or partial hook state.
-                          OpenCode also appears when its CLI is detected so new
-                          users can see that hook integration is supported.  -->
+                          A row disappears once its hooks are removed, so the
+                          Remove button is never shown with nothing to remove.  -->
                     <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
                             BorderThickness="0,1,0,0"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -448,7 +568,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveOpenCodeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveOpenCodeHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                        </Grid>
                     </Border>

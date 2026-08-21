@@ -296,10 +296,8 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
-        let result = match bind_choice_target(
-            &mut exec.choice,
-            exec.context.target_pane_id.as_deref(),
-        ) {
+        let result =
+            match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
             Ok(()) => {
                 execute_choice(
                     &exec.choice,
@@ -527,9 +525,7 @@ async fn execute_choice(
                     "Opened {} pane {}.",
                     target_label, pane_id
                 )));
-                if let (Some(session_id), Some(runtime)) =
-                    (pinned_session_id.as_deref(), runtime)
-                {
+                if let (Some(session_id), Some(runtime)) = (pinned_session_id.as_deref(), runtime) {
                     let event = crate::agent_sessions::SessionEvent::SessionStarted {
                         key: session_id.to_string(),
                         cli_source: crate::agent_sessions::CliSource::from(
@@ -597,7 +593,12 @@ async fn execute_choice(
                 let pane_id = match target {
                     OpenTarget::Tab => {
                         let result = shell_mgr
-                            .wt_create_tab(None, cwd.as_deref(), title.as_deref(), profile.as_deref())
+                            .wt_create_tab(
+                                None,
+                                cwd.as_deref(),
+                                title.as_deref(),
+                                profile.as_deref(),
+                            )
                             .await
                             .context("failed to create tab")?;
                         coordinator_log(&format!(
@@ -609,7 +610,14 @@ async fn execute_choice(
                     OpenTarget::Panel => {
                         let parent = required_parent(parent.as_deref(), "open")?;
                         let result = shell_mgr
-                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None, profile.as_deref())
+                            .wt_split_pane(
+                                parent,
+                                None,
+                                cwd.as_deref(),
+                                direction.as_deref(),
+                                None,
+                                profile.as_deref(),
+                            )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
                         coordinator_log(&format!(
@@ -636,7 +644,7 @@ async fn execute_choice(
     Ok(())
 }
 
-fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
+pub(crate) fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
     if !(1..=3).contains(&set.choices.len()) {
         bail!("expected 1 to 3 choices, got {}", set.choices.len());
     }
@@ -661,6 +669,45 @@ fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
     Ok(())
 }
 
+/// Remove choices that would send input back into the helper's own pane.
+pub(crate) fn validate_recommendation_set_for_coordinator_target(
+    set: &RecommendationSet,
+    coordinator_target: Option<&str>,
+) -> Result<RecommendationSet> {
+    let Some(coordinator_target) = coordinator_target
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(set.clone());
+    };
+
+    let choices: Vec<RecommendationChoice> = set
+        .choices
+        .iter()
+        .filter(|choice| {
+            !choice.actions.iter().any(|action| {
+                matches!(
+                    action,
+                    RecommendedAction::Send { parent, .. } if parent == coordinator_target
+                )
+            })
+        })
+        .cloned()
+        .collect();
+
+    if choices.is_empty() {
+        bail!("all choices target the current coordinator pane {coordinator_target}");
+    }
+
+    let recommended_choice = set
+        .recommended_choice
+        .filter(|number| choices.iter().any(|choice| choice.choice == *number));
+    Ok(RecommendationSet {
+        recommended_choice,
+        choices,
+    })
+}
+
 fn validate_action(action: &RecommendedAction) -> Result<()> {
     match action {
         RecommendedAction::Send { parent: _, input } => {
@@ -668,7 +715,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {
-            target,
             parent,
             input,
             agent,
@@ -682,10 +728,9 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(agent) = agent.as_deref() {
                 ensure_non_empty("agent", agent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
         RecommendedAction::Open {
-            target,
             parent,
             direction,
             ..
@@ -693,22 +738,19 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
     }
 
     Ok(())
 }
 
-fn validate_direction(direction: Option<&str>, target: &OpenTarget) -> Result<()> {
+fn validate_direction(direction: Option<&str>) -> Result<()> {
     let Some(value) = direction else {
         return Ok(());
     };
     if value.is_empty() {
         bail!("field 'direction' must not be empty");
-    }
-    if matches!(target, OpenTarget::Tab) {
-        bail!("field 'direction' is only valid when target is 'panel'");
     }
     match value {
         "right" | "left" | "up" | "down" | "auto" | "automatic" => Ok(()),
@@ -1095,8 +1137,14 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     if lower.ends_with(".exe") || lower.ends_with(".com") {
         return false;
     }
-    let basename = lower.rsplit(|ch: char| ch == '\\' || ch == '/').next().unwrap_or(&lower);
-    if matches!(basename, "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe") {
+    let basename = lower
+        .rsplit(|ch: char| ch == '\\' || ch == '/')
+        .next()
+        .unwrap_or(&lower);
+    if matches!(
+        basename,
+        "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    ) {
         return false;
     }
 
@@ -1121,7 +1169,6 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     // No .exe found on PATH — likely a .cmd/.bat shim, needs wrapping.
     true
 }
-
 
 pub fn split_windows_commandline(commandline: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -1280,9 +1327,8 @@ pub(crate) fn build_wsl_delegate_commandline(
     if agent_cmd.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
-    let profile = agent_registry::lookup_profile_by_id(
-        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
-    );
+    let profile =
+        agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
 
     // Agent invocation: the CLI tokens plus model / session-id flags, each
     // single-quoted for the inner bash.
@@ -1654,13 +1700,13 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_delegate_launch_commandline, build_delegate_launch_commandline_with_session,
-        build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
-        build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
-        bind_choice_target, default_delegate_agent_runtimes, escape_for_intermediate_shell,
-        execute_choice, is_direct_known_agent_command, parse_autofix_response,
-        parse_recommendation_set, pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
-        resolve_created_pane_id, sanitize_windows_agent_cwd,
+        bind_choice_target, build_delegate_launch_commandline,
+        build_delegate_launch_commandline_with_session, build_pwsh_base64_launch,
+        build_shell_multiline_delegate_launch, build_windows_powershell_base64_launch,
+        build_wsl_delegate_commandline, default_delegate_agent_runtimes,
+        escape_for_intermediate_shell, execute_choice, is_direct_known_agent_command,
+        parse_autofix_response, parse_recommendation_set, pinned_session_id_for_runtime,
+        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
         AutofixDecision, DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget,
         RecommendationChoice, RecommendedAction,
     };
@@ -1795,8 +1841,7 @@ mod tests {
     #[tokio::test]
     async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
         let channel = Arc::new(RecordingWtChannel::default());
-        let shell_mgr =
-            ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+        let shell_mgr = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         let choice = RecommendationChoice {
             choice: 1,
@@ -1849,8 +1894,11 @@ mod tests {
             .find(|runtime| runtime.id == "copilot")
             .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Fix the build and report back"), None)
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Fix the build and report back"),
+            None,
+        )
                 .unwrap();
 
         assert!(!commandline.contains("--model"));
@@ -2036,7 +2084,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.65.0" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -2045,7 +2093,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };
@@ -2091,8 +2139,8 @@ mod tests {
             model: None,
         };
 
-        let session_id = pinned_session_id_for_runtime(&runtime, true)
-            .expect("copilot should support pinning");
+        let session_id =
+            pinned_session_id_for_runtime(&runtime, true).expect("copilot should support pinning");
         assert!(uuid::Uuid::parse_str(&session_id).is_ok());
     }
 
@@ -2151,8 +2199,11 @@ mod tests {
         .find(|runtime| runtime.id == "copilot")
         .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Inspect the repo and summarize"), None)
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Inspect the repo and summarize"),
+            None,
+        )
                 .unwrap();
 
         assert_eq!(
@@ -2491,18 +2542,27 @@ mod tests {
         // No Windows home available → drop the unusable cwd (None), letting WT
         // pick a default rather than crashing the agent CLI on a POSIX path.
         assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), None), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")),
+            None
+        );
     }
 
     #[test]
     fn sanitize_cwd_keeps_unc_path() {
         // Forward-slash and backslash UNC paths are valid Windows paths — keep.
         assert_eq!(
-            sanitize_windows_agent_cwd(Some("//wsl.localhost/Ubuntu/home/user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some("//wsl.localhost/Ubuntu/home/user"),
+                Some(r"C:\Users\me")
+            ),
             Some("//wsl.localhost/Ubuntu/home/user".to_string())
         );
         assert_eq!(
-            sanitize_windows_agent_cwd(Some(r"\\wsl.localhost\Ubuntu\home\user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some(r"\\wsl.localhost\Ubuntu\home\user"),
+                Some(r"C:\Users\me")
+            ),
             Some(r"\\wsl.localhost\Ubuntu\home\user".to_string())
         );
     }
@@ -2510,7 +2570,10 @@ mod tests {
     #[test]
     fn sanitize_cwd_none_and_blank_stay_none() {
         assert_eq!(sanitize_windows_agent_cwd(None, Some(r"C:\Users\me")), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")),
+            None
+        );
     }
 
     #[test]
@@ -2547,7 +2610,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_open_tab_with_direction() {
+    fn accepts_open_tab_with_direction() {
         let text = r#"```json
 {
   "recommended_choice": 1,
@@ -2567,7 +2630,7 @@ mod tests {
 }
 ```"#;
 
-        assert!(parse_recommendation_set(text).is_err());
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
@@ -2853,7 +2916,10 @@ mod tests {
         let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).expect("cmd");
 
         // The whole command is a single line — no raw newline rides the commandline.
-        assert!(!cmd.contains('\n'), "commandline must be single-line: {cmd}");
+        assert!(
+            !cmd.contains('\n'),
+            "commandline must be single-line: {cmd}"
+        );
         // The raw prompt and its shell syntax characters never appear literally.
         assert!(!cmd.contains("$(whoami)"));
         assert!(!cmd.contains("%TEMP%"));
@@ -2863,14 +2929,20 @@ mod tests {
         assert!(cmd.contains("base64 -d <<<"));
         // The decode wrapper is escaped for the wsl.exe expansion pass.
         assert!(cmd.contains("\\$(base64 -d"), "escaped $() missing: {cmd}");
-        assert!(cmd.contains("exec 'claude' \"\\$prompt\""), "exec form: {cmd}");
+        assert!(
+            cmd.contains("exec 'claude' \"\\$prompt\""),
+            "exec form: {cmd}"
+        );
     }
 
     #[test]
     fn wsl_delegate_uses_prompt_flag_for_flag_agents() {
         let runtime = base64_runtime("copilot"); // -i flag agent
         let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
-        assert!(cmd.contains("'-i' \"\\$prompt\""), "flag prompt form: {cmd}");
+        assert!(
+            cmd.contains("'-i' \"\\$prompt\""),
+            "flag prompt form: {cmd}"
+        );
     }
 
     #[test]
@@ -3277,7 +3349,7 @@ mod tests {
             r#""C:\npm tools\codex.cmd" --search"#
         ));
         assert!(!is_direct_known_agent_command(
-            "npx -y @agentclientprotocol/codex-acp@1.1.4"
+            "npx -y @agentclientprotocol/codex-acp@1.1.13"
         ));
     }
 

@@ -11,19 +11,100 @@
 #include "../inc/WtaProcess.h"
 #include "AgentPaneLog.h"
 
+namespace
+{
+    // Must remain strictly greater than WTA's 15-second
+    // SESSION_CLOSE_TIMEOUT in tools/wta/src/master/mod.rs.
+    constexpr auto WtaSessionCloseGracePeriod{ std::chrono::seconds{ 16 } };
+}
+
+namespace winrt::TerminalApp::implementation::details
+{
+    std::optional<std::wstring> BuildEnvironmentBlock(
+        const std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept
+    {
+        try
+        {
+            if (overrides.empty())
+            {
+                return std::wstring{};
+            }
+
+            for (const auto& override : overrides)
+            {
+                if (!IsValidEnvironmentOverride(override.first, override.second))
+                {
+                    _agentPaneLog(
+                        "rejecting invalid wta-master environment override name_length=" + std::to_string(override.first.size()));
+                    return std::nullopt;
+                }
+            }
+
+            const auto isOverridden = [&](const std::wstring_view name) {
+                return std::ranges::any_of(overrides, [&](const auto& item) {
+                    return _wcsicmp(std::wstring{ name }.c_str(), item.first.c_str()) == 0;
+                });
+            };
+
+            std::vector<std::wstring> entries;
+            const auto environment = GetEnvironmentStringsW();
+            THROW_LAST_ERROR_IF_NULL(environment);
+            const auto freeEnvironment = wil::scope_exit([&]() noexcept { FreeEnvironmentStringsW(environment); });
+
+            for (const wchar_t* current = environment; *current;)
+            {
+                const std::wstring_view entry{ current };
+                const auto separator = entry.find(L'=', entry.starts_with(L'=') ? 1 : 0);
+                const auto name = separator == std::wstring_view::npos ? entry : entry.substr(0, separator);
+                if (!isOverridden(name))
+                {
+                    entries.emplace_back(entry);
+                }
+                current += entry.size() + 1;
+            }
+
+            for (const auto& [name, value] : overrides)
+            {
+                entries.emplace_back(name + L'=' + value);
+            }
+            std::ranges::sort(entries, [](const auto& left, const auto& right) {
+                return _wcsicmp(left.c_str(), right.c_str()) < 0;
+            });
+
+            std::wstring block;
+            for (const auto& entry : entries)
+            {
+                block.append(entry);
+                block.push_back(L'\0');
+            }
+            block.push_back(L'\0');
+            return block;
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return std::nullopt;
+        }
+    }
+}
+
 namespace winrt::TerminalApp::implementation
 {
     SharedWta& SharedWta::Instance()
     {
-        // Magic-static initialization is thread-safe in C++11+.
-        static SharedWta s_instance;
-        return s_instance;
+        // Initialization remains thread-safe, but this process singleton must
+        // outlive delayed ReleasePaneAfterSessionClose coroutines. At process
+        // exit Windows closes the Job handle, preserving KILL_ON_JOB_CLOSE
+        // cleanup for the master and its descendants.
+        static auto* const s_instance = new SharedWta;
+        return *s_instance;
     }
 
     SharedWta::~SharedWta()
     {
-        // Process is exiting; tear wta down deterministically via
-        // KILL_ON_JOB_CLOSE rather than letting handles leak.
+        // Process is exiting, so a graceful per-session close can no longer
+        // delay app shutdown. KILL_ON_JOB_CLOSE deterministically reclaims the
+        // master, every agent CLI, and their MCP descendants without orphans.
         //
         // Wait callback synchronisation: cancel the wait WITH a
         // blocking unregister BEFORE we touch the fields it might
@@ -76,7 +157,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool SharedWta::AcquirePane(const std::wstring_view wtaPath,
-                                std::span<const std::wstring> extraArgs)
+                                std::span<const std::wstring> extraArgs,
+                                std::span<const std::pair<std::wstring, std::wstring>> environment)
     {
         if (wtaPath.empty())
         {
@@ -95,7 +177,7 @@ namespace winrt::TerminalApp::implementation
         // it (and ignores it under the flag).
         if (!_process.is_valid() && !_degraded)
         {
-            if (!_SpawnLocked(wtaPath, extraArgs))
+            if (!_SpawnLocked(wtaPath, extraArgs, environment))
             {
                 return false;
             }
@@ -122,6 +204,12 @@ namespace winrt::TerminalApp::implementation
             // no orphaned helpers left to keep consistent with.
             _degraded = false;
         }
+    }
+
+    winrt::fire_and_forget SharedWta::ReleasePaneAfterSessionClose()
+    {
+        co_await winrt::resume_after(WtaSessionCloseGracePeriod);
+        Instance().ReleasePane();
     }
 
     bool SharedWta::Restart()
@@ -181,7 +269,7 @@ namespace winrt::TerminalApp::implementation
         // holding refs for the panes it's about to close-and-reopen, and
         // the matching ReleasePane / AcquirePane pair will balance out.
         _CleanupLocked();
-        const bool spawned = _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs);
+        const bool spawned = _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
         if (spawned)
         {
             // Stamp the restart (not just the spawn) so the fan-out dedup above
@@ -192,7 +280,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool SharedWta::Restart(const std::wstring_view wtaPath,
-                            std::span<const std::wstring> extraArgs)
+                            std::span<const std::wstring> extraArgs,
+                            std::span<const std::pair<std::wstring, std::wstring>> environment)
     {
         if (wtaPath.empty())
         {
@@ -220,7 +309,9 @@ namespace winrt::TerminalApp::implementation
         // both unnecessary and disruptive to helpers in other windows.
         const bool sameArgs = _cachedWtaPath == wtaPath &&
                               _cachedExtraArgs.size() == extraArgs.size() &&
-                              std::equal(_cachedExtraArgs.begin(), _cachedExtraArgs.end(), extraArgs.begin());
+                              std::equal(_cachedExtraArgs.begin(), _cachedExtraArgs.end(), extraArgs.begin()) &&
+                              _cachedEnvironment.size() == environment.size() &&
+                              std::equal(_cachedEnvironment.begin(), _cachedEnvironment.end(), environment.begin());
         if (sameArgs)
         {
             return true;
@@ -233,7 +324,7 @@ namespace winrt::TerminalApp::implementation
         // refcount is left alone for the same reason as the cached-args
         // overload — outgoing ReleasePane / incoming AcquirePane balance.
         _CleanupLocked();
-        const bool spawned = _SpawnLocked(wtaPath, extraArgs);
+        const bool spawned = _SpawnLocked(wtaPath, extraArgs, environment);
         if (spawned)
         {
             _lastRestartRequest = std::chrono::steady_clock::now();
@@ -242,7 +333,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
-                                 std::span<const std::wstring> extraArgs)
+                                 std::span<const std::wstring> extraArgs,
+                                 std::span<const std::pair<std::wstring, std::wstring>> environment)
     {
         // Lazily allocate the master pipe name once per process. We
         // intentionally keep it across master respawns: helpers
@@ -326,9 +418,10 @@ namespace winrt::TerminalApp::implementation
         // Refresh the current process's PATH from the Windows registry
         // so the master (which inherits our env) sees PATH entries added
         // after Terminal launched (e.g. WinGet\Links after FRE installs
-        // copilot). Using RefreshProcessPath + lpEnvironment=nullptr
-        // preserves all process-only variables (WT_COM_CLSID, etc.)
-        // that regenerate() would drop.
+        // copilot). With no overrides, lpEnvironment=nullptr inherits it
+        // directly; with overrides, BuildEnvironmentBlock clones it first.
+        // Both preserve process-only variables (WT_COM_CLSID, etc.) that
+        // regenerate() would drop.
         try
         {
             ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
@@ -336,6 +429,12 @@ namespace winrt::TerminalApp::implementation
         catch (...)
         {
             LOG_CAUGHT_EXCEPTION();
+        }
+
+        auto environmentBlock = details::BuildEnvironmentBlock(environment);
+        if (!environmentBlock)
+        {
+            return false;
         }
 
         std::wstring mutableCmdLine{ commandline };
@@ -346,7 +445,7 @@ namespace winrt::TerminalApp::implementation
                 /* lpThreadAttributes   */ nullptr,
                 /* bInheritHandles      */ FALSE,
                 /* dwCreationFlags      */ creationFlags,
-                /* lpEnvironment        */ nullptr,
+                /* lpEnvironment        */ environmentBlock->empty() ? nullptr : environmentBlock->data(),
                 /* lpCurrentDirectory   */ nullptr,
                 /* lpStartupInfo        */ &si,
                 /* lpProcessInformation */ &pi))
@@ -360,7 +459,7 @@ namespace winrt::TerminalApp::implementation
 
         // Containment: a Job Object with KILL_ON_JOB_CLOSE binds
         // wta's lifetime to ours. When the last pane releases (or
-        // Terminal exits and the destructor runs), the job handle
+        // Terminal exits and Windows closes the final handle), the job handle
         // drops and the OS terminates wta + every descendant it
         // spawned. Any failure here MUST TerminateProcess to avoid
         // leaking a suspended-then-uncontained wta.
@@ -428,6 +527,7 @@ namespace winrt::TerminalApp::implementation
         // leave the previous cache intact.
         _cachedWtaPath.assign(wtaPath);
         _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
+        _cachedEnvironment.assign(environment.begin(), environment.end());
         _lastRespawn = std::chrono::steady_clock::now();
         return true;
     }

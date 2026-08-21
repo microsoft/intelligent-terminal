@@ -274,7 +274,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         auto hyperlink = _core->GetHyperlink(terminalPosition.to_core_point());
         if (WI_IsFlagSet(buttonState, MouseButtonState::IsLeftButtonDown) &&
             ctrlEnabled &&
-            !hyperlink.empty())
+            !hyperlink.empty() &&
+            ParseCompletedTurnActionHyperlink(hyperlink) == CompletedTurnAction::None)
         {
             const auto clickCount = _numberOfClicks(pixelPosition, timestamp);
             // Handle hyper-link only on the first click to prevent multiple activations

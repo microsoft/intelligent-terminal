@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "AgentPaneContent.g.h"
+#include "AgentUsage.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
 
@@ -108,6 +109,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetSuggestionTitle() const noexcept { return _suggestionTitle; }
         winrt::hstring GetDetectedSummary() const noexcept { return _detectedSummary; }
         winrt::hstring GetAgentPanePosition() const noexcept { return _agentPanePosition; }
+        [[nodiscard]] bool ApplyAgentUsage(const Json::Value& usage);
+        const std::vector<::TerminalApp::AgentUsage::Item>& GetAgentUsage() const noexcept { return _agentUsage; }
 
         // Fired whenever cached bottom-bar-relevant state changes (autofix
         // state, sessions view, agent pane position). The outer page
@@ -149,7 +152,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
 
-        // When true, the bar replaces "<agent> <version>" with "Agent sessions"
+        // When true, the bar replaces the agent/model label with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
@@ -161,8 +164,10 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _hotkeyHint{};
         winrt::hstring _suggestionTitle{};
         winrt::hstring _detectedSummary{};
-        // Current AgentPanePosition for icon orientation. Set by
-        // TerminalPage on creation + on settings change.
+        std::vector<::TerminalApp::AgentUsage::Item> _agentUsage;
+        // Effective per-tab AgentPanePosition for icon orientation.
+        // TerminalPage updates it from the Tab runtime override or global
+        // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
 
         // Source-tab StableId stashed during a cross-window agent-pane drag

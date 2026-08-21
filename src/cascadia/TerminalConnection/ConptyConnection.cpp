@@ -79,22 +79,46 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
             }
 
-            // Hand the WTA log directory to the agent CLIs' PowerShell hooks
-            // (send-event.ps1) that run inside this shell. They can't resolve
-            // the package-private path themselves — a hook process is
-            // unpackaged and only sees the un-redirected %LOCALAPPDATA%, with
-            // no way to learn the package family name — so we inject the
-            // already-resolved path here, the same way WT_COM_CLSID is. (The
-            // Rust side sets the same var in spawn.rs for agent-pane CLIs,
-            // which don't come through ConptyConnection.) Must be injected
-            // here for the same reason as WT_COM_CLSID: regenerate() builds
-            // _initialEnv from the registry, not the process environment block.
+            // Directory hook integrations may write diagnostics into.
+            //
+            // Two consumers, with different lifetimes. The pre-0.1.5 PowerShell
+            // bridge wrote its ENTER/DISPATCHED trace here and can still be
+            // cached on disk for one agent lifetime after an upgrade replaces
+            // it. The OpenCode plugin also writes here, permanently: it spawns
+            // the bridge by argv and cannot report a spawn failure through the
+            // bridge itself, so a plain file is the only channel that survives
+            // the failure it is describing.
+            //
+            // Injected after regenerate() on the per-connection environment so
+            // concurrent pane launches cannot race.
+            //
+            // RETIREMENT (#620): the pre-0.1.5 reader goes away once no
+            // supported upgrade path can leave that bundle installed. The
+            // variable itself must stay for the OpenCode plugin.
             {
-                // Versioned dir so hook-trace.log lands in `logs\<pkgver>\`
-                // alongside the Rust and C++ logs (not the flat root).
                 const auto wtaLogDir = ::IntelligentTerminal::LogDirVersioned();
                 if (!wtaLogDir.empty())
                     environment.as_map().insert_or_assign(L"WTA_HOOK_LOG_DIR", wtaLogDir.wstring());
+            }
+
+            // Absolute path to the hook bridge, for integrations that cannot use
+            // the `wtcli.exe` on PATH. That PATH entry is the MSIX
+            // app-execution alias — a zero-byte reparse point — which
+            // `CreateProcess` resolves but a launcher performing its own PATH
+            // lookup does not. OpenCode's plugin spawns an argv array through
+            // Bun and fails with "Executable not found in $PATH", silently,
+            // because the plugin swallows spawn errors by design.
+            //
+            // Injected rather than baked into the plugin at install time: the
+            // packaged path is version-stamped, so a recorded copy breaks on
+            // every upgrade, and the mechanism that would refresh it is the
+            // hook auto-upgrade — which cannot run while a CLI holds its plugin
+            // directory open. Consumers fall back to plain `wtcli.exe` when the
+            // variable is absent, which is what unpackaged dev builds want.
+            {
+                const auto bridge = ::IntelligentTerminal::BridgeExecutable();
+                if (!bridge.empty())
+                    environment.as_map().insert_or_assign(L"WTCLI_PATH", bridge.wstring());
             }
 
             // WSLENV is a colon-delimited list of environment variables (+flags) that should appear inside WSL

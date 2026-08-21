@@ -301,7 +301,8 @@ async fn resolve_pane_by_session_id(
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
-    resolver_invocation: Option<crate::resolve_command::CommandResolverInvocation>,
+    resolver_invocation:
+        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 async fn build_terminal_context(
@@ -396,7 +397,7 @@ pub(super) struct ResolvedProviderContext {
     pub(super) planner_terminal_context: Option<String>,
     pub(super) resolved_planner_pane: Option<String>,
     pub(super) command_resolver_invocation:
-        Option<crate::resolve_command::CommandResolverInvocation>,
+        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 pub(super) async fn resolve_provider_context(
@@ -460,12 +461,10 @@ pub(super) async fn resolve_provider_context(
     // a failing pwsh pane while bash is active) and mis-gate the near-match.
     // Resolve the explicit source pane's JSON by *session id* (not by
     // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
-    // won't accept — see `resolve_pane_by_session_id`); fall back to the
-    // active pane if that lookup can't resolve it.
+    // won't accept — see `resolve_pane_by_session_id`). If that lookup fails,
+    // omit shell context rather than borrowing an unrelated active pane.
     resolved.context_pane = match explicit_source.as_deref() {
-        Some(src) => resolve_pane_by_session_id(shell_mgr, src)
-            .await
-            .or_else(|| active.clone()),
+        Some(src) => resolve_pane_by_session_id(shell_mgr, src).await,
         None => active,
     };
     // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
@@ -523,7 +522,7 @@ pub(super) struct ContextRequest<'a> {
     pub(super) planner_terminal_context: Option<&'a str>,
     /// Planner only: resolver contract derived from the same authoritative pane.
     pub(super) command_resolver_invocation:
-        Option<&'a crate::resolve_command::CommandResolverInvocation>,
+        Option<&'a crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -591,9 +590,11 @@ pub(super) fn command_resolver_invocation(
     is_autofix: bool,
     planner_shell: Option<&str>,
     planner_pane: Option<&serde_json::Value>,
-) -> Option<crate::resolve_command::CommandResolverInvocation> {
+) -> Option<crate::agent_tools::command_resolution::CommandResolverInvocation> {
     if is_autofix
-        || planner_shell.is_some_and(|shell| !crate::resolve_command::has_applicable_source(shell))
+        || planner_shell.is_some_and(|shell| {
+            !crate::agent_tools::command_resolution::has_applicable_source(shell)
+        })
     {
         return None;
     }
@@ -618,7 +619,7 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(crate::resolve_command::CommandResolverInvocation::new(
+    Some(crate::agent_tools::command_resolution::CommandResolverInvocation::new(
         executable, shell, cwd,
     ))
 }

@@ -144,7 +144,12 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(
+                agent,
+                None,
+                None,
+                crate::protocol::acp::spawn::ChildEnvironmentPolicy::ApplySharedProvider,
+            )?;
             let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(

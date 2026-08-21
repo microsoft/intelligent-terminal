@@ -26,6 +26,14 @@ fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(!cli.follows_global_acp_model);
+}
+
+#[test]
+fn cli_parses_global_model_follow_scope() {
+    let cli = Cli::try_parse_from(["wta", "--follows-global-acp-model"])
+        .expect("global model scope flag must parse");
+    assert!(cli.follows_global_acp_model);
 }
 
 #[test]
@@ -42,10 +50,7 @@ fn cli_parses_per_tab_wsl_agent_source() {
     .expect("WSL source flags must parse");
     assert_eq!(cli.agent_source.as_deref(), Some("wsl"));
     assert_eq!(cli.agent_wsl_distro.as_deref(), Some("Ubuntu"));
-    assert_eq!(
-        cli.agent_source_cwd.as_deref(),
-        Some("/home/user/project")
-    );
+    assert_eq!(cli.agent_source_cwd.as_deref(), Some("/home/user/project"));
 }
 
 #[test]
@@ -87,7 +92,9 @@ fn sessions_list_cli_parses_json_and_master_override() {
 
     assert!(cli.json);
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { master, origin } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { master, origin },
+        }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
             // Default keeps the historical debug behavior — show
             // every origin. MVP sessions picker has its own default in
@@ -105,12 +112,11 @@ fn sessions_list_cli_parses_origin_shell() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "shell"])
         .expect("sessions list --origin shell parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::Shell);
-            assert_eq!(
-                origin.to_filter(),
-                agent_sessions::OriginFilter::ShellOnly,
-            );
+            assert_eq!(origin.to_filter(), agent_sessions::OriginFilter::ShellOnly,);
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
@@ -121,7 +127,9 @@ fn sessions_list_cli_parses_origin_agent_pane() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "agent-pane"])
         .expect("sessions list --origin agent-pane parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::AgentPane);
             assert_eq!(
                 origin.to_filter(),
@@ -222,12 +230,8 @@ fn process_label_subcommands() {
     let probe = Cli::try_parse_from(["wta", "probe-models", "--agent", "copilot"]).unwrap();
     assert_eq!(process_label(&probe), "probe");
 
-    let probe_sources = Cli::try_parse_from([
-        "wta",
-        "probe-agent-sources",
-        "--wsl-distro",
-        "Ubuntu-24.04",
-    ])
+    let probe_sources =
+        Cli::try_parse_from(["wta", "probe-agent-sources", "--wsl-distro", "Ubuntu-24.04"])
     .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());
@@ -246,6 +250,51 @@ fn process_label_subcommands() {
     // Any other subcommand is a short-lived wtcli-style client.
     let sessions = Cli::try_parse_from(["wta", "sessions", "list"]).unwrap();
     assert_eq!(process_label(&sessions), "cli");
+}
+
+// ── Command::Delegate: --delegate-source / --delegate-wsl-distro parsing ────
+
+#[test]
+fn delegate_command_parses_explicit_source_and_distro() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "delegate",
+        "--delegate-agent",
+        "codex",
+        "--delegate-source",
+        "wsl",
+        "--delegate-wsl-distro",
+        "Ubuntu",
+        "do a thing",
+    ])
+    .expect("flags must parse");
+    match cli.command {
+        Some(Command::Delegate {
+            delegate_source,
+            delegate_wsl_distro,
+            ..
+        }) => {
+            assert_eq!(delegate_source.as_deref(), Some("wsl"));
+            assert_eq!(delegate_wsl_distro.as_deref(), Some("Ubuntu"));
+        }
+        other => panic!("expected Command::Delegate, got {other:?}"),
+    }
+}
+
+#[test]
+fn delegate_command_source_and_distro_default_to_none() {
+    let cli = Cli::try_parse_from(["wta", "delegate", "do a thing"]).expect("flags must parse");
+    match cli.command {
+        Some(Command::Delegate {
+            delegate_source,
+            delegate_wsl_distro,
+            ..
+        }) => {
+            assert!(delegate_source.is_none());
+            assert!(delegate_wsl_distro.is_none());
+        }
+        other => panic!("expected Command::Delegate, got {other:?}"),
+    }
 }
 
 // ── HooksCliFilter::into_scope: CLI filter → installer scope ─────────────────
@@ -289,15 +338,16 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(cli::wt::json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: WSL pane target detection + launchable gate ───────────────────
+// ── `/agent` source picker: WSL pane detection ──────────────────────────────
 //
-// `delegate_command_launchable` only checks the Windows PATH, which is
-// meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
-// therefore treated as launchable when the agent CLI is present *inside the
-// distro* — so a `?<prompt>` from a WSL pane still gets its prompt
-// enriched/delivered when the agent (e.g. Copilot) is installed only inside the
-// distro (regression guard for the "prompt silently dropped" bug), while a WSL
-// pane whose distro lacks the CLI falls back to the Windows host term.
+// `active_pane_wsl_distro` detects whether the active pane is a WSL shell so
+// the `/agent` command-palette source picker can offer that distro's ACP
+// agents alongside the host ones (see `App::request_agent_source_picker` in
+// `app.rs`). `wta delegate` no longer uses this helper for source selection —
+// its explicit `--delegate-source`/`--delegate-wsl-distro` flags own that
+// decision (see `cli::delegate::parse_delegate_source` and its tests in
+// `cli/delegate.rs`); this detector remains covered here because the `/agent`
+// picker still depends on it.
 
 /// Build a minimal active-pane JSON value with the given `shell` field, as
 /// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
@@ -376,18 +426,45 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
 }
 
 #[test]
-fn delegate_launchable_for_target_ors_host_and_wsl() {
-    // Agent not launchable on the Windows host, but present inside the WSL
-    // distro → launchable (in-distro path), so the prompt is enriched, not
-    // dropped.
-    assert!(cli::delegate::delegate_launchable_for_target(false, true));
+fn propose_terminal_actions_cli_parses_channel_and_inline_payload() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789",
+        "--payload-json",
+        r#"{"schema_version":1}"#,
+    ])
+    .expect("propose-terminal-actions flags must parse");
 
-    // Not launchable on host AND not available in WSL → stays non-launchable
-    // (the bare-command path, where the prompt is intentionally not baked in).
-    // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!cli::delegate::delegate_launchable_for_target(false, false));
-
-    // Launchable on the host is always launchable, regardless of WSL.
-    assert!(cli::delegate::delegate_launchable_for_target(true, false));
-    assert!(cli::delegate::delegate_launchable_for_target(true, true));
+    match cli.command {
+        Some(Command::ProposeTerminalActions {
+            channel,
+            payload_json,
+        }) => {
+            assert_eq!(
+                channel,
+                "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789"
+            );
+            assert_eq!(payload_json, r#"{"schema_version":1}"#);
+        }
+        other => panic!("expected ProposeTerminalActions command, got {other:?}"),
+    }
 }
+
+#[test]
+fn propose_terminal_actions_cli_requires_channel_and_payload() {
+    Cli::try_parse_from(["wta", "propose-terminal-actions"])
+        .expect_err("channel and payload are required");
+    Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "channel-only",
+    ])
+    .expect_err("payload is required");
+}
+
+// `wta delegate`'s own launch checks (explicit `--delegate-source`, never
+// auto-routed) are covered by the module-private tests in `cli/delegate.rs`,
+// alongside its `parse_delegate_source` / `select_wsl_delegate_cwd` coverage.

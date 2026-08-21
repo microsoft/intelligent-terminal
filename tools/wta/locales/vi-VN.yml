@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc đ�
 chat.activity_thinking: "Đang suy nghĩ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Chào mừng bạn đến Đầu cuối thông minh!"
-chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI. Hãy kiểm tra lỗi."
+chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI."
 chat.plan_header: "Kế hoạch:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ đường dẫn marketplace đã cũ"
 hooks.installed_but_disabled: "⚠ đã cài đặt nhưng bị tắt"
 hooks.not_installed: "✗ chưa cài đặt"
 hooks.uninstall_skipped: "đã bỏ qua (CLI không nằm trong PATH)"
-hooks.install_attempted: "Đã thử cài đặt wt-agent-hooks (idempotent). Chạy `wta hooks status` để kiểm tra kết quả. Nhật ký: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks đã cài đặt cho %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "vừa xong"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "Tính năng chuyển đổi agent không khả
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
+commands.config.summary: "Cấu hình phiên agent này"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Di chuyển bảng tác nhân AI của tab này (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Cấu hình phiên (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Agent được kết nối không quảng cáo bất kỳ tùy chọn phiên nào có thể cấu hình."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}

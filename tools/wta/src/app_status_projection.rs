@@ -28,14 +28,20 @@ impl App {
         } else {
             None
         };
+        let display_model = self
+            .confirmed_model_display()
+            .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
+            "agent_id": self.current_agent_id,
             "name": self.agent_name,
             "version": self.agent_version,
-            "model": self.agent_model,
+            "model": display_model,
             "backend": self.current_agent_source.display_suffix(),
+            "agent_source": self.current_agent_source.kind(),
             "state": state_str,
             "available_models": self.available_models,
             "current_model_id": self.current_model_id,
+            "host_catalog_ready": self.host_catalog_ready,
         });
         if let Some(agent_id) = selected {
             params["selected_agent"] = serde_json::Value::String(agent_id);
@@ -117,20 +123,7 @@ impl App {
             );
             return;
         };
-        let view = match tab.current_view {
-            View::Agents => "sessions",
-            View::Chat => "chat",
-        };
-        let evt = serde_json::json!({
-            "type": "event",
-            "method": "agent_state_changed",
-            "params": {
-                "tab_id":    target_tab,
-                "view":      view,
-                "pane_open": tab.pane_open,
-                "pane_position": tab.agent_pane_position,
-            }
-        });
+        let evt = build_agent_state_changed_event(target_tab, tab);
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -140,4 +133,28 @@ impl App {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
     }
+}
+
+pub(super) fn build_agent_state_changed_event(
+    target_tab: &str,
+    tab: &TabSession,
+) -> serde_json::Value {
+    let view = match tab.current_view {
+        View::Agents => "sessions",
+        View::Chat => "chat",
+    };
+    let usage = tab.usage.as_ref().map(|snapshot| {
+        crate::usage::UsageProjection::with_staleness(snapshot, tab.usage_staleness)
+    });
+    serde_json::json!({
+        "type": "event",
+        "method": "agent_state_changed",
+        "params": {
+            "tab_id": target_tab,
+            "view": view,
+            "pane_open": tab.pane_open,
+            "pane_position": tab.agent_pane_position,
+            "usage": usage,
+        }
+    })
 }

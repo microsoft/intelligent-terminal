@@ -21,12 +21,25 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <!--
+            Spec A §5.1: the first column is the vertical-tabs rail. Width
+            defaults to 0 so horizontal layouts render identically; code-behind
+            (_ApplyVerticalLayoutReshape) sets the width and moves TabRow into
+            column 0 with RowSpan=4 when the layout flips to vertical.
+        -->
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="VerticalRailColumn" Width="0" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
         <local:TabRowControl x:Name="TabRow"
                              Grid.Row="0"
+                             Grid.ColumnSpan="2"
                              KeyUp="_KeyDownHandler" />
 
-        <StackPanel Grid.Row="1"
+        <StackPanel x:Name="InfoBarsPanel"
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
                     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
             <mux:InfoBar x:Name="KeyboardServiceWarningInfoBar"
                          x:Load="False"
@@ -41,6 +54,15 @@
                             Click="_KeyboardServiceWarningInfoDismissHandler" />
                 </mux:InfoBar.ActionButton>
             </mux:InfoBar>
+
+            <mux:InfoBar x:Name="TabLayoutRestartInfoBar"
+                         x:Uid="TabLayoutRestartInfoBar"
+                         x:Load="False"
+                         CornerRadius="0"
+                         IsClosable="True"
+                         IsIconVisible="True"
+                         IsOpen="False"
+                         Severity="Informational" />
 
             <mux:InfoBar x:Name="CloseOnExitInfoBar"
                          x:Uid="CloseOnExitInfoBar"
@@ -63,12 +85,15 @@
              instead of showing the desktop behind the window. Uses the
              BottomBar color so the gap — if any — visually merges into
              the bar. Declared before TabContent so it sits behind. -->
-        <Border Grid.Row="2"
+        <Border x:Name="TabContentFiller"
+                Grid.Row="2"
+                Grid.ColumnSpan="2"
                 Background="#000000"
                 IsHitTestVisible="False" />
 
         <Grid x:Name="TabContent"
               Grid.Row="2"
+              Grid.ColumnSpan="2"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
             <Grid.Background>
@@ -90,6 +115,7 @@
              makes the alpha blend correctly. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
+                Grid.ColumnSpan="2"
                 Background="#000000"
                 VerticalAlignment="Top">
         <Grid>
@@ -203,6 +229,16 @@
                 </Button>
             </StackPanel>
 
+            <StackPanel x:Name="UsageGroup"
+                        x:Uid="UsageGroup"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Spacing="12"
+                        Margin="12,0"
+                        Visibility="Collapsed" />
+
             <!-- Button 3: Session list toggle — opens the agent pane (if needed)
                  and switches wta into the Agents/sessions view. Mirrors the
                  Ctrl+Shift+/ keybinding. Anchored to the right edge of the
@@ -266,10 +302,12 @@
 
         <local:AboutDialog x:Name="AboutDialog"
                            Grid.Row="2"
+                           Grid.ColumnSpan="2"
                            x:Load="False" />
 
         <ContentDialog x:Name="ConfirmCloseDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <CheckBox x:Uid="DontAskAgainCheckBox" />
@@ -278,12 +316,14 @@
         <ContentDialog x:Name="CloseReadOnlyDialog"
                        x:Uid="CloseReadOnlyDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Close" />
 
         <ContentDialog x:Name="MultiLinePasteDialog"
                        x:Uid="MultiLinePasteDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <StackPanel>
@@ -304,12 +344,14 @@
         <ContentDialog x:Name="LargePasteDialog"
                        x:Uid="LargePasteDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary" />
 
         <ContentDialog x:Name="ControlNoticeDialog"
                        x:Uid="ControlNoticeDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <TextBlock IsTextSelectionEnabled="True"
@@ -324,6 +366,7 @@
         <ContentDialog x:Name="UriErrorDialog"
                        x:Uid="UriErrorDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Close">
             <TextBlock IsTextSelectionEnabled="True"
@@ -339,6 +382,7 @@
 
         <local:CommandPalette x:Name="CommandPaletteElement"
                               Grid.Row="2"
+                              Grid.ColumnSpan="2"
                               VerticalAlignment="Stretch"
                               x:Load="False"
                               PreviewKeyDown="_KeyDownHandler"
@@ -346,6 +390,7 @@
 
         <local:SuggestionsControl x:Name="SuggestionsElement"
                                   Grid.Row="2"
+                                  Grid.ColumnSpan="2"
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Top"
                                   x:Load="False"
@@ -357,6 +402,7 @@
         <local:FreOverlay x:Name="FreOverlayElement"
                           Grid.Row="0"
                           Grid.RowSpan="4"
+                          Grid.ColumnSpan="2"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch"
                           x:Load="False"

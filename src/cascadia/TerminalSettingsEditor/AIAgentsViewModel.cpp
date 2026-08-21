@@ -6,13 +6,15 @@
 #include "AIAgentsViewModel.g.cpp"
 #include "AcpModelEntry.g.cpp"
 #include "AgentEntry.g.cpp"
+#include "CustomModelProviderEntry.g.cpp"
 #include "EnumEntry.h"
+#include "../inc/AcpModelUtils.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
+#include "../inc/CustomModelCredential.h"
+#include "../inc/IntelligentTerminalPaths.h"
 #include "../inc/WtaProcess.h"
-
-#include <json/json.h>
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
@@ -20,6 +22,49 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
+    CustomModelProviderEntry::CustomModelProviderEntry(
+        Model::CustomModelProvider provider,
+        std::function<void()> remove) :
+        _provider{ std::move(provider) },
+        _remove{ std::move(remove) }
+    {
+        if (_provider.ApiKeyRequired() &&
+            ::Microsoft::Terminal::CustomModels::ResolvedLocation(_provider) == L"cloud")
+        {
+            try
+            {
+                _isApiKeyMissing = !::Microsoft::Terminal::CustomModels::HasApiKey(_provider.ApiKeyCredential());
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        }
+    }
+
+    winrt::hstring CustomModelProviderEntry::ModelsDisplayText() const
+    {
+        return ::Microsoft::Terminal::CustomModels::FormatModelDisplayText(_provider);
+    }
+
+    void CustomModelProviderEntry::Remove()
+    {
+        try
+        {
+            ::Microsoft::Terminal::CustomModels::RemoveApiKey(_provider.ApiKeyCredential());
+        }
+        catch (...)
+        {
+            const auto hr = wil::ResultFromCaughtException();
+            LOG_HR(hr);
+            const auto target = ::Microsoft::Terminal::CustomModels::CredentialTarget(_provider.ApiKeyCredential());
+            _removalErrorMessage = RS_fmt(L"AIAgents_CustomProviderCredentialRemovalFailed", target);
+            _NotifyChanges(L"RemovalErrorMessage", L"HasRemovalError");
+            return;
+        }
+        _remove();
+    }
+
     // ── AgentEntry ───────────────────────────────────────────────────────
 
     AgentEntry::AgentEntry(winrt::hstring id, winrt::hstring displayName, bool isInstalled) :
@@ -153,6 +198,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // the user switches agents (cache cleared) or wta reconnects with a
         // new model list.
         _acpModelList = winrt::single_threaded_observable_vector<Editor::AcpModelEntry>();
+        _customModelProviders = winrt::single_threaded_observable_vector<Editor::CustomModelProviderEntry>();
+        _LoadCustomModelProviders();
         _RebuildAcpModelListFromCache();
         _acpRuntimeChangedToken = Model::AcpRuntimeState::Current().Changed(
             [weakThis = get_weak()](const auto&, const auto&) {
@@ -161,6 +208,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     self->_RebuildAcpModelListFromCache();
                 }
             });
+        // A Settings page must not depend on an agent pane having connected
+        // first. Always refresh the native catalog in a clean environment so
+        // BYOK entries supplement cloud models instead of replacing them.
+        _TriggerAcpModelProbe();
 
         // Delegate agents — same GPO-filtered + install-filter rule.
         const auto filteredDelegate = Reg::FilteredDelegateAgents();
@@ -221,11 +272,228 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::_LoadCustomModelProviders()
+    {
+        auto providers = _GlobalSettings.CustomModelProviders();
+        _originalCustomModelProviders.clear();
+        _originalCustomModelProviders.reserve(providers.Size());
+        for (const auto& provider : providers)
+        {
+            _originalCustomModelProviders.emplace_back(provider);
+        }
+
+        auto weakThis = get_weak();
+        for (const auto& provider : providers)
+        {
+            if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
+                    std::wstring_view{ provider.ApiContract() }))
+            {
+                continue;
+            }
+
+            const auto id = provider.Id();
+            _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
+                provider,
+                [weakThis, id]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        self->_RemoveCustomModelProvider(id);
+                    }
+                }));
+        }
+    }
+
+    void AIAgentsViewModel::_CommitCustomModelProviders()
+    {
+        std::vector<Model::CustomModelProvider> visibleProviders;
+        visibleProviders.reserve(_customModelProviders.Size());
+        for (const auto& entry : _customModelProviders)
+        {
+            visibleProviders.emplace_back(winrt::get_self<CustomModelProviderEntry>(entry)->Provider());
+        }
+
+        auto mergedProviders =
+            ::Microsoft::Terminal::CustomModels::MergeProviderEditsPreservingUnsupported(
+                _originalCustomModelProviders,
+                visibleProviders);
+        auto providers = winrt::single_threaded_vector<Model::CustomModelProvider>();
+        for (const auto& provider : mergedProviders)
+        {
+            providers.Append(provider);
+        }
+        _GlobalSettings.CustomModelProviders(providers);
+        _originalCustomModelProviders = std::move(mergedProviders);
+
+        // Refresh the clean cloud catalog after adding or removing a provider.
+        _TriggerAcpModelProbe();
+        _NotifyChanges(L"CustomModelProviders", L"ShowCustomModelProvidersExpander");
+    }
+
+    void AIAgentsViewModel::_RemoveCustomModelProvider(const winrt::hstring& id)
+    {
+        for (uint32_t i = 0; i < _customModelProviders.Size(); ++i)
+        {
+            if (_customModelProviders.GetAt(i).Id() == id)
+            {
+                _customModelProviders.RemoveAt(i);
+                break;
+            }
+        }
+
+        std::wstring selectedProvider;
+        std::wstring selectedModel;
+        if (::Microsoft::Terminal::CustomModels::TryParseSelectionId(
+                std::wstring_view{ _GlobalSettings.CustomModelSelection() },
+                selectedProvider,
+                selectedModel) &&
+            selectedProvider == std::wstring_view{ id })
+        {
+            _GlobalSettings.CustomModelSelection(L"");
+        }
+        _CommitCustomModelProviders();
+    }
+
+    void AIAgentsViewModel::NewCustomModelProviderBaseUrl(const winrt::hstring& value)
+    {
+        if (_newCustomModelProviderBaseUrl != value)
+        {
+            _newCustomModelProviderBaseUrl = value;
+            _NotifyChanges(L"NewCustomModelProviderBaseUrl", L"CanSaveCustomModelProvider");
+        }
+    }
+
+    void AIAgentsViewModel::NewCustomModelId(const winrt::hstring& value)
+    {
+        if (_newCustomModelId != value)
+        {
+            _newCustomModelId = value;
+            _NotifyChanges(L"NewCustomModelId", L"CanSaveCustomModelProvider");
+        }
+    }
+
+    void AIAgentsViewModel::NewCustomModelProviderApiKey(const winrt::hstring& value)
+    {
+        _newCustomModelProviderApiKey = value;
+    }
+
+    void AIAgentsViewModel::IsCustomModelProvidersExpanded(const bool value)
+    {
+        if (_isCustomModelProvidersExpanded != value)
+        {
+            _isCustomModelProvidersExpanded = value;
+            _NotifyChanges(L"IsCustomModelProvidersExpanded");
+        }
+    }
+
+    void AIAgentsViewModel::AddCustomModelProvider()
+    {
+        IsCustomModelProvidersExpanded(true);
+        _isAddingCustomModelProvider = true;
+        _NotifyChanges(L"IsAddingCustomModelProvider", L"ShowCustomModelProvidersExpander");
+    }
+
+    bool AIAgentsViewModel::_HasNonWhitespace(const std::wstring_view value) noexcept
+    {
+        return std::ranges::any_of(value, [](const wchar_t ch) {
+            return !std::iswspace(ch);
+        });
+    }
+
+    winrt::hstring AIAgentsViewModel::_TrimWhitespace(const std::wstring_view value)
+    {
+        const auto isWhitespace = [](const wchar_t ch) {
+            return std::iswspace(ch);
+        };
+        const auto first = std::ranges::find_if_not(value, isWhitespace);
+        const auto last = std::ranges::find_if_not(value.rbegin(), value.rend(), isWhitespace).base();
+        if (first >= last)
+        {
+            return {};
+        }
+
+        const auto offset = gsl::narrow_cast<size_t>(first - value.begin());
+        const auto length = gsl::narrow_cast<size_t>(last - first);
+        return winrt::hstring{ value.substr(offset, length) };
+    }
+
+    void AIAgentsViewModel::SaveCustomModelProvider()
+    {
+        const auto baseUrl = _TrimWhitespace(_newCustomModelProviderBaseUrl);
+        const auto modelId = _TrimWhitespace(_newCustomModelId);
+        const auto apiKey = _TrimWhitespace(_newCustomModelProviderApiKey);
+        if (baseUrl.empty() || modelId.empty())
+        {
+            return;
+        }
+
+        GUID guid{};
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        std::wstring idValue{ L"provider-" };
+        idValue.append(winrt::to_hstring(guid));
+        const auto id = winrt::hstring{ idValue };
+        auto provider = Model::CustomModelProvider{
+            id,
+            ::Microsoft::Terminal::CustomModels::ProviderDisplayNameFromEndpoint(
+                std::wstring_view{ baseUrl },
+                std::wstring_view{ id }),
+            baseUrl };
+        provider.ApiContract(winrt::hstring{ ::Microsoft::Terminal::CustomModels::CanonicalApiContract });
+        provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
+        provider.Models().Append(Model::CustomModel{ modelId, modelId });
+
+        winrt::hstring credentialId;
+        if (!apiKey.empty())
+        {
+            credentialId = ::Microsoft::Terminal::CustomModels::StoreApiKey(
+                {},
+                apiKey);
+            provider.ApiKeyCredential(credentialId);
+            provider.ApiKeyRequired(true);
+        }
+        auto removeUncommittedCredential = wil::scope_exit([&]() noexcept {
+            if (!credentialId.empty())
+            {
+                LOG_IF_FAILED(wil::ResultFromException([&]() {
+                    ::Microsoft::Terminal::CustomModels::RemoveApiKey(credentialId);
+                }));
+            }
+        });
+
+        auto weakThis = get_weak();
+        _customModelProviders.Append(winrt::make<CustomModelProviderEntry>(
+            provider,
+            [weakThis, id]() {
+                if (const auto self = weakThis.get())
+                {
+                    self->_RemoveCustomModelProvider(id);
+                }
+            }));
+        _CommitCustomModelProviders();
+        removeUncommittedCredential.release();
+        CancelCustomModelProvider();
+    }
+
+    void AIAgentsViewModel::CancelCustomModelProvider()
+    {
+        _isAddingCustomModelProvider = false;
+        _newCustomModelProviderBaseUrl.clear();
+        _newCustomModelId.clear();
+        _newCustomModelProviderApiKey.clear();
+        _NotifyChanges(
+            L"IsAddingCustomModelProvider",
+            L"ShowCustomModelProvidersExpander",
+            L"NewCustomModelProviderBaseUrl",
+            L"NewCustomModelId",
+            L"NewCustomModelProviderApiKey",
+            L"CanSaveCustomModelProvider");
+    }
+
     void AIAgentsViewModel::_RebuildAcpModelListFromCache()
     {
         if (!_acpModelList) return;
 
-        const auto cached = Model::AcpRuntimeState::Current().AvailableModels();
+        const auto agent = _GlobalSettings.EffectiveAcpAgent();
+        const auto cached = Model::AcpRuntimeState::Current().AvailableModels(agent);
         const uint32_t newSize = cached ? cached.Size() : 0;
 
         // Mirror the agent's advertised list 1:1 — each ACP agent
@@ -233,6 +501,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // calls it `default`, copilot `auto`), so synthesizing one
         // here would just duplicate it.
         _acpModelList.Clear();
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const bool supportsCustomModels = Reg::SupportsByok(std::wstring_view{ agent });
         for (uint32_t i = 0; i < newSize; ++i)
         {
             const auto m = cached.GetAt(i);
@@ -240,6 +510,45 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.Id(),
                 m.DisplayName(),
                 m.Description()));
+        }
+        if (supportsCustomModels)
+        {
+            for (const auto& provider : _GlobalSettings.CustomModelProviders())
+            {
+                if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
+                        std::wstring_view{ provider.ApiContract() }))
+                {
+                    continue;
+                }
+
+                for (const auto& model : provider.Models())
+                {
+                    const auto id = ::Microsoft::Terminal::CustomModels::SelectionId(
+                        provider.Id(),
+                        model.Id());
+                    const auto location = ::Microsoft::Terminal::CustomModels::ResolvedLocation(provider);
+                    bool alreadyPresent = false;
+                    for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
+                    {
+                        const auto existingId = _acpModelList.GetAt(i).Id();
+                        if (existingId == id)
+                        {
+                            alreadyPresent = true;
+                            break;
+                        }
+                    }
+                    if (alreadyPresent)
+                    {
+                        continue;
+                    }
+                    const auto displayName = winrt::hstring{ RS_fmt(L"AIAgents_BYOKModelDisplayName", model.Id()) };
+                    const auto description = winrt::hstring{ RS_fmt(L"AIAgents_OpenAICompatibleModelDescription", provider.Name(), location) };
+                    _acpModelList.Append(winrt::make<AcpModelEntry>(
+                        id,
+                        displayName,
+                        description));
+                }
+            }
         }
 
         // Reconcile a *stale* persisted id with the authoritative list.
@@ -254,13 +563,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         //
         // Empty is already the legitimate "use whatever default the agent
         // picks" sentinel, so the empty case needs no reconciliation.
-        if (newSize > 0)
+        if (_acpModelList.Size() > 0)
         {
-            const auto current = _GlobalSettings.AcpModel();
+            const auto current = supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty() ?
+                                     _GlobalSettings.CustomModelSelection() :
+                                     _GlobalSettings.AcpModel();
             if (!current.empty())
             {
                 bool matched = false;
-                for (uint32_t i = 0; i < newSize; ++i)
+                for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
                 {
                     if (_acpModelList.GetAt(i).Id() == current)
                     {
@@ -270,10 +581,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
                 if (!matched)
                 {
-                    // Stale leftover id this agent doesn't advertise → reset
-                    // to the empty "agent default" sentinel (send no model
-                    // override), which renders as the "Default" placeholder.
-                    _GlobalSettings.AcpModel(L"");
+                    const bool persistedCustomSelectionStillExists =
+                        supportsCustomModels &&
+                        ::Microsoft::Terminal::CustomModels::IsCustomSelection(
+                            std::wstring_view{ current }) &&
+                        ::Microsoft::Terminal::CustomModels::SelectionExists(
+                            _GlobalSettings.CustomModelProviders(),
+                            std::wstring_view{ current });
+                    if (!persistedCustomSelectionStillExists)
+                    {
+                        // Stale leftover id this agent doesn't advertise → reset
+                        // to the empty "agent default" sentinel (send no model
+                        // override), which renders as the "Default" placeholder.
+                        if (supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty())
+                        {
+                            _GlobalSettings.CustomModelSelection(L"");
+                        }
+                        else
+                        {
+                            _GlobalSettings.AcpModel(L"");
+                        }
+                    }
                 }
             }
         }
@@ -283,6 +611,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"ShowAcpModelTextBox",
                        L"AcpModel",
                        L"CurrentAcpModelEntry");
+    }
+
+    bool AIAgentsViewModel::HasAcpModelList() const
+    {
+        return _acpModelList && (_acpModelList.Size() > 0 || _acpProbing);
+    }
+
+    winrt::hstring AIAgentsViewModel::CustomModelProviderUnsupportedMessage()
+    {
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
+        if (_isAddingCustomAcpAgent || Reg::SupportsByok(std::wstring_view{ agentId }))
+        {
+            return {};
+        }
+
+        const auto currentAgent = CurrentAcpAgent();
+        const auto displayName = currentAgent ? currentAgent.DisplayName() : agentId;
+        return winrt::hstring{ RS_fmt(L"AIAgents_CustomProviderUnsupportedForAgent", displayName) };
     }
 
     Editor::AgentEntry AIAgentsViewModel::_FindEntryById(
@@ -321,7 +668,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _isAddingCustomAcpAgent = true;
             _customAcpCommand = _GlobalSettings.AcpCustomCommand();
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
 
@@ -351,7 +698,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     Editor::AcpModelEntry AIAgentsViewModel::CurrentAcpModelEntry()
     {
         if (!_acpModelList) return nullptr;
-        const auto current = _GlobalSettings.AcpModel();
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto current =
+            Reg::SupportsByok(std::wstring_view{ _GlobalSettings.EffectiveAcpAgent() }) &&
+                    !_GlobalSettings.CustomModelSelection().empty() ?
+                _GlobalSettings.CustomModelSelection() :
+                _GlobalSettings.AcpModel();
         for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
         {
             const auto entry = _acpModelList.GetAt(i);
@@ -379,11 +731,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return;
         }
-        if (_GlobalSettings.AcpModel() != value.Id())
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const bool supportsByok = Reg::SupportsByok(std::wstring_view{ _GlobalSettings.EffectiveAcpAgent() });
+        if (::Microsoft::Terminal::CustomModels::IsCustomSelection(value.Id()))
         {
-            _GlobalSettings.AcpModel(value.Id());
-            _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
+            if (_GlobalSettings.CustomModelSelection() == value.Id() && _GlobalSettings.AcpModel().empty())
+            {
+                return;
+            }
+            _GlobalSettings.CustomModelSelection(value.Id());
+            _GlobalSettings.AcpModel(L"");
         }
+        else
+        {
+            if (_GlobalSettings.AcpModel() == value.Id() &&
+                (!supportsByok || _GlobalSettings.CustomModelSelection().empty()))
+            {
+                return;
+            }
+            _GlobalSettings.AcpModel(value.Id());
+            if (supportsByok)
+            {
+                _GlobalSettings.CustomModelSelection(L"");
+            }
+        }
+        _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
     }
 
     bool AIAgentsViewModel::ShowAcpModel()
@@ -445,7 +817,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             if (_isAddingCustomAcpAgent) return;
             _isAddingCustomAcpAgent = true;
             _customAcpCommand = L"";
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
             return;
         }
         auto idStr = winrt::to_string(value.Id());
@@ -462,19 +834,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _isAddingCustomAcpAgent = false;
             _GlobalSettings.AcpAgent(value.Id());
-            // Drop the previous agent's model id and cached list — they
-            // don't apply to the new agent. The probe below repopulates
-            // the cache.
+            // Native model ids are agent-specific; the shared BYOK selection
+            // is stored separately and survives agent switches.
             _GlobalSettings.AcpModel(L"");
-            Model::AcpRuntimeState::Current().SetAvailableModels(
-                winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
-                L"");
             _TriggerAcpModelProbe();
             _NotifyChanges(L"CurrentAcpAgent",
                            L"IsAddingCustomAcpAgent",
                            L"IsCustomAcpAgentSelected",
                            L"ShowAcpModel",
-                           L"AcpModel");
+                           L"HasAcpModelList",
+                           L"ShowAcpModelTextBox",
+                           L"AcpModel",
+                           L"CustomModelProviderUnsupportedMessage");
         }
     }
 
@@ -581,13 +952,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _isAddingCustomAcpAgent = false;
         _GlobalSettings.AcpAgent(settingsId);
-        // Same cache reset as the built-in dropdown path above.
         _GlobalSettings.AcpModel(L"");
         Model::AcpRuntimeState::Current().SetAvailableModels(
+            settingsId,
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel");
+        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage");
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -625,7 +996,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void AIAgentsViewModel::CancelCustomAcpAgent()
     {
         _isAddingCustomAcpAgent = false;
-        _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CurrentAcpAgent", L"ShowAcpModel");
+        _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CurrentAcpAgent", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
     }
 
     void AIAgentsViewModel::CancelCustomDelegateAgent()
@@ -652,7 +1023,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     break;
                 }
             }
-            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel");
+            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
 
@@ -866,7 +1237,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _showGeminiHookRow = false;
             _showCodexHookRow = false;
             _showOpenCodeHookRow = false;
-            _openCodeHooksPresent = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
@@ -887,12 +1257,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _codexCliDetected = codex && codex->binaryOnPath;
             _openCodeCliDetected = openCode && openCode->binaryOnPath;
 
-            _showCopilotHookRow = AgentHooks::HasHookState(copilot);
-            _showClaudeHookRow = AgentHooks::HasHookState(claude);
-            _showGeminiHookRow = AgentHooks::HasHookState(gemini);
-            _showCodexHookRow = AgentHooks::HasHookState(codex);
-            _openCodeHooksPresent = AgentHooks::HasHookState(openCode);
-            _showOpenCodeHookRow = AgentHooks::ShouldShowDetectedOrConfiguredHookRow(openCode);
+            _showCopilotHookRow = AgentHooks::ShouldShowHookRow(copilot);
+            _showClaudeHookRow = AgentHooks::ShouldShowHookRow(claude);
+            _showGeminiHookRow = AgentHooks::ShouldShowHookRow(gemini);
+            _showCodexHookRow = AgentHooks::ShouldShowHookRow(codex);
+            _showOpenCodeHookRow = AgentHooks::ShouldShowHookRow(openCode);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
@@ -909,7 +1278,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
                        L"CanRemoveAgentHooks",
-                       L"CanRemoveOpenCodeHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
@@ -1022,8 +1390,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const std::wstring locateWtaFailedSummary{ RS_(L"AIAgents_HooksLocateWtaFailedSummary") };
         const std::wstring hooksRemovedSummary{ RS_(L"AIAgents_HooksRemovedSummary") };
         const std::wstring hooksInstalledSummary{ RS_(L"AIAgents_HooksInstalledSummary") };
-        const std::wstring hooksRemovalFailedSummary{ RS_(L"AIAgents_HooksRemovalFailedSummary") };
-        const std::wstring hooksInstallationFailedSummary{ RS_(L"AIAgents_HooksInstallationFailedSummary") };
+        const auto hooksLogDir = ::IntelligentTerminal::LogDirVersioned();
+        const auto hooksInstallLogPath = (hooksLogDir / L"wta-install-hooks.log").wstring();
+        const std::wstring hooksRemovalFailedSummary{ RS_fmt(L"AIAgents_HooksRemovalFailedSummary", hooksLogDir.wstring()) };
+        const std::wstring hooksInstallationFailedSummary{
+            RS_fmt(L"AIAgents_HooksInstallationFailedSummary", hooksInstallLogPath)
+        };
         std::wstring summary;
         bool ok = false;
 
@@ -1034,16 +1406,43 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             summary = locateWtaFailedSummary;
         }
-        else
+        else if (isUninstall)
         {
             ok = ::Microsoft::Terminal::WtaProcess::RunWtaAndWait(wtaPath, wtaArgs, 60'000);
+            summary = ok ? hooksRemovedSummary : hooksRemovalFailedSummary;
+        }
+        else
+        {
+            // Ask for the structured report so a failure can name the CLIs
+            // that failed. wta prints it and *then* exits non-zero, so we
+            // capture output independently of the exit code — and keep
+            // stderr out of it, since the failing run also writes an
+            // `Error: ...` line there that would break the JSON parse.
+            const auto run = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath,
+                                                                             wtaArgs + L" --json",
+                                                                             60'000,
+                                                                             nullptr,
+                                                                             /* mergeStderr */ false);
+            ok = run.completed && run.exitCode == 0;
             if (ok)
             {
-                summary = isUninstall ? hooksRemovedSummary : hooksInstalledSummary;
+                summary = hooksInstalledSummary;
             }
             else
             {
-                summary = isUninstall ? hooksRemovalFailedSummary : hooksInstallationFailedSummary;
+                // Fall back to the unattributed message whenever the report
+                // is unreadable or blames no particular CLI — a timeout, a
+                // crash before the report was written, or a failure that
+                // isn't per-CLI all land here.
+                summary = hooksInstallationFailedSummary;
+                if (const auto report = ::Microsoft::Terminal::AgentHooks::ParseInstallReportJson(run.output))
+                {
+                    const auto failed = ::Microsoft::Terminal::AgentHooks::FormatFailedCliList(*report);
+                    if (!failed.empty())
+                    {
+                        summary = RS_fmt(L"AIAgents_HooksInstallationFailedForSummary", failed, hooksInstallLogPath);
+                    }
+                }
             }
         }
 
@@ -1071,11 +1470,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     std::wstring AIAgentsViewModel::_ResolveEffectiveAcpAgentCmdline() const
     {
-        // Mirror of TerminalPage::_ResolveEffectiveAgentCliPath — kept
-        // here because the Settings UI project can't include TerminalApp
-        // headers. Drift between the two is a real bug (probe would
-        // hit a different agent than the pane will eventually launch).
-        // Use the policy-aware getter so probes respect GPO.
         const auto acpAgent = _GlobalSettings.EffectiveAcpAgent();
         if (acpAgent.empty())
         {
@@ -1091,48 +1485,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             }
         }
 
-        const auto lower = winrt::to_string(acpAgent);
-
-        if (lower == "claude")
-        {
-            return L"npx -y @agentclientprotocol/claude-agent-acp";
-        }
-        if (lower == "codex")
-        {
-            return L"npx -y @agentclientprotocol/codex-acp@1.1.4";
-        }
-        if (lower == "opencode")
-        {
-            return L"opencode acp";
-        }
-
-        std::wstring cmd{ acpAgent };
-        if (lower == "copilot")
-        {
-            cmd += L" --acp --stdio";
-        }
-        else if (lower == "gemini")
-        {
-            cmd += L" --experimental-acp";
-        }
-
-        if (lower == "copilot" || lower == "gemini")
-        {
-            const auto acpModel = _GlobalSettings.AcpModel();
-            if (!acpModel.empty())
-            {
-                cmd += L" --model ";
-                cmd += std::wstring_view{ acpModel };
-            }
-        }
-
-        return cmd;
+        const auto acpModel = _GlobalSettings.AcpModel();
+        return ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+            std::wstring_view{ acpAgent },
+            std::wstring_view{ acpModel });
     }
 
     void AIAgentsViewModel::_TriggerAcpModelProbe()
     {
+        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
         const auto cmdline = _ResolveEffectiveAcpAgentCmdline();
-        if (cmdline.empty())
+        if (agentId.empty() || cmdline.empty())
         {
             return;
         }
@@ -1143,10 +1506,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         ++_acpProbeGeneration;
         _acpProbing = true;
         _RebuildAcpModelListFromCache();
-        _RunAcpModelProbeAsync(cmdline, _acpProbeGeneration);
+        const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeStarted",
+            TraceLoggingDescription("A clean ACP model catalog probe started"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+            TraceLoggingUInt64(cacheRevision, "CacheRevision"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
+        _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
     }
 
-    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(std::wstring agentCmdline, uint64_t generation)
+    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(
+        winrt::hstring agentId,
+        std::wstring agentCmdline,
+        uint64_t generation,
+        uint64_t cacheRevision)
     {
         auto strongThis = get_strong();
         auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
@@ -1164,68 +1541,68 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 escaped.replace(pos, 1, L"\"\"");
             }
             const std::wstring args = L"probe-models --agent \"" + escaped + L"\"";
-            // 40s ceiling matches probe.rs's internal limits (npx
-            // initialize 25s + new_session 10s + slack). Cached
-            // adapters return in <2s.
-            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 40'000);
+            // WTA owns the shared three-attempt policy. The ceiling covers
+            // three cold npx attempts (25s initialize + 10s session each)
+            // plus retry delays and process startup slack.
+            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 120'000);
         }
 
+        const auto catalog = ::Microsoft::Terminal::AcpModels::ParseModelCatalog(std::string_view{ stdoutText });
         std::vector<Model::AcpModelInfo> parsed;
         winrt::hstring currentId;
-        bool parseOk = false;
-        if (!stdoutText.empty())
+        if (catalog)
         {
-            Json::Value root;
-            Json::CharReaderBuilder rb;
-            const std::unique_ptr<Json::CharReader> reader{ rb.newCharReader() };
-            std::string errs;
-            if (reader->parse(stdoutText.data(),
-                              stdoutText.data() + stdoutText.size(),
-                              &root,
-                              &errs) &&
-                root.isObject())
+            parsed.reserve(catalog->availableModels.size());
+            for (const auto& model : catalog->availableModels)
             {
-                parseOk = true;
-                if (const auto& models = root["available_models"]; models.isArray())
-                {
-                    parsed.reserve(models.size());
-                    for (const auto& m : models)
-                    {
-                        if (!m.isObject()) continue;
-                        const auto id = m.get("id", "").asString();
-                        const auto name = m.get("name", "").asString();
-                        const auto desc = m.isMember("description") && m["description"].isString()
-                            ? m["description"].asString()
-                            : std::string{};
-                        if (id.empty()) continue;
-                        parsed.emplace_back(
-                            winrt::to_hstring(id),
-                            winrt::to_hstring(name),
-                            winrt::to_hstring(desc));
-                    }
-                }
-                if (root.isMember("current_model_id") && root["current_model_id"].isString())
-                {
-                    currentId = winrt::to_hstring(root["current_model_id"].asString());
-                }
+                parsed.emplace_back(
+                    winrt::to_hstring(model.id),
+                    winrt::to_hstring(model.name),
+                    winrt::to_hstring(model.description));
+            }
+            if (catalog->currentModelId)
+            {
+                currentId = winrt::to_hstring(*catalog->currentModelId);
             }
         }
 
         co_await wil::resume_foreground(dispatcher);
 
+        const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
+
         // Drop stale results — a newer probe is already in flight
         // for a different agent and we'd clobber its eventual write.
         if (generation != _acpProbeGeneration)
         {
+            TraceLoggingWrite(
+                g_hTerminalSettingsEditorProvider,
+                "AcpModelProbeDiscarded",
+                TraceLoggingDescription("An ACP model catalog probe result was superseded"),
+                TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+                TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
             co_return;
         }
 
         _acpProbing = false;
+        const auto probeSucceeded = catalog && !parsed.empty();
+        TraceLoggingWrite(
+            g_hTerminalSettingsEditorProvider,
+            "AcpModelProbeCompleted",
+            TraceLoggingDescription("A clean ACP model catalog probe completed"),
+            TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+            TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
+            TraceLoggingBool(probeSucceeded, "Succeeded"),
+            TraceLoggingUInt32(gsl::narrow_cast<uint32_t>(parsed.size()), "ModelCount"),
+            TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
 
-        if (parseOk)
+        if (probeSucceeded)
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
-            Model::AcpRuntimeState::Current().SetAvailableModels(view, currentId);
+            if (!Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId))
+            {
+                _RebuildAcpModelListFromCache();
+            }
         }
         else
         {

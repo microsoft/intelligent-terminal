@@ -97,6 +97,9 @@
     <Page Include="TabHeaderControl.xaml">
       <Filter>controls</Filter>
     </Page>
+    <Page Include="TabStrip.xaml">
+      <Filter>controls</Filter>
+    </Page>
     <Page Include="TerminalPage.xaml">
       <Filter>controls</Filter>
     </Page>

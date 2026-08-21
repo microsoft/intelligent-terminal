@@ -145,7 +145,7 @@ feeds the reaper.
 The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 
 - `hook_owned: Mutex<HashSet<SessionId>>` — sessions a **real** producer owns
-  outright (PowerShell hooks, ACP agent-pane events). Owns binding **and**
+  outright (native CLI hooks, ACP agent-pane events). Owns binding **and**
   activity.
 - `born_bound: Mutex<HashSet<SessionId>>` — #266 **born-bound** sessions
   (WTA-launched delegate `?<prompt>` and `/sessions` resume). These provide a
@@ -356,7 +356,7 @@ of the live states.
 
 ## What is explicitly unchanged
 
-- The PowerShell hook path and the `intellterm.wta/session_hook` reducer
+- The native hook path and the `intellterm.wta/session_hook` reducer
   semantics. (Born-bound now uses its own `…/session_born_bound` method so it can
   be treated as binding-only — see *Dedup* — but the wire body is identical.)
 - All C++ (FRE "Install hooks", Settings UI, `ConptyConnection`,

@@ -66,6 +66,46 @@ Describe 'JSON helpers' -Tag 'Unit' {
         $o.acpAgent | Should -Be 'copilot'
         $o.autoFixEnabled | Should -BeTrue
     }
+
+    It 'Set-WtSetting verifies nested object arrays structurally' {
+        $settingsPath = Join-Path $TestDrive 'nested-settings.json'
+        '{}' | Set-Content -LiteralPath $settingsPath -Encoding utf8
+        $app = [pscustomobject]@{ SettingsPath = $settingsPath }
+        $providers = @(@{
+            id = 'provider-local'
+            models = @(@{ id = 'test-model'; name = 'Test Model' })
+        })
+
+        Set-WtSetting -App $app -Key 'customModelProviders' -Value $providers | Out-Null
+
+        $stored = Get-WtSetting -App $app -Key 'customModelProviders'
+        @($stored) | Should -HaveCount 1
+        $stored[0].id | Should -Be 'provider-local'
+        $stored[0].models[0].name | Should -Be 'Test Model'
+    }
+}
+
+Describe 'Agent settings cleanup' -Tag 'Unit' {
+    It 'removes showTokenUsageAndCost while preserving profiles' {
+        $settingsPath = Join-Path $TestDrive 'settings.json'
+        @{
+            defaultProfile = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
+            profiles = @(@{
+                name = 'p0'
+                guid = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
+            })
+            acpAgent = 'copilot'
+            showTokenUsageAndCost = $true
+        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $settingsPath -Encoding utf8
+        $app = [pscustomobject]@{ SettingsPath = $settingsPath }
+
+        Clear-WtConfig -App $app
+
+        $settings = Get-WtSettingsObject -App $app
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'showTokenUsageAndCost'
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'acpAgent'
+        $settings.profiles[0].name | Should -Be 'p0'
+    }
 }
 
 Describe 'Resolve-ItApp' -Tag 'Unit' {
@@ -77,5 +117,48 @@ Describe 'Resolve-ItApp' -Tag 'Unit' {
         $app.AppUserModelId | Should -Match '!'
         $app.SettingsPath | Should -Match 'LocalState\\settings\.json$'
         $app.WtcliPath | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
+    It 'waits for the first window before probing COM' {
+        InModuleScope ItE2E {
+            $script:startupOrder = @()
+            $root = Join-Path $env:TEMP "ite2e-startup-order-$PID"
+            $fakeApp = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.0.0.0'
+                WtcliPath = 'wtcli.exe'
+                LocalStateDir = $root
+                SettingsPath = Join-Path $root 'settings.json'
+                StatePath = Join-Path $root 'state.json'
+                AppUserModelId = 'IntelligentTerminal_rd9vj3e6a2mbr!App'
+                LaunchAlias = $null
+                ComClsid = $null
+                Pid = $null
+                Hwnd = $null
+            }
+
+            Mock Resolve-ItApp { $fakeApp }
+            Mock Stop-StaleItInstances
+            Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 4242 } }
+            Mock Start-Process
+            Mock Get-WtWindowHwnds {
+                $script:startupOrder += 'hwnd'
+                [pscustomobject]@{ pid = 4242; hwnd = 9001; title = 'PowerShell' }
+            }
+            Mock Resolve-WtComClsid {
+                $script:startupOrder += 'com'
+                '{D5B7C9E1-4F6A-4B8C-D9E0-F1A2B3C4D5E6}'
+            }
+            Mock Get-ActivePane { [pscustomobject]@{ window_id = 1 } }
+            Mock Initialize-LogOffsets
+            Mock Write-ItLog
+
+            $app = Start-Terminal -Package Dev -PassFre $false -Backup $false -CleanSettings $false
+
+            $app.Hwnd | Should -Be 9001
+            $script:startupOrder | Should -Be @('hwnd', 'com')
+        }
     }
 }

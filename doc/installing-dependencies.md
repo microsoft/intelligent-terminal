@@ -90,8 +90,8 @@ new `winget.exe` is picked up on `PATH`, then verify with
 **Why you need it:** Claude Code, OpenAI Codex, and Gemini CLI are all
 distributed as npm packages. Intelligent Terminal also launches Claude and
 Codex through `npx` wrappers
-(`npx -y @agentclientprotocol/claude-agent-acp` and
-`npx -y @agentclientprotocol/codex-acp@1.1.4`), which require a working Node.js +
+(`npx -y @agentclientprotocol/claude-agent-acp@0.65.0` and
+`npx -y @agentclientprotocol/codex-acp@1.1.13`), which require a working Node.js +
 `npm` + `npx` toolchain on `PATH`. You can skip this section if you only
 plan to use GitHub Copilot CLI.
 
@@ -132,7 +132,7 @@ the other four are **bring-your-own** — install the CLI yourself
 (sub-sections below) before selecting it in the FRE.
 
 Intelligent Terminal talks to all five through the
-[**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
+[**Agent Client Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
 **Copilot**, **Gemini**, and **OpenCode** speak ACP natively, so no extra layer is
 required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
 — Intelligent Terminal launches them through an `npx` wrapper that is
@@ -213,13 +213,13 @@ claude --version
 
 #### Step 3.2.3 — ACP wrapper (no install action required)
 
-Claude Code does not speak the Agent Control Protocol (ACP) directly, so
+Claude Code does not speak the Agent Client Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
 [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp)
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @agentclientprotocol/claude-agent-acp
+npx -y @agentclientprotocol/claude-agent-acp@0.65.0
 ```
 
 You do **not** need to install anything for this — the only prerequisite
@@ -260,13 +260,13 @@ codex --version
 
 #### Step 3.3.3 — ACP wrapper (no install action required)
 
-Codex does not speak the Agent Control Protocol (ACP) directly, so
+Codex does not speak the Agent Client Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
 [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp)
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @agentclientprotocol/codex-acp@1.1.4
+npx -y @agentclientprotocol/codex-acp@1.1.13
 ```
 
 You do **not** need to install anything for this — the only prerequisite
@@ -283,7 +283,7 @@ The first launch may take a few seconds while `npx` downloads the wrapper.
 
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install Google's Gemini CLI yourself before selecting Gemini in the
-FRE. Gemini speaks the Agent Control Protocol (ACP) natively, so no
+FRE. Gemini speaks the Agent Client Protocol (ACP) natively, so no
 wrapper is required at runtime, but the CLI itself is still distributed as
 an npm package.
 
@@ -422,7 +422,12 @@ Check the status report to confirm each agent CLI is wired up:
 wta hooks status
 ```
 
-You should see `installed` for the agent you selected. Then, back in
+You should see `installed` for the agent you selected, followed by the
+installed hook version (for example `v0.1.5`). When a CLI's hooks were
+registered by a different build, the row also names the version this
+Intelligent Terminal ships — `v0.1.4 (bundle v0.1.5)` means the CLI is
+loading older hooks and should be reinstalled with `wta hooks install`.
+Then, back in
 **Settings → AI Agents**, turn **Session management** back on (the FRE
 turns it off when hooks installation fails so you can save and continue
 without it) and restart Intelligent Terminal once.
