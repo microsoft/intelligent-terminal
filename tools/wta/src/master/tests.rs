@@ -6155,6 +6155,55 @@ async fn seeded_history_carries_the_agents_execution_source() {
         .await;
 }
 
+/// The command line alone cannot say WHERE an agent runs — `copilot --acp
+/// --stdio` is the spelling for the host CLI and for the CLI inside every WSL
+/// distro — so a startup failure has to name the source or it sends the user
+/// debugging the wrong machine.
+#[test]
+fn startup_failure_names_the_execution_source() {
+    use crate::agent_source::AgentSource;
+
+    assert_eq!(
+        describe_agent_target("copilot --acp --stdio", &AgentSource::Host),
+        "'copilot --acp --stdio'"
+    );
+    assert_eq!(
+        describe_agent_target(
+            "copilot --acp --stdio",
+            &AgentSource::Wsl {
+                distro: "Ubuntu".to_string()
+            }
+        ),
+        "'copilot --acp --stdio' (WSL Ubuntu)"
+    );
+}
+
+/// Captured stderr is the only description of *why* an agent died; without it
+/// the user sees the transport symptom ("oneshot canceled") and nothing else.
+/// Bounded so a chatty CLI can't flood the pane's error banner.
+#[test]
+fn startup_stderr_is_folded_into_the_error_and_bounded() {
+    assert_eq!(format_startup_stderr(&[]), "");
+
+    let one = format_startup_stderr(&["cannot preserve mount namespace".to_string()]);
+    assert_eq!(one, "\n  agent stderr: cannot preserve mount namespace");
+
+    // Keeps the LAST lines — the final message before exit is the useful one —
+    // and says how many were elided.
+    let many: Vec<String> = (1..=7).map(|i| format!("line {i}")).collect();
+    let out = format_startup_stderr(&many);
+    assert!(out.contains("line 7"), "must keep the final line: {out}");
+    assert!(!out.contains("line 3"), "must elide early lines: {out}");
+    assert_eq!(
+        out.matches("agent stderr:").count(),
+        STARTUP_STDERR_IN_ERROR
+    );
+    assert!(
+        out.contains("3 earlier stderr line(s) in the master log"),
+        "must point at the log for the rest: {out}"
+    );
+}
+
 #[test]
 fn is_stale_host_history_row_reconcile_rules() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};

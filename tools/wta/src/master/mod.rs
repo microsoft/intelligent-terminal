@@ -4084,6 +4084,50 @@ async fn get_or_spawn_agent(
 /// Unlike the old single-agent master, an agent CLI death here only
 /// removes that agent from the pool — the master process survives so
 /// other tabs' agents keep running.
+/// How many captured stderr lines to fold into a startup-failure error.
+/// Bounded so a chatty CLI can't turn a pane's error banner into a wall of
+/// text; the full capture is always in the log.
+const STARTUP_STDERR_IN_ERROR: usize = 4;
+
+/// Name the agent in a startup-failure message, including WHERE it runs.
+///
+/// The command alone is ambiguous: `copilot --acp --stdio` is the spelling for
+/// the host CLI *and* for the CLI inside every WSL distro, so a bare command
+/// sends the user debugging the wrong machine.
+fn describe_agent_target(agent_cmd: &str, source: &crate::agent_source::AgentSource) -> String {
+    match source {
+        crate::agent_source::AgentSource::Host => format!("'{agent_cmd}'"),
+        crate::agent_source::AgentSource::Wsl { distro } => {
+            format!("'{agent_cmd}' (WSL {distro})")
+        }
+    }
+}
+
+/// Fold captured startup stderr into an error message, or return empty when
+/// the CLI died silently.
+///
+/// This is the difference between a user seeing the transport symptom
+/// ("response to `initialize` never received: oneshot canceled") and the
+/// actual cause ("cannot preserve mount namespace ... Invalid argument").
+fn format_startup_stderr(lines: &[String]) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+    let shown = lines.len().min(STARTUP_STDERR_IN_ERROR);
+    let mut out = String::new();
+    for line in &lines[lines.len() - shown..] {
+        out.push_str("\n  agent stderr: ");
+        out.push_str(line);
+    }
+    if lines.len() > shown {
+        out.push_str(&format!(
+            "\n  ({} earlier stderr line(s) in the master log)",
+            lines.len() - shown
+        ));
+    }
+    out
+}
+
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
     cell: &AgentCell,
@@ -4296,17 +4340,23 @@ async fn spawn_one_agent(
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
-            stderr_log
-                .finish_failed_startup(&mut child, stderr_task)
-                .await;
-            return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
-        }
-        Err(_) => {
-            stderr_log
+            let stderr = stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
             return Err(anyhow!(
-                "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
+                "ACP initialize failed for {}: {e}{}",
+                describe_agent_target(agent_cmd, source),
+                format_startup_stderr(&stderr)
+            ));
+        }
+        Err(_) => {
+            let stderr = stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
+            return Err(anyhow!(
+                "ACP initialize timed out after {init_timeout_secs}s — agent CLI {} did not respond{}",
+                describe_agent_target(agent_cmd, source),
+                format_startup_stderr(&stderr)
             ));
         }
     };
