@@ -1602,6 +1602,20 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             return true;
         }
 
+        if (_agentPasteShortcutFallbackEnabled &&
+            vkey == 'V' &&
+            modifiers.IsCtrlPressed() &&
+            !modifiers.IsShiftPressed() &&
+            !modifiers.IsAltPressed() &&
+            !modifiers.IsWinPressed())
+        {
+            if (keyDown)
+            {
+                _interactivity.RequestPasteTextFromClipboard();
+            }
+            return true;
+        }
+
         // Short-circuit isReadOnly check to avoid warning dialog
         if (_core.IsInReadOnlyMode())
         {

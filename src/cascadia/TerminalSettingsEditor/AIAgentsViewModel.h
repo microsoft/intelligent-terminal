@@ -180,9 +180,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected || _openCodeCliDetected;
         }
-        // Per-CLI "row visible" flags. Existing integrations appear when they
-        // have hook state. OpenCode also appears when its CLI is detected so
-        // users can discover and install the newly supported integration.
+        // Per-CLI "row visible" flags. A CLI's row appears only while it has
+        // hook state (fully or partially installed), so removing hooks makes
+        // the row disappear — uniformly, for every CLI.
         bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
         bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
         bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
@@ -207,10 +207,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool CanRemoveAgentHooks() const noexcept
         {
             return !IsAgentSessionHooksPolicyLocked();
-        }
-        bool CanRemoveOpenCodeHooks() const noexcept
-        {
-            return _openCodeHooksPresent && !IsAgentSessionHooksPolicyLocked();
         }
         bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
         winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
@@ -291,13 +287,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _geminiCliDetected{ false };
         bool _codexCliDetected{ false };
         bool _openCodeCliDetected{ false };
-        // Row visibility. OpenCode additionally appears when its CLI is detected.
+        // Row visibility — a CLI's row shows only while it has hook state.
         bool _showCopilotHookRow{ false };
         bool _showClaudeHookRow{ false };
         bool _showGeminiHookRow{ false };
         bool _showCodexHookRow{ false };
         bool _showOpenCodeHookRow{ false };
-        bool _openCodeHooksPresent{ false };
         // Subtitle text per CLI; empty for fully-installed CLIs.
         winrt::hstring _copilotHooksSubtitle;
         winrt::hstring _claudeHooksSubtitle;

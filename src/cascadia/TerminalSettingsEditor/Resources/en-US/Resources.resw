@@ -3038,6 +3038,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Hooks installation failed. Check {0} for details.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
+  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
+    <value>Hooks installation failed for {0}. Check {1} for details.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
+  </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>BYOK (bring your own key) providers</value>
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>

@@ -797,6 +797,11 @@ impl TabSession {
         true
     }
 
+    pub(crate) fn invalidate_pending_paste(&mut self) {
+        self.paste_pending = false;
+        self.paste_generation = self.paste_generation.wrapping_add(1);
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
@@ -806,7 +811,9 @@ impl TabSession {
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
             && self.user_input.is_empty()
-            && self.streaming_agent_text().is_none_or(|text| text.trim().is_empty())
+            && self
+                .streaming_agent_text()
+                .is_none_or(|text| text.trim().is_empty())
             && !self.messages.iter().any(|message| {
                 matches!(
                     message,
@@ -825,7 +832,7 @@ impl TabSession {
 
     pub fn input_can_receive_nav_focus(&self) -> bool {
         (self.turn.recommendations().is_none()
-                || self.recommendation_focus == RecommendationFocus::Input)
+            || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && self.user_input.is_empty()
             && !self.paste_pending
@@ -880,8 +887,7 @@ impl TabSession {
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.clear_history_draft_attachments();
-        self.paste_pending = false;
-        self.paste_generation = self.paste_generation.wrapping_add(1);
+        self.invalidate_pending_paste();
     }
 
     pub fn flush_load_replay_pending(&mut self) {

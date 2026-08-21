@@ -444,8 +444,8 @@
                         </StackPanel>
                     </Border>
                     <!--  Per-CLI rows surface installed or partial hook state.
-                          OpenCode also appears when its CLI is detected so new
-                          users can see that hook integration is supported.  -->
+                          A row disappears once its hooks are removed, so the
+                          Remove button is never shown with nothing to remove.  -->
                     <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
                             BorderThickness="0,1,0,0"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -577,7 +577,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveOpenCodeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveOpenCodeHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                        </Grid>
                     </Border>

@@ -68,33 +68,91 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
+    fn copy_text_selection(&mut self) -> bool {
+        let Some(text) = self.text_selection.selected_text() else {
+            return false;
+        };
+        match crate::win32::copy_text_to_clipboard(&text) {
+            Ok(()) => {
+                self.text_selection.clear();
+                self.close_pane_armed_at = None;
+                self.transient_hint = Some((
+                    t!("system.selection_copied").into_owned(),
+                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
+                ));
+            }
+            Err(error) => {
+                self.transient_hint = None;
+                tracing::warn!(
+                    target: "clipboard",
+                    error = %error,
+                    "failed to copy mouse-selected text"
+                );
+            }
+        }
+        true
+    }
+
+    pub(super) fn default_paste_request_for_current_tab(&self) -> Option<String> {
+        let tab = self.current_tab();
+        if self.mode != AppMode::Chat
+            || tab.current_view != View::Chat
+            || !tab.pane_open
+            || !tab.input_can_receive_nav_focus()
+            || self.help_overlay_visible
+            || self.command_popup_visible()
+        {
+            return None;
+        }
+        Some(
+            serde_json::json!({
+                "type": "event",
+                "method": "request_default_paste",
+                "params": {
+                    "window_id": self.window_id.as_deref()?,
+                    "tab_id": self.tab_id.as_deref()?,
+                    "pane_id": self.pane_id.as_deref()?,
+                }
+            })
+            .to_string(),
+        )
+    }
+
+    pub(super) fn handle_right_click(&mut self) -> Option<String> {
+        self.cancel_completed_turn_click();
+        if self.copy_text_selection() {
+            return None;
+        }
+        let Some(request) = self.default_paste_request_for_current_tab() else {
+            let tab = self.current_tab();
+            tracing::debug!(
+                target: "agent_paste",
+                mode = ?self.mode,
+                view = ?tab.current_view,
+                pane_open = tab.pane_open,
+                input_can_receive_focus = tab.input_can_receive_nav_focus(),
+                help_overlay_visible = self.help_overlay_visible,
+                command_popup_visible = self.command_popup_visible(),
+                window_id = ?self.window_id,
+                tab_id = ?self.tab_id,
+                pane_id = ?self.pane_id,
+                "right-click Default Paste request was gated"
+            );
+            return None;
+        };
+        self.current_tab_mut().clear_completed_turn_selection();
+        tracing::debug!(target: "agent_paste", "publishing right-click Default Paste request");
+        Some(request)
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
-                if is_copy {
-                    if let Some(text) = self.text_selection.selected_text() {
-                        match crate::win32::copy_text_to_clipboard(&text) {
-                            Ok(()) => {
-                                self.text_selection.clear();
-                                self.close_pane_armed_at = None;
-                                self.transient_hint = Some((
-                                    t!("system.selection_copied").into_owned(),
-                                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
-                                ));
-                            }
-                            Err(error) => {
-                                tracing::warn!(
-                                    target: "clipboard",
-                                    error = %error,
-                                    "failed to copy mouse-selected text"
-                                );
-                            }
-                        }
-                        return;
-                    }
+                if is_copy && self.copy_text_selection() {
+                    return;
                 }
                 self.text_selection.clear();
                 self.handle_key(key);
@@ -133,6 +191,11 @@ impl App {
                             self.current_tab_mut().chat_scroll.by(-lines);
                         }
                         _ => {}
+                    }
+                }
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right) => {
+                    if let Some(request) = self.handle_right_click() {
+                        send_wt_protocol_event(request);
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
@@ -185,7 +248,8 @@ impl App {
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;
-                        let previous_expanded = tab.completed_turns[pressed.hit.turn_index].expanded;
+                        let previous_expanded =
+                            tab.completed_turns[pressed.hit.turn_index].expanded;
                         if tab.select_completed_turn(pressed.hit.turn_index)
                             && tab.toggle_completed_turn(pressed.hit.turn_index)
                             && pressed.hit.kind == CompletedTurnHitKind::UserInput
@@ -576,10 +640,7 @@ impl App {
                     .and_then(|options| options.iter_mut().find(|option| option.id == config_id))
                     .map(|option| {
                         option.current_value = value.clone();
-                        (
-                            option.name.clone(),
-                            option.current_value_name().to_string(),
-                        )
+                        (option.name.clone(), option.current_value_name().to_string())
                     })
                     .unwrap_or_else(|| (config_id.clone(), value.clone()));
                 let target_tab = self.bound_tab_for_session(&session_id);
@@ -1680,7 +1741,7 @@ impl App {
                         if let Some(target_agent_id) =
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
-                        tracing::info!(
+                            tracing::info!(
                             target: "autofix",
                             model = raw,
                                 target_agent_id,
@@ -1710,10 +1771,10 @@ impl App {
                                 Ok(models) => self.set_cloud_models(models),
                                 Err(error) => {
                                     tracing::error!(
-                                        target: "cloud_models",
-                                        %error,
-                                        "invalid cloud model catalog in agent_config_changed"
-                        );
+                                                    target: "cloud_models",
+                                                    %error,
+                                                    "invalid cloud model catalog in agent_config_changed"
+                                    );
                                     return;
                                 }
                             }
@@ -1829,11 +1890,20 @@ impl App {
                         && !our_window.is_empty()
                         && target_window != our_window
                     {
+                        // Do not mutate this helper's per-window tab state,
+                        // but still notify master. If every helper in the
+                        // owning window exits during teardown, a helper in a
+                        // surviving window is the only process left that can
+                        // deliver the stable tab id needed to close the ACP
+                        // session. Master de-duplicates these requests.
+                        if let Some(closed_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
+                            self.request_tab_session_close(closed_tab_id);
+                        }
                         tracing::debug!(
                             target: "tab_session",
                             target_window,
                             our_window,
-                            "ignoring tab_closed for different window"
+                            "forwarded cross-window tab_closed without mutating local state"
                         );
                         return;
                     }
@@ -2118,7 +2188,11 @@ impl App {
                             pane_open = open,
                             "applying pane_open"
                         );
-                        self.tab_mut(&target_tab).pane_open = open;
+                        let tab = self.tab_mut(&target_tab);
+                        if !open {
+                            tab.invalidate_pending_paste();
+                        }
+                        tab.pane_open = open;
                         // If a result is waiting for review on this tab,
                         // re-project the bar: opening the pane makes the
                         // result visible (→ Idle, bar goes quiet), closing

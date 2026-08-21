@@ -52,9 +52,18 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AnyBinaryOnPathTrueWhenAny);
         TEST_METHOD(AnyBinaryOnPathFalseWhenNone);
         TEST_METHOD(FindCliReturnsNullptrForMissing);
-        TEST_METHOD(ShowsDetectedCliWithoutHooks);
+        TEST_METHOD(HidesDetectedCliWithoutHooks);
         TEST_METHOD(ShowsHookStateWithoutCli);
+        TEST_METHOD(ShowsPartiallyInstalledCli);
         TEST_METHOD(HidesAbsentCliWithoutHooks);
+
+        TEST_METHOD(ParsesInstallReport);
+        TEST_METHOD(NamesEveryFailedInstallCli);
+        TEST_METHOD(FormatsNoFailuresAsEmpty);
+        TEST_METHOD(TreatsUnknownInstallOutcomeAsNonFailure);
+        TEST_METHOD(FallsBackToRawNameForUnknownCli);
+        TEST_METHOD(RejectsUnsupportedInstallSchemaVersion);
+        TEST_METHOD(RejectsMalformedInstallReport);
     };
 
     static constexpr std::string_view kHappyPathJson = R"({
@@ -119,14 +128,20 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(report->bundlePath.has_value());
     }
 
-    void AgentHooksStatusTests::ShowsDetectedCliWithoutHooks()
+    // A CLI that's merely installed on the machine gets no row: the row only
+    // exists to carry the per-CLI Remove action, and there's nothing to
+    // remove. Regression guard for the OpenCode row that used to linger with
+    // a permanently-disabled Remove button after its hooks were uninstalled —
+    // asserted against ShouldShowHookRow, the predicate the ViewModel calls,
+    // so reintroducing the `binaryOnPath ||` term fails here.
+    void AgentHooksStatusTests::HidesDetectedCliWithoutHooks()
     {
         CliStatus openCode{};
         openCode.name = "opencode";
         openCode.binaryOnPath = true;
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
-        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
+        VERIFY_IS_FALSE(ShouldShowHookRow(&openCode));
     }
 
     void AgentHooksStatusTests::ShowsHookStateWithoutCli()
@@ -136,7 +151,20 @@ namespace TerminalAppUnitTests
         openCode.pluginInstalled = true;
 
         VERIFY_IS_TRUE(HasHookState(&openCode));
-        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
+        VERIFY_IS_TRUE(ShouldShowHookRow(&openCode));
+    }
+
+    // A marketplace registered without the plugin (or vice-versa) is the
+    // partially-installed state the subtitle describes. The row must stay
+    // visible for it — that's the state the user most needs to act on.
+    void AgentHooksStatusTests::ShowsPartiallyInstalledCli()
+    {
+        CliStatus codex{};
+        codex.name = "codex";
+        codex.binaryOnPath = true;
+        codex.marketplaceRegistered = true;
+
+        VERIFY_IS_TRUE(ShouldShowHookRow(&codex));
     }
 
     void AgentHooksStatusTests::HidesAbsentCliWithoutHooks()
@@ -145,8 +173,9 @@ namespace TerminalAppUnitTests
         openCode.name = "opencode";
 
         VERIFY_IS_FALSE(HasHookState(&openCode));
-        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
-        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(nullptr));
+        VERIFY_IS_FALSE(HasHookState(nullptr));
+        VERIFY_IS_FALSE(ShouldShowHookRow(&openCode));
+        VERIFY_IS_FALSE(ShouldShowHookRow(nullptr));
     }
 
     void AgentHooksStatusTests::RejectsUnsupportedSchemaVersion()
@@ -446,5 +475,125 @@ namespace TerminalAppUnitTests
         const auto r = ParseStatusJson(kHappyPathJson);
         VERIFY_IS_TRUE(r.has_value());
         VERIFY_IS_NULL(FindCli(*r, "nonexistent"));
+    }
+
+    // ---- wta hooks install --json --------------------------------------
+
+    // Shape of a real failing run: Codex's marketplace still points at a
+    // moved bundle, so its `marketplace add` fails while every other CLI
+    // installs. This is the case the Settings UI used to report as a bare
+    // "Hooks installation failed" with no way to tell which CLI broke.
+    static constexpr std::string_view kInstallReportJson = R"({
+        "schema_version": 1,
+        "clis": [
+            { "name": "copilot", "outcome": "installed" },
+            { "name": "claude", "outcome": "installed" },
+            { "name": "gemini", "outcome": "skipped" },
+            { "name": "codex", "outcome": "failed",
+              "reason": "codex plugin marketplace add failed: already added from a different source" },
+            { "name": "opencode", "outcome": "skipped" }
+        ]
+    })";
+
+    void AgentHooksStatusTests::ParsesInstallReport()
+    {
+        const auto r = ParseInstallReportJson(kInstallReportJson);
+        VERIFY_IS_TRUE(r.has_value());
+        VERIFY_ARE_EQUAL(1u, r->schemaVersion);
+        VERIFY_ARE_EQUAL(size_t{ 5 }, r->clis.size());
+
+        VERIFY_ARE_EQUAL(std::string{ "codex" }, r->clis[3].name);
+        VERIFY_ARE_EQUAL(std::string{ "failed" }, r->clis[3].outcome);
+        VERIFY_IS_TRUE(r->clis[3].reason.has_value());
+
+        // A non-failure carries no reason, and absence must not be an error.
+        VERIFY_IS_FALSE(r->clis[0].reason.has_value());
+
+        VERIFY_ARE_EQUAL(std::wstring{ L"Codex CLI" }, FormatFailedCliList(*r));
+    }
+
+    void AgentHooksStatusTests::NamesEveryFailedInstallCli()
+    {
+        constexpr std::string_view js = R"({
+            "schema_version": 1,
+            "clis": [
+                { "name": "copilot", "outcome": "failed" },
+                { "name": "claude", "outcome": "installed" },
+                { "name": "opencode", "outcome": "failed" }
+            ]
+        })";
+        const auto r = ParseInstallReportJson(js);
+        VERIFY_IS_TRUE(r.has_value());
+        // Display names must match the row titles in AIAgents.xaml so the
+        // summary names each CLI the same way the list above it does.
+        VERIFY_ARE_EQUAL(std::wstring{ L"GitHub Copilot, OpenCode" }, FormatFailedCliList(*r));
+    }
+
+    // An all-clear report must produce no list — the caller uses "empty" to
+    // decide it has nothing to attribute and falls back to the generic
+    // message rather than rendering "failed for ." at the user.
+    void AgentHooksStatusTests::FormatsNoFailuresAsEmpty()
+    {
+        constexpr std::string_view js = R"({
+            "schema_version": 1,
+            "clis": [
+                { "name": "copilot", "outcome": "installed" },
+                { "name": "gemini", "outcome": "skipped" }
+            ]
+        })";
+        const auto r = ParseInstallReportJson(js);
+        VERIFY_IS_TRUE(r.has_value());
+        VERIFY_IS_TRUE(FormatFailedCliList(*r).empty());
+    }
+
+    // Forward compatibility: an outcome this build doesn't know must not be
+    // reported as a failure, or a future wta that adds a state would make
+    // every successful install look broken.
+    void AgentHooksStatusTests::TreatsUnknownInstallOutcomeAsNonFailure()
+    {
+        constexpr std::string_view js = R"({
+            "schema_version": 1,
+            "clis": [
+                { "name": "copilot", "outcome": "deferred" },
+                { "name": "claude" }
+            ]
+        })";
+        const auto r = ParseInstallReportJson(js);
+        VERIFY_IS_TRUE(r.has_value());
+        VERIFY_IS_TRUE(FormatFailedCliList(*r).empty());
+    }
+
+    // A CLI wta supports but this build has no display name for is still
+    // worth naming — dropping it would report a failure attributed to
+    // nothing at all.
+    void AgentHooksStatusTests::FallsBackToRawNameForUnknownCli()
+    {
+        constexpr std::string_view js = R"({
+            "schema_version": 1,
+            "clis": [ { "name": "unknown-cli", "outcome": "failed" } ]
+        })";
+        const auto r = ParseInstallReportJson(js);
+        VERIFY_IS_TRUE(r.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"unknown-cli" }, FormatFailedCliList(*r));
+    }
+
+    void AgentHooksStatusTests::RejectsUnsupportedInstallSchemaVersion()
+    {
+        constexpr std::string_view js = R"({
+            "schema_version": 99,
+            "clis": []
+        })";
+        VERIFY_IS_FALSE(ParseInstallReportJson(js).has_value());
+    }
+
+    void AgentHooksStatusTests::RejectsMalformedInstallReport()
+    {
+        VERIFY_IS_FALSE(ParseInstallReportJson("").has_value());
+        VERIFY_IS_FALSE(ParseInstallReportJson("not json").has_value());
+        // Missing `clis` entirely.
+        VERIFY_IS_FALSE(ParseInstallReportJson(R"({ "schema_version": 1 })").has_value());
+        // An entry without a name can't be attributed to a CLI.
+        VERIFY_IS_FALSE(
+            ParseInstallReportJson(R"({ "schema_version": 1, "clis": [ { "outcome": "failed" } ] })").has_value());
     }
 }

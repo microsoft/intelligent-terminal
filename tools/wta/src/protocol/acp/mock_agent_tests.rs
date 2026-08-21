@@ -14,9 +14,9 @@
 
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session, AutofixTextKind, CancelRequest,
-    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, take_retired_session_result,
+    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -69,6 +69,11 @@ struct MockAgent {
     /// Side-channel: the permission option id the client selected (or
     /// "cancelled"), for `AskPermission` runs.
     permission_outcome: Arc<Mutex<Option<String>>>,
+    /// Side-channel: sessions released through `session/close`.
+    closed_sessions: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: stable tab ids sent through master's close-by-tab
+    /// extension.
+    close_tab_requests: Arc<Mutex<Vec<String>>>,
     /// When set, `new_session` returns an error instead of a session id —
     /// simulates the agent/transport dropping during session establishment.
     fail_new_session: Arc<AtomicBool>,
@@ -121,6 +126,17 @@ impl MockAgent {
         _args: acp::schema::v1::AuthenticateRequest,
     ) -> acp::Result<acp::schema::v1::AuthenticateResponse> {
         Ok(acp::schema::v1::AuthenticateResponse::default())
+    }
+
+    async fn close_session(
+        &self,
+        args: acp::schema::v1::CloseSessionRequest,
+    ) -> acp::Result<acp::schema::v1::CloseSessionResponse> {
+        self.closed_sessions
+            .lock()
+            .unwrap()
+            .push(args.session_id.to_string());
+        Ok(acp::schema::v1::CloseSessionResponse::new())
     }
 
     async fn prompt(
@@ -207,8 +223,8 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -222,8 +238,8 @@ impl MockAgent {
                                 sid.clone(),
                                 acp::schema::v1::SessionUpdate::ToolCall(
                                     acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
                                     ),
                                 ),
                             ))
@@ -233,9 +249,9 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::ToolCallUpdate(
                                     acp::schema::v1::ToolCallUpdate::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    acp::schema::v1::ToolCallUpdateFields::new()
-                                        .status(acp::schema::v1::ToolCallStatus::Completed),
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        acp::schema::v1::ToolCallUpdateFields::new()
+                                            .status(acp::schema::v1::ToolCallStatus::Completed),
                                     ),
                                 ),
                             ))
@@ -249,16 +265,16 @@ impl MockAgent {
                                 sid,
                                 acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(
                                     vec![
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step one",
-                                        acp::schema::v1::PlanEntryPriority::Medium,
-                                        acp::schema::v1::PlanEntryStatus::InProgress,
-                                    ),
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step two",
-                                        acp::schema::v1::PlanEntryPriority::Low,
-                                        acp::schema::v1::PlanEntryStatus::Pending,
-                                    ),
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step one",
+                                            acp::schema::v1::PlanEntryPriority::Medium,
+                                            acp::schema::v1::PlanEntryStatus::InProgress,
+                                        ),
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step two",
+                                            acp::schema::v1::PlanEntryPriority::Low,
+                                            acp::schema::v1::PlanEntryStatus::Pending,
+                                        ),
                                     ],
                                 )),
                             ))
@@ -345,6 +361,8 @@ fn connect_with(
         seen_prompts: seen_prompts.clone(),
         seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
+        closed_sessions: Arc::new(Mutex::new(Vec::new())),
+        close_tab_requests: Arc::new(Mutex::new(Vec::new())),
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
         slow_load: Arc::new(AtomicBool::new(false)),
@@ -375,8 +393,8 @@ fn spawn_mock_pair(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -405,8 +423,8 @@ fn spawn_mock_pair(
                                 responder,
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
                     }
                 }
             },
@@ -421,7 +439,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
                             let _ = c.session_notification(n).await;
                         }
-            Ok(())
+                        Ok(())
                     }
                 }
             },
@@ -442,7 +460,7 @@ fn spawn_mock_pair(
                     let m = m.clone();
                     async move {
                         use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
-            match req {
+                        match req {
                             Q::InitializeRequest(a) => conn::respond_enum(
                                 responder,
                                 m.initialize(a).await.map(R::InitializeResponse),
@@ -459,20 +477,32 @@ fn spawn_mock_pair(
                                 responder,
                                 m.load_session(a).await.map(R::LoadSessionResponse),
                             ),
+                            Q::CloseSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.close_session(a).await.map(R::CloseSessionResponse),
+                            ),
                             Q::PromptRequest(a) => conn::respond_enum(
                                 responder,
                                 m.prompt(a).await.map(R::PromptResponse),
                             ),
-                Q::ExtMethodRequest(_) => conn::respond_enum(
-                    responder,
-                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
-                                    serde_json::value::to_raw_value(&serde_json::Value::Null)
-                                        .unwrap()
-                                        .into(),
-                    ))),
-                ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
+                            Q::ExtMethodRequest(request) => {
+                                if let crate::session_registry::WtaExtRequest::CloseTabSession(
+                                    params,
+                                ) = crate::session_registry::parse_ext_request(request)
+                                {
+                                    m.close_tab_requests.lock().unwrap().push(params.tab_id);
+                                }
+                                conn::respond_enum(
+                                    responder,
+                                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                                        serde_json::value::to_raw_value(&serde_json::Value::Null)
+                                            .unwrap()
+                                            .into(),
+                                    ))),
+                                )
+                            }
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
                     }
                 }
             },
@@ -487,7 +517,7 @@ fn spawn_mock_pair(
                         if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
                             let _ = m.cancel(n).await;
                         }
-            Ok(())
+                        Ok(())
                     }
                 }
             },
@@ -650,6 +680,8 @@ pub(crate) struct DispatchHarness {
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
     pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
+    pub closed_sessions: Arc<Mutex<Vec<String>>>,
+    pub close_tab_requests: Arc<Mutex<Vec<String>>>,
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
     pub fail_new_session: Arc<AtomicBool>,
@@ -668,9 +700,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
-    let proposal_channels = Arc::new(
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
-    );
+    let proposal_channels =
+        Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
@@ -685,6 +716,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
+    let closed_sessions = Arc::new(Mutex::new(Vec::new()));
+    let close_tab_requests = Arc::new(Mutex::new(Vec::new()));
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
@@ -695,6 +728,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         seen_prompts: seen_prompts.clone(),
         seen_images: seen_images.clone(),
         permission_outcome,
+        closed_sessions: closed_sessions.clone(),
+        close_tab_requests: close_tab_requests.clone(),
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
         slow_load: slow_load.clone(),
@@ -712,6 +747,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         proposal_channels,
         seen_prompts,
         seen_images,
+        closed_sessions,
+        close_tab_requests,
         fail_new_session,
         fail_load_session,
         slow_load,
@@ -1148,6 +1185,7 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
         .run_until(async {
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
             let sid = acp::schema::v1::SessionId::new("sess-rekey");
+            super::set_helper_owner_tab_id(Some("old-tab"));
             tab_to_session
                 .lock()
                 .await
@@ -1160,24 +1198,17 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                     new_tab_id: "new-tab".to_string(),
                 },
                 &tab_to_session,
-            );
-
-            // The rekey runs on a spawned task; wait (bounded) for it to land.
-            let mut rekeyed = false;
-            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
-            while tokio::time::Instant::now() < deadline {
-                {
-                    let g = tab_to_session.lock().await;
-                    if !g.contains_key("old-tab") && g.get("new-tab") == Some(&sid) {
-                        rekeyed = true;
-                        break;
-                    }
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            )
+            .await;
+            {
+                let g = tab_to_session.lock().await;
+                assert!(!g.contains_key("old-tab"));
+                assert_eq!(g.get("new-tab"), Some(&sid));
             }
-            assert!(
-                rekeyed,
-                "old-tab must be rekeyed to new-tab with same SessionId"
+            assert_eq!(
+                super::helper_owner_tab_id().as_deref(),
+                Some("new-tab"),
+                "future session metadata must use the dragged tab id"
             );
 
             // No-op: renaming a ghost tab leaves the map untouched.
@@ -1187,11 +1218,8 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                     new_tab_id: "phantom".to_string(),
                 },
                 &tab_to_session,
-            );
-            // Give the spawned task a chance to (not) mutate anything.
-            for _ in 0..10 {
-                tokio::task::yield_now().await;
-            }
+            )
+            .await;
             let g = tab_to_session.lock().await;
             assert!(!g.contains_key("phantom"), "missing old id must be a no-op");
             assert!(
@@ -1250,10 +1278,10 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
         .await;
 }
 
-/// `dispatch_drop_session` must unbind the tab's session, fire its in-flight
-/// cancel signal, and be a no-op for a tab that holds no session.
+/// `dispatch_drop_session` must close and unbind the tab's session, fire its
+/// in-flight cancel signal, and be a no-op for a tab that holds no session.
 #[tokio::test]
-async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
+async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_missing() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -1274,14 +1302,16 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
             dispatch_drop_session(
                 DropSessionRequest {
                     tab_id: "t1".to_string(),
+                    notify_master: true,
                 },
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
-            );
+            )
+            .await;
 
-            // The in-flight cancel oneshot fires when the spawned task runs.
+            // The in-flight cancel oneshot fires before the close request completes.
             assert!(
                 tokio::time::timeout(std::time::Duration::from_secs(5), rx)
                     .await
@@ -1296,23 +1326,98 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 !cancel_signals.lock().unwrap().contains_key("sess-drop"),
                 "drop must remove the cancel signal from the registry"
             );
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if h.close_tab_requests.lock().unwrap().as_slice() == ["t1".to_string()] {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("drop must ask master to resolve and close the destroyed tab");
 
             // No-op: dropping an unbound tab leaves the map empty, no panic.
             dispatch_drop_session(
                 DropSessionRequest {
                     tab_id: "unbound".to_string(),
+                    notify_master: true,
                 },
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+            )
+            .await;
+            assert!(tab_to_session.lock().await.is_empty());
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if h.close_tab_requests.lock().unwrap().as_slice()
+                        == ["t1".to_string(), "unbound".to_string()]
+                    {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("even a helper without a local binding must notify master");
+
+            let reset_sid = acp::schema::v1::SessionId::new("sess-reset");
+            tab_to_session
+                .lock()
+                .await
+                .insert("reset-tab".to_string(), reset_sid.clone());
+            let (reset_tx, reset_rx) = oneshot::channel::<()>();
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert(reset_sid.to_string(), reset_tx);
+
+            dispatch_drop_session(
+                DropSessionRequest {
+                    tab_id: "reset-tab".to_string(),
+                    notify_master: false,
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+            )
+            .await;
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), reset_rx)
+                    .await
+                    .is_ok(),
+                "WT reset must still cancel the helper-local in-flight prompt"
             );
+            assert!(!tab_to_session.lock().await.contains_key("reset-tab"));
             for _ in 0..10 {
                 tokio::task::yield_now().await;
             }
-            assert!(tab_to_session.lock().await.is_empty());
+            assert_eq!(
+                h.close_tab_requests.lock().unwrap().as_slice(),
+                ["t1".to_string(), "unbound".to_string()],
+                "WT reset physical close is master-owned and must not be duplicated by a helper"
+            );
         })
         .await;
+}
+
+#[test]
+fn retired_session_result_is_consumed_without_leaving_private_metadata() {
+    let mut meta = None;
+    crate::session_registry::inject_wta_meta(
+        &mut meta,
+        &crate::session_registry::WtaMeta {
+            session_result: Some("retired".to_string()),
+            ..Default::default()
+        },
+    );
+
+    assert!(take_retired_session_result(&mut meta));
+    assert!(meta.is_none());
 }
 
 /// `dispatch_new_session` happy path: a fresh tab gets a session created and
@@ -1936,9 +2041,7 @@ async fn session_notification_routes_provider_reported_zero_size() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(
-                acp::schema::v1::UsageUpdate::new(1, 0),
-            ),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(1, 0)),
         ))
         .await
         .expect("provider-owned capacity must not be rejected by the client");
@@ -1957,7 +2060,9 @@ async fn notification_dispatch_routes_over_capacity_usage_and_keeps_chat_flow() 
     client
         .dispatch_session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(101, 100)),
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(
+                101, 100,
+            )),
         ))
         .await;
 
@@ -2131,9 +2236,9 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
         .session_notification(notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
-                    acp::schema::v1::ToolCallId::new("proposal-tool"),
-                    acp::schema::v1::ToolCallUpdateFields::new()
-                        .status(acp::schema::v1::ToolCallStatus::Completed),
+                acp::schema::v1::ToolCallId::new("proposal-tool"),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -2254,9 +2359,10 @@ async fn session_notification_preserves_standard_tool_content_and_location_lines
                     "Edit source",
                 )
                 .content(content)
-                .locations(vec![
-                    acp::schema::v1::ToolCallLocation::new(r"C:\src\main.rs").line(42),
-                ]),
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                    r"C:\src\main.rs",
+                )
+                .line(42)]),
             ),
         ))
         .await
@@ -2447,13 +2553,10 @@ async fn session_notification_routes_tool_call_content_without_status() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(
-                acp::schema::v1::ToolCallUpdate::new(
-                    acp::schema::v1::ToolCallId::new("tc-1"),
-                    acp::schema::v1::ToolCallUpdateFields::new()
-                        .content(vec!["step 1 of 3".into()]),
-                ),
-            ),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new().content(vec!["step 1 of 3".into()]),
+            )),
         ))
         .await
         .unwrap();
@@ -2473,12 +2576,10 @@ async fn session_notification_preserves_empty_tool_content_replacement() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(
-                acp::schema::v1::ToolCallUpdate::new(
-                    acp::schema::v1::ToolCallId::new("tc-1"),
-                    acp::schema::v1::ToolCallUpdateFields::new().content(Vec::new()),
-                ),
-            ),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new().content(Vec::new()),
+            )),
         ))
         .await
         .unwrap();
@@ -2503,13 +2604,10 @@ async fn session_notification_bounds_tool_call_output_to_latest_text() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(
-                acp::schema::v1::ToolCallUpdate::new(
-                    acp::schema::v1::ToolCallId::new("tc-1"),
-                    acp::schema::v1::ToolCallUpdateFields::new()
-                        .content(vec![reported.into()]),
-                ),
-            ),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new().content(vec![reported.into()]),
+            )),
         ))
         .await
         .unwrap();
@@ -2535,21 +2633,18 @@ async fn session_notification_surfaces_execute_metadata_and_raw_output() {
         .session_notification(notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(
-                acp::schema::v1::ToolCall::new(
-                    acp::schema::v1::ToolCallId::new("tc-1"),
-                    "bash",
-                )
-                .kind(acp::schema::v1::ToolKind::Execute)
-                .status(acp::schema::v1::ToolCallStatus::Completed)
-                .raw_input(Some(serde_json::json!({
-                    "command": "cargo test",
-                    "cwd": expected_cwd
-                })))
-                .raw_output(Some(serde_json::json!({
-                    "stdout": "12 tests passed",
-                    "stderr": "one warning",
-                    "exitCode": 0
-                }))),
+                acp::schema::v1::ToolCall::new(acp::schema::v1::ToolCallId::new("tc-1"), "bash")
+                    .kind(acp::schema::v1::ToolKind::Execute)
+                    .status(acp::schema::v1::ToolCallStatus::Completed)
+                    .raw_input(Some(serde_json::json!({
+                        "command": "cargo test",
+                        "cwd": expected_cwd
+                    })))
+                    .raw_output(Some(serde_json::json!({
+                        "stdout": "12 tests passed",
+                        "stderr": "one warning",
+                        "exitCode": 0
+                    }))),
             ),
         ))
         .await

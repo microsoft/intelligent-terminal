@@ -117,7 +117,7 @@
     # §10 diagnostics — native hook bridge (Feature.HookTrace).
     'Native hook bridge publishes events' = 'wtcli agent-hook publishes a pane-scoped, redacted agent event'
     # §2 agent pane paste (Feature.Paste) — only the multiline case satisfies C065.
-    'Paste works'                       = 'Paste works \(multiline clipboard text stays in one agent draft without submitting\)'
+    'Paste works'                       = 'Paste works \(multiline text remains in one agent draft without submitting\)'
     'Completed turns toggle and select from rendered prompt targets' = 'Clicking a multiline prompt row selects and collapses its completed turn'
     # §7 multi-window (Feature.MultiWindow) — move an agent tab to a new window via the command
     # palette (moveTab window:new), assert chat preserved + closing the source window is safe.

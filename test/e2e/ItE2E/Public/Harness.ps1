@@ -146,6 +146,13 @@ function Stop-StaleItInstances {
         Closing all IT windows first makes each launch deterministic and freshly-owned.
     #>
     [CmdletBinding()] param([int]$GraceSec = 6)
+    $ancestorIds = [System.Collections.Generic.HashSet[int]]::new()
+    $ancestorId = $PID
+    while ($ancestorId -gt 0 -and $ancestorIds.Add($ancestorId)) {
+        $ancestor = Get-CimInstance Win32_Process -Filter "ProcessId=$ancestorId" -ErrorAction SilentlyContinue
+        if (-not $ancestor -or $ancestor.ParentProcessId -eq $ancestorId) { break }
+        $ancestorId = [int]$ancestor.ParentProcessId
+    }
     $locs = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' } |
             ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
     if (-not $locs) { return }
@@ -157,12 +164,28 @@ function Stop-StaleItInstances {
     }
     $procs = @(& $find)
     if (-not $procs.Count) { return }
+    $hostingAncestors = @($procs | Where-Object { $ancestorIds.Contains([int]$_.Id) })
+    if ($hostingAncestors.Count) {
+        $ids = ($hostingAncestors | ForEach-Object Id) -join ','
+        if ($env:ITE2E_PRESERVE_ANCESTOR_PID -ne $ids) {
+            throw "Refusing to run ItE2E from an Intelligent Terminal process tree because cold start would terminate the test runner (ancestor pid(s): $ids). Launch the suite from an independent conhost or stock Windows Terminal."
+        }
+        Write-ItLog -Level WARN -Message "Preserving explicitly protected Intelligent Terminal ancestor pid(s) [$ids]; shared COM registration may make the run fail safely."
+        $procs = @($procs | Where-Object { -not $ancestorIds.Contains([int]$_.Id) })
+    }
+    if (-not $procs.Count) { return }
+    $staleIds = @($procs | ForEach-Object { [int]$_.Id })
     Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale IT instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
     foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
-    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition { -not @(& $find).Count } | Out-Null
-    foreach ($p in @(& $find)) {
-        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-        Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$($p.Id)"
+    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
+        -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
+    } | Out-Null
+    foreach ($staleId in $staleIds) {
+        $stale = @(& $find) | Where-Object Id -eq $staleId | Select-Object -First 1
+        if ($stale) {
+            Stop-Process -InputObject $stale -Force -ErrorAction SilentlyContinue
+            Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
+        }
     }
     Start-Sleep -Milliseconds 500   # let the OS tear down the shared COM monarch registration
 }

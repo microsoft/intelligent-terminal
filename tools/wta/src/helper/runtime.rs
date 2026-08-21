@@ -486,8 +486,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // cancels any in-flight prompt for it; the next prompt on that
-            // tab lazily creates a fresh session.
+            // closes the session after cancelling any in-flight prompt; the
+            // next prompt on that tab lazily creates a fresh session.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
@@ -1159,6 +1159,18 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+            else if let Some(pane_id) = std::env::var("WT_SESSION")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+            {
+                tracing::info!(
+                    target: "tab_session",
+                    pane_id = %pane_id,
+                    "seeded app_state.pane_id from WT_SESSION fallback"
+                );
+                app_state.pane_id = Some(pane_id);
             }
 
             // WT knows the owning window authoritatively when it creates the

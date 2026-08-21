@@ -158,7 +158,6 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean ShowOpenCodeHooksSubtitle { get; };
         Boolean CanInstallAgentHooks { get; };
         Boolean CanRemoveAgentHooks { get; };
-        Boolean CanRemoveOpenCodeHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
         // True iff AgentHooksInstallSummary is non-empty — gates the
