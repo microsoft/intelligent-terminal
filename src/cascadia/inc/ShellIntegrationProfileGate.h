@@ -443,17 +443,11 @@ namespace Microsoft::Terminal::ShellIntegration
     // Returns false for any other target (e.g. a hypothetical future
     // shell flavor) — caller is responsible for adding a new branch
     // when registering a new Target.
-    inline bool ProfileMatchesShell(Target target,
-                                     std::wstring_view source,
-                                     std::wstring_view commandline) noexcept
+    inline bool CommandlineMatchesShell(Target target, std::wstring_view commandline) noexcept
     {
         switch (target)
         {
         case Target::Pwsh:
-            if (source == L"Windows.Terminal.PowershellCore")
-            {
-                return true;
-            }
             return details::CommandlineHasExeToken(commandline, L"pwsh");
         case Target::WindowsPowerShell:
             // The launch-exe matcher compares the full leaf token
@@ -477,6 +471,17 @@ namespace Microsoft::Terminal::ShellIntegration
         default:
             return false;
         }
+    }
+
+    inline bool ProfileMatchesShell(Target target,
+                                     std::wstring_view source,
+                                     std::wstring_view commandline) noexcept
+    {
+        if (target == Target::Pwsh && source == L"Windows.Terminal.PowershellCore")
+        {
+            return true;
+        }
+        return CommandlineMatchesShell(target, commandline);
     }
 
     // Pure predicate: is this profile a WSL profile we should install bash

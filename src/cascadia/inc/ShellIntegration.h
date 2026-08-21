@@ -32,6 +32,7 @@
 #include "ShellIntegrationCommon.h"
 #include "ShellIntegrationProfileGate.h"
 #include "PowerShellShellIntegration.h"
+#include "PowerShellProfileRepair.h"
 #include "BashShellIntegration.h"
 #include "WslShellIntegration.h"
 

@@ -361,6 +361,21 @@
                                                 </Hyperlink>
                                             </TextBlock>
                                         </Grid>
+                                        <StackPanel x:Name="AutoDetectShellIntegrationRepairStatusPanel"
+                                                    Margin="0,6,0,0"
+                                                    Spacing="4"
+                                                    Visibility="Collapsed">
+                                            <TextBlock x:Name="PwshShellIntegrationRepairStatus"
+                                                       FontSize="12"
+                                                       Foreground="#CCFFA500"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="Collapsed" />
+                                            <TextBlock x:Name="WindowsPowerShellShellIntegrationRepairStatus"
+                                                       FontSize="12"
+                                                       Foreground="#CCFFA500"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="Collapsed" />
+                                        </StackPanel>
                                     </StackPanel>
                                     <ToggleSwitch x:Name="AutoDetectToggle" Grid.Column="1"
                                                   IsOn="True" VerticalAlignment="Center"

@@ -9,6 +9,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/WtaProcess.h"
 #include "../inc/ShellIntegration.h"
+#include "../inc/ShellIntegrationDiagnostics.h"
 #include "../inc/RtlHelper.h"
 #include "AgentPaneLog.h"
 #include "ShellIntegrationSweep.h"
@@ -32,9 +33,72 @@ namespace winrt::TerminalApp::implementation
     std::mutex FreOverlay::s_prewarmMutex;
     winrt::Windows::Foundation::IAsyncAction FreOverlay::s_prewarmAction{ nullptr };
 
+    namespace
+    {
+        winrt::hstring _FormatRepairStatus(const winrt::hstring& localizedTemplate,
+                                           const ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget target)
+        {
+            std::wstring localized{ localizedTemplate.c_str(), localizedTemplate.size() };
+            constexpr std::wstring_view placeholder{ L"{}" };
+            if (const auto pos = localized.find(placeholder); pos != std::wstring::npos)
+            {
+                localized.replace(pos, placeholder.size(), ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellLabel(target));
+            }
+            return winrt::hstring{ localized };
+        }
+
+        winrt::hstring _BuildRepairStatusMessage(const ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget target,
+                                                 const winrt::hstring& persistedReason)
+        {
+            const auto reason = ::Microsoft::Terminal::ShellIntegration::Diagnostics::ParsePersistedRepairReason(
+                std::wstring_view{ persistedReason.c_str(), persistedReason.size() });
+            if (!reason.has_value())
+            {
+                return {};
+            }
+
+            switch (*reason)
+            {
+            case ::Microsoft::Terminal::ShellIntegration::Diagnostics::RepairReason::PromptChanged:
+                return _FormatRepairStatus(RS_(L"FreOverlay_ShellIntegrationRepairPromptChanged"), target);
+            case ::Microsoft::Terminal::ShellIntegration::Diagnostics::RepairReason::RestartRequired:
+                return _FormatRepairStatus(RS_(L"FreOverlay_ShellIntegrationRepairRestartRequired"), target);
+            case ::Microsoft::Terminal::ShellIntegration::Diagnostics::RepairReason::BindFailed:
+                return _FormatRepairStatus(RS_(L"FreOverlay_ShellIntegrationRepairBindFailed"), target);
+            }
+
+            return {};
+        }
+
+        void _SetRepairStatusTextBlock(const TextBlock& textBlock, const winrt::hstring& message)
+        {
+            if (!textBlock)
+            {
+                return;
+            }
+
+            textBlock.Text(message);
+            textBlock.Visibility(message.empty() ? Visibility::Collapsed : Visibility::Visible);
+        }
+    }
+
     FreOverlay::FreOverlay()
     {
         InitializeComponent();
+        const auto applicationState = winrt::Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance();
+        const auto dispatcher = Dispatcher();
+        _shellIntegrationRepairStateChangedRevoker = applicationState.ShellIntegrationRepairStateChanged(
+            winrt::auto_revoke,
+            [weakThis = get_weak(), dispatcher](auto&&, auto&&) {
+                dispatcher.RunAsync(
+                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                    [weakThis]() {
+                        if (const auto overlay = weakThis.get())
+                        {
+                            overlay->_RefreshShellIntegrationRepairStatus();
+                        }
+                    });
+            });
 
         // Seed the overlay's status text from the existing localized
         // resource (reused here rather than adding a new .Text key
@@ -202,6 +266,7 @@ namespace winrt::TerminalApp::implementation
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
         AutoDetectShellIntegrationHintPrefix().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintPrefix"));
         AutoDetectShellIntegrationHintLink().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintLink"));
+        _RefreshShellIntegrationRepairStatus();
 
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
@@ -416,6 +481,23 @@ namespace winrt::TerminalApp::implementation
             suggest.IsOn(false);
         }
         suggest.IsEnabled(detectionOn && !autoFixLocked);
+    }
+
+    void FreOverlay::_RefreshShellIntegrationRepairStatus()
+    {
+        const auto state = winrt::Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance();
+        const auto pwshMessage = _BuildRepairStatusMessage(
+            ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::Pwsh,
+            state.PwshShellIntegrationRepairReason());
+        const auto windowsPowerShellMessage = _BuildRepairStatusMessage(
+            ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::WindowsPowerShell,
+            state.WindowsPowerShellShellIntegrationRepairReason());
+
+        _SetRepairStatusTextBlock(PwshShellIntegrationRepairStatus(), pwshMessage);
+        _SetRepairStatusTextBlock(WindowsPowerShellShellIntegrationRepairStatus(), windowsPowerShellMessage);
+
+        const auto anyVisible = !pwshMessage.empty() || !windowsPowerShellMessage.empty();
+        AutoDetectShellIntegrationRepairStatusPanel().Visibility(anyVisible ? Visibility::Visible : Visibility::Collapsed);
     }
 
     // ── Page navigation ─────────────────────────────────────────────────

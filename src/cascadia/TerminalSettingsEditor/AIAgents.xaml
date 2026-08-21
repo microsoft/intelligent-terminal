@@ -296,6 +296,21 @@
                                     <Run x:Name="AutoErrorDetectionCaptionLink" />
                                 </Hyperlink>
                             </TextBlock>
+                            <StackPanel x:Name="AutoErrorDetectionRepairStatusPanel"
+                                        Margin="0,6,0,0"
+                                        Spacing="4"
+                                        Visibility="Collapsed">
+                                <TextBlock x:Name="PwshShellIntegrationRepairStatus"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed" />
+                                <TextBlock x:Name="WindowsPowerShellShellIntegrationRepairStatus"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed" />
+                            </StackPanel>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1"
                                       MinWidth="0"

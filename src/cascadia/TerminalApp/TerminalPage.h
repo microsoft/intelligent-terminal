@@ -660,6 +660,7 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _InitShellIntegration(const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
         safe_void_coroutine _ReconcileShellIntegration();
+        safe_void_coroutine _RepairPowerShellProfile(bool pwsh, std::wstring executable);
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
 

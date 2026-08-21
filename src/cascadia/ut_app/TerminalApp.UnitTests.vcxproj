@@ -34,6 +34,7 @@
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
+    <ClCompile Include="ShellIntegrationDiagnosticsTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>

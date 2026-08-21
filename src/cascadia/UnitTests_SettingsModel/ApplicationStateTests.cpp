@@ -13,9 +13,11 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace SettingsModelUnitTests
 {
-    // Covers the workspace-persistence APIs added to ApplicationState:
+    // Covers the workspace-persistence APIs plus the shell-integration
+    // repair-reason round-trip in ApplicationState:
     //   SaveWorkspace / RemoveWorkspace / RenameWorkspace / TakeWorkspace /
-    //   AllPersistedWorkspaces.
+    //   AllPersistedWorkspaces / PwshShellIntegrationRepairReason /
+    //   WindowsPowerShellShellIntegrationRepairReason.
     // All tests operate on a throw-away ApplicationState instance pointed at
     // a temp directory, so they don't touch the real user state.
     class ApplicationStateTests
@@ -27,6 +29,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceMigratesEntry);
         TEST_METHOD(RenameWorkspaceNoOpForEmptyOrEqualNames);
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
+        TEST_METHOD(ShellIntegrationRepairReasonsRoundTrip);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
 
@@ -36,16 +39,28 @@ namespace SettingsModelUnitTests
             auto root = std::filesystem::temp_directory_path() / L"WT_ApplicationStateTests";
             std::error_code ec;
             std::filesystem::create_directories(root, ec);
+            return root;
+        }
+
+        static void _clearTempRoot(const std::filesystem::path& root)
+        {
+            std::error_code ec;
             // Best-effort clean of any leftover state.json from a prior run so
             // tests see an empty starting point.
             std::filesystem::remove(root / L"state.json", ec);
             std::filesystem::remove(root / L"elevated-state.json", ec);
-            return root;
+        }
+
+        static winrt::com_ptr<implementation::ApplicationState> _make(const std::filesystem::path& root)
+        {
+            return winrt::make_self<implementation::ApplicationState>(root);
         }
 
         static winrt::com_ptr<implementation::ApplicationState> _make()
         {
-            return winrt::make_self<implementation::ApplicationState>(_tempRoot());
+            const auto root = _tempRoot();
+            _clearTempRoot(root);
+            return _make(root);
         }
 
         static WindowLayout _makeLayout()
@@ -115,6 +130,36 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_FALSE(state->RenameWorkspace(L"missing", L"newName"));
+    }
+
+    void ApplicationStateTests::ShellIntegrationRepairReasonsRoundTrip()
+    {
+        const auto root = _tempRoot();
+        _clearTempRoot(root);
+
+        auto state = _make(root);
+        uint32_t changeNotifications = 0;
+        const auto token = state->ShellIntegrationRepairStateChanged(
+            [&changeNotifications](auto&&, auto&&) {
+                ++changeNotifications;
+            });
+        state->PwshShellIntegrationRepairReason(L"prompt-changed");
+        state->WindowsPowerShellShellIntegrationRepairReason(L"restart-required");
+        state->NotifyShellIntegrationRepairStateChanged();
+        state->Flush();
+        VERIFY_ARE_EQUAL(1u, changeNotifications);
+        state->ShellIntegrationRepairStateChanged(token);
+
+        auto reloaded = _make(root);
+        VERIFY_ARE_EQUAL(std::wstring{ L"prompt-changed" }, std::wstring{ reloaded->PwshShellIntegrationRepairReason() });
+        VERIFY_ARE_EQUAL(std::wstring{ L"restart-required" }, std::wstring{ reloaded->WindowsPowerShellShellIntegrationRepairReason() });
+
+        reloaded->PwshShellIntegrationRepairReason(L"");
+        reloaded->Flush();
+
+        auto cleared = _make(root);
+        VERIFY_ARE_EQUAL(std::wstring{}, std::wstring{ cleared->PwshShellIntegrationRepairReason() });
+        VERIFY_ARE_EQUAL(std::wstring{ L"restart-required" }, std::wstring{ cleared->WindowsPowerShellShellIntegrationRepairReason() });
     }
 
     void ApplicationStateTests::TakeWorkspaceRemovesAndReturns()

@@ -21,6 +21,8 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
+#include "../inc/ShellIntegration.h"
+#include "../inc/ShellIntegrationDiagnostics.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
@@ -6601,6 +6603,7 @@ namespace winrt::TerminalApp::implementation
         {
             return {};
         }
+
         for (const auto& tab : _tabs)
         {
             const auto tabImpl = _GetTabImpl(tab);
@@ -6695,6 +6698,106 @@ namespace winrt::TerminalApp::implementation
                                 page->_NotifyRichTabControl(
                                     term2,
                                     ::Microsoft::Terminal::RichTab::Provider::ActivationEvent::CommandFinished);
+                            }
+
+                            if (const auto diagnostic = ::Microsoft::Terminal::ShellIntegration::Diagnostics::ParseSignal(richTabSequence))
+                            {
+                                const auto expectedShell = diagnostic->target == ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::Pwsh ?
+                                                               L"pwsh" :
+                                                               L"powershell";
+                                if (term2.ShellName() != expectedShell)
+                                {
+                                    return;
+                                }
+                                const auto conptyConnection = term2.Connection().try_as<ConptyConnection>();
+                                if (!conptyConnection)
+                                {
+                                    return;
+                                }
+                                const auto shellTarget = diagnostic->target == ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::Pwsh ?
+                                                             ::Microsoft::Terminal::ShellIntegration::Target::Pwsh :
+                                                             ::Microsoft::Terminal::ShellIntegration::Target::WindowsPowerShell;
+                                // Lifecycle diagnostics are persisted process-wide, so require
+                                // the independent launch commandline to agree with the shell's
+                                // self-reported identity. Dynamic-profile Source metadata alone
+                                // is intentionally insufficient here. A nested PowerShell inside
+                                // a non-PowerShell profile therefore fails closed rather than
+                                // changing global repair state from an untrusted child process.
+                                if (!::Microsoft::Terminal::ShellIntegration::CommandlineMatchesShell(
+                                        shellTarget,
+                                        std::wstring_view{ conptyConnection.Commandline() }))
+                                {
+                                    return;
+                                }
+                                std::wstring executable;
+                                try
+                                {
+                                    const auto processHandle = reinterpret_cast<HANDLE>(conptyConnection.RootProcessHandle());
+                                    if (!processHandle)
+                                    {
+                                        return;
+                                    }
+                                    executable = wil::QueryFullProcessImageNameW<std::wstring>(processHandle);
+                                }
+                                catch (...)
+                                {
+                                    LOG_CAUGHT_EXCEPTION();
+                                    return;
+                                }
+                                if (!::Microsoft::Terminal::ShellIntegration::Powershell::IsTrustedPowerShellHost(
+                                        shellTarget,
+                                        std::filesystem::path{ executable }))
+                                {
+                                    return;
+                                }
+                                if (!page->_shellIntegrationDesiredEnabled.load(std::memory_order_acquire))
+                                {
+                                    return;
+                                }
+                                const bool promptChanged =
+                                    diagnostic->repairReason ==
+                                    ::Microsoft::Terminal::ShellIntegration::Diagnostics::RepairReason::PromptChanged;
+                                if (promptChanged &&
+                                    (page->_GetActiveControl() != term2 || !term2.HasFocus()))
+                                {
+                                    return;
+                                }
+
+                                const auto state = ApplicationState::SharedInstance();
+                                const auto persistedReason = diagnostic->repairReason.has_value() ?
+                                                                 winrt::hstring{ ::Microsoft::Terminal::ShellIntegration::Diagnostics::PersistedRepairReason(*diagnostic->repairReason) } :
+                                                                 winrt::hstring{};
+                                bool changed = false;
+
+                                switch (diagnostic->target)
+                                {
+                                case ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::Pwsh:
+                                    if (state.PwshShellIntegrationRepairReason() != persistedReason)
+                                    {
+                                        state.PwshShellIntegrationRepairReason(persistedReason);
+                                        changed = true;
+                                    }
+                                    break;
+                                case ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::WindowsPowerShell:
+                                    if (state.WindowsPowerShellShellIntegrationRepairReason() != persistedReason)
+                                    {
+                                        state.WindowsPowerShellShellIntegrationRepairReason(persistedReason);
+                                        changed = true;
+                                    }
+                                    break;
+                                }
+
+                                if (changed)
+                                {
+                                    state.NotifyShellIntegrationRepairStateChanged();
+                                }
+                                if (promptChanged)
+                                {
+                                    page->_RepairPowerShellProfile(
+                                        diagnostic->target == ::Microsoft::Terminal::ShellIntegration::Diagnostics::ShellTarget::Pwsh,
+                                        std::move(executable));
+                                }
+                                return;
                             }
 
                             // GPO-blocked gate: when administrator policy

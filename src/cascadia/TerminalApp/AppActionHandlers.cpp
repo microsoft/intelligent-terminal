@@ -2136,6 +2136,7 @@ namespace winrt::TerminalApp::implementation
     safe_void_coroutine TerminalPage::_ReconcileShellIntegration()
     {
         auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
 
         // Snapshot WSL profile commandlines AND non-WSL shell presence on the UI
         // thread BEFORE going background. _settings.AllProfiles() is
@@ -2158,35 +2159,115 @@ namespace winrt::TerminalApp::implementation
         // desired flag inside the lock means the last acquirer always
         // observes the latest UI-thread-published value, so the final
         // on-disk state matches the latest setting.
-        std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
-        const bool enabled = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
+        {
+            std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
+            const bool enabled = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
 
-        if (enabled)
-        {
-            // Profile-gated install: only touch shells the user has a
-            // profile for. A user keeping only "Developer PowerShell
-            // for VS" (which uses Windows PowerShell) and no pwsh
-            // profile must not get pwsh integration written.
-            (void)ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+            if (enabled)
+            {
+                // Profile-gated install: only touch shells the user has a
+                // profile for. A user keeping only "Developer PowerShell
+                // for VS" (which uses Windows PowerShell) and no pwsh
+                // profile must not get pwsh integration written.
+                (void)ShellIntegrationSweep::RunInstall(shellPresence, wslCommandlines);
+            }
+            else
+            {
+                // Profile-gated uninstall: symmetric with install — we
+                // only clean up shells the user currently has a profile
+                // for. Trade-off: if the user installed for shell X,
+                // deleted the X profile, then toggled off, the X block
+                // in their HOME survives. This matches install-time
+                // policy and avoids touching shells the user does not
+                // use (which would write `.bak.*` for nothing). The
+                // next reconcile after re-adding the X profile sweeps
+                // it.
+                //
+                // WSL is similarly bounded by `wslCommandlines`: WT profile
+                // deletion != WSL distro removal (the user may still
+                // use the distro via `wsl.exe` directly), and tracking
+                // previously-installed distros across settings reloads
+                // would add complexity for a rare edge case.
+                ShellIntegrationSweep::RunUninstall(shellPresence, wslCommandlines);
+            }
         }
-        else
+
+        if (!_shellIntegrationDesiredEnabled.load(std::memory_order_acquire))
         {
-            // Profile-gated uninstall: symmetric with install — we
-            // only clean up shells the user currently has a profile
-            // for. Trade-off: if the user installed for shell X,
-            // deleted the X profile, then toggled off, the X block
-            // in their HOME survives. This matches install-time
-            // policy and avoids touching shells the user does not
-            // use (which would write `.bak.*` for nothing). The
-            // next reconcile after re-adding the X profile sweeps
-            // it.
-            //
-            // WSL is similarly bounded by `wslCommandlines`: WT profile
-            // deletion != WSL distro removal (the user may still
-            // use the distro via `wsl.exe` directly), and tracking
-            // previously-installed distros across settings reloads
-            // would add complexity for a rare edge case.
-            ShellIntegrationSweep::RunUninstall(shellPresence, wslCommandlines);
+            co_await wil::resume_foreground(dispatcher);
+            if (const auto page = weak.get();
+                page && !page->_shellIntegrationDesiredEnabled.load(std::memory_order_acquire))
+            {
+                const auto state = ApplicationState::SharedInstance();
+                const bool changed =
+                    !state.PwshShellIntegrationRepairReason().empty() ||
+                    !state.WindowsPowerShellShellIntegrationRepairReason().empty();
+                if (changed)
+                {
+                    state.PwshShellIntegrationRepairReason(winrt::hstring{});
+                    state.WindowsPowerShellShellIntegrationRepairReason(winrt::hstring{});
+                    state.NotifyShellIntegrationRepairStateChanged();
+                }
+            }
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_RepairPowerShellProfile(bool pwsh, std::wstring executable)
+    {
+        const auto weak = get_weak();
+        const auto dispatcher = Dispatcher();
+        const auto target = pwsh ?
+                                ::Microsoft::Terminal::ShellIntegration::Target::Pwsh :
+                                ::Microsoft::Terminal::ShellIntegration::Target::WindowsPowerShell;
+
+        co_await winrt::resume_background();
+        ::Microsoft::Terminal::ShellIntegration::Powershell::ProfileRepairResult result;
+        {
+            std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
+            if (!_shellIntegrationDesiredEnabled.load(std::memory_order_acquire))
+            {
+                co_return;
+            }
+            result = ::Microsoft::Terminal::ShellIntegration::Powershell::RepairProfileAfterOhMyPosh(
+                target,
+                std::filesystem::path{ executable });
+        }
+        _agentPaneLog(
+            "[ShellIntegration] Stage2 profile repair target=" +
+            std::string{ pwsh ? "pwsh" : "powershell" } +
+            " outcome=" + std::to_string(static_cast<int>(result.outcome)));
+        if (result.outcome != ::Microsoft::Terminal::ShellIntegration::Powershell::ProfileRepairOutcome::Repaired &&
+            result.outcome != ::Microsoft::Terminal::ShellIntegration::Powershell::ProfileRepairOutcome::RepairedWithRecoveryBackup)
+        {
+            co_return;
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto page = weak.get())
+        {
+            if (!page->_shellIntegrationDesiredEnabled.load(std::memory_order_acquire))
+            {
+                co_return;
+            }
+
+            const auto state = ApplicationState::SharedInstance();
+            auto currentReason = pwsh ?
+                                     state.PwshShellIntegrationRepairReason() :
+                                     state.WindowsPowerShellShellIntegrationRepairReason();
+            if (currentReason != L"prompt-changed")
+            {
+                co_return;
+            }
+
+            if (pwsh)
+            {
+                state.PwshShellIntegrationRepairReason(L"restart-required");
+            }
+            else
+            {
+                state.WindowsPowerShellShellIntegrationRepairReason(L"restart-required");
+            }
+            state.NotifyShellIntegrationRepairStateChanged();
         }
     }
 

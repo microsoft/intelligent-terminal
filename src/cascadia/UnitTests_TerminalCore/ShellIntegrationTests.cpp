@@ -52,6 +52,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
+    TEST_METHOD(PowerShell_ScriptContent_UsesTransactionalV7State);
+    TEST_METHOD(PowerShell_ScriptContent_PreservesDelegatedPromptSemantics);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -68,6 +70,14 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_CreatesBackupForNonEmptyProfile);
     TEST_METHOD(Install_DoesNotCreateBackupForEmptyProfile);
     TEST_METHOD(Install_TwoConsecutiveCalls_AreIdempotent);
+
+    // Stage 2 AST-based Oh My Posh profile repair.
+    TEST_METHOD(ProfileRepair_RelocatesAdjacentManagedBlock);
+    TEST_METHOD(ProfileRepair_UnsafeShapesFailClosed);
+    TEST_METHOD(ProfileRepair_PreservesSupportedEncodings);
+    TEST_METHOD(ProfileRepair_AlreadyOrderedDoesNotWrite);
+    TEST_METHOD(ProfileRepair_RejectsUntrustedHostPath);
+    TEST_METHOD(ProfileRepair_ReplaceFailureLeavesOriginalIntact);
 
     // Uninstall scenarios.
     TEST_METHOD(Uninstall_EmptyPath_Fails);
@@ -239,6 +249,27 @@ private:
         std::filesystem::create_directories(p.parent_path(), ec);
         std::ofstream out{ p, std::ios::binary | std::ios::trunc };
         out.write(contents.data(), contents.size());
+    }
+
+    static std::filesystem::path _WindowsPowerShellPath()
+    {
+        wchar_t system32[MAX_PATH]{};
+        const auto length = GetSystemDirectoryW(system32, MAX_PATH);
+        VERIFY_IS_TRUE(length > 0 && length < MAX_PATH);
+        return std::filesystem::path{ std::wstring_view{ system32, length } } /
+               L"WindowsPowerShell" / L"v1.0" / L"powershell.exe";
+    }
+
+    static std::string _Utf16Le(std::string_view ascii)
+    {
+        std::string bytes{ "\xff\xfe", 2 };
+        bytes.reserve(2 + ascii.size() * 2);
+        for (const auto value : ascii)
+        {
+            bytes.push_back(value);
+            bytes.push_back('\0');
+        }
+        return bytes;
     }
 
     static bool _Contains(std::string_view haystack, std::string_view needle)
@@ -413,27 +444,33 @@ void ShellIntegrationTests::BuildBlock_HonoursEolParameter()
 void ShellIntegrationTests::PowerShell_ScriptContent_HandlesNullLastExitCode()
 {
     const auto script = ShellIntegrationScriptContent();
-    const auto functionStart = script.find("function Global:__ShellInteg_GetLastExitCode");
-    const auto guard = script.find("$null -ne $LastExitCode -and $LastExitCode -ne 0", functionStart);
-    const auto nativeReturn = script.find("return $LastExitCode", functionStart);
-    const auto sentinelReturn = script.find("return -1", functionStart);
-    const auto functionEnd = script.find("function prompt", functionStart);
+    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
+    const auto successCheck = script.find("$gle = if ($?)", promptStart);
+    const auto guard = script.find("$null -ne $LastExitCode -and $LastExitCode -ne 0", successCheck);
+    const auto nativeValue = script.find("$LastExitCode", guard + 1);
+    const auto sentinelValue = script.find("-1", nativeValue);
+    const auto stateAccess = script.find("$state = $Global:__ShellInteg_State", sentinelValue);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, functionStart);
-    VERIFY_IS_TRUE(functionStart < guard &&
-                       guard < nativeReturn &&
-                       nativeReturn < sentinelReturn &&
-                       sentinelReturn < functionEnd,
-                   L"The exit-code helper must guard null/zero before returning a native code, then fall back to a numeric non-zero sentinel");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, promptStart);
+    VERIFY_IS_TRUE(promptStart < successCheck &&
+                       successCheck < guard &&
+                       guard < nativeValue &&
+                       nativeValue < sentinelValue &&
+                       sentinelValue < stateAccess,
+                   L"The v7 prompt must capture status before state access, preserve a non-zero native code, and use a numeric sentinel otherwise");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 {
     const auto script = ShellIntegrationScriptContent();
-    const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
-    const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
-    const auto promptStart = script.find("function prompt");
-    const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
+    const auto readLineWrapper = script.find("$__ShellInteg_ReadLineWrapper =");
+    const auto driftCheck = script.find("$function:prompt -ne $state.PromptWrapper", readLineWrapper);
+    const auto repairSignal = script.find("]9001;ShellIntegrationRepair;${shellName};prompt-changed", driftCheck);
+    const auto generationAdvanced = script.find("$state.SubmissionGeneration++", repairSignal);
+    const auto lineStored = script.find("$state.LastSubmittedLine =", generationAdvanced);
+    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
+    const auto lineCaptured = script.find("$submittedLine = $state.LastSubmittedLine", promptStart);
+    const auto generationCaptured = script.find("$submissionGeneration = $state.SubmissionGeneration", lineCaptured);
     const auto capture = script.find("$errorRecord", lineCaptured);
     const auto historyCheck = script.find("$historyAdvanced =", capture);
     const auto errorCheck = script.find("$newErrorRecord =", historyCheck);
@@ -445,15 +482,16 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
     const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
     const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
-    const auto originalPrompt = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", combinedCheck);
-    const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Error[0]", originalPrompt);
-    const auto consumeLine = script.find("$Global:__ShellInteg_LastSubmittedLine = $null", consumeError);
+    const auto downstreamPrompt = script.find("& $state.DownstreamPrompt", combinedCheck);
+    const auto finallyBlock = script.find("finally {", downstreamPrompt);
+    const auto consumeError = script.find("$state.LastErrorRecord = $Error[0]", finallyBlock);
+    const auto generationGuard = script.find("if ($state.SubmissionGeneration -eq $submissionGeneration)", consumeError);
+    const auto consumeLine = script.find("$state.LastSubmittedLine = $null", generationGuard);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
-    VERIFY_IS_TRUE(readLineWrapper < lineStored &&
-                       lineStored < promptStart &&
-                       promptStart < lineCaptured &&
-                       lineCaptured < capture &&
+    VERIFY_IS_TRUE(promptStart < lineCaptured &&
+                       lineCaptured < generationCaptured &&
+                       generationCaptured < capture &&
                        capture < historyCheck &&
                        historyCheck < errorCheck &&
                        errorCheck < referenceCheck &&
@@ -464,28 +502,94 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                        staleZeroCheck < sentinelAssignment &&
                        sentinelAssignment < untrackedErrorCheck &&
                        untrackedErrorCheck < combinedCheck &&
-                       combinedCheck < originalPrompt &&
-                       originalPrompt < consumeError &&
-                       consumeError < consumeLine,
-                   L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
+                       combinedCheck < downstreamPrompt &&
+                       downstreamPrompt < finallyBlock &&
+                       finallyBlock < consumeError &&
+                       consumeError < generationGuard &&
+                       generationGuard < consumeLine &&
+                       readLineWrapper < driftCheck &&
+                       driftCheck < repairSignal &&
+                       repairSignal < generationAdvanced &&
+                       generationAdvanced < lineStored,
+                   L"ReadLine must diagnose prompt drift without rebinding; submitted input must be generation-tracked, parsed lazily, and consumed from finally");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_UsesTransactionalV7State()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto shellType = script.find("]9001;ShellType;${__ShellInteg_ShellName};");
+    const auto stateLookup = script.find("Get-Variable -Name __ShellInteg_State -Scope Global", shellType);
+    const auto v7Check = script.find("$__ShellInteg_ExistingState.Version -eq 7", stateLookup);
+    const auto completeCheck = script.find("$__ShellInteg_ExistingState.InstallComplete -eq $true", v7Check);
+    const auto identityCheck = script.find("$function:prompt -eq $__ShellInteg_ExistingState.PromptWrapper", completeCheck);
+    const auto v6Refusal = script.find("Get-Variable -Name __ShellInteg_Installed -Scope Global", identityCheck);
+    const auto statePublish = script.find("New-Variable -Name __ShellInteg_State -Scope Global", v6Refusal);
+    const auto readLineInstall = script.find("Set-Item -LiteralPath Function:\\global:PSConsoleHostReadLine", statePublish);
+    const auto promptInstall = script.find("Set-Item -LiteralPath Function:\\global:prompt", readLineInstall);
+    const auto rollback = script.find("Remove-Variable -Name __ShellInteg_State -Scope Global -Force", promptInstall);
+    const auto ready = script.find("]9001;ShellIntegrationReady;", rollback);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, ready);
+    VERIFY_IS_TRUE(shellType < stateLookup &&
+                       stateLookup < v7Check &&
+                       v7Check < completeCheck &&
+                       completeCheck < identityCheck &&
+                       identityCheck < v6Refusal &&
+                       v6Refusal < statePublish &&
+                       statePublish < readLineInstall &&
+                       readLineInstall < promptInstall &&
+                       promptInstall < rollback &&
+                       rollback < ready,
+                   L"v7 must establish shell identity first, no-op only for a complete live wrapper, refuse v6 hot migration, install prompt last, and roll back on failure");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_PreservesDelegatedPromptSemantics()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {");
+    const auto prefixWrite = script.find("Write-Host -Object $prefix -NoNewline", promptStart);
+    const auto failureCheck = script.find("if ($gle -ne 0)", prefixWrite);
+    const auto statusRestore = script.find("Microsoft.PowerShell.Utility\\Write-Error", failureCheck);
+    const auto tryBlock = script.find("try {", statusRestore);
+    const auto downstream = script.find("$downstreamOutput = & $state.DownstreamPrompt", tryBlock);
+    const auto catchBlock = script.find("catch {", downstream);
+    const auto exceptionalSuffix = script.find("Write-Host -Object $suffix -NoNewline", catchBlock);
+    const auto rethrow = script.find("throw", exceptionalSuffix);
+    const auto finallyBlock = script.find("finally {", rethrow);
+    const auto successfulSuffix = script.find("return \"${downstreamOutput}${suffix}\"", finallyBlock);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, successfulSuffix);
+    VERIFY_IS_TRUE(promptStart < prefixWrite &&
+                       prefixWrite < failureCheck &&
+                       failureCheck < statusRestore &&
+                       statusRestore < tryBlock &&
+                       tryBlock < downstream &&
+                       downstream < catchBlock &&
+                       catchBlock < exceptionalSuffix &&
+                       exceptionalSuffix < rethrow &&
+                       rethrow < finallyBlock &&
+                       finallyBlock < successfulSuffix,
+                   L"v7 must host-write OSC before invoking the downstream prompt, restore failure status immediately before delegation, and return one prompt string while closing B on throw");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
 {
     const auto script = ShellIntegrationScriptContent();
     const auto languageMode = script.find("$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'");
-    const auto readLineGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\\PSConsoleHostReadLine))", languageMode);
-    const auto errorRecordGuard = script.find("$newErrorRecord = $Global:__ShellInteg_CanInspectErrors", readLineGuard);
+    const auto promptStart = script.find("$__ShellInteg_PromptWrapper = {", languageMode);
+    const auto errorRecordGuard = script.find("$newErrorRecord = $state.CanInspectErrors", promptStart);
     const auto referenceCheck = script.find("[object]::ReferenceEquals", errorRecordGuard);
-    const auto lazyParseGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and", referenceCheck);
+    const auto lazyParseGuard = script.find("if ($state.CanInspectErrors -and", referenceCheck);
     const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
+    const auto readLineGuard = script.find("$__ShellInteg_CanInspectErrors -and", parseInput);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, parseInput);
-    VERIFY_IS_TRUE(languageMode < readLineGuard &&
-                       readLineGuard < errorRecordGuard &&
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, readLineGuard);
+    VERIFY_IS_TRUE(languageMode < promptStart &&
+                       promptStart < errorRecordGuard &&
                        errorRecordGuard < referenceCheck &&
                        referenceCheck < lazyParseGuard &&
-                       lazyParseGuard < parseInput,
+                       lazyParseGuard < parseInput &&
+                       languageMode < readLineGuard,
                    L"Constrained Language Mode must bypass static parser and reference-identity method calls");
 }
 
@@ -734,6 +838,165 @@ void ShellIntegrationTests::Install_TwoConsecutiveCalls_AreIdempotent()
     VERIFY_IS_TRUE(r2.success);
     VERIFY_IS_TRUE(r2.alreadyInstalled);
     VERIFY_ARE_EQUAL(firstContents, _ReadFile(profile), L"Idempotent install must not rewrite the file");
+}
+
+void ShellIntegrationTests::ProfileRepair_RelocatesAdjacentManagedBlock()
+{
+    const auto profile = _ProfilePath(L"WindowsPowerShell");
+    const auto block = BuildShellIntegrationBlock(L"WindowsPowerShell", "\n");
+    const std::string original =
+        "Set-Alias ll Get-ChildItem\n" +
+        block +
+        "\n# Oh My Posh owns the visible prompt\n"
+        "(& 'C:\\Program Files\\oh-my-posh\\bin\\oh-my-posh.exe' init pwsh --config \"$env:POSH_THEME\") | Invoke-Expression\n"
+        "Write-Host 'tail'\n";
+    _WriteFile(profile, original);
+
+    const auto result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        _WindowsPowerShellPath(),
+        profile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Repaired, result.outcome, result.errorMessage.c_str());
+
+    const auto repaired = _ReadFile(profile);
+    const auto omp = repaired.find("oh-my-posh.exe' init pwsh");
+    const auto managed = repaired.find(kShellIntegrationBlockOpenMarker);
+    const auto tail = repaired.find("Write-Host 'tail'");
+    VERIFY_IS_TRUE(omp < managed && managed < tail);
+    VERIFY_IS_TRUE(_Contains(repaired, "Set-Alias ll Get-ChildItem"));
+    VERIFY_IS_TRUE(_Contains(repaired, "# Oh My Posh owns the visible prompt"));
+    VERIFY_ARE_EQUAL(static_cast<size_t>(1), _CountBackups(profile));
+}
+
+void ShellIntegrationTests::ProfileRepair_UnsafeShapesFailClosed()
+{
+    const auto executable = _WindowsPowerShellPath();
+    const auto block = BuildShellIntegrationBlock(L"WindowsPowerShell", "\n");
+    const std::array<std::string, 4> unsafeProfiles = {
+        block + "\nWrite-Host 'executable statement crossed'\noh-my-posh init pwsh | iex\n",
+        block + "\noh-my-posh init pwsh | iex\noh-my-posh init pwsh | iex\n",
+        block + "\noh-my-posh init pwsh | ForEach-Object { $_ } | iex\n",
+        block + "\nif (\noh-my-posh init pwsh | iex\n",
+    };
+
+    for (size_t index = 0; index < unsafeProfiles.size(); ++index)
+    {
+        const auto profile = _scratchDir / (L"unsafe-" + std::to_wstring(index)) /
+                             L"Microsoft.PowerShell_profile.ps1";
+        _WriteFile(profile, unsafeProfiles[index]);
+        const auto result = Powershell::RepairProfileAfterOhMyPosh(
+            Target::WindowsPowerShell,
+            executable,
+            profile);
+        VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Unsupported, result.outcome);
+        VERIFY_ARE_EQUAL(unsafeProfiles[index], _ReadFile(profile));
+        VERIFY_ARE_EQUAL(static_cast<size_t>(0), _CountBackups(profile));
+    }
+}
+
+void ShellIntegrationTests::ProfileRepair_PreservesSupportedEncodings()
+{
+    const auto executable = _WindowsPowerShellPath();
+    const auto block = BuildShellIntegrationBlock(L"WindowsPowerShell", "\r\n");
+    const auto text = block + "\r\noh-my-posh init pwsh | Invoke-Expression\r\n";
+
+    const auto utf8BomProfile = _scratchDir / L"utf8-bom" / L"Microsoft.PowerShell_profile.ps1";
+    _WriteFile(utf8BomProfile, std::string{ "\xef\xbb\xbf", 3 } + text);
+    const auto utf8Result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        executable,
+        utf8BomProfile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Repaired, utf8Result.outcome, utf8Result.errorMessage.c_str());
+    const auto utf8After = _ReadFile(utf8BomProfile);
+    VERIFY_IS_TRUE(utf8After.starts_with(std::string{ "\xef\xbb\xbf", 3 }));
+    VERIFY_IS_FALSE(_Contains(utf8After, "\n# >>>") &&
+                    !_Contains(utf8After, "\r\n# >>>"),
+                    L"CRLF profile must not gain a bare-LF block boundary");
+
+    const auto utf16Profile = _scratchDir / L"utf16-le" / L"Microsoft.PowerShell_profile.ps1";
+    _WriteFile(utf16Profile, _Utf16Le(text));
+    const auto utf16Result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        executable,
+        utf16Profile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Repaired, utf16Result.outcome);
+    const auto utf16After = _ReadFile(utf16Profile);
+    VERIFY_IS_TRUE(utf16After.size() >= 2 &&
+                   static_cast<unsigned char>(utf16After[0]) == 0xff &&
+                   static_cast<unsigned char>(utf16After[1]) == 0xfe);
+
+    const auto ambiguousProfile = _scratchDir / L"no-bom-nonascii" / L"Microsoft.PowerShell_profile.ps1";
+    const auto ambiguous = block + "\r\n# \xc3\xa9\r\noh-my-posh init pwsh | iex\r\n";
+    _WriteFile(ambiguousProfile, ambiguous);
+    const auto ambiguousResult = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        executable,
+        ambiguousProfile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Unsupported, ambiguousResult.outcome);
+    VERIFY_ARE_EQUAL(ambiguous, _ReadFile(ambiguousProfile));
+}
+
+void ShellIntegrationTests::ProfileRepair_AlreadyOrderedDoesNotWrite()
+{
+    const auto profile = _ProfilePath(L"WindowsPowerShell");
+    const auto original =
+        std::string{ "oh-my-posh init pwsh | Invoke-Expression\n" } +
+        BuildShellIntegrationBlock(L"WindowsPowerShell", "\n") + "\n";
+    _WriteFile(profile, original);
+
+    const auto result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        _WindowsPowerShellPath(),
+        profile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::NotApplicable, result.outcome);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_ARE_EQUAL(static_cast<size_t>(0), _CountBackups(profile));
+}
+
+void ShellIntegrationTests::ProfileRepair_RejectsUntrustedHostPath()
+{
+    const auto profile = _ProfilePath(L"WindowsPowerShell");
+    const auto original =
+        BuildShellIntegrationBlock(L"WindowsPowerShell", "\n") +
+        "\noh-my-posh init pwsh | iex\n";
+    _WriteFile(profile, original);
+    const auto fakeHost = _scratchDir / L"untrusted" / L"powershell.exe";
+    _WriteFile(fakeHost, "not a PowerShell host");
+
+    const auto result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        fakeHost,
+        profile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Unsupported, result.outcome);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_ARE_EQUAL(static_cast<size_t>(0), _CountBackups(profile));
+}
+
+void ShellIntegrationTests::ProfileRepair_ReplaceFailureLeavesOriginalIntact()
+{
+    const auto profile = _ProfilePath(L"WindowsPowerShell");
+    const auto original =
+        BuildShellIntegrationBlock(L"WindowsPowerShell", "\n") +
+        "\noh-my-posh init pwsh | Invoke-Expression\n";
+    _WriteFile(profile, original);
+
+    wil::unique_handle blocker{ CreateFileW(
+        profile.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr) };
+    VERIFY_IS_NOT_NULL(blocker.get());
+
+    const auto result = Powershell::RepairProfileAfterOhMyPosh(
+        Target::WindowsPowerShell,
+        _WindowsPowerShellPath(),
+        profile);
+    VERIFY_ARE_EQUAL(Powershell::ProfileRepairOutcome::Failed, result.outcome);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile),
+                     L"Atomic replace failure must leave the original profile byte-for-byte intact");
 }
 
 // ─── Uninstall ────────────────────────────────────────────────────────────────
@@ -1751,6 +2014,11 @@ void ShellIntegrationTests::ProfileGate_PwshSourceMatches()
     VERIFY_IS_TRUE(ProfileMatchesShell(Target::Pwsh,
                                         L"Windows.Terminal.PowershellCore",
                                         L""));
+    // Security-sensitive lifecycle diagnostics use the stricter commandline
+    // predicate and must not trust dynamic-profile Source metadata alone.
+    VERIFY_IS_FALSE(CommandlineMatchesShell(Target::Pwsh, L""));
+    VERIFY_IS_FALSE(CommandlineMatchesShell(Target::Pwsh, L"cmd.exe"));
+    VERIFY_IS_TRUE(CommandlineMatchesShell(Target::Pwsh, L"pwsh.exe -NoLogo"));
 }
 
 void ShellIntegrationTests::ProfileGate_PwshCommandlineLeafExeMatches()

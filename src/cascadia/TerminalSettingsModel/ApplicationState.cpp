@@ -460,6 +460,22 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         return nullptr;
     }
 
+    void ApplicationState::NotifyShellIntegrationRepairStateChanged()
+    {
+        _shellIntegrationRepairStateChanged(*this, nullptr);
+    }
+
+    winrt::event_token ApplicationState::ShellIntegrationRepairStateChanged(
+        const Windows::Foundation::TypedEventHandler<Model::ApplicationState, Windows::Foundation::IInspectable>& handler)
+    {
+        return _shellIntegrationRepairStateChanged.add(handler);
+    }
+
+    void ApplicationState::ShellIntegrationRepairStateChanged(const winrt::event_token& token) noexcept
+    {
+        _shellIntegrationRepairStateChanged.remove(token);
+    }
+
     // Generate all getter/setters
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \
     type ApplicationState::name() const noexcept                 \

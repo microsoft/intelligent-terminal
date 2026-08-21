@@ -121,6 +121,7 @@ namespace Microsoft.Terminal.Control
 
         void CreateSearchBoxControl();
         Boolean SearchBoxEditInFocus();
+        Boolean HasFocus { get; };
 
         void SearchMatch(Boolean goForward);
 

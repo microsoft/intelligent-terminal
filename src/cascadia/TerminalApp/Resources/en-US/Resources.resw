@@ -1149,6 +1149,18 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Learn more</value>
     <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix, linking to the shell-integration documentation.</comment>
   </data>
+  <data name="FreOverlay_ShellIntegrationRepairRestartRequired" xml:space="preserve">
+    <value>{}: Open a new shell to finish loading shell integration.</value>
+    <comment>{Locked="{}"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
+  <data name="FreOverlay_ShellIntegrationRepairPromptChanged" xml:space="preserve">
+    <value>{}: Move the complete Intelligent Terminal managed marker block after Oh My Posh, then open a new shell.</value>
+    <comment>{Locked="{}","Intelligent Terminal managed marker block","Oh My Posh"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
+  <data name="FreOverlay_ShellIntegrationRepairBindFailed" xml:space="preserve">
+    <value>{}: Restart this shell. If it persists, move the complete Intelligent Terminal managed marker block after Oh My Posh, then open a new shell.</value>
+    <comment>{Locked="{}","Intelligent Terminal managed marker block","Oh My Posh"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>Automatic error suggestion</value>
     <comment>Header for the toggle that lets the agent automatically suggest fixes for detected errors. Depends on automatic error detection being on.</comment>

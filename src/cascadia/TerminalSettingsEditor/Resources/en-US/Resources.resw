@@ -886,6 +886,18 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>See all supported shells</value>
     <comment>Inline hyperlink text that follows AIAgents_AutoErrorDetectionCaptionPrefix; opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
+  <data name="AIAgents_ShellIntegrationRepairRestartRequired" xml:space="preserve">
+    <value>{}: Open a new shell to finish loading shell integration.</value>
+    <comment>{Locked="{}"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
+  <data name="AIAgents_ShellIntegrationRepairPromptChanged" xml:space="preserve">
+    <value>{}: Move the complete Intelligent Terminal managed marker block after Oh My Posh, then open a new shell.</value>
+    <comment>{Locked="{}","Intelligent Terminal managed marker block","Oh My Posh"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
+  <data name="AIAgents_ShellIntegrationRepairBindFailed" xml:space="preserve">
+    <value>{}: Restart this shell. If it persists, move the complete Intelligent Terminal managed marker block after Oh My Posh, then open a new shell.</value>
+    <comment>{Locked="{}","Intelligent Terminal managed marker block","Oh My Posh"} {} is replaced with the target shell label ("PowerShell" or "Windows PowerShell").</comment>
+  </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Automatic error suggestion</value>
     <comment>Title for the nested toggle that lets the agent automatically suggest fixes for detected errors. Depends on (and is nested under) automatic error detection.

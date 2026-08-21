@@ -41,6 +41,8 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean RenameWorkspace(String oldName, String newName);
         WindowLayout TakeWorkspace(String name);
         Windows.Foundation.Collections.IMapView<String, WindowLayout> AllPersistedWorkspaces();
+        void NotifyShellIntegrationRepairStateChanged();
+        event Windows.Foundation.TypedEventHandler<ApplicationState, IInspectable> ShellIntegrationRepairStateChanged;
 
         String SettingsHash;
         Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
@@ -48,6 +50,8 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.Collections.IVector<InfoBarMessage> DismissedMessages;
         Windows.Foundation.Collections.IVector<String> AllowedCommandlines;
 
+        String PwshShellIntegrationRepairReason;
+        String WindowsPowerShellShellIntegrationRepairReason;
         Boolean AgentFreCompleted;
         Boolean AgentWelcomeShown;
     }

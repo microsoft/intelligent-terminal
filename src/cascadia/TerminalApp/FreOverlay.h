@@ -53,6 +53,7 @@ namespace winrt::TerminalApp::implementation
 
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
+        winrt::Microsoft::Terminal::Settings::Model::ApplicationState::ShellIntegrationRepairStateChanged_revoker _shellIntegrationRepairStateChangedRevoker;
 
         // Things that can block FRE completion, in priority order (lower value
         // = higher priority). Only the highest-priority problem is surfaced in
@@ -123,6 +124,7 @@ namespace winrt::TerminalApp::implementation
         // off turns the suggestion toggle off and disables it; detection on
         // re-enables it (preserving the stored value).
         void _UpdateSuggestionEnabledState();
+        void _RefreshShellIntegrationRepairStatus();
 
         // (Re)build the agent dropdown from the GPO-filtered registry, labeling
         // each entry with its live install state. Safe to call repeatedly (e.g.

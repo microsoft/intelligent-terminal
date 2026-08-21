@@ -146,6 +146,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void SearchMatch(const bool goForward);
 
         bool SearchBoxEditInFocus() const;
+        bool HasFocus() const noexcept
+        {
+            return _focused;
+        }
 
         bool OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down);
 
