@@ -125,6 +125,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartTimeoutTerminatesThenReapsRetiredProcess);
         TEST_METHOD(RestartWaitFailureTerminatesThenReapsRetiredProcess);
         TEST_METHOD(RestartFailsWhenForcedProcessReapTimesOut);
+        TEST_METHOD(StaleWaitCallbackCannotClaimReplacementWithReusedPid);
+        TEST_METHOD(RetiredWaitCallbackCannotClaimAfterCleanup);
         TEST_METHOD(AllScopeRetirementJoinsSameRequest);
         TEST_METHOD(LiveSettingsObjectSharesGeneration);
         TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
@@ -340,6 +342,36 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[0]);
         VERIFY_ARE_EQUAL(std::string{ "terminate" }, callState.calls[1]);
         VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[2]);
+    }
+
+    void SharedWtaTests::StaleWaitCallbackCannotClaimReplacementWithReusedPid()
+    {
+        details::ProcessWaitGenerationTracker tracker;
+        constexpr DWORD reusedPid{ 46 };
+
+        const auto staleGeneration = tracker.Register(reusedPid);
+        tracker.Retire();
+        const auto replacementGeneration = tracker.Register(reusedPid);
+
+        VERIFY_ARE_NOT_EQUAL(staleGeneration, replacementGeneration);
+        VERIFY_IS_FALSE(tracker.Claim(staleGeneration).has_value());
+        VERIFY_ARE_EQUAL(replacementGeneration, tracker.Current());
+
+        const auto replacementPid = tracker.Claim(replacementGeneration);
+        VERIFY_IS_TRUE(replacementPid.has_value());
+        VERIFY_ARE_EQUAL(reusedPid, *replacementPid);
+        VERIFY_ARE_EQUAL(details::ProcessWaitGenerationTracker::Generation{ 0 }, tracker.Current());
+    }
+
+    void SharedWtaTests::RetiredWaitCallbackCannotClaimAfterCleanup()
+    {
+        details::ProcessWaitGenerationTracker tracker;
+        const auto retiredGeneration = tracker.Register(47);
+
+        tracker.Retire();
+
+        VERIFY_IS_FALSE(tracker.Claim(retiredGeneration).has_value());
+        VERIFY_ARE_EQUAL(details::ProcessWaitGenerationTracker::Generation{ 0 }, tracker.Current());
     }
 
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()

@@ -419,6 +419,41 @@ namespace winrt::TerminalApp::implementation::details
 
         return true;
     }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid) noexcept
+    {
+        do
+        {
+            ++_nextGeneration;
+        } while (_nextGeneration == 0);
+
+        _currentGeneration = _nextGeneration;
+        _pid = pid;
+        return _currentGeneration;
+    }
+
+    void ProcessWaitGenerationTracker::Retire() noexcept
+    {
+        _currentGeneration = 0;
+        _pid = 0;
+    }
+
+    std::optional<DWORD> ProcessWaitGenerationTracker::Claim(const Generation generation) noexcept
+    {
+        if (generation == 0 || generation != _currentGeneration)
+        {
+            return std::nullopt;
+        }
+
+        const auto pid = _pid;
+        Retire();
+        return pid;
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Current() const noexcept
+    {
+        return _currentGeneration;
+    }
 }
 
 namespace winrt::TerminalApp::implementation
@@ -486,6 +521,7 @@ namespace winrt::TerminalApp::implementation
         HANDLE waitToCancel = nullptr;
         {
             std::lock_guard lock{ _mtx };
+            _waitGeneration.Retire();
             waitToCancel = _waitHandle;
             _waitHandle = nullptr;
         }
@@ -866,17 +902,17 @@ namespace winrt::TerminalApp::implementation
         // BEFORE ResumeThread so the wait is in place by the time
         // the child actually starts running.
         //
-        // Context is the PID, not a `this` pointer. The callback
-        // dispatches via `Instance()` and uses the captured PID to
-        // detect a stale registration (see `_OnProcessExited`'s
-        // mismatch bail). Casting via `uintptr_t` is the canonical
-        // PVOID-as-integer round trip.
+        // Context is a registration generation, not a PID or `this`
+        // pointer. PID reuse cannot make a delayed callback match a
+        // replacement wait, and the integer context has no lifetime to
+        // manage while non-blocking unregister drains queued callbacks.
         HANDLE waitHandle = nullptr;
+        const auto waitGeneration = _waitGeneration.Register(pid);
         if (!RegisterWaitForSingleObject(
                 &waitHandle,
                 process.get(),
                 &SharedWta::_OnProcessExitedThunk,
-                reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid)),
+                reinterpret_cast<PVOID>(waitGeneration),
                 INFINITE,
                 WT_EXECUTEONLYONCE))
         {
@@ -884,6 +920,7 @@ namespace winrt::TerminalApp::implementation
             // rather than fail the spawn. wta still runs; the user just
             // won't get a transparent respawn if it crashes.
             waitHandle = nullptr;
+            _waitGeneration.Retire();
         }
 
         // Hand wta the go-ahead. A resume failure leaves the child suspended,
@@ -891,6 +928,7 @@ namespace winrt::TerminalApp::implementation
         // state or spawn inputs are published.
         if (!details::ResumeSuspendedProcess(thread.get(), process.get(), waitHandle))
         {
+            _waitGeneration.Retire();
             return false;
         }
 
@@ -922,11 +960,16 @@ namespace winrt::TerminalApp::implementation
         _job.reset();
         if (_waitHandle)
         {
-            // Non-blocking unregister. If the callback is in flight
-            // it will take _mtx after we release it, observe an
-            // invalid _process, and bail.
+            // Invalidate before the non-blocking unregister. A queued
+            // callback can run after a replacement is spawned, but its
+            // retired generation cannot claim the replacement state.
+            _waitGeneration.Retire();
             UnregisterWaitEx(_waitHandle, nullptr);
             _waitHandle = nullptr;
+        }
+        else
+        {
+            _waitGeneration.Retire();
         }
         _pid = 0;
         return process;
@@ -934,15 +977,11 @@ namespace winrt::TerminalApp::implementation
 
     void CALLBACK SharedWta::_OnProcessExitedThunk(PVOID context, BOOLEAN /*timedOut*/)
     {
-        // `context` is the PID at registration time, packed via
-        // `reinterpret_cast<PVOID>(static_cast<uintptr_t>(pid))`. Round
-        // trip back and let `_OnProcessExited` compare against the
-        // currently-registered PID to detect a stale callback.
-        const auto observedPid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(context));
-        SharedWta::Instance()._OnProcessExited(observedPid);
+        const auto generation = reinterpret_cast<details::ProcessWaitGenerationTracker::Generation>(context);
+        SharedWta::Instance()._OnProcessExited(generation);
     }
 
-    void SharedWta::_OnProcessExited(DWORD observedPid)
+    void SharedWta::_OnProcessExited(const details::ProcessWaitGenerationTracker::Generation generation)
     {
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
         // OOM, manual kill). Clear our process record so the next
@@ -952,14 +991,11 @@ namespace winrt::TerminalApp::implementation
         // _process is already invalid).
         std::lock_guard lock{ _mtx };
 
-        // Stale-callback bail. `_CleanupLocked` only does a non-blocking
-        // `UnregisterWaitEx(nullptr)`, so a callback that was already
-        // queued for the OLD master can still fire after `_SpawnLocked`
-        // has installed a NEW master. The captured PID lets us tell:
-        // when it doesn't match the live `_pid`, the callback is for
-        // a previously-killed master and must not touch `_process` /
-        // `_waitHandle` (which now belong to the new master).
-        if (_pid != observedPid)
+        // Claiming also retires the current generation. A callback queued
+        // before cleanup/restart cannot claim a later registration, even
+        // when Windows assigns both process lifetimes the same PID.
+        const auto observedPid = _waitGeneration.Claim(generation);
+        if (!observedPid)
         {
             return;
         }
@@ -976,7 +1012,7 @@ namespace winrt::TerminalApp::implementation
         // is the external observer that makes otherwise-silent master deaths
         // diagnosable; deliberate teardowns never reach here (they reset
         // _process first, so the validity check above bails).
-        _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(observedPid) + " (crash/OOM/external kill — observed by wait callback)");
+        _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(*observedPid) + " (crash/OOM/external kill — observed by wait callback)");
         _job.reset();
         _process.reset();
         if (_waitHandle)

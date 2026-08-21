@@ -174,6 +174,22 @@ namespace winrt::TerminalApp::implementation
             DWORD exitTimeoutMs,
             DWORD forcedExitTimeoutMs,
             const ProcessRetirementOperations& operations = {});
+
+        class ProcessWaitGenerationTracker
+        {
+        public:
+            using Generation = uintptr_t;
+
+            Generation Register(DWORD pid) noexcept;
+            void Retire() noexcept;
+            std::optional<DWORD> Claim(Generation generation) noexcept;
+            Generation Current() const noexcept;
+
+        private:
+            Generation _nextGeneration{ 0 };
+            Generation _currentGeneration{ 0 };
+            DWORD _pid{ 0 };
+        };
     }
 
     class SharedWta
@@ -326,21 +342,18 @@ namespace winrt::TerminalApp::implementation
         wil::unique_handle _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
-        // a free function. The `context` PVOID carries the PID this
-        // wait was registered for (not a `this` pointer — the singleton
-        // is reached via `Instance()`), so the callback can detect a
-        // stale registration after `_CleanupLocked` + `_SpawnLocked`
-        // replaced the master out from under it. Without that check,
-        // a delayed callback for the OLD master would null out the
-        // *new* master's `_process` / `_waitHandle` and silently break
-        // crash detection.
+        // a free function. The `context` PVOID carries a monotonically
+        // increasing registration generation (not a `this` pointer), so
+        // delayed callbacks cannot match a replacement process even if
+        // Windows reused the old PID.
         static void CALLBACK _OnProcessExitedThunk(PVOID context, BOOLEAN timedOut);
-        void _OnProcessExited(DWORD observedPid);
+        void _OnProcessExited(details::ProcessWaitGenerationTracker::Generation generation);
 
         mutable std::mutex _mtx;
         wil::unique_handle _process;
         wil::unique_handle _job;
         HANDLE _waitHandle{ nullptr };
+        details::ProcessWaitGenerationTracker _waitGeneration;
         DWORD _pid{ 0 };
         size_t _refCount{ 0 };
         // Generated lazily on first AcquirePane; reused across
