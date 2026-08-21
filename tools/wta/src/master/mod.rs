@@ -142,6 +142,14 @@ impl OwnerlessRetirementSafety {
             Self::DenyNextOwner => true,
         }
     }
+
+    fn rekey(&mut self, old_tab_id: &str, new_tab_id: &str) {
+        if let Self::Targets(targets) = self {
+            if targets.remove(old_tab_id) {
+                targets.insert(new_tab_id.to_string());
+            }
+        }
+    }
 }
 
 /// Per-session routing entry. Owned by `session_to_helper` and
@@ -366,6 +374,9 @@ struct MasterStateInner {
     /// the outgoing helper generation through completion and is consumed by
     /// its disconnect or by the first post-completion replacement helper.
     tab_retirement_fences: Mutex<HashMap<String, TabRetirementFence>>,
+    /// Stable-id moves for active tab retirement transactions. Entries exist
+    /// only while an operation still needs to follow a tab across a drag.
+    tab_retirement_rekeys: Mutex<HashMap<String, String>>,
     /// Retired tab ids that an ownerless connected helper could still claim.
     /// State is bounded per HelperId; overflow conservatively denies that
     /// connection's first owner publication instead of evicting safety.
@@ -403,6 +414,8 @@ struct MasterStateInner {
     retirement_pending_timeout: std::time::Duration,
     #[cfg(test)]
     disconnect_orphan_publication_pause: Mutex<Option<Arc<DisconnectOrphanPublicationPause>>>,
+    #[cfg(test)]
+    deferred_retirement_cleanup_complete: tokio::sync::Notify,
     /// Session ids claimed by an *authoritative* producer — a native agent hook
     /// (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
     /// session (driven by ACP `session/*`), both of which fully own binding and
@@ -915,7 +928,7 @@ fn agent_supports_session_close(agent: &AgentCli) -> bool {
 }
 
 async fn handle_close_tab_session(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     params: &crate::session_registry::CloseTabSessionParams,
     reset_only: bool,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
@@ -927,25 +940,28 @@ async fn handle_close_tab_session(
 }
 
 async fn retire_tab_session(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     params: &crate::session_registry::CloseTabSessionParams,
     reset_only: bool,
     destructive: bool,
     deadline: tokio::time::Instant,
 ) -> acp::Result<ReplacedSessionCleanup> {
-    let (target, newly_marked_close, deferred_pending) = {
+    let (tab_id, target, newly_marked_close, deferred_pending) = {
         let _ownership_guard = state.tab_ownership_gate.lock().await;
+        let rekeys = state.tab_retirement_rekeys.lock().await;
+        let tab_id = resolve_tab_retirement_id(&rekeys, &params.tab_id);
+        drop(rekeys);
         let mut target = {
             let meta = state.helper_meta.lock().await;
             meta.iter().find_map(|(helper_id, recovery)| {
-                (recovery.owner_tab_id.as_deref() == Some(params.tab_id.as_str()))
+                (recovery.owner_tab_id.as_deref() == Some(tab_id.as_str()))
                     .then(|| (*helper_id, recovery.last_session_id.clone()))
             })
         };
         if target.is_none() {
             target = state.pending_session_helpers.lock().await.iter().find_map(
                 |(helper_id, owner_tab_id)| {
-                    (owner_tab_id.as_deref() == Some(params.tab_id.as_str()))
+                    (owner_tab_id.as_deref() == Some(tab_id.as_str()))
                         .then_some((*helper_id, None))
                 },
             );
@@ -968,7 +984,7 @@ async fn retire_tab_session(
         } else {
             false
         };
-        (target, newly_marked_close, deferred_pending)
+        (tab_id, target, newly_marked_close, deferred_pending)
     };
     let matched_helper_id = target.as_ref().map(|(helper_id, _)| *helper_id);
 
@@ -1004,22 +1020,28 @@ async fn retire_tab_session(
                 .orphaned_tabs
                 .lock()
                 .await
-                .get(&params.tab_id)
+                .get(&tab_id)
                 .cloned()
         };
         if let Some((agent_key, orphan_helper_id, orphan_session_id)) = orphan {
             let gate = session_lifecycle_gate(state, &orphan_session_id).await;
             let _guard = match tokio::time::timeout_at(deadline, gate.lock()).await {
-                Ok(guard) => Some(guard),
+                Ok(guard) => guard,
                 Err(_) if destructive => {
                     tracing::error!(
                         target: "master_retirement",
-                        tab_id = %params.tab_id,
+                        tab_id,
                         helper_id = ?orphan_helper_id,
                         session_id = %orphan_session_id,
-                        "retirement deadline expired waiting for orphan lifecycle gate; retiring WTA state"
+                        "retirement deadline expired waiting for orphan lifecycle gate; deferring exact orphan cleanup"
                     );
-                    None
+                    schedule_deferred_tab_orphan_cleanup(
+                        state,
+                        agent_key,
+                        orphan_helper_id,
+                        orphan_session_id,
+                    );
+                    return Ok(ReplacedSessionCleanup::LogicalFallback);
                 }
                 Err(_) => {
                     return Err(retirement_deadline_error(
@@ -1028,46 +1050,11 @@ async fn retire_tab_session(
                     ));
                 }
             };
-            if _guard.is_none() {
-                {
-                    let mut orphaned_sessions = state.orphaned_sessions.lock().await;
-                    if let Some(sessions) = orphaned_sessions.get_mut(&agent_key) {
-                        sessions.remove(&orphan_session_id);
-                        if sessions.is_empty() {
-                            orphaned_sessions.remove(&agent_key);
-                        }
-                    }
-                }
-                state.orphaned_tabs.lock().await.remove(&params.tab_id);
-                state.pending_usage.lock().await.remove(&orphan_session_id);
-                state
-                    .session_mcp_capabilities
-                    .remove_session(&orphan_session_id)
-                    .await;
-                state.registry.remove(&orphan_session_id).await;
-                state.helper_meta.lock().await.remove(&orphan_helper_id);
-                state
-                    .pending_session_helpers
-                    .lock()
-                    .await
-                    .remove(&orphan_helper_id);
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_session_removed_notification(&orphan_session_id),
-                )
-                .await;
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-                return Ok(ReplacedSessionCleanup::LogicalFallback);
-            }
             let orphan_is_current = state
                 .orphaned_tabs
                 .lock()
                 .await
-                .get(&params.tab_id)
+                .get(&tab_id)
                 .is_some_and(|current| {
                     current
                         == &(
@@ -1085,7 +1072,7 @@ async fn retire_tab_session(
                 .await
                 .contains_key(&orphan_session_id)
             {
-                state.orphaned_tabs.lock().await.remove(&params.tab_id);
+                state.orphaned_tabs.lock().await.remove(&tab_id);
                 return Ok(ReplacedSessionCleanup::NotOwned);
             }
             let agent = {
@@ -1106,7 +1093,7 @@ async fn retire_tab_session(
                     Ok(Err(error)) => {
                     tracing::warn!(
                         target: "master",
-                        tab_id = %params.tab_id,
+                        tab_id,
                         session_id = %orphan_session_id,
                         error = %error,
                             "failed to cancel orphaned turn before retirement"
@@ -1116,7 +1103,7 @@ async fn retire_tab_session(
                     Err(_) if destructive => {
                         tracing::error!(
                             target: "master_retirement",
-                            tab_id = %params.tab_id,
+                            tab_id,
                             session_id = %orphan_session_id,
                             "retirement deadline expired cancelling orphaned turn; retiring WTA state"
                         );
@@ -1143,7 +1130,7 @@ async fn retire_tab_session(
                     Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
                         tracing::warn!(
                             target: "master",
-                            tab_id = %params.tab_id,
+                            tab_id,
                             session_id = %orphan_session_id,
                             error = %error,
                             "agent advertised session/close but rejected it; retiring orphaned WTA state"
@@ -1153,7 +1140,7 @@ async fn retire_tab_session(
                         Ok(Err(error)) if destructive => {
                             tracing::error!(
                                 target: "master",
-                                tab_id = %params.tab_id,
+                                tab_id,
                                 session_id = %orphan_session_id,
                                 error = %error,
                                 "failed to physically close orphan; retiring WTA state"
@@ -1164,7 +1151,7 @@ async fn retire_tab_session(
                         Err(_) if destructive => {
                             tracing::error!(
                                 target: "master",
-                                tab_id = %params.tab_id,
+                                tab_id,
                                 session_id = %orphan_session_id,
                                 "session/close timed out for orphan; retiring WTA state"
                             );
@@ -1174,7 +1161,7 @@ async fn retire_tab_session(
                         return Err(acp::Error::internal_error().data(serde_json::json!({
                             "message": format!(
                                 "session/close timed out for orphaned tab {}",
-                                params.tab_id
+                                tab_id
                             )
                         })));
                     }
@@ -1185,7 +1172,7 @@ async fn retire_tab_session(
             } else if destructive {
                 tracing::warn!(
                     target: "master",
-                    tab_id = %params.tab_id,
+                    tab_id,
                     session_id = %orphan_session_id,
                     "orphan agent is unavailable; retiring WTA state"
                 );
@@ -1194,7 +1181,7 @@ async fn retire_tab_session(
                 return Err(acp::Error::internal_error().data(serde_json::json!({
                     "message": format!(
                         "agent for orphaned tab {} is no longer available",
-                        params.tab_id
+                        tab_id
                     )
                 })));
             };
@@ -1208,7 +1195,7 @@ async fn retire_tab_session(
                     }
                 }
             }
-            state.orphaned_tabs.lock().await.remove(&params.tab_id);
+            state.orphaned_tabs.lock().await.remove(&tab_id);
             state.pending_usage.lock().await.remove(&orphan_session_id);
             state
                 .session_mcp_capabilities
@@ -1235,7 +1222,7 @@ async fn retire_tab_session(
             .await;
             tracing::info!(
                 target: "master",
-                tab_id = %params.tab_id,
+                tab_id,
                 helper_id = ?orphan_helper_id,
                 session_id = %orphan_session_id,
                 cleanup = ?cleanup,
@@ -1256,7 +1243,7 @@ async fn retire_tab_session(
         }
         tracing::debug!(
             target: "master",
-            tab_id = %params.tab_id,
+            tab_id,
             deferred = deferred_pending,
             "close-by-tab found no live session; treating duplicate, late, or in-flight request as success"
         );
@@ -1285,7 +1272,7 @@ async fn retire_tab_session(
     } else if destructive {
         tracing::warn!(
             target: "master",
-            tab_id = %params.tab_id,
+            tab_id,
             helper_id = ?owner_helper_id,
             session_id = %session_id,
             agent_instance_id = %agent_instance_id,
@@ -1296,7 +1283,7 @@ async fn retire_tab_session(
         return Err(acp::Error::internal_error().data(serde_json::json!({
             "message": format!(
                 "agent instance {} for tab {} is no longer available",
-                agent_instance_id, params.tab_id
+                agent_instance_id, tab_id
             )
         })));
     };
@@ -1306,7 +1293,7 @@ async fn retire_tab_session(
         // marker or the helper disconnects. Keeping the marker here closes the
         // race where a committing transaction has just removed its pending
         // flag but has not yet checked whether tab close retired its session.
-        state.orphaned_tabs.lock().await.remove(&params.tab_id);
+        state.orphaned_tabs.lock().await.remove(&tab_id);
         if reset_only && !deferred_pending {
             state
                 .closing_session_helpers
@@ -1318,7 +1305,7 @@ async fn retire_tab_session(
             }
         }
         if destructive {
-            state.orphaned_tabs.lock().await.remove(&params.tab_id);
+            state.orphaned_tabs.lock().await.remove(&tab_id);
             {
                 let mut orphaned_sessions = state.orphaned_sessions.lock().await;
                 for sessions in orphaned_sessions.values_mut() {
@@ -1338,7 +1325,7 @@ async fn retire_tab_session(
     }
     tracing::info!(
         target: "master",
-        tab_id = %params.tab_id,
+        tab_id,
         helper_id = ?owner_helper_id,
         session_id = %session_id,
         cleanup = ?cleanup,
@@ -2251,13 +2238,13 @@ impl HelperHandler {
             .lock()
             .await
             .remove(&self.helper_id);
+        let _guard = self.state.tab_ownership_gate.lock().await;
         let destructive = self
             .state
             .destructive_session_helpers
             .lock()
             .await
             .contains(&self.helper_id);
-        let _guard = self.state.tab_ownership_gate.lock().await;
         self.state
             .pending_session_helpers
             .lock()
@@ -4195,6 +4182,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         connected_helpers: Mutex::new(HashSet::new()),
         all_retirement_fence: Mutex::new(AllRetirementFence::default()),
         tab_retirement_fences: Mutex::new(HashMap::new()),
+        tab_retirement_rekeys: Mutex::new(HashMap::new()),
         unresolved_owner_retirements: Mutex::new(HashMap::new()),
         pending_session_helpers: Mutex::new(HashMap::new()),
         pending_session_mcp: Mutex::new(HashMap::new()),
@@ -4210,6 +4198,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         #[cfg(test)]
         disconnect_orphan_publication_pause: Mutex::new(None),
+        #[cfg(test)]
+        deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
@@ -6160,10 +6150,10 @@ fn build_agent_sessions_retired_event(
     event
 }
 
-fn publish_agent_sessions_retired(state: &MasterStateInner, event: serde_json::Value) {
+fn publish_agent_sessions_retired(_state: &MasterStateInner, event: serde_json::Value) {
     #[cfg(test)]
     {
-        if let Ok(mut completion_tx) = state.retirement_completion_tx.try_lock() {
+        if let Ok(mut completion_tx) = _state.retirement_completion_tx.try_lock() {
             if let Some(completion_tx) = completion_tx.as_mut() {
                 let _ = completion_tx.send(event);
                 return;
@@ -6171,6 +6161,23 @@ fn publish_agent_sessions_retired(state: &MasterStateInner, event: serde_json::V
         }
     }
     crate::wt_protocol_events::send(event.to_string());
+}
+
+fn resolve_tab_retirement_id(rekeys: &HashMap<String, String>, tab_id: &str) -> String {
+    let mut current = tab_id;
+    for _ in 0..=rekeys.len() {
+        let Some(next) = rekeys.get(current) else {
+            return current.to_string();
+        };
+        current = next;
+    }
+    current.to_string()
+}
+
+async fn current_tab_retirement_id(state: &MasterStateInner, tab_id: &str) -> String {
+    let _ownership_guard = state.tab_ownership_gate.lock().await;
+    let rekeys = state.tab_retirement_rekeys.lock().await;
+    resolve_tab_retirement_id(&rekeys, tab_id)
 }
 
 async fn begin_tab_retirement(
@@ -6292,18 +6299,37 @@ async fn begin_tab_retirement(
 
 async fn complete_tab_retirement(state: &MasterStateInner, tab_id: &str) {
     let _ownership_guard = state.tab_ownership_gate.lock().await;
+    let current_tab_id = {
+        let rekeys = state.tab_retirement_rekeys.lock().await;
+        resolve_tab_retirement_id(&rekeys, tab_id)
+    };
     let mut fences = state.tab_retirement_fences.lock().await;
-    let remove = if let Some(fence) = fences.get_mut(tab_id) {
+    let (remove, operation_complete) = if let Some(fence) = fences.get_mut(&current_tab_id) {
         fence.active_operations = fence.active_operations.saturating_sub(1);
         if fence.active_operations == 0 {
             fence.phase = TabRetirementPhase::CompletedAwaitingDisconnect;
         }
-        fence.active_operations == 0 && fence.outgoing_helpers.is_empty()
+        (
+            fence.active_operations == 0 && fence.outgoing_helpers.is_empty(),
+            fence.active_operations == 0,
+        )
     } else {
-        false
+        (false, true)
     };
     if remove {
-        fences.remove(tab_id);
+        fences.remove(&current_tab_id);
+    }
+    drop(fences);
+    if operation_complete {
+        let mut rekeys = state.tab_retirement_rekeys.lock().await;
+        let completed_aliases = rekeys
+            .keys()
+            .filter(|alias| resolve_tab_retirement_id(&rekeys, alias) == current_tab_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for alias in completed_aliases {
+            rekeys.remove(&alias);
+        }
     }
 }
 
@@ -6567,6 +6593,139 @@ fn retirement_remaining(deadline: tokio::time::Instant) -> std::time::Duration {
     deadline.saturating_duration_since(tokio::time::Instant::now())
 }
 
+fn schedule_deferred_tab_orphan_cleanup(
+    state: &Arc<MasterStateInner>,
+    agent_key: AgentCmdKey,
+    helper_id: HelperId,
+    session_id: acp::schema::v1::SessionId,
+) {
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let gate = session_lifecycle_gate(&state, &session_id).await;
+        let gate_result = tokio::time::timeout(SESSION_CLOSE_TIMEOUT, gate.lock()).await;
+        if let Ok(_guard) = gate_result {
+            let orphan_tab_id =
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .iter()
+                    .find_map(|(tab_id, current)| {
+                        (current == &(agent_key.clone(), helper_id, session_id.clone()))
+                            .then_some(tab_id.clone())
+                    });
+            let orphan_session_is_current = state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get(&agent_key)
+                .is_some_and(|sessions| sessions.contains(&session_id));
+            if let Some(orphan_tab_id) = orphan_tab_id.filter(|_| orphan_session_is_current) {
+                let rebound = state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .contains_key(&session_id);
+                state.orphaned_tabs.lock().await.remove(&orphan_tab_id);
+                let mut orphaned_sessions = state.orphaned_sessions.lock().await;
+                if let Some(sessions) = orphaned_sessions.get_mut(&agent_key) {
+                    sessions.remove(&session_id);
+                    if sessions.is_empty() {
+                        orphaned_sessions.remove(&agent_key);
+                    }
+                }
+                drop(orphaned_sessions);
+                if !rebound {
+                    retire_unbound_session_state_gate_held(&state, &session_id).await;
+                    let _ownership_guard = state.tab_ownership_gate.lock().await;
+                    let remove_meta =
+                        state
+                            .helper_meta
+                            .lock()
+                            .await
+                            .get(&helper_id)
+                            .is_some_and(|meta| {
+                                meta.last_session_id.as_ref() == Some(&session_id)
+                                    && meta.owner_tab_id.as_deref() == Some(orphan_tab_id.as_str())
+                            });
+                    if remove_meta {
+                        state.helper_meta.lock().await.remove(&helper_id);
+                    }
+                    let remove_pending = state
+                        .pending_session_helpers
+                        .lock()
+                        .await
+                        .get(&helper_id)
+                        .is_some_and(|owner| owner.as_deref() == Some(orphan_tab_id.as_str()));
+                    if remove_pending {
+                        state
+                            .pending_session_helpers
+                            .lock()
+                            .await
+                            .remove(&helper_id);
+                        state.session_transaction_changed.notify_waiters();
+                    }
+                }
+            }
+        } else {
+            tracing::warn!(
+                target: "master_retirement",
+                helper_id = ?helper_id,
+                session_id = %session_id,
+                "deferred tab orphan cleanup expired waiting for lifecycle gate"
+            );
+        };
+        #[cfg(test)]
+        state.deferred_retirement_cleanup_complete.notify_one();
+    });
+}
+
+fn schedule_deferred_ownerless_orphan_cleanup(
+    state: &Arc<MasterStateInner>,
+    agent_key: AgentCmdKey,
+    session_id: acp::schema::v1::SessionId,
+) {
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let gate = session_lifecycle_gate(&state, &session_id).await;
+        let gate_result = tokio::time::timeout(SESSION_CLOSE_TIMEOUT, gate.lock()).await;
+        if let Ok(_guard) = gate_result {
+            let orphan_is_current = state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get(&agent_key)
+                .is_some_and(|sessions| sessions.contains(&session_id));
+            if orphan_is_current {
+                let rebound = state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .contains_key(&session_id);
+                let mut orphaned_sessions = state.orphaned_sessions.lock().await;
+                if let Some(sessions) = orphaned_sessions.get_mut(&agent_key) {
+                    sessions.remove(&session_id);
+                    if sessions.is_empty() {
+                        orphaned_sessions.remove(&agent_key);
+                    }
+                }
+                drop(orphaned_sessions);
+                if !rebound {
+                    retire_unbound_session_state_gate_held(&state, &session_id).await;
+                }
+            }
+        } else {
+            tracing::warn!(
+                target: "master_retirement",
+                session_id = %session_id,
+                "deferred ownerless orphan cleanup expired waiting for lifecycle gate"
+            );
+        };
+        #[cfg(test)]
+        state.deferred_retirement_cleanup_complete.notify_one();
+    });
+}
+
 fn prune_retirement_operations(
     operations: &mut HashMap<String, RetirementOperationState>,
     now: tokio::time::Instant,
@@ -6656,6 +6815,7 @@ async fn force_cleanup_retirement_helper(
         },
     ));
 
+    let mut session_cleanup_timed_out = false;
     for session_id in &session_ids {
         let forced = match tokio::time::timeout_at(
             deadline,
@@ -6674,6 +6834,7 @@ async fn force_cleanup_retirement_helper(
                 );
                 cleanup =
                     merge_retirement_cleanup(cleanup, ReplacedSessionCleanup::LogicalFallback);
+                session_cleanup_timed_out = true;
                 break;
             }
         };
@@ -6691,13 +6852,14 @@ async fn force_cleanup_retirement_helper(
                 );
                 cleanup =
                     merge_retirement_cleanup(cleanup, ReplacedSessionCleanup::LogicalFallback);
+                session_cleanup_timed_out = true;
                 break;
             }
         }
         cleanup = merge_retirement_cleanup(cleanup, forced);
     }
 
-    if !session_ids.is_empty() {
+    if !session_cleanup_timed_out && !session_ids.is_empty() {
         let mut orphaned_sessions = state.orphaned_sessions.lock().await;
         for sessions in orphaned_sessions.values_mut() {
             for session_id in &session_ids {
@@ -6706,29 +6868,36 @@ async fn force_cleanup_retirement_helper(
         }
         orphaned_sessions.retain(|_, sessions| !sessions.is_empty());
     }
-    state
-        .orphaned_tabs
-        .lock()
-        .await
-        .retain(|orphan_tab_id, (_, orphan_helper_id, _)| {
-            orphan_tab_id != tab_id && *orphan_helper_id != helper_id
-        });
+    if !session_cleanup_timed_out {
+        state
+            .orphaned_tabs
+            .lock()
+            .await
+            .retain(|orphan_tab_id, (_, orphan_helper_id, _)| {
+                orphan_tab_id != tab_id && *orphan_helper_id != helper_id
+            });
+    }
 
     let pending_removed = {
         let _ownership_guard = state.tab_ownership_gate.lock().await;
-        let pending_removed = state
-            .pending_session_helpers
-            .lock()
-            .await
-            .remove(&helper_id)
-            .is_some();
-        state.helper_meta.lock().await.remove(&helper_id);
-        state
-            .unresolved_owner_retirements
-            .lock()
-            .await
-            .remove(&helper_id);
-        if !requires_future_disconnect {
+        let pending_removed = if session_cleanup_timed_out {
+            false
+        } else {
+            let pending_removed = state
+                .pending_session_helpers
+                .lock()
+                .await
+                .remove(&helper_id)
+                .is_some();
+            state.helper_meta.lock().await.remove(&helper_id);
+            state
+                .unresolved_owner_retirements
+                .lock()
+                .await
+                .remove(&helper_id);
+            pending_removed
+        };
+        if !requires_future_disconnect && !session_cleanup_timed_out {
             state
                 .closing_session_helpers
                 .lock()
@@ -6746,8 +6915,10 @@ async fn force_cleanup_retirement_helper(
         }
         pending_removed
     };
-    if let Some(pending_mcp) = state.pending_session_mcp.lock().await.remove(&helper_id) {
-        state.session_mcp_capabilities.cancel(&pending_mcp).await;
+    if !session_cleanup_timed_out {
+        if let Some(pending_mcp) = state.pending_session_mcp.lock().await.remove(&helper_id) {
+            state.session_mcp_capabilities.cancel(&pending_mcp).await;
+        }
     }
     if pending_removed {
         state.session_transaction_changed.notify_waiters();
@@ -6875,7 +7046,7 @@ async fn retire_captured_orphan_session(
 }
 
 async fn retire_ownerless_orphan_session(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     agent_key: &AgentCmdKey,
     session_id: &acp::schema::v1::SessionId,
     deadline: tokio::time::Instant,
@@ -6885,15 +7056,13 @@ async fn retire_ownerless_orphan_session(
         tracing::error!(
             target: "master_retirement",
             session_id = %session_id,
-            "retirement deadline expired waiting for ownerless orphan lifecycle gate; retiring orphan marker"
+            "retirement deadline expired waiting for ownerless orphan lifecycle gate; deferring exact orphan cleanup"
         );
-        let mut orphaned_sessions = state.orphaned_sessions.lock().await;
-        if let Some(sessions) = orphaned_sessions.get_mut(agent_key) {
-            sessions.remove(session_id);
-            if sessions.is_empty() {
-                orphaned_sessions.remove(agent_key);
-            }
-        }
+        schedule_deferred_ownerless_orphan_cleanup(
+            state,
+            agent_key.clone(),
+            session_id.clone(),
+        );
         return ReplacedSessionCleanup::LogicalFallback;
     };
 
@@ -7115,7 +7284,7 @@ async fn retire_helper_transaction(
 }
 
 async fn retire_tab_transaction(
-    state: &MasterStateInner,
+    state: &Arc<MasterStateInner>,
     tab_id: String,
     deadline: tokio::time::Instant,
 ) -> ReplacedSessionCleanup {
@@ -7123,11 +7292,12 @@ async fn retire_tab_transaction(
     // a concurrent owner publication serialize either wholly before the fence
     // (and become the bound outgoing helper) or wholly after it (and fail).
     let retirement_target = begin_tab_retirement(state, &tab_id).await;
+    let current_tab_id = current_tab_retirement_id(state, &tab_id).await;
 
     let mut cleanup = match retire_tab_session(
         state,
         &crate::session_registry::CloseTabSessionParams {
-            tab_id: tab_id.clone(),
+            tab_id: current_tab_id,
         },
         false,
         true,
@@ -7170,17 +7340,16 @@ async fn retire_tab_transaction(
                 break;
             }
         }
+        let current_tab_id = current_tab_retirement_id(state, &tab_id).await;
         cleanup = force_cleanup_retirement_helper(
             state,
             helper_id,
-            &tab_id,
+            &current_tab_id,
             cleanup,
             deadline,
             retirement_target.requires_future_disconnect,
         )
         .await;
-    } else {
-        state.orphaned_tabs.lock().await.remove(&tab_id);
     }
     complete_tab_retirement(state, &tab_id).await;
     cleanup
@@ -7440,6 +7609,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
             );
             return;
         }
+        if old_tab_id == new_tab_id {
+            return;
+        }
         let mut renamed_helpers = 0usize;
         let _ownership_guard = state.tab_ownership_gate.lock().await;
         {
@@ -7465,11 +7637,52 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                 orphaned_tabs.insert(new_tab_id.to_string(), orphan);
             }
         }
+        for safety in state.unresolved_owner_retirements.lock().await.values_mut() {
+            safety.rekey(old_tab_id, new_tab_id);
+        }
+        let retirement_rekeyed = {
+            let mut fences = state.tab_retirement_fences.lock().await;
+            if let Some(old_fence) = fences.remove(old_tab_id) {
+                let active = old_fence.active_operations > 0;
+                if let Some(new_fence) = fences.get_mut(new_tab_id) {
+                    if old_fence.phase == TabRetirementPhase::Fencing {
+                        new_fence.phase = TabRetirementPhase::Fencing;
+                    }
+                    new_fence.active_operations += old_fence.active_operations;
+                    new_fence
+                        .outgoing_helpers
+                        .extend(old_fence.outgoing_helpers);
+                } else {
+                    fences.insert(new_tab_id.to_string(), old_fence);
+                }
+                active
+            } else {
+                false
+            }
+        };
+        if retirement_rekeyed {
+            let mut rekeys = state.tab_retirement_rekeys.lock().await;
+            let aliases = rekeys
+                .keys()
+                .filter(|alias| resolve_tab_retirement_id(&rekeys, alias) == old_tab_id)
+                .cloned()
+                .chain(std::iter::once(old_tab_id.to_string()))
+                .collect::<HashSet<_>>();
+            rekeys.remove(new_tab_id);
+            for alias in aliases {
+                if alias == new_tab_id {
+                    rekeys.remove(&alias);
+                } else {
+                    rekeys.insert(alias, new_tab_id.to_string());
+                }
+            }
+        }
         tracing::info!(
             target: "master_wt_event",
             old_tab_id,
             new_tab_id,
             renamed_helpers,
+            retirement_rekeyed,
             "rekeyed master tab ownership after drag"
         );
         return;

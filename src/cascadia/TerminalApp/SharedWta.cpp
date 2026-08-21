@@ -346,6 +346,27 @@ namespace winrt::TerminalApp::implementation::details
             return std::nullopt;
         }
     }
+
+    bool ResumeSuspendedProcess(
+        const HANDLE thread,
+        const HANDLE process,
+        HANDLE& waitHandle,
+        const SuspendedProcessOperations& operations) noexcept
+    {
+        const auto resumeResult = operations.resumeThread(thread);
+        if (resumeResult != static_cast<DWORD>(-1))
+        {
+            return true;
+        }
+
+        if (waitHandle)
+        {
+            operations.unregisterWait(waitHandle, nullptr);
+            waitHandle = nullptr;
+        }
+        operations.terminateProcess(process, 1);
+        return false;
+    }
 }
 
 namespace winrt::TerminalApp::implementation
@@ -780,9 +801,13 @@ namespace winrt::TerminalApp::implementation
             waitHandle = nullptr;
         }
 
-        // Hand wta the go-ahead. After this point, any failure has to
-        // route through the normal Release path / external crash path.
-        ResumeThread(thread.get());
+        // Hand wta the go-ahead. A resume failure leaves the child suspended,
+        // so cancel its wait registration and terminate it before any process
+        // state or spawn inputs are published.
+        if (!details::ResumeSuspendedProcess(thread.get(), process.get(), waitHandle))
+        {
+            return false;
+        }
 
         _process = std::move(process);
         _job = std::move(job);

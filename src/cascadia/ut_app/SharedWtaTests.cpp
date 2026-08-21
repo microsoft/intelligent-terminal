@@ -12,6 +12,40 @@ using namespace winrt::TerminalApp::implementation;
 
 namespace TerminalAppUnitTests
 {
+    namespace
+    {
+        struct SuspendedProcessCallState
+        {
+            HANDLE resumedThread{ nullptr };
+            HANDLE unregisteredWait{ nullptr };
+            HANDLE unregisterCompletionEvent{ nullptr };
+            HANDLE terminatedProcess{ nullptr };
+            UINT exitCode{ 0 };
+        };
+
+        thread_local SuspendedProcessCallState* suspendedProcessCallState{ nullptr };
+
+        DWORD WINAPI ResumeThreadFailure(const HANDLE thread)
+        {
+            suspendedProcessCallState->resumedThread = thread;
+            return static_cast<DWORD>(-1);
+        }
+
+        BOOL WINAPI RecordUnregisterWait(const HANDLE wait, const HANDLE completionEvent)
+        {
+            suspendedProcessCallState->unregisteredWait = wait;
+            suspendedProcessCallState->unregisterCompletionEvent = completionEvent;
+            return TRUE;
+        }
+
+        BOOL WINAPI RecordTerminateProcess(const HANDLE process, const UINT exitCode)
+        {
+            suspendedProcessCallState->terminatedProcess = process;
+            suspendedProcessCallState->exitCode = exitCode;
+            return TRUE;
+        }
+    }
+
     struct GenerationTestObject :
         winrt::implements<GenerationTestObject, winrt::Windows::Foundation::IStringable>
     {
@@ -41,6 +75,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsEqualsInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentValue);
+        TEST_METHOD(ResumeFailureCleansUpSuspendedProcess);
         TEST_METHOD(AllScopeRetirementJoinsSameRequest);
         TEST_METHOD(LiveSettingsObjectSharesGeneration);
         TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
@@ -143,6 +178,30 @@ namespace TerminalAppUnitTests
     {
         constexpr wchar_t value[]{ L'd', L'e', L'b', L'u', L'g', L'\0', L't', L'r', L'a', L'c', L'e' };
         VERIFY_IS_FALSE(details::IsValidEnvironmentOverride(L"WTA_LOG", std::wstring_view{ value, std::size(value) }));
+    }
+
+    void SharedWtaTests::ResumeFailureCleansUpSuspendedProcess()
+    {
+        const auto thread = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(1));
+        const auto process = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(2));
+        HANDLE wait = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(3));
+        SuspendedProcessCallState callState;
+        suspendedProcessCallState = &callState;
+        const auto resetCallState = wil::scope_exit([]() noexcept { suspendedProcessCallState = nullptr; });
+
+        const details::SuspendedProcessOperations operations{
+            &ResumeThreadFailure,
+            &RecordUnregisterWait,
+            &RecordTerminateProcess,
+        };
+
+        VERIFY_IS_FALSE(details::ResumeSuspendedProcess(thread, process, wait, operations));
+        VERIFY_IS_NULL(wait);
+        VERIFY_ARE_EQUAL(thread, callState.resumedThread);
+        VERIFY_ARE_EQUAL(reinterpret_cast<HANDLE>(static_cast<uintptr_t>(3)), callState.unregisteredWait);
+        VERIFY_IS_NULL(callState.unregisterCompletionEvent);
+        VERIFY_ARE_EQUAL(process, callState.terminatedProcess);
+        VERIFY_ARE_EQUAL(UINT{ 1 }, callState.exitCode);
     }
 
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()

@@ -148,6 +148,19 @@ namespace winrt::TerminalApp::implementation
         // environment; nullopt means the requested block could not be built.
         std::optional<std::wstring> BuildEnvironmentBlock(
             std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
+
+        struct SuspendedProcessOperations
+        {
+            DWORD(WINAPI* resumeThread)(HANDLE){ ::ResumeThread };
+            BOOL(WINAPI* unregisterWait)(HANDLE, HANDLE){ ::UnregisterWaitEx };
+            BOOL(WINAPI* terminateProcess)(HANDLE, UINT){ ::TerminateProcess };
+        };
+
+        bool ResumeSuspendedProcess(
+            HANDLE thread,
+            HANDLE process,
+            HANDLE& waitHandle,
+            const SuspendedProcessOperations& operations = {}) noexcept;
     }
 
     class SharedWta

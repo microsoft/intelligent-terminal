@@ -753,6 +753,7 @@ fn make_state_with_retirement_pending_timeout(
         connected_helpers: Mutex::new(HashSet::new()),
         all_retirement_fence: Mutex::new(AllRetirementFence::default()),
         tab_retirement_fences: Mutex::new(HashMap::new()),
+        tab_retirement_rekeys: Mutex::new(HashMap::new()),
         unresolved_owner_retirements: Mutex::new(HashMap::new()),
         pending_session_helpers: Mutex::new(HashMap::new()),
         pending_session_mcp: Mutex::new(HashMap::new()),
@@ -765,6 +766,7 @@ fn make_state_with_retirement_pending_timeout(
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
@@ -1663,6 +1665,57 @@ async fn failed_pending_session_cleanup_retires_close_marked_recovery_state() {
         .await
         .contains(&helper_id));
     assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_pending_cleanup_reads_destructive_marker_under_ownership_gate() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(121);
+            state
+                .pending_session_helpers
+                .lock()
+                .await
+                .insert(helper_id, Some("destructive-pending-tab".to_string()));
+            state.closing_session_helpers.lock().await.insert(helper_id);
+            state.helper_meta.lock().await.insert(
+                helper_id,
+                HelperRecoveryMeta {
+                    owner_tab_id: Some("destructive-pending-tab".to_string()),
+                    last_session_id: None,
+                },
+            );
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let handler = HelperHandler {
+                helper_id,
+                agent: Arc::new(OnceLock::new()),
+                state: Arc::clone(&state),
+                replacement_gate: Arc::new(Mutex::new(())),
+                notif_tx,
+                agent_side_slot: Arc::new(OnceLock::new()),
+            };
+
+            let ownership_guard = state.tab_ownership_gate.lock().await;
+            let cleanup =
+                tokio::task::spawn_local(async move { handler.finish_failed_pending_session().await });
+            tokio::task::yield_now().await;
+            state
+                .destructive_session_helpers
+                .lock()
+                .await
+                .insert(helper_id);
+            drop(ownership_guard);
+            cleanup.await.unwrap();
+
+            assert!(state
+                .closing_session_helpers
+                .lock()
+                .await
+                .contains(&helper_id));
+            assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -3488,6 +3541,32 @@ async fn orphan_retirement_blocked_lifecycle_gate_uses_total_budget() {
 
             let gate = session_lifecycle_gate(&state, &session_id).await;
             let gate_guard = gate.lock().await;
+            let replacement_helper_id = HelperId(349);
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (rebind_queued_tx, mut rebind_queued_rx) = mpsc::unbounded_channel();
+            let rebind = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let session_id = session_id.clone();
+                async move {
+                    rebind_queued_tx.send(()).unwrap();
+                    bind_session_route(
+                        &state,
+                        session_id,
+                        HelperRoute {
+                            helper_id: replacement_helper_id,
+                            agent_instance_id: AgentInstanceId::new_v4(),
+                            notif_tx,
+                            forwarder: None,
+                            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                        },
+                    )
+                    .await;
+                }
+            });
+            rebind_queued_rx
+                .recv()
+                .await
+                .expect("replacement bind must queue behind the lifecycle gate");
             let started = tokio::time::Instant::now();
             handle_master_wt_event(
                 &state,
@@ -3517,10 +3596,33 @@ async fn orphan_retirement_blocked_lifecycle_gate_uses_total_budget() {
                 started.elapsed() < std::time::Duration::from_millis(500),
                 "blocked orphan gate must remain bounded by the retirement deadline"
             );
+            assert!(state.orphaned_tabs.lock().await.contains_key(tab_id));
+            assert!(state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get("blocked-orphan-gate-agent")
+                .is_some_and(|sessions| sessions.contains(&session_id)));
+            assert!(state.registry.lookup(&session_id).await.is_some());
+            let deferred_cleanup =
+                state.deferred_retirement_cleanup_complete.notified();
+            drop(gate_guard);
+            rebind.await.expect("replacement bind must finish");
+            tokio::time::timeout(std::time::Duration::from_secs(1), deferred_cleanup)
+                .await
+                .expect("deferred orphan cleanup must revalidate after the queued bind");
+            assert_eq!(
+                state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .get(&session_id)
+                    .map(|route| route.helper_id),
+                Some(replacement_helper_id)
+            );
+            assert!(state.registry.lookup(&session_id).await.is_some());
             assert!(state.orphaned_tabs.lock().await.is_empty());
             assert!(state.orphaned_sessions.lock().await.is_empty());
-            assert!(state.registry.lookup(&session_id).await.is_none());
-            drop(gate_guard);
         })
         .await;
 }
@@ -3812,6 +3914,113 @@ async fn scope_all_preserves_ownerless_orphan_claimed_by_replacement_route() {
                 events_rx.try_recv().is_err(),
                 "a replacement route must suppress orphan cancel and close"
             );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn scope_all_ownerless_orphan_gate_timeout_preserves_queued_rebind() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state_with_retirement_pending_timeout(
+                std::time::Duration::from_millis(40),
+            );
+            let mut completions = capture_retirement_completions(&state).await;
+            let replacement_helper_id = HelperId(351);
+            let session_id = SessionId::new("ownerless-orphan-timeout-rebind");
+            let agent_key = "ownerless-orphan-timeout-agent".to_string();
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(agent_key.clone())
+                .or_default()
+                .insert(session_id.clone());
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    session_id.clone(),
+                    PathBuf::from("C:\\ownerless-orphan-timeout"),
+                ))
+                .await;
+
+            let gate = session_lifecycle_gate(&state, &session_id).await;
+            let gate_guard = gate.lock().await;
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            let (rebind_queued_tx, mut rebind_queued_rx) = mpsc::unbounded_channel();
+            let rebind = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let session_id = session_id.clone();
+                async move {
+                    rebind_queued_tx.send(()).unwrap();
+                    bind_session_route(
+                        &state,
+                        session_id,
+                        HelperRoute {
+                            helper_id: replacement_helper_id,
+                            agent_instance_id: AgentInstanceId::new_v4(),
+                            notif_tx,
+                            forwarder: None,
+                            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                        },
+                    )
+                    .await;
+                }
+            });
+            rebind_queued_rx
+                .recv()
+                .await
+                .expect("replacement bind must queue behind the lifecycle gate");
+
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "retire_agent_sessions",
+                    "params": {
+                        "operation_id": "retire-ownerless-timeout-rebind",
+                        "scope": "all",
+                        "tab_ids": [],
+                        "reason": "window_close"
+                    }
+                }),
+            )
+            .await;
+            let completion =
+                tokio::time::timeout(std::time::Duration::from_millis(500), completions.recv())
+                    .await
+                    .expect("ownerless retirement must remain bounded")
+                    .expect("ownerless retirement must report completion");
+            assert_eq!(completion["params"]["success"], false);
+            assert_eq!(
+                completion["params"]["unattributed_failures"]["count"],
+                serde_json::json!(1)
+            );
+            assert!(state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get(&agent_key)
+                .is_some_and(|sessions| sessions.contains(&session_id)));
+            assert!(state.registry.lookup(&session_id).await.is_some());
+
+            let deferred_cleanup =
+                state.deferred_retirement_cleanup_complete.notified();
+            drop(gate_guard);
+            rebind.await.expect("replacement bind must finish");
+            tokio::time::timeout(std::time::Duration::from_secs(1), deferred_cleanup)
+                .await
+                .expect("deferred ownerless cleanup must revalidate after the queued bind");
+            assert_eq!(
+                state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .get(&session_id)
+                    .map(|route| route.helper_id),
+                Some(replacement_helper_id)
+            );
+            assert!(state.registry.lookup(&session_id).await.is_some());
+            assert!(state.orphaned_sessions.lock().await.is_empty());
         })
         .await;
 }
@@ -4714,6 +4923,7 @@ async fn master_tab_rename_rekeys_live_and_orphan_ownership() {
     let state = make_state();
     let helper_id = HelperId(118);
     let session_id = SessionId::new("dragged-session");
+    state.connected_helpers.lock().await.insert(helper_id);
     state.helper_meta.lock().await.insert(
         helper_id,
         HelperRecoveryMeta {
@@ -4764,6 +4974,139 @@ async fn master_tab_rename_rekeys_live_and_orphan_ownership() {
     let orphaned_tabs = state.orphaned_tabs.lock().await;
     assert!(!orphaned_tabs.contains_key("old-stable-id"));
     assert!(orphaned_tabs.contains_key("new-stable-id"));
+    drop(orphaned_tabs);
+    assert!(state.tab_retirement_fences.lock().await.is_empty());
+    assert!(state.tab_retirement_rekeys.lock().await.is_empty());
+    assert!(state.closing_session_helpers.lock().await.is_empty());
+    assert!(state.destructive_session_helpers.lock().await.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconnect() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let mut completions = capture_retirement_completions(&state).await;
+            let helper_id = HelperId(119);
+            let session_id = SessionId::new("retirement-drag-race");
+            let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+            let mut cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
+            cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
+                conn: client_connection_to_blocking_close_agent(events_tx),
+                cached_init_resp,
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "retirement-drag-race-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+            });
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), cell);
+            register_retirement_tab(
+                &state,
+                &agent,
+                helper_id,
+                "retirement-drag-old",
+                &session_id,
+            )
+            .await;
+
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "retire_agent_sessions",
+                    "params": {
+                        "operation_id": "retirement-drag-race-op",
+                        "scope": "tabs",
+                        "tab_ids": ["retirement-drag-old"],
+                        "reason": "window_close"
+                    }
+                }),
+            )
+            .await;
+            let ReplacementEvent::BlockingClose(closing_session, release_close) = events_rx
+                .recv()
+                .await
+                .expect("retirement must reach session/close before the drag")
+            else {
+                panic!("expected blocking session/close");
+            };
+            assert_eq!(closing_session, session_id);
+
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({
+                    "method": "tab_renamed",
+                    "params": {
+                        "old_tab_id": "retirement-drag-old",
+                        "new_tab_id": "retirement-drag-new"
+                    }
+                }),
+            )
+            .await;
+            assert_eq!(
+                state
+                    .helper_meta
+                    .lock()
+                    .await
+                    .get(&helper_id)
+                    .and_then(|meta| meta.owner_tab_id.as_deref()),
+                Some("retirement-drag-new")
+            );
+            assert!(!state
+                .tab_retirement_fences
+                .lock()
+                .await
+                .contains_key("retirement-drag-old"));
+            assert!(state
+                .tab_retirement_fences
+                .lock()
+                .await
+                .contains_key("retirement-drag-new"));
+            assert_eq!(
+                state
+                    .tab_retirement_rekeys
+                    .lock()
+                    .await
+                    .get("retirement-drag-old")
+                    .map(String::as_str),
+                Some("retirement-drag-new")
+            );
+
+            release_close.send(()).unwrap();
+            assert_eq!(completions.recv().await.unwrap()["params"]["success"], true);
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(state.registry.lookup(&session_id).await.is_none());
+            assert!(state.tab_retirement_rekeys.lock().await.is_empty());
+            assert!(state
+                .destructive_session_helpers
+                .lock()
+                .await
+                .contains(&helper_id));
+
+            let (intentional, recovery) =
+                consume_disconnected_helper_retirement_state(&state, helper_id).await;
+            assert!(intentional);
+            assert_eq!(
+                recovery.and_then(|meta| meta.owner_tab_id),
+                None,
+                "completed retirement must not retain recovery metadata"
+            );
+            assert!(state.tab_retirement_fences.lock().await.is_empty());
+            assert!(state.destructive_session_helpers.lock().await.is_empty());
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -8162,6 +8505,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         connected_helpers: Mutex::new(HashSet::new()),
         all_retirement_fence: Mutex::new(AllRetirementFence::default()),
         tab_retirement_fences: Mutex::new(HashMap::new()),
+        tab_retirement_rekeys: Mutex::new(HashMap::new()),
         unresolved_owner_retirements: Mutex::new(HashMap::new()),
         pending_session_helpers: Mutex::new(HashMap::new()),
         pending_session_mcp: Mutex::new(HashMap::new()),
@@ -8174,6 +8518,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
