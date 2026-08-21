@@ -353,7 +353,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         if (_agentName.empty())
         {
-            text = L"";
+            text = _agentState == L"connecting" ? L"AI assistant \u00B7 Connecting" : L"AI assistant";
         }
         else
         {

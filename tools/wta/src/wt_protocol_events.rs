@@ -20,14 +20,9 @@ fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
     })
 }
 
-fn publish_blocking(json_payload: &str) {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|directory| directory.join("wtcli.exe")))
-        .filter(|path| path.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
+fn publish_command(exe: &std::path::Path) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
-    command.arg("publish").arg(json_payload);
+    command.arg("publish").arg("--stdin");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -36,19 +31,95 @@ fn publish_blocking(json_payload: &str) {
     command
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null());
+        .stdin(std::process::Stdio::piped());
+    command
+}
+
+fn publish_blocking(json_payload: &str) {
+    use std::io::Write;
+
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|directory| directory.join("wtcli.exe")))
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
+    let payload_bytes = json_payload.len();
+    let event_method = serde_json::from_str::<serde_json::Value>(json_payload)
+        .ok()
+        .and_then(|event| event.get("method")?.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "<unknown>".to_owned());
+    let mut command = publish_command(&exe);
     match command.spawn() {
-        Ok(mut child) => match child.wait() {
-            Ok(status) if !status.success() => {
-                tracing::warn!(target: "wt_protocol", ?status, "wtcli publish failed");
+        Ok(mut child) => {
+            match child.stdin.take() {
+                Some(mut stdin) => {
+                    if let Err(error) = stdin.write_all(json_payload.as_bytes()) {
+                        tracing::warn!(
+                            target: "wt_protocol",
+                            %error,
+                            payload_bytes,
+                            event_method,
+                            "failed writing wtcli publish payload"
+                        );
+                    }
+                }
+
+                None => {
+                    tracing::warn!(
+                        target: "wt_protocol",
+                        payload_bytes,
+                        event_method,
+                        "wtcli publish stdin was not piped"
+                    );
+                }
             }
-            Err(error) => {
-                tracing::warn!(target: "wt_protocol", %error, "failed waiting for wtcli publish");
+
+            match child.wait() {
+                Ok(status) if !status.success() => {
+                    tracing::warn!(
+                        target: "wt_protocol",
+                        ?status,
+                        payload_bytes,
+                        event_method,
+                        "wtcli publish failed"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "wt_protocol",
+                        %error,
+                        payload_bytes,
+                        event_method,
+                        "failed waiting for wtcli publish"
+                    );
+                }
+                _ => {}
             }
-            _ => {}
-        },
-        Err(error) => {
-            tracing::warn!(target: "wt_protocol", %error, "failed to start wtcli publish");
         }
+        Err(error) => {
+            tracing::warn!(
+                target: "wt_protocol",
+                %error,
+                payload_bytes,
+                event_method,
+                "failed to start wtcli publish"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn large_payload_never_enters_wtcli_command_line() {
+        let payload = "x".repeat(128 * 1024);
+        let command = super::publish_command(std::path::Path::new("wtcli.exe"));
+        let arguments: Vec<_> = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(arguments, ["publish", "--stdin"]);
+        assert!(!arguments.iter().any(|argument| argument == &payload));
     }
 }
