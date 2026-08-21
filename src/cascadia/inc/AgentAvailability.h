@@ -34,7 +34,8 @@ namespace Microsoft::Terminal::AgentAvailability
             const auto& id = agent["id"];
             if (id.isString())
             {
-                ids.emplace(winrt::to_hstring(id.asString()));
+                const auto hstringId = winrt::to_hstring(id.asString());
+                ids.emplace(hstringId.c_str(), hstringId.size());
             }
         }
         return ids;
