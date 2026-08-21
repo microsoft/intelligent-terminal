@@ -1151,9 +1151,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // build/scripts/Verify-AgentHooks.ps1 consumes — so the Settings UI
     // and the verify script can never disagree about install state.
     //
-    // The single primary "Install hooks" button still delegates to
-    // `wta install-hooks`; afterwards we re-invoke the status query to
-    // refresh the rows.
+    // The single primary "Install hooks" button delegates to
+    // `wta hooks install --only-missing`; afterwards we re-invoke the status
+    // query to refresh the rows.
 
     // _ResolveWtaExePath and _RunWtaCaptureStdout moved to
     // src/cascadia/inc/WtaProcess.h for shared use.
@@ -1328,7 +1328,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _installingAgentHooks = true;
         _agentHooksInstallSummary = RS_(L"AIAgents_HooksInstallingSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks install");
+        // `--only-missing` leaves CLIs that already carry the bundled hook
+        // version alone instead of re-running their install commands. Those
+        // reinstalls change nothing on disk, cost two Node spawns per CLI, and
+        // fail outright when a running agent CLI holds its plugin directory
+        // open — so on an already-current machine the button used to be slow
+        // and could report a failure for work that never needed doing.
+        // Anything less than fully-installed-and-current is still repaired.
+        _RunHooksWtaAsync(L"hooks install --only-missing");
     }
 
     void AIAgentsViewModel::RemoveCopilotHooks()

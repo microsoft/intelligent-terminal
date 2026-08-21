@@ -2,11 +2,22 @@ use anyhow::Result;
 
 use super::args::HooksCliFilter;
 
-pub(crate) fn run_install(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
+pub(crate) fn run_install(cli: HooksCliFilter, only_missing: bool, json_mode: bool) -> Result<()> {
     // Logging is initialized in `main()`; the install attempt is observable in
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
     let scope = cli.into_scope();
-    let spawn_failures = crate::agent_hooks_installer::ensure_installed_scoped(scope);
+
+    // `--only-missing` trades one status pass up front for the far more
+    // expensive install pass behind it. `<cli> plugin install` is two Node
+    // spawns per CLI that rewrite the plugin directory even when the bytes
+    // don't change — and that rewrite is exactly what Windows denies while a
+    // running agent CLI holds the directory open, turning a no-op into a
+    // reported failure. The Settings "Install hooks" button passes it so
+    // clicking on an already-current machine costs one query, not five
+    // reinstalls.
+    let pre_status = only_missing.then(|| crate::agent_hooks_installer::status_scoped(scope));
+    let selected = select_clis_to_install(scope, pre_status.as_ref());
+    let spawn_failures = crate::agent_hooks_installer::ensure_installed_for(&selected);
 
     // Two independent failure signals, because neither one alone is sufficient.
     //
@@ -21,7 +32,14 @@ pub(crate) fn run_install(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     //
     // The status check stays because it catches the opposite case: a command
     // that reports success without leaving anything usable behind.
-    let report = crate::agent_hooks_installer::status_scoped(scope);
+    //
+    // When `--only-missing` selected nothing, the pre-pass IS the verification:
+    // no install ran, so nothing on disk moved, and re-querying would pay a
+    // second round of per-CLI Node spawns to re-derive a report we still hold.
+    let report = match pre_status {
+        Some(pre) if selected.is_empty() => pre,
+        _ => crate::agent_hooks_installer::status_scoped(scope),
+    };
     let missing: Vec<&str> = report
         .clis
         .iter()
@@ -82,6 +100,49 @@ pub(crate) fn run_install(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     let message = format_install_failure(&spawn_failures, &missing);
     tracing::error!(target: "agent_hooks", "{}", message);
     anyhow::bail!(message)
+}
+
+/// Which in-scope CLIs the install pass should actually touch.
+///
+/// `pre_status` is `Some` only for `--only-missing`; that CLI is dropped when
+/// [`is_up_to_date`](crate::agent_hooks_installer::is_up_to_date) can prove
+/// re-installing it would change nothing. Without a pre-pass every in-scope
+/// CLI is selected, which is the historical `wta hooks install` behavior.
+///
+/// Split out from [`run_install`] so the skip decision is testable without
+/// spawning a single agent CLI.
+fn select_clis_to_install(
+    scope: crate::agent_hooks_installer::CliScope,
+    pre_status: Option<&crate::agent_hooks_installer::StatusReport>,
+) -> Vec<crate::agent_hooks_installer::CliKind> {
+    use crate::agent_hooks_installer::{is_up_to_date, CliKind, CliScope};
+
+    CliKind::ALL
+        .iter()
+        .copied()
+        .filter(|kind| match scope {
+            CliScope::All => true,
+            CliScope::One(only) => only == *kind,
+        })
+        .filter(|kind| {
+            let Some(status) = pre_status else {
+                return true;
+            };
+            let up_to_date = status
+                .clis
+                .iter()
+                .find(|c| c.name == kind.name())
+                .is_some_and(is_up_to_date);
+            if up_to_date {
+                tracing::info!(
+                    target: "agent_hooks",
+                    cli = kind.name(),
+                    "hooks already installed at the bundled version; skipping install",
+                );
+            }
+            !up_to_date
+        })
+        .collect()
 }
 
 /// Fold the two independent failure signals and the post-install status
@@ -355,6 +416,7 @@ fn yn(b: bool) -> &'static str {
 mod tests {
     use super::{
         build_install_report, format_bundle_source, format_install_failure, format_version_column,
+        select_clis_to_install,
     };
     use crate::agent_hooks_installer::{
         BundleSourceInfo, CliScope, CliStatus, InstallFailure, StatusReport,
@@ -680,5 +742,105 @@ mod tests {
         let report =
             build_install_report(CliScope::All, &status_of(vec![]), &no_failures(), &[]);
         assert_eq!(report.schema_version, 1);
+    }
+
+    // ---- `--only-missing` selection --------------------------------------
+
+    fn current_cli(name: &'static str, version: &str) -> CliStatus {
+        CliStatus {
+            installed_version: Some(version.to_string()),
+            ..cli_with_bundle(name, Some(version))
+        }
+    }
+
+    /// The `--only-missing` contract the Settings "Install hooks" button relies
+    /// on: a CLI already carrying the bundled version is dropped from the
+    /// install pass, and every state that is anything less than current is
+    /// kept — including the ones that superficially read as installed.
+    #[test]
+    fn only_missing_skips_current_clis_and_keeps_everything_else() {
+        use crate::agent_hooks_installer::CliKind;
+
+        let status = status_of(vec![
+            current_cli("copilot", "0.1.6"),
+            // Older than the bundle.
+            CliStatus {
+                installed_version: Some("0.1.5".to_string()),
+                ..cli_with_bundle("claude", Some("0.1.6"))
+            },
+            // Installed, but the version can't be read.
+            cli_with_bundle("gemini", Some("0.1.6")),
+            // Present but disabled — a partial state the button repairs.
+            CliStatus {
+                plugin_enabled: false,
+                installed_version: Some("0.1.6".to_string()),
+                ..cli_with_bundle("codex", Some("0.1.6"))
+            },
+            absent_cli("opencode"),
+        ]);
+
+        assert_eq!(
+            select_clis_to_install(CliScope::All, Some(&status)),
+            vec![
+                CliKind::Claude,
+                CliKind::Gemini,
+                CliKind::Codex,
+                CliKind::OpenCode
+            ],
+        );
+    }
+
+    /// A CLI the status pass never reported on is unknown, not current. Absent
+    /// evidence must fall back to doing the work.
+    #[test]
+    fn only_missing_installs_clis_absent_from_the_status_report() {
+        use crate::agent_hooks_installer::CliKind;
+
+        let status = status_of(vec![current_cli("copilot", "0.1.6")]);
+
+        assert_eq!(
+            select_clis_to_install(CliScope::All, Some(&status)),
+            vec![
+                CliKind::Claude,
+                CliKind::Gemini,
+                CliKind::Codex,
+                CliKind::OpenCode
+            ],
+        );
+    }
+
+    /// Without the flag, `wta hooks install` stays a full (re)install — the
+    /// escape hatch for a break that status can't see.
+    #[test]
+    fn a_plain_install_still_selects_every_in_scope_cli() {
+        use crate::agent_hooks_installer::CliKind;
+
+        assert_eq!(
+            select_clis_to_install(CliScope::All, None),
+            CliKind::ALL.to_vec()
+        );
+        assert_eq!(
+            select_clis_to_install(CliScope::One(CliKind::Codex), None),
+            vec![CliKind::Codex]
+        );
+    }
+
+    /// Scope wins over state in both directions: another CLI needing an
+    /// install must not widen a `--cli` run, and a current CLI must still be
+    /// skipped when it is the one named.
+    #[test]
+    fn only_missing_respects_a_single_cli_scope() {
+        use crate::agent_hooks_installer::CliKind;
+
+        let status = status_of(vec![
+            cli_with_bundle("copilot", Some("0.1.6")),
+            current_cli("codex", "0.1.6"),
+        ]);
+
+        assert!(select_clis_to_install(CliScope::One(CliKind::Codex), Some(&status)).is_empty());
+        assert_eq!(
+            select_clis_to_install(CliScope::One(CliKind::Copilot), Some(&status)),
+            vec![CliKind::Copilot]
+        );
     }
 }

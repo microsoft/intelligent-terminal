@@ -60,7 +60,9 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             }
         },
         Command::Hooks { action } => match action {
-            HooksAction::Install { cli } => hooks::run_install(cli, json_mode),
+            HooksAction::Install { cli, only_missing } => {
+                hooks::run_install(cli, only_missing, json_mode)
+            }
             HooksAction::Status => hooks::run_status(json_mode),
             HooksAction::Uninstall { cli } => hooks::run_uninstall(cli, json_mode),
         },

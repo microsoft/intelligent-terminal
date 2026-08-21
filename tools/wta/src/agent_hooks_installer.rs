@@ -690,6 +690,23 @@ pub fn ensure_installed() {
 /// `wta hooks install` command reports it, because an install that failed
 /// silently is indistinguishable from one that worked.
 pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
+    let selected: Vec<CliKind> = CliKind::ALL
+        .iter()
+        .copied()
+        .filter(|k| scope.includes(*k))
+        .collect();
+    ensure_installed_for(&selected)
+}
+
+/// Install hooks for exactly the CLIs listed in `clis`, skipping the rest
+/// entirely.
+///
+/// Exists because [`CliScope`] can only say "all" or "one", and
+/// `wta hooks install --only-missing` needs to name an arbitrary subset: the
+/// CLIs that [`is_up_to_date`] could not vouch for. Per-CLI failures are
+/// recorded and the loop continues — one CLI's broken install must not hide
+/// the others.
+pub fn ensure_installed_for(clis: &[CliKind]) -> Vec<InstallFailure> {
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
         return Vec::new();
@@ -703,22 +720,65 @@ pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
             });
         }
     };
-    if scope.includes(CliKind::Claude) {
+    if clis.contains(&CliKind::Claude) {
         record(CliKind::Claude, install_for_claude(&home));
     }
-    if scope.includes(CliKind::Copilot) {
+    if clis.contains(&CliKind::Copilot) {
         record(CliKind::Copilot, install_for_copilot(&home));
     }
-    if scope.includes(CliKind::Gemini) {
+    if clis.contains(&CliKind::Gemini) {
         record(CliKind::Gemini, install_for_gemini(&home));
     }
-    if scope.includes(CliKind::Codex) {
+    if clis.contains(&CliKind::Codex) {
         record(CliKind::Codex, install_for_codex(&home));
     }
-    if scope.includes(CliKind::OpenCode) {
+    if clis.contains(&CliKind::OpenCode) {
         record(CliKind::OpenCode, install_for_opencode(&home));
     }
     failures
+}
+
+/// True when re-running the install commands for this CLI would change
+/// nothing: the CLI is on PATH, every piece of the bridge is registered,
+/// path-valid, installed and enabled, and the version it reports is at least
+/// the one this wta bundles.
+///
+/// Backs `wta hooks install --only-missing`, which the Settings "Install
+/// hooks" button uses so an already-current machine doesn't pay two Node
+/// spawns per CLI to rewrite plugin directories byte-for-byte — a rewrite
+/// that can outright fail when a running agent CLI holds one of those
+/// directories open.
+///
+/// Deliberately strict; every looser state stays eligible for a re-install,
+/// because those are exactly the states the button exists to repair:
+///
+///   * partial install, stale marketplace path, or disabled plugin — the
+///     boolean flags below already disagree with "installed";
+///   * `detection_fallback` set — the verdict came from filesystem
+///     heuristics about another tool's private layout, which is a good
+///     enough signal to *report* but not to decline work the user asked for;
+///   * either version unknown or the installed one older than the bundle —
+///     we can't prove the on-disk copy is current, so we don't assume it.
+pub fn is_up_to_date(status: &CliStatus) -> bool {
+    if !(status.binary_on_path
+        && status.marketplace_registered
+        && status.marketplace_path_valid
+        && status.plugin_installed
+        && status.plugin_enabled)
+    {
+        return false;
+    }
+    if status.detection_fallback.is_some() {
+        return false;
+    }
+    let parse = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<Version>().ok());
+    match (
+        parse(&status.installed_version),
+        parse(&status.bundle_version),
+    ) {
+        (Some(installed), Some(bundled)) => installed >= bundled,
+        _ => false,
+    }
 }
 
 /// Run the installer against a specific home directory. Split out from
