@@ -20,6 +20,65 @@ use crate::{
 
 use super::config::{HelperConfig, InitialView};
 
+#[cfg(windows)]
+fn install_descendant_job() {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            tracing::warn!(
+                target: "helper",
+                error = GetLastError(),
+                "failed to create helper descendant job"
+            );
+            return;
+        }
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            std::ptr::addr_of!(limits).cast(),
+            std::mem::size_of_val(&limits) as u32,
+        ) == 0
+        {
+            tracing::warn!(
+                target: "helper",
+                error = GetLastError(),
+                "failed to configure helper descendant job"
+            );
+            CloseHandle(job);
+            return;
+        }
+
+        if AssignProcessToJobObject(job, GetCurrentProcess()) == 0 {
+            tracing::warn!(
+                target: "helper",
+                error = GetLastError(),
+                "failed to assign helper to descendant job"
+            );
+            CloseHandle(job);
+            return;
+        }
+
+        // This process must retain the only job handle for its entire lifetime.
+        // Windows closes it on every exit path, including TerminateProcess, and
+        // KILL_ON_JOB_CLOSE then reclaims wtcli and other helper descendants.
+        tracing::info!(target: "helper", "helper descendant job installed");
+    }
+}
+
+#[cfg(not(windows))]
+fn install_descendant_job() {}
+
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
 /// named pipe and forwards ACP traffic over it.
@@ -27,6 +86,7 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
+    install_descendant_job();
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),

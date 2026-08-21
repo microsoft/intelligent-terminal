@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneContent.g.cpp"
+#include "AgentPaneLog.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -15,6 +16,7 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
+using namespace winrt::Microsoft::Terminal::TerminalConnection;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -28,6 +30,61 @@ namespace winrt::TerminalApp::implementation
             Codex,
             OpenCode,
         };
+
+        constexpr auto AgentHelperExitTimeout{ std::chrono::seconds{ 3 } };
+
+        safe_void_coroutine _EnsureAgentHelperExited(wil::unique_handle process, const DWORD pid)
+        {
+            co_await winrt::resume_background();
+
+            const auto waitResult = WaitForSingleObject(process.get(), static_cast<DWORD>(
+                                                                           std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                               AgentHelperExitTimeout)
+                                                                               .count()));
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                _agentPaneLog("wta-helper exited after pane close pid=" + std::to_string(pid));
+                co_return;
+            }
+
+            if (waitResult == WAIT_TIMEOUT)
+            {
+                _agentPaneLog("wta-helper did not exit after pane close; terminating pid=" + std::to_string(pid));
+                LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(process.get(), 1));
+                WaitForSingleObject(process.get(), 5000);
+                co_return;
+            }
+
+            LOG_LAST_ERROR();
+        }
+
+        wil::unique_handle _DuplicateAgentHelperProcess(const winrt::TerminalApp::TerminalPaneContent& inner)
+        {
+            const auto impl = winrt::get_self<implementation::TerminalPaneContent>(inner);
+            if (!impl)
+            {
+                return {};
+            }
+            const auto control = impl->GetTermControl();
+            const auto connection = control ? control.Connection() : nullptr;
+            const auto conpty = connection.try_as<ConptyConnection>();
+            const auto processValue = conpty ? conpty.RootProcessHandle() : 0;
+            if (!processValue)
+            {
+                return {};
+            }
+
+            wil::unique_handle duplicate;
+            LOG_IF_WIN32_BOOL_FALSE(DuplicateHandle(
+                GetCurrentProcess(),
+                reinterpret_cast<HANDLE>(processValue),
+                GetCurrentProcess(),
+                duplicate.addressof(),
+                SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+                FALSE,
+                0));
+            return duplicate;
+        }
 
         // Map the agent's display name (case-insensitive substring) to its
         // XAML path. Unknown agents fall back to Copilot.
@@ -333,9 +390,15 @@ namespace winrt::TerminalApp::implementation
     void AgentPaneContent::Close()
     {
         _unwireInnerEvents();
+        auto helperProcess = _DuplicateAgentHelperProcess(_inner);
+        const auto helperPid = helperProcess ? GetProcessId(helperProcess.get()) : 0;
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             impl->Close();
+        }
+        if (helperProcess)
+        {
+            _EnsureAgentHelperExited(std::move(helperProcess), helperPid);
         }
     }
 

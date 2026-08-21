@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use super::WtChannel;
 use crate::app_contracts::DebugMessage;
@@ -348,7 +349,18 @@ pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
     event_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<serde_json::Value>>>,
+    listener_shutdown: std::sync::Mutex<Option<oneshot::Sender<()>>>,
     wtcli_path: String,
+}
+
+impl Drop for CliChannel {
+    fn drop(&mut self) {
+        if let Ok(slot) = self.listener_shutdown.get_mut() {
+            if let Some(shutdown) = slot.take() {
+                let _ = shutdown.send(());
+            }
+        }
+    }
 }
 
 impl CliChannel {
@@ -362,6 +374,7 @@ impl CliChannel {
             available: AtomicBool::new(true),
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
+            listener_shutdown: std::sync::Mutex::new(None),
             wtcli_path: resolve_wtcli_path(),
         })
     }
@@ -382,36 +395,60 @@ impl CliChannel {
     pub async fn start_reader(self: &std::sync::Arc<Self>) {
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        if let Some(previous) = self.listener_shutdown.lock().unwrap().replace(shutdown_tx) {
+            let _ = previous.send(());
+        }
         tokio::spawn(async move {
             let Ok(mut child) = tokio::process::Command::new(&wtcli)
                 .args(["--json", "listen"])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
+                .kill_on_drop(true)
                 .spawn()
             else {
                 return;
             };
 
-            let stdout = child.stdout.take().unwrap();
+            let Some(stdout) = child.stdout.take() else {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                return;
+            };
             let mut reader = tokio::io::BufReader::new(stdout);
             let mut line = String::new();
 
             loop {
                 line.clear();
                 use tokio::io::AsyncBufReadExt;
-                match reader.read_line(&mut line).await {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        let Some(this) = weak.upgrade() else { break };
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                            let tx = this.event_tx.lock().unwrap();
-                            if let Some(tx) = tx.as_ref() {
-                                let _ = tx.send(val);
+                tokio::select! {
+                    _ = &mut shutdown_rx => break,
+                    result = reader.read_line(&mut line) => {
+                        match result {
+                            Ok(0) => break,
+                            Ok(_) => {
+                                let Some(this) = weak.upgrade() else { break };
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                                    let tx = this.event_tx.lock().unwrap();
+                                    if let Some(tx) = tx.as_ref() {
+                                        let _ = tx.send(val);
+                                    }
+                                }
                             }
+                            Err(_) => break,
                         }
                     }
-                    Err(_) => break,
                 }
+            }
+
+            drop(reader);
+            let _ = child.start_kill();
+            if let Err(error) = child.wait().await {
+                tracing::warn!(
+                    target: "wtcli",
+                    %error,
+                    "failed to reap wtcli event listener"
+                );
             }
         });
     }
@@ -420,9 +457,12 @@ impl CliChannel {
     /// wtcli inherits WT_COM_CLSID from this process's env.
     async fn run_wtcli(&self, args: &[&str]) -> anyhow::Result<serde_json::Value> {
         let mut cmd = tokio::process::Command::new(&self.wtcli_path);
-        cmd.arg("--json").args(args);
+        cmd.arg("--json").args(args).kill_on_drop(true);
 
-        let output = cmd.output().await.context("Failed to run wtcli")?;
+        let output = tokio::time::timeout(Duration::from_secs(30), cmd.output())
+            .await
+            .context("wtcli timed out after 30 seconds")?
+            .context("Failed to run wtcli")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -557,10 +597,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;
