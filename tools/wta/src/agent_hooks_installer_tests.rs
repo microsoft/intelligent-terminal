@@ -1786,7 +1786,20 @@ Installed plugins:
   • superpowers@superpowers-marketplace (v5.1.0)
   • wt-agent-hooks@wt-local (v0.1.0)
 ";
-    assert!(parse_copilot_plugin_list(stdout));
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+}
+
+#[test]
+fn copilot_plugin_list_parser_detects_disabled_entry() {
+    let stdout = "\
+Installed plugins:
+  • wt-agent-hooks@wt-local (v0.1.4) [disabled]
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(!presence.enabled);
 }
 
 #[test]
@@ -1795,12 +1808,16 @@ fn copilot_plugin_list_parser_returns_false_when_missing() {
 Installed plugins:
   • superpowers@superpowers-marketplace (v5.1.0)
 ";
-    assert!(!parse_copilot_plugin_list(stdout));
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(!presence.installed);
+    assert!(!presence.enabled);
 }
 
 #[test]
 fn copilot_plugin_list_parser_returns_false_when_empty() {
-    assert!(!parse_copilot_plugin_list(""));
+    let presence = parse_copilot_plugin_list("");
+    assert!(!presence.installed);
+    assert!(!presence.enabled);
 }
 
 /// Real `copilot plugin marketplace list` output. Built-in

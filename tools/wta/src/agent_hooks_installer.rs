@@ -1473,7 +1473,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     );
 
     // 1. plugin list (text — Copilot 1.0.44-2 has no --json).
-    let plugin_ok = join_or_run_plugin_cli(plugin_handle, "copilot", &["plugin", "list"])
+    let plugin_presence = join_or_run_plugin_cli(plugin_handle, "copilot", &["plugin", "list"])
         .filter(|o| o.success)
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
@@ -1481,11 +1481,9 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
     .filter(|o| o.success)
     .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
-    if let (Some(p), Some(m)) = (plugin_ok, mkt_ok) {
-        out.plugin_installed = p;
-        // Copilot's `plugin list` doesn't expose enabled/disabled, so
-        // "listed" implies enabled. Disabling a plugin removes it.
-        out.plugin_enabled = p;
+    if let (Some(p), Some(m)) = (plugin_presence, mkt_ok) {
+        out.plugin_installed = p.installed;
+        out.plugin_enabled = p.enabled;
         out.marketplace_registered = m;
     } else {
         copilot_fs_fallback(&mut out, home);
