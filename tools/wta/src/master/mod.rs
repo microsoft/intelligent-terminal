@@ -248,30 +248,6 @@ struct MasterStateInner {
     /// falls back to the trusted default. Either way the master reconstructs
     /// the command from the id and never spawns a string taken off the pipe.
     pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
-    /// Compatibility slots for the current session-history implementation.
-    /// They are populated from the first lazily spawned agent until history
-    /// aggregation is made fully per-agent.
-    /// `OnceLock` so we can construct the shared state *before* the
-    /// initialize round trip (the `MasterClient` inside
-    /// `ClientSideConnection` needs an `Arc<MasterStateInner>` first),
-    /// and fill the slot once initialize returns. Every helper
-    /// connection happens strictly after that, so the `get()` in
-    /// `HelperHandler::initialize` always sees `Some(_)`.
-    cached_init_resp: OnceLock<acp::schema::v1::InitializeResponse>,
-    /// The agent CLI connection, set once after startup `initialize`.
-    /// Used to source HOST session history via `session/list` instead of
-    /// reading the CLI's on-disk files.
-    agent_conn: OnceLock<conn::ClientLink>,
-    /// The CLI provider master is multiplexing. Resolved once at
-    /// startup from `config.agent` via `agent_registry::resolve_agent_id_from_cmd`.
-    /// Used to stamp `cli_source` on every SessionInfo upserted from
-    /// `session/new` and `session/load` so agent-pane sessions are not
-    /// reported with cli_source=None (which would make session management Enter on a
-    /// Live row fall through to the resume path and fail with
-    /// "unknown CLI"). `None` only when running with an agent CLI we
-    /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
-    /// but not surfaced as a known session management filter).
-    pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
     /// Per-helper tab/session ownership metadata, keyed by `HelperId`.
     ///
     /// Populated/refreshed by the `new_session` + `load_session`
@@ -338,29 +314,6 @@ struct MasterStateInner {
     /// the session into `hook_owned` and out of here, after which the watcher
     /// fully backs off.
     born_bound: Mutex<HashSet<acp::schema::v1::SessionId>>,
-    /// Short-TTL cache of the connected agent's raw `session/list` response.
-    /// `Some(Some(sessions))` = the agent listed (possibly empty);
-    /// `Some(None)` = the last fetch failed / timed out / is unsupported —
-    /// negative-cached so a burst of hook/watcher events and the 5s poll share
-    /// one round-trip and don't hammer a hung agent. Both the host-history
-    /// reconcile and the synthetic-title refresh derive from this one fetch.
-    host_list_cache: Mutex<
-        Option<(
-            std::time::Instant,
-            Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
-        )>,
-    >,
-    /// Last time a poll-triggered WSL title seed was dispatched. Throttles the
-    /// expensive per-distro `wsl.exe` ACP scan so the 5 s `sessions/list` poll
-    /// can't turn it into a scan storm while a synthetic WSL delegate row waits
-    /// for its in-distro title. `None` until the first poll-triggered seed; the
-    /// explicit F5 rescan + startup discovery seeds don't touch it.
-    wsl_titles_seed_at: Mutex<Option<std::time::Instant>>,
-    /// Set while a WSL ACP scan ([`spawn_wsl_seed`]) is running, so the
-    /// startup / F5 / poll seeds never overlap. A scan can outlive the poll
-    /// throttle (a cold snap distro pays a 40 s ACP init), so a time throttle
-    /// alone can't prevent concurrent `wsl.exe` processes — this guard does.
-    wsl_seed_in_flight: std::sync::atomic::AtomicBool,
 }
 
 async fn session_lifecycle_gate(
@@ -1038,6 +991,33 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
+    /// Short-TTL cache of THIS CLI's raw `session/list` response.
+    /// `Some(Some(sessions))` = the agent listed (possibly empty);
+    /// `Some(None)` = the last fetch failed / timed out / is unsupported —
+    /// negative-cached so a burst of hook/watcher events and the 5 s poll share
+    /// one round-trip and don't hammer a hung agent. Both the host-history
+    /// reconcile and the synthetic-title refresh derive from this one fetch.
+    ///
+    /// Per-agent (not per-master) because an agent enumerates only its OWN
+    /// sessions: a shared cache would serve one CLI's rows to another and, once
+    /// the user switches agents in Settings, permanently answer for the wrong
+    /// one. Dies with the `AgentCli` when the pool reaps it.
+    host_list_cache: Mutex<
+        Option<(
+            std::time::Instant,
+            Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
+        )>,
+    >,
+    /// Session ids THIS agent's `session/list` has returned at least once.
+    ///
+    /// Reconcile may only drop rows from this set. `cli_source` does not
+    /// identify a session universe: host Copilot, Copilot in WSL Debian, and
+    /// Copilot in WSL Ubuntu all stamp `Some(Copilot)` yet list disjoint
+    /// sessions. Keying the prune on "ids I previously listed and no longer
+    /// list" is what stops two such agents from deleting each other's rows on
+    /// every 5 s poll — which otherwise thrashes forever, since each one
+    /// re-adds what the other just dropped.
+    listed_ever: Mutex<HashSet<String>>,
     source: crate::agent_source::AgentSource,
     /// The pool key (agent command line) this CLI was spawned under —
     /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
@@ -3305,7 +3285,13 @@ impl HelperHandler {
         );
         match crate::session_registry::parse_ext_request(args) {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
-            Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
+            Req::SessionsList(p) => {
+                // Not `resolved_agent`: `wta sessions list` reaches this method
+                // without binding an agent, and that is a valid read-only
+                // caller — not a protocol violation worth erroring on.
+                let agent = self.agent.get().cloned();
+                handle_sessions_list(&self.state, agent.as_deref(), &p).await
+            }
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -3710,14 +3696,6 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
         allowed_agent_ids,
-        cached_init_resp: OnceLock::new(),
-        agent_conn: OnceLock::new(),
-        cli_source: crate::agent_sessions::CliSource::from_agent_id(
-            config
-                .agent_id
-                .as_deref()
-                .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&config.agent)),
-        ),
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
         pending_session_helpers: Mutex::new(HashMap::new()),
@@ -3726,9 +3704,6 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
-        host_list_cache: Mutex::new(None),
-        wsl_titles_seed_at: Mutex::new(None),
-        wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
     {
         let session_mcp_state = Arc::clone(&inner);
@@ -4063,6 +4038,50 @@ async fn get_or_spawn_agent(
 /// Unlike the old single-agent master, an agent CLI death here only
 /// removes that agent from the pool — the master process survives so
 /// other tabs' agents keep running.
+/// How many captured stderr lines to fold into a startup-failure error.
+/// Bounded so a chatty CLI can't turn a pane's error banner into a wall of
+/// text; the full capture is always in the log.
+const STARTUP_STDERR_IN_ERROR: usize = 4;
+
+/// Name the agent in a startup-failure message, including WHERE it runs.
+///
+/// The command alone is ambiguous: `copilot --acp --stdio` is the spelling for
+/// the host CLI *and* for the CLI inside every WSL distro, so a bare command
+/// sends the user debugging the wrong machine.
+fn describe_agent_target(agent_cmd: &str, source: &crate::agent_source::AgentSource) -> String {
+    match source {
+        crate::agent_source::AgentSource::Host => format!("'{agent_cmd}'"),
+        crate::agent_source::AgentSource::Wsl { distro } => {
+            format!("'{agent_cmd}' (WSL {distro})")
+        }
+    }
+}
+
+/// Fold captured startup stderr into an error message, or return empty when
+/// the CLI died silently.
+///
+/// This is the difference between a user seeing the transport symptom
+/// ("response to `initialize` never received: oneshot canceled") and the
+/// actual cause ("cannot preserve mount namespace ... Invalid argument").
+fn format_startup_stderr(lines: &[String]) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+    let shown = lines.len().min(STARTUP_STDERR_IN_ERROR);
+    let mut out = String::new();
+    for line in &lines[lines.len() - shown..] {
+        out.push_str("\n  agent stderr: ");
+        out.push_str(line);
+    }
+    if lines.len() > shown {
+        out.push_str(&format!(
+            "\n  ({} earlier stderr line(s) in the master log)",
+            lines.len() - shown
+        ));
+    }
+    out
+}
+
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
     cell: &AgentCell,
@@ -4275,17 +4294,23 @@ async fn spawn_one_agent(
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
-            stderr_log
-                .finish_failed_startup(&mut child, stderr_task)
-                .await;
-            return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
-        }
-        Err(_) => {
-            stderr_log
+            let stderr = stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
             return Err(anyhow!(
-                "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
+                "ACP initialize failed for {}: {e}{}",
+                describe_agent_target(agent_cmd, source),
+                format_startup_stderr(&stderr)
+            ));
+        }
+        Err(_) => {
+            let stderr = stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
+            return Err(anyhow!(
+                "ACP initialize timed out after {init_timeout_secs}s — agent CLI {} did not respond{}",
+                describe_agent_target(agent_cmd, source),
+                format_startup_stderr(&stderr)
             ));
         }
     };
@@ -4320,24 +4345,6 @@ async fn spawn_one_agent(
         "agent CLI initialize OK; cli_source resolved"
     );
 
-    // Keep the current single-agent history bridge functional while the
-    // registry aggregates lazily spawned agents. The first initialized agent
-    // is the startup/default source; per-agent session rows are still stamped
-    // from the bound AgentCli below.
-    let _ = state.cached_init_resp.set(init_resp.clone());
-    if state.agent_conn.set(conn.clone()).is_ok() {
-        let state_for_history = Arc::clone(state);
-        tokio::task::spawn_local(async move {
-            let count = seed_host_and_broadcast(&state_for_history).await;
-            tracing::info!(
-                target: "master_history",
-                count,
-                "initial lazy agent ACP history seed complete"
-            );
-            spawn_wsl_seed(&state_for_history);
-        });
-    }
-
     let (cloud_catalog, start_clean_probe) =
         prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
     let agent = Arc::new(AgentCli {
@@ -4349,7 +4356,31 @@ async fn spawn_one_agent(
         cmd_key: key.clone(),
         cloud_catalog: Mutex::new(cloud_catalog),
         bound_helpers: Mutex::new(HashSet::new()),
+        host_list_cache: Mutex::new(None),
+        listed_ever: Mutex::new(HashSet::new()),
     });
+
+    // Seed THIS CLI's history. Every agent entering the pool seeds, not just
+    // the first: master outlives a Settings agent switch (the helper
+    // reconnects and the pool spawns the new CLI without a master restart), so
+    // gating this on "first agent wins" left the registry holding only the
+    // launch agent's rows. The session view filters by the helper's current
+    // CLI, so every switched-to agent then rendered an empty list until the
+    // user restarted Terminal.
+    {
+        let state = Arc::clone(state);
+        let agent = Arc::clone(&agent);
+        tokio::task::spawn_local(async move {
+            let count = seed_host_and_broadcast(&state, &agent).await;
+            tracing::info!(
+                target: "master_history",
+                cli = ?agent.cli_source,
+                count,
+                "agent ACP history seed complete"
+            );
+        });
+    }
+
     if start_clean_probe {
         let command = agent_cmd.to_string();
         start_clean_cloud_catalog_probe(
@@ -4828,21 +4859,21 @@ pub(crate) async fn broadcast_ext_to_helpers(
 /// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
 /// share one round-trip.
 async fn host_session_list_raw(
-    state: &MasterStateInner,
+    agent: &AgentCli,
 ) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
-    let Some(init) = state.cached_init_resp.get() else {
-        return None;
-    };
-    if init.agent_capabilities.session_capabilities.list.is_none() {
+    if agent
+        .cached_init_resp
+        .agent_capabilities
+        .session_capabilities
+        .list
+        .is_none()
+    {
         return None;
     }
-    let Some(conn) = state.agent_conn.get() else {
-        return None;
-    };
 
     const TTL: std::time::Duration = std::time::Duration::from_secs(2);
     {
-        let cache = state.host_list_cache.lock().await;
+        let cache = agent.host_list_cache.lock().await;
         if let Some((at, outcome)) = cache.as_ref() {
             if at.elapsed() < TTL {
                 return outcome.clone();
@@ -4855,17 +4886,27 @@ async fn host_session_list_raw(
     let fetch_started = std::time::Instant::now();
     let outcome = match tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        conn.list_sessions(acp::schema::v1::ListSessionsRequest::new()),
+        agent
+            .conn
+            .list_sessions(acp::schema::v1::ListSessionsRequest::new()),
     )
     .await
     {
         Ok(Ok(resp)) => Some(resp.sessions.into()),
         Ok(Err(e)) => {
-            tracing::debug!(target: "master_history", "host session/list error: {e}");
+            tracing::debug!(
+                target: "master_history",
+                cli = ?agent.cli_source,
+                "host session/list error: {e}"
+            );
             None
         }
         Err(_) => {
-            tracing::warn!(target: "master_history", "host session/list timed out");
+            tracing::warn!(
+                target: "master_history",
+                cli = ?agent.cli_source,
+                "host session/list timed out"
+            );
             None
         }
     };
@@ -4873,7 +4914,7 @@ async fn host_session_list_raw(
     // result while we were awaiting `list_sessions`, adopt it instead of
     // clobbering — so a slow failure can't overwrite a fast success (or
     // vice-versa) and poison the 2 s cache with a transient None.
-    let mut cache = state.host_list_cache.lock().await;
+    let mut cache = agent.host_list_cache.lock().await;
     if let Some((at, cached)) = cache.as_ref() {
         if *at >= fetch_started {
             return cached.clone();
@@ -4883,19 +4924,42 @@ async fn host_session_list_raw(
     outcome
 }
 
-/// Host history from the already-running agent's `session/list`, gated on the
+/// The `CliSource` an agent's history rows are stamped with.
+///
+/// An agent we don't recognize (a `custom:<name>` provider) has
+/// `cli_source: None`, but [`host_history_via_acp`] stamps its rows
+/// `Unknown("custom")`. Reconcile authority and row-driven routing must
+/// collapse `None` the same way, or an unrecognized agent can never match its
+/// own rows: reconcile silently no-ops and title refresh never finds the
+/// owning CLI. Every caller that compares an agent against a stamped row goes
+/// through here so the two can't drift apart again.
+///
+/// This does bucket all custom providers together — with two pooled, either
+/// may reconcile the other's rows. That is no worse than the pre-pool behavior
+/// (one listing reconciled every row regardless of CLI) and stays bounded by
+/// the host / Class-B / terminal gates in [`is_stale_host_history_row`].
+fn stamped_cli(
+    cli: Option<&crate::agent_sessions::CliSource>,
+) -> crate::agent_sessions::CliSource {
+    cli.cloned()
+        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()))
+}
+
+/// Host history from `agent`'s `session/list`, gated on the
 /// `sessionCapabilities.list` capability. `None` when unsupported (Gemini,
-/// non-ACP custom) / not connected / failed — distinct from `Some(vec![])`
-/// (listed, but empty), which the reconcile needs to authoritatively drop stale
-/// rows. No on-disk fallback by design.
+/// non-ACP custom) / failed — distinct from `Some(vec![])` (listed, but empty),
+/// which the reconcile needs to authoritatively drop stale rows. No on-disk
+/// fallback by design.
+///
+/// Rows are stamped with **`agent`'s** CLI and execution source, never the
+/// master's launch CLI or a blanket `Host`: an agent enumerates only its own
+/// sessions, and master multiplexes several across host and WSL at once.
 async fn host_history_via_acp(
     state: &MasterStateInner,
+    agent: &AgentCli,
 ) -> Option<Vec<crate::agent_sessions::AgentSession>> {
-    let sessions = host_session_list_raw(state).await?;
-    let cli = state
-        .cli_source
-        .clone()
-        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()));
+    let sessions = host_session_list_raw(agent).await?;
+    let cli = stamped_cli(agent.cli_source.as_ref());
     // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
     // *after* session/new lands, so a just-created pane session can be returned by
     // session/list before its index line exists, leaking a phantom historical row.
@@ -4908,19 +4972,22 @@ async fn host_history_via_acp(
     Some(crate::session_history::classify_and_map(
         &sessions,
         &idx,
-        crate::agent_sessions::SessionLocation::Host,
+        // Where this agent's sessions actually live. Blanket-stamping `Host`
+        // collapsed host Copilot, Copilot in WSL Debian, and Copilot in WSL
+        // Ubuntu into one indistinguishable set — they share a `CliSource`,
+        // so `location` is the only thing that separates them. The live
+        // `session/new` path already stamps the bound agent's source; this is
+        // the historical path catching up.
+        agent.source.session_location(),
         &cli,
     ))
 }
 
 /// Raw host `session/list` as session_id → title, UNFILTERED (includes Class-A
 /// agent-pane rows, whose live registry entries still need synthetic-title
-/// upgrades). Empty when session/list is unsupported or the agent isn't
-/// connected yet.
-async fn host_titles_via_acp(
-    state: &MasterStateInner,
-) -> std::collections::HashMap<String, String> {
-    let Some(sessions) = host_session_list_raw(state).await else {
+/// upgrades). Empty when `agent` can't list.
+async fn host_titles_via_acp(agent: &AgentCli) -> std::collections::HashMap<String, String> {
+    let Some(sessions) = host_session_list_raw(agent).await else {
         return std::collections::HashMap::new();
     };
     sessions
@@ -4939,7 +5006,7 @@ async fn host_titles_via_acp(
                     // synthetic so a subsequent poll adopts the real summary instead.
                     !title.is_empty()
                         && !crate::session_registry::title_is_injected_context_echo(title)
-                        && !state.cli_source.as_ref().is_some_and(|cli| {
+                        && !agent.cli_source.as_ref().is_some_and(|cli| {
                             crate::agent_sessions::title_is_placeholder(cli, title)
                         })
                 })
@@ -4948,16 +5015,32 @@ async fn host_titles_via_acp(
         .collect()
 }
 
-/// Sync master's host-history rows to the agent's `session/list` (the single
-/// source of truth): add newly-listed sessions and drop terminal Class-B host
-/// rows the agent no longer lists (phantoms, CLI-side deletes). No-op when the
-/// agent can't list (unsupported / failed / timed out) so a transient error
-/// never wipes the view. Returns `(changed, listed_count)`, or `None` when the
-/// agent couldn't be listed.
-async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
-    let rows = host_history_via_acp(state).await?;
+/// Sync master's host-history rows for `agent` to its `session/list` (the
+/// single source of truth for THAT CLI): add newly-listed sessions and drop
+/// terminal Class-B host rows it no longer lists (phantoms, CLI-side deletes).
+/// No-op when the agent can't list (unsupported / failed / timed out) so a
+/// transient error never wipes the view. Returns `(changed, listed_count)`, or
+/// `None` when the agent couldn't be listed.
+async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option<(bool, usize)> {
+    let rows = host_history_via_acp(state, agent).await?;
     let listed_ids: std::collections::HashSet<String> =
         rows.iter().map(|r| r.key.clone()).collect();
+    // Must match how `host_history_via_acp` stamped those same rows, or an
+    // unrecognized (custom) agent could never prove authority over its own
+    // rows and reconcile would silently never prune.
+    let listing_cli = stamped_cli(agent.cli_source.as_ref());
+    let listing_cli = Some(&listing_cli);
+    // Ids THIS agent listed before and no longer lists — the only rows it may
+    // drop. `cli_source` alone is not a session universe: host Copilot and an
+    // in-distro Copilot both stamp `Some(Copilot)` while listing disjoint
+    // sessions, so a set-difference against the whole registry would have each
+    // one delete the other's rows on every poll, forever.
+    let prunable_ids: std::collections::HashSet<String> = {
+        let mut ever = agent.listed_ever.lock().await;
+        let prunable = ever.difference(&listed_ids).cloned().collect();
+        ever.extend(listed_ids.iter().cloned());
+        prunable
+    };
 
     // Snapshot once; compute existing ids for the add pass and reconcile the
     // terminal Class-B host rows in the same pass.
@@ -4983,19 +5066,20 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     // lock, so a row a hook/watcher flips live between the snapshot above and
     // the remove below is never deleted out from under that update.
     for row in &snapshot {
-        if !is_stale_host_history_row(row, &listed_ids) {
+        if !is_stale_host_history_row(row, &prunable_ids, listing_cli) {
             continue;
         }
         let removed = state
             .registry
             .remove_if(&row.session_id, &|cur| {
-                is_stale_host_history_row(cur, &listed_ids)
+                is_stale_host_history_row(cur, &prunable_ids, listing_cli)
             })
             .await;
         if removed.is_some() {
             tracing::info!(
                 target: "master_history",
                 key = %row.session_id.0,
+                cli = ?listing_cli,
                 "reconcile: dropped host row no longer in session/list"
             );
             changed = true;
@@ -5006,12 +5090,30 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
 }
 
 /// Whether a registry row is a stale host-history row to drop during reconcile:
-/// a terminal (Historical / Ended) Class-B **host** row whose id is NOT in the
-/// authoritative `session/list` set. Live rows (Working / Idle), agent panes
-/// (ACP-driven), and WSL rows are never reconciled away. Pure for unit testing.
+/// a terminal (Historical / Ended) Class-B **host** row belonging to
+/// `listing_cli` whose id is in `prunable_ids` — the set the listing agent
+/// previously returned from `session/list` and no longer returns. Live rows
+/// (Working / Idle), agent panes (ACP-driven), and WSL rows are never
+/// reconciled away. Pure for unit testing.
+///
+/// Two guards, and both are load-bearing:
+///
+/// * `listing_cli` keeps a multi-agent master (and the machine-wide,
+///   cross-CLI file watcher) honest — an agent enumerates only its OWN
+///   sessions, so its listing is no authority over another CLI's rows.
+///   Deliberately stricter than [`row_refreshable_by_connected_agent`], which
+///   governs a *non-destructive* title upgrade: pruning requires both sides
+///   known and equal, so an unstamped row is kept rather than deleted by
+///   whichever agent polls first.
+/// * `prunable_ids` is scoped to what the listing agent itself has seen,
+///   because `CliSource` is NOT a session universe: host Copilot and an
+///   in-distro (WSL) Copilot both stamp `Some(Copilot)` while listing disjoint
+///   sessions. A plain "not in the current listing" test would have each drop
+///   the other's rows on every 5 s poll while the other re-added them.
 fn is_stale_host_history_row(
     row: &crate::session_registry::SessionInfo,
-    listed_ids: &std::collections::HashSet<String>,
+    prunable_ids: &std::collections::HashSet<String>,
+    listing_cli: Option<&crate::agent_sessions::CliSource>,
 ) -> bool {
     use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
     if !matches!(row.location, SessionLocation::Host) {
@@ -5027,14 +5129,19 @@ fn is_stale_host_history_row(
     if !terminal {
         return false;
     }
-    !listed_ids.contains(row.session_id.0.as_ref())
+    if listing_cli.is_none() || row.cli_source.as_ref() != listing_cli {
+        return false;
+    }
+    prunable_ids.contains(row.session_id.0.as_ref())
 }
 
-/// Seed + reconcile host history against the agent's `session/list`, broadcasting
-/// when anything changed. WSL is seeded separately ([`spawn_wsl_seed`]) so a
-/// slow/wedged distro never blocks host rows. Returns the listed host count.
-async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> usize {
-    let Some((changed, count)) = sync_host_history(state).await else {
+/// Seed + reconcile `agent`'s history against its own `session/list`,
+/// broadcasting when anything changed. Returns the listed count.
+async fn seed_host_and_broadcast(
+    state: &std::sync::Arc<MasterStateInner>,
+    agent: &AgentCli,
+) -> usize {
+    let Some((changed, count)) = sync_host_history(state, agent).await else {
         return 0;
     };
     if changed {
@@ -5047,229 +5154,63 @@ async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> us
     count
 }
 
-/// Fire-and-forget the WSL history scan on the master's LocalSet so a 40s distro
-/// timeout can't stall host rows. Discovers new rows + upgrades synthetic titles
-/// (e.g. a born-bound `?<prompt>` WSL delegate row that registered with an empty
-/// title before the in-distro CLI generated its summary), broadcasting when
-/// either lands. No-op when WSL sessions are disabled — the whole WSL surface,
-/// born-bound rows included, is gated on `wsl_sessions_enabled()`.
-///
-/// **Non-overlapping.** A single `wsl_seed_in_flight` guard serializes every WSL
-/// scan (startup / F5 / poll): a scan can outlive the poll throttle (a cold snap
-/// distro pays a 40 s ACP init), so without this a later poll could spawn a
-/// second scan while the first is still running and double the `wsl.exe` ACP
-/// processes. When one is already running, this is a no-op.
-///
-/// Returns `true` iff a scan was actually dispatched (the slot was free), so a
-/// caller can avoid side effects — e.g. arming a throttle — when the scan was
-/// skipped because another is already running.
-fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) -> bool {
-    if !crate::history_loader::wsl_sessions_enabled() {
-        return false;
-    }
-    // Claim the single scan slot; skip if a scan is already running.
-    if state
-        .wsl_seed_in_flight
-        .swap(true, std::sync::atomic::Ordering::SeqCst)
-    {
-        return false;
-    }
-    let inner = std::sync::Arc::clone(state);
-    tokio::task::spawn_local(async move {
-        let started = std::time::Instant::now();
-        let wsl = crate::wsl_acp::scan_running_distros_acp(inner.cli_source.as_ref()).await;
-        let count = wsl.len();
-        for s in &wsl {
-            let info = crate::session_registry::agent_session_to_session_info(s);
-            inner.registry.upsert_if_absent(info).await;
-        }
-        // Upgrade synthetic titles from the scan. A born-bound WSL delegate row
-        // registers with an empty title before the in-distro CLI generates its
-        // summary; `upsert_if_absent` above can't update the already-present row,
-        // and the host `session/list` never lists an in-distro session, so this
-        // is the only path that gives such a row a real title.
-        let titles = wsl_titles_from_scan(&wsl);
-        let titles_changed = refresh_synthetic_titles_from(&*inner.registry, &titles).await;
-        tracing::info!(
-            target: "master_history",
-            count,
-            titles = titles.len(),
-            titles_changed,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "WSL ACP history seed complete"
-        );
-        if count > 0 || titles_changed {
-            broadcast_ext_to_helpers(
-                &inner,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
-        }
-        // Release the scan slot for the next startup / F5 / poll seed.
-        inner
-            .wsl_seed_in_flight
-            .store(false, std::sync::atomic::Ordering::Release);
-    });
-    true
-}
-
-/// Build a `session_id → title` map from a WSL ACP scan, applying the same
-/// filters as [`host_titles_via_acp`]: drop empty titles and the delegate's
-/// injected first-message echo (the `## Terminal Context (pane …)` block a CLI
-/// can briefly surface as a session's title before generating its real summary).
-fn wsl_titles_from_scan(
-    scanned: &[crate::agent_sessions::AgentSession],
-) -> std::collections::HashMap<String, String> {
-    scanned
-        .iter()
-        .filter(|s| {
-            !s.title.is_empty()
-                && !crate::session_registry::title_is_injected_context_echo(&s.title)
-        })
-        .map(|s| (s.key.clone(), s.title.clone()))
-        .collect()
-}
-
-/// Whether a poll-triggered WSL title seed is warranted: a **live, pane-bound,
-/// WSL-located** row whose title is still synthetic and whose id the host
-/// `session/list` doesn't know about. That is the signature of a born-bound WSL
-/// delegate row waiting for its in-distro title — a host session (even one whose
-/// title hasn't been generated yet) appears in `host_ids`, and historical /
-/// ended rows are excluded so an untitled old row can't trigger perpetual scans.
-/// The explicit `SessionLocation::Wsl` gate matters when the host `session/list`
-/// is temporarily unavailable (empty `host_ids`): without it, any live
-/// pane-bound synthetic *host* row would satisfy the predicate and needlessly
-/// spawn a `wsl.exe` scan. Pure for unit testing.
-fn wsl_title_seed_warranted(
-    sessions: &[crate::session_registry::SessionInfo],
-    host_ids: &std::collections::HashSet<String>,
-) -> bool {
-    use crate::agent_sessions::AgentStatus;
-    sessions.iter().any(|s| {
-        s.location.is_wsl()
-            && crate::session_registry::title_is_synthetic(s)
-            && s.pane_session_id.is_some()
-            && matches!(
-                s.status,
-                Some(
-                    AgentStatus::Idle
-                        | AgentStatus::Working
-                        | AgentStatus::Attention
-                        | AgentStatus::Error
-                )
-            )
-            && !host_ids.contains(s.session_id.0.as_ref())
-    })
-}
-
-/// Host `session/list` id set (includes untitled rows). Used by
-/// [`wsl_title_seed_warranted`] to tell a synthetic row the host CLI knows about
-/// apart from an in-distro (WSL) one it can never title. Empty when the host
-/// agent can't list / isn't connected.
-async fn host_session_id_set(state: &MasterStateInner) -> std::collections::HashSet<String> {
-    host_session_list_raw(state)
-        .await
-        .map(|rows| rows.iter().map(|r| r.session_id.to_string()).collect())
-        .unwrap_or_default()
-}
-
-/// Poll-path counterpart to the host synthetic-title refresh: fire a throttled,
-/// fire-and-forget WSL seed when a born-bound WSL delegate row is waiting for
-/// its in-distro title (see [`wsl_title_seed_warranted`]). Strictly gated on
-/// `wsl_sessions_enabled()` — when WSL sessions are disabled there is no WSL row
-/// to title (the delegate skips its born-bound registration entirely) and we
-/// never touch a distro. Throttled because each seed spawns a `wsl.exe` ACP
-/// process per running distro (tens of seconds of init), so the 5 s poll must
-/// not turn it into a scan storm.
-async fn maybe_spawn_wsl_title_seed(
-    state: &std::sync::Arc<MasterStateInner>,
-    sessions: &[crate::session_registry::SessionInfo],
-) {
-    if !crate::history_loader::wsl_sessions_enabled() {
-        return;
-    }
-    let host_ids = host_session_id_set(state).await;
-    if !wsl_title_seed_warranted(sessions, &host_ids) {
-        return;
-    }
-    const WSL_TITLE_SEED_THROTTLE: std::time::Duration = std::time::Duration::from_secs(30);
-    {
-        // Read-only throttle check — don't arm it yet. Arming before dispatch
-        // would extend the throttle window even when `spawn_wsl_seed` no-ops
-        // (a scan already in flight), needlessly delaying a later needed scan.
-        let last = state.wsl_titles_seed_at.lock().await;
-        if let Some(at) = *last {
-            if at.elapsed() < WSL_TITLE_SEED_THROTTLE {
-                return;
-            }
-        }
-    }
-    tracing::debug!(
-        target: "master_history",
-        "poll: born-bound WSL row awaiting title — dispatching throttled WSL title seed"
-    );
-    // Only arm the throttle when a scan was actually dispatched. If one was
-    // already in flight (`spawn_wsl_seed` returns false), leave the timestamp
-    // untouched so the next poll can dispatch as soon as that scan finishes.
-    if spawn_wsl_seed(state) {
-        *state.wsl_titles_seed_at.lock().await = Some(std::time::Instant::now());
-    }
-}
-
 /// Before returning the snapshot, opportunistically upgrade any row whose title
 /// is still synthetic (empty / cwd-basename) from the agent's raw ACP
 /// `session/list` titles.
 /// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
 /// delegate sessions, which register with an empty title before the CLI has
 /// generated its real one.
+///
+/// `agent` is the caller's bound CLI. It is `None` only for a client that never
+/// bound one (`wta sessions list`), in which case the ACP re-pull is skipped
+/// and the current registry snapshot is returned as-is — master must not guess
+/// an agent, since asking the wrong one would stamp and reconcile foreign rows.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
+    agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    if parsed.rescan {
-        // Host is fast: re-pull + broadcast inline. WSL can be slow / wedged
-        // (40s distro timeout), so fire it asynchronously — it broadcasts again
-        // when it lands rather than blocking this response on it.
-        let count = seed_host_and_broadcast(state).await;
-        tracing::info!(
-            target: "master_history",
-            count,
-            "sessions/list rescan: reloaded host history via ACP (WSL async)"
-        );
-        spawn_wsl_seed(state);
-    } else {
-        // Periodic poll: reconcile host rows against `session/list` (the source
-        // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
-        // ones appear. Reuses the 2s-cached fetch. No-op (and no broadcast) when
-        // nothing changed or the agent can't list — so a transient error never
-        // wipes the view and steady state causes no push storm.
-        if let Some((true, _)) = sync_host_history(state).await {
-            broadcast_ext_to_helpers(
-                state,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
+    if let Some(agent) = agent {
+        if parsed.rescan {
+            // Re-pull this agent's own `session/list` and broadcast. Each pooled
+            // agent — host or in-distro — enumerates its own sessions, so an
+            // F5 in a WSL pane refreshes that distro through its own CLI.
+            let count = seed_host_and_broadcast(state, agent).await;
+            tracing::info!(
+                target: "master_history",
+                cli = ?agent.cli_source,
+                count,
+                "sessions/list rescan: reloaded history via ACP"
+            );
+        } else {
+            // Periodic poll: reconcile host rows against `session/list` (the source
+            // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
+            // ones appear. Reuses the 2s-cached fetch. No-op (and no broadcast) when
+            // nothing changed or the agent can't list — so a transient error never
+            // wipes the view and steady state causes no push storm.
+            if let Some((true, _)) = sync_host_history(state, agent).await {
+                broadcast_ext_to_helpers(
+                    state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
         }
     }
 
     let mut sessions = state.registry.snapshot().await;
-    if sessions
-        .iter()
-        .any(crate::session_registry::title_is_synthetic)
-    {
-        let titles = host_titles_via_acp(state).await;
-        // Re-snapshot only when a title actually changed; the common steady-state
-        // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
-        if refresh_synthetic_titles_from(&*state.registry, &titles).await {
-            sessions = state.registry.snapshot().await;
+    if let Some(agent) = agent {
+        if sessions
+            .iter()
+            .any(crate::session_registry::title_is_synthetic)
+        {
+            let titles = host_titles_via_acp(agent).await;
+            // Re-snapshot only when a title actually changed; the common steady-state
+            // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
+            if refresh_synthetic_titles_from(&*state.registry, &titles).await {
+                sessions = state.registry.snapshot().await;
+            }
         }
-        // Host `session/list` can't title an in-distro (WSL) session, so a
-        // synthetic row it doesn't list is likely a born-bound WSL delegate row
-        // (`?<prompt>` in a WSL pane) still waiting for its in-distro title.
-        // Fire a throttled, fire-and-forget WSL scan to fetch it; it broadcasts
-        // `sessions/changed` when a title lands, which re-lists. The current
-        // response returns immediately so a slow distro can't stall the view.
-        maybe_spawn_wsl_title_seed(state, &sessions).await;
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -5683,14 +5624,13 @@ async fn refresh_synthetic_titles_from(
     changed
 }
 
-/// Whether `info`'s row can be title-refreshed from the connected agent's
+/// Whether `info`'s row can be title-refreshed from `conn_cli`'s
 /// `session/list`. The agent enumerates only ITS OWN cli's sessions, so a row
 /// stamped with a *different* known cli (e.g. a machine-wide watched claude
-/// session while master multiplexes copilot) can never appear in it — skip it
-/// rather than issue a per-event round-trip that can't match. Such cross-cli
-/// titles are no longer upgraded — an accepted consequence of dropping the
-/// per-cli on-disk title reads. A `None` cli on either side is treated as
-/// "attempt" (the lookup simply no-ops when the id is absent).
+/// session while this agent is copilot) can never appear in it — skip it
+/// rather than issue a per-event round-trip that can't match. A `None` cli on
+/// either side is treated as "attempt" (the lookup simply no-ops when the id is
+/// absent); this leniency is safe only because the upgrade is non-destructive.
 fn row_refreshable_by_connected_agent(
     info: &crate::session_registry::SessionInfo,
     conn_cli: Option<&crate::agent_sessions::CliSource>,
@@ -5699,6 +5639,34 @@ fn row_refreshable_by_connected_agent(
         (Some(row_cli), Some(conn_cli)) => row_cli == conn_cli,
         _ => true,
     }
+}
+
+/// The pooled, already-initialized agent CLI that owns a row's sessions: same
+/// provider AND same execution source. Lets row-driven paths (hooks, the
+/// watcher) ask the agent that can actually answer for a row instead of
+/// whichever CLI master happened to launch with — master multiplexes several at
+/// once and the launch one may not even be the user's current selection.
+///
+/// Both halves are load-bearing. Matching the provider alone would route a
+/// `Wsl { Debian }` Copilot row to the *host* Copilot agent, which enumerates a
+/// different `$HOME` and can never see it — the lookup would "succeed" and then
+/// silently fail to find the session. Both sides pass the provider through
+/// [`stamped_cli`], so a `custom:<name>` agent is reachable by the
+/// `Unknown("custom")` stamp its own rows carry.
+async fn agent_for_row(
+    state: &MasterStateInner,
+    cli: Option<&crate::agent_sessions::CliSource>,
+    location: &crate::agent_sessions::SessionLocation,
+) -> Option<Arc<AgentCli>> {
+    let want = stamped_cli(cli);
+    let agents = state.agents.lock().await;
+    agents
+        .values()
+        .filter_map(|cell| cell.get().cloned())
+        .find(|agent| {
+            stamped_cli(agent.cli_source.as_ref()) == want
+                && &agent.source.session_location() == location
+        })
 }
 
 /// ACP replacement for the former on-disk single-session title refresh. Cheap
@@ -5713,10 +5681,18 @@ async fn try_refresh_title_via_acp(
     if !crate::session_registry::title_is_synthetic(&info) {
         return false;
     }
-    if !row_refreshable_by_connected_agent(&info, state.cli_source.as_ref()) {
+    // Ask the agent that owns this row's provider AND source. Hooks and the
+    // file watcher report machine-wide across CLIs and distros, so the
+    // responder is chosen per row, not per master. No pooled agent for that
+    // pair means nobody can title the row right now; a later poll retries once
+    // one is up.
+    let Some(agent) = agent_for_row(state, info.cli_source.as_ref(), &info.location).await else {
+        return false;
+    };
+    if !row_refreshable_by_connected_agent(&info, Some(&stamped_cli(agent.cli_source.as_ref()))) {
         return false;
     }
-    let titles = host_titles_via_acp(state).await;
+    let titles = host_titles_via_acp(&agent).await;
     match titles.get(sid.0.as_ref()) {
         Some(title) => state.registry.upgrade_title_if_synthetic(sid, title).await,
         None => false,

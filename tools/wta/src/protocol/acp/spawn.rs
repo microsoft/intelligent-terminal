@@ -81,11 +81,18 @@ impl AgentStderrLog {
         })
     }
 
+    /// Kill the child, drain its stderr, and return the captured startup lines
+    /// so the caller can surface them.
+    ///
+    /// The lines are the only description of *why* the agent died. Without
+    /// them the user sees the transport symptom — "response to `initialize`
+    /// never received: oneshot canceled" — while the actual cause (a missing
+    /// CLI, a broken sandbox, an auth prompt) reaches the log only.
     pub(crate) async fn finish_failed_startup(
         &self,
         child: &mut tokio::process::Child,
         stderr_task: Option<tokio::task::JoinHandle<()>>,
-    ) {
+    ) -> Vec<String> {
         let _ = child.start_kill();
         if let Some(mut stderr_task) = stderr_task {
             if tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, &mut stderr_task)
@@ -96,7 +103,7 @@ impl AgentStderrLog {
                 let _ = stderr_task.await;
             }
         }
-        self.mark_failed();
+        self.mark_failed()
     }
 
     pub(crate) fn mark_initialized(&self) {
@@ -108,14 +115,18 @@ impl AgentStderrLog {
         inner.startup_lines.clear();
     }
 
-    pub(crate) fn mark_failed(&self) {
+    /// Promote the captured startup stderr to the log and return it.
+    ///
+    /// Returns empty when the phase already advanced (a second call, or the
+    /// agent had already initialized), so a caller can't double-report.
+    pub(crate) fn mark_failed(&self) -> Vec<String> {
         let startup_lines = {
             let mut inner = self
                 .inner
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if inner.phase != StderrPhase::Startup {
-                return;
+                return Vec::new();
             }
             inner.phase = StderrPhase::Failed;
             inner.startup_lines.drain(..).collect::<Vec<_>>()
@@ -130,7 +141,7 @@ impl AgentStderrLog {
                 "agent startup failed; promoting captured stderr"
             );
         }
-        for line in startup_lines {
+        for line in &startup_lines {
             tracing::warn!(
                 target: "agent_stderr",
                 agent = %self.agent,
@@ -138,6 +149,7 @@ impl AgentStderrLog {
                 "{line}"
             );
         }
+        startup_lines
     }
 
     fn log_line(&self, line: &str) {
@@ -877,6 +889,36 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(inner.phase, StderrPhase::Failed);
         assert!(inner.startup_lines.is_empty());
+    }
+
+    /// `mark_failed` must hand the captured lines back, not just log them —
+    /// they are what turns a pane's "oneshot canceled" into an actionable
+    /// message. The second call returns empty so a caller can't double-report.
+    #[test]
+    fn mark_failed_returns_the_captured_lines_once() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("cannot preserve mount namespace");
+        log.log_line("unexpected eof from helper process");
+
+        let promoted = log.mark_failed();
+        assert_eq!(
+            promoted,
+            vec![
+                "cannot preserve mount namespace".to_string(),
+                "unexpected eof from helper process".to_string(),
+            ]
+        );
+        assert!(log.mark_failed().is_empty(), "second call must be empty");
+    }
+
+    /// An agent that initialized successfully has nothing to promote, so a
+    /// later failure path can't resurrect stale startup noise.
+    #[test]
+    fn mark_failed_returns_nothing_after_initialize() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("startup detail");
+        log.mark_initialized();
+        assert!(log.mark_failed().is_empty());
     }
 
     #[test]

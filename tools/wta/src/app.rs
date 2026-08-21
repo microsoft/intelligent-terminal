@@ -2538,6 +2538,15 @@ impl App {
         crate::agent_sessions::CliSource::from_agent_id(&self.current_agent_id)
     }
 
+    /// Execution source this pane's agent runs in, used to narrow the session
+    /// view alongside [`Self::current_cli_filter`]. `CliSource` does not
+    /// distinguish host Copilot from Copilot inside a WSL distro, so without
+    /// this every Copilot pane renders one merged list of sessions from every
+    /// source — including rows it cannot resume.
+    pub fn current_location_filter(&self) -> crate::agent_sessions::SessionLocation {
+        self.current_agent_source.session_location()
+    }
+
     /// Extracted focus-pane dispatch for Live rows. Shared between the
     /// legacy [`Self::activate_agent_session`] and the new
     /// [`Self::activate_agent_session_with_shift`] dispatcher.
@@ -3360,6 +3369,7 @@ impl App {
 
     fn agents_rows_for_tab(&self, tab_id: &str) -> Vec<crate::agent_sessions::AgentSession> {
         let filter = self.current_cli_filter();
+        let source = self.current_location_filter();
         let origin = self.sessions_origin_filter;
         let query = self
             .tab_sessions
@@ -3384,6 +3394,7 @@ impl App {
             // `matches(&s.origin)` is sufficient and stays consistent
             // with the registry branch below.
             rows.retain(|s| origin.matches(&s.origin));
+            rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         } else {
@@ -3393,6 +3404,7 @@ impl App {
                 .into_iter()
                 .cloned()
                 .collect();
+            rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         }

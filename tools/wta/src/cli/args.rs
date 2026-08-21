@@ -432,19 +432,6 @@ pub(crate) enum Command {
         #[arg(long)]
         agent: String,
     },
-    /// Diagnostic: run the production WSL history scan
-    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
-    /// currently-running distros and print the discovered sessions as
-    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
-    /// that seeds the `/sessions` view. Prints `[]` when no distro is
-    /// running or none answer.
-    ProbeWslSessions {
-        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
-        /// scans the three ACP-capable built-ins (Gemini has no
-        /// `session/list`).
-        #[arg(long)]
-        cli: Option<String>,
-    },
     /// Submit a typed terminal-action proposal directly to the Helper that
     /// owns the current turn. Intended to be run by an agent session using
     /// the exact canonical command injected into its prompt.

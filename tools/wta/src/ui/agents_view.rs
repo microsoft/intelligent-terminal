@@ -9,7 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
 use crate::agent_sessions::{
-    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
+    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionLocation,
+    SessionOrigin,
 };
 use crate::session_registry::SessionInfo;
 use crate::theme;
@@ -34,6 +35,12 @@ pub fn render(
     list_state: &mut ListState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
+    // Execution source of the agent this pane drives. Host Copilot and
+    // Copilot in a WSL distro share a `CliSource`, so the CLI filter alone
+    // leaves every Copilot pane rendering one merged list. Must match whatever
+    // `App::agents_rows_for_tab` applies; caller threads
+    // `App::current_location_filter`.
+    source_filter: &SessionLocation,
     // MVP origin filter — `ShellOnly` by default, see
     // `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Must match whatever filter
     // `App::agents_rows_for_tab` applies so the rendered rows line
@@ -153,6 +160,7 @@ pub fn render(
             // SessionOrigin::Unknown so `matches(&s.origin)` is correct
             // for the snapshot path too.
             rows.retain(|s| origin_filter.matches(&s.origin));
+            rows.retain(|s| matches_source(s, source_filter));
             (rows, total)
         } else {
             let total = reg.iter_sorted().len();
@@ -160,6 +168,7 @@ pub fn render(
                 .iter_sorted_with_filters(cli_filter, origin_filter)
                 .into_iter()
                 .cloned()
+                .filter(|s| matches_source(s, source_filter))
                 .collect();
             (rows, total)
         };
@@ -474,6 +483,17 @@ fn row_for(
     spans.push(Span::styled(age, Style::default().fg(MUTED_WHITE)));
 
     ListItem::new(Line::from(spans))
+}
+
+/// Whether a row's artefacts live where this pane's agent runs.
+///
+/// Host Copilot, Copilot in WSL Debian, and Copilot in WSL Ubuntu all report
+/// `CliSource::Copilot`, so filtering by CLI alone leaves a Debian pane listing
+/// host and Ubuntu sessions it cannot resume — those session files sit on
+/// another filesystem, reachable only by that distro's own CLI. Match the
+/// execution source exactly.
+pub(crate) fn matches_source(session: &AgentSession, pane_location: &SessionLocation) -> bool {
+    &session.location == pane_location
 }
 
 pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -> bool {
@@ -855,6 +875,34 @@ mod tests {
         let s = relative_age(t);
         assert!(!s.is_empty(), "expected calendar date, got empty");
         assert!(!s.ends_with("ago"), "expected calendar date, got {:?}", s);
+    }
+
+    /// Host Copilot and Copilot inside a WSL distro report the same
+    /// `CliSource`, so the CLI filter alone cannot separate them — every
+    /// Copilot pane would render one merged list of sessions from every
+    /// source, including rows whose files live on another filesystem and which
+    /// that pane's CLI cannot resume.
+    #[test]
+    fn source_filter_keeps_only_rows_from_the_panes_own_execution_source() {
+        let debian = SessionLocation::Wsl {
+            distro: "Debian".into(),
+        };
+        let ubuntu = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+
+        let mut row = sample_session();
+
+        // A host pane sees host rows only.
+        row.location = SessionLocation::Host;
+        assert!(matches_source(&row, &SessionLocation::Host));
+        assert!(!matches_source(&row, &debian));
+
+        // A Debian pane sees Debian rows, not host or a sibling distro's.
+        row.location = debian.clone();
+        assert!(matches_source(&row, &debian));
+        assert!(!matches_source(&row, &SessionLocation::Host));
+        assert!(!matches_source(&row, &ubuntu));
     }
 
     #[test]

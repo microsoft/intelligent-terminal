@@ -131,6 +131,12 @@ Master passes its already-resolved CLI:
 Master's registry, its `sessions/changed` broadcasts, and the `session/list`
 snapshot the view renders are now scoped to the current CLI.
 
+> **Superseded.** The on-disk `history_loader` was later replaced by ACP
+> `session/list`, and master became a multi-agent pool whose history is
+> sourced and stamped **per `AgentCli`** rather than from one process-wide
+> `cli_source`. See *Amendment: per-agent history in a multi-agent master*
+> below; that amendment is authoritative for the master side.
+
 ### 2. Helper side — remove the redundant local scan
 
 The helper no longer scans history. Remove:
@@ -159,6 +165,10 @@ Changing `acpAgent` in Settings runs
 respawn master with the new `--agent`) and tears down + re-warms all helper
 agent panes. The new master re-runs `load_for_cli` with the new CLI; helpers
 have no scan to redo. No runtime "switch" message is added.
+
+> **No longer true.** A built-in agent change has not restarted master since
+> PR #296 made it a multi-agent broker; the incidental restart that kept this
+> section honest disappeared entirely with PR #637. See the amendment below.
 
 ## Consumer audit (local registry with no historical rows)
 
@@ -223,3 +233,90 @@ cover it.
 - Changing the view's CLI filter or the MVP origin filter.
 - Any runtime (non-restart) agent-switch mechanism.
 - Reworking the watcher's machine-wide discovery.
+
+---
+
+## Amendment: per-agent history in a multi-agent master
+
+This amendment supersedes the master-side design above (§1 and §3). The helper
+side (§2), the view's CLI filter, and the consumer audit are unchanged.
+
+### What broke
+
+Two later changes invalidated §3's core assumption — *"switching the agent in
+Settings restarts master, so a fresh process re-scans automatically"*:
+
+1. **PR #296** turned master into a lazy multi-agent broker. `_RebuildAgentStack`
+   stopped calling `SharedWta::Restart` for a built-in agent change, because the
+   pool can now spawn the new CLI without a restart. Per-session stamping moved
+   to the bound `AgentCli`, but **host history did not**: it stayed on a
+   process-wide `agent_conn: OnceLock` (set by the *first* agent to initialize)
+   and a process-wide `cli_source` resolved from master's launch `--agent`.
+2. **PR #637** deferred `SharedWta::ReleasePane` by a 16 s session-close grace
+   period. Until then the agent pane's `Closed` handler released synchronously
+   — ~46 ms *before* `_RebuildAgentStack` reopened the pane — so the refcount
+   momentarily hit zero and master was killed and respawned with the new
+   `--agent`. That accident had been silently preserving §3's invariant. With
+   the release deferred, the reopen re-acquires first and master survives.
+
+Combined symptom: after switching agents in Settings, master kept answering
+`session/list` with the **launch** CLI's rows, stamped with the **launch** CLI.
+The helper's `current_cli_filter()` retained nothing, so session management
+rendered empty for every switched-to agent until Terminal was restarted.
+
+A second, latent defect shared the same root: `is_stale_host_history_row`
+pruned any terminal Class-B host row missing from *the* `session/list`. Since
+the file watcher discovers shell sessions machine-wide across CLIs, one CLI's
+listing could delete another CLI's rows.
+
+### Design
+
+Host history is sourced, stamped, cached, and reconciled **per `AgentCli`**.
+
+| Concern | Before | After |
+|---|---|---|
+| ACP connection for `session/list` | `MasterStateInner::agent_conn` (`OnceLock`, first agent wins) | `AgentCli::conn` of the requesting/seeding agent |
+| Capability gate | `MasterStateInner::cached_init_resp` | `AgentCli::cached_init_resp` |
+| 2 s `session/list` cache | one per master | `AgentCli::host_list_cache`, dies with the agent |
+| Row `cli_source` stamp | `MasterStateInner::cli_source` (launch CLI) | `AgentCli::cli_source` |
+| History seed | first pooled agent only | **every** agent entering the pool |
+| Reconcile authority | any listing prunes any row | only rows whose `cli_source` equals the listing agent's |
+| WSL scan in-flight / throttle | one global slot | keyed by `CliSource` |
+
+`MasterStateInner::cli_source` survives only as a fallback for callers that
+never bound an agent, and is explicitly documented as unusable for history.
+
+Row-driven paths (session hooks, the file watcher) resolve their responder with
+`agent_for_cli(state, row.cli_source)` — the pooled agent that can actually
+enumerate that row — instead of assuming master's launch CLI. This also fixes a
+preexisting gap: a Claude row could never get a title while master had launched
+as Copilot, even with a live Claude CLI in the pool.
+
+Reconcile is deliberately stricter than title refresh:
+`row_refreshable_by_connected_agent` stays lenient about unknown CLIs because a
+title upgrade is non-destructive, while `is_stale_host_history_row` requires
+both sides known and equal because deletion is not.
+
+### Consequences
+
+- The registry now holds up to `N × 50` historical rows for `N` pooled CLIs
+  rather than ~50, and `session/list` returns all of them; the helper filters
+  client-side as before. Server-side pre-filtering per requesting helper was
+  considered and deliberately deferred — it would change the
+  `wta sessions list --origin all` eye-of-god semantics.
+- Switching agents shows a brief empty list (~1 s) while the new CLI's seed
+  runs, then fills in via the `sessions/changed` broadcast. This matches the
+  existing cold-open latency behavior described above.
+- `wta sessions list` binds no agent, so it skips the ACP re-pull and returns
+  the current registry snapshot rather than guessing an agent to ask.
+
+### Testing
+
+- `is_stale_host_history_row_never_prunes_another_clis_rows` — a Codex listing
+  must not prune a Claude row; an unstamped row is never pruned; an agent with
+  no resolved CLI has no pruning authority.
+- `each_pooled_agent_seeds_and_stamps_its_own_history` — two pooled agents each
+  seed, each row carries its own CLI, and re-seeding one does not drop the
+  other's rows.
+
+Both fail if the per-agent stamping or the reconcile guard is removed.
