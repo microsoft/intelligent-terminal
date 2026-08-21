@@ -1325,7 +1325,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
     <value>Agent sessions: {0}</value>
-    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name.</comment>
+    <comment>Title shown in the agent pane title bar when the session-management view is active. {0} is replaced with the AI agent display name and the environment it runs in, for example "Copilot · Debian".</comment>
   </data>
   <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
     <value>Switch agent</value>

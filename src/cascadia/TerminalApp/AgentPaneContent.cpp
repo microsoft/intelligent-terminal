@@ -111,9 +111,11 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
-    // Swap the bar between two modes:
-    //   * chat / connecting / etc. (active=false) — agent logo + agent/model label
-    //   * session management view (active=true)  — no logo, "Agent sessions"
+    // Swap the bar between two modes. Both keep the agent logo and the
+    // "<agent> · <backend>" identity so the pane reads the same either way:
+    //   * chat / connecting / etc. (active=false) — identity + version + model
+    //   * session management view (active=true)   — identity inside the
+    //     "Agent sessions: {0}" title
     // Idempotent so callers don't need to dedupe.
     void AgentPaneContent::SetSessionsView(bool active)
     {
@@ -218,53 +220,52 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLabel()
     {
-        // Session-management view takes over the bar — the wta TUI below no
-        // longer renders its own "Agent sessions" header, so this is where
-        // that title lives.
-        if (_isSessionsView)
-        {
-            const auto text = _agentName.empty() ?
-                                  std::wstring{ RS_(L"AgentPane_SessionsTitle") } :
-                                  RS_fmt(L"AgentPane_SessionsTitleFormat", std::wstring{ _agentName });
-            AgentLabelText().Text(winrt::hstring{ text });
-            return;
-        }
-
         std::wstring text;
-        if (_agentName.empty())
+        if (!_agentName.empty())
         {
-            text = L"";
-        }
-        else
-        {
+            // Both views lead with the same agent identity ("Copilot · Debian")
+            // so the bar doesn't appear to change agents when the user opens
+            // session management. Only the chat view appends the version and
+            // model — those describe the live conversation, not the session
+            // list, and the sessions rows carry their own per-row detail.
             text = std::wstring{ _agentName };
             if (!_agentBackend.empty())
             {
                 text += L" \u00B7 ";
                 text += _agentBackend;
             }
-            if (!_agentVersion.empty())
+            if (!_isSessionsView)
             {
-                text += L" ";
-                text += _agentVersion;
+                if (!_agentVersion.empty())
+                {
+                    text += L" ";
+                    text += _agentVersion;
+                }
+                if (_agentState == L"connected" && !_agentModel.empty())
+                {
+                    text += L" \u00B7 ";
+                    text += _agentModel;
+                }
             }
-            if (_agentState == L"connected" && !_agentModel.empty())
-            {
-                text += L" \u00B7 ";
-                text += _agentModel;
-            }
+        }
+
+        // The session-management view takes over the bar — the wta TUI below
+        // no longer renders its own "Agent sessions" header, so that title
+        // lives here and keeps naming the view even once the agent is known.
+        if (_isSessionsView)
+        {
+            text = text.empty() ?
+                       std::wstring{ RS_(L"AgentPane_SessionsTitle") } :
+                       RS_fmt(L"AgentPane_SessionsTitleFormat", text);
         }
         AgentLabelText().Text(winrt::hstring{ text });
     }
 
     void AgentPaneContent::_refreshLogo()
     {
-        if (_isSessionsView)
-        {
-            AgentLogo().Visibility(Visibility::Collapsed);
-            return;
-        }
-
+        // The logo stays up in the session-management view: the bar keeps
+        // showing which agent (and backend) owns the pane, so hiding the
+        // mark there would make the two views look unrelated.
         if (_agentName.empty())
         {
             AgentLogo().Visibility(Visibility::Collapsed);
