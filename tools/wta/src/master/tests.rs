@@ -6359,39 +6359,61 @@ fn custom_agent_reconciles_rows_stamped_with_the_collapsed_cli() {
     ));
 }
 
-/// Row-driven refresh looks the owning agent up by the row's stamped CLI. A
-/// custom agent is pooled with `cli_source: None` while its rows carry
-/// `Unknown("custom")`, so both sides must normalize or the lookup misses and
-/// the row never gets a title.
+/// Row-driven refresh looks the owning agent up by the row's stamped CLI **and**
+/// its execution source. A custom agent is pooled with `cli_source: None` while
+/// its rows carry `Unknown("custom")`, so the provider halves must normalize; a
+/// `Wsl` row must not resolve to the host agent, which enumerates a different
+/// `$HOME` and can never see it.
 #[tokio::test]
-async fn agent_for_cli_routes_a_custom_stamped_row_to_the_unrecognized_agent() {
-    use crate::agent_sessions::CliSource;
+async fn agent_for_row_matches_provider_and_execution_source() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
 
     tokio::task::LocalSet::new()
         .run_until(async {
             let state = make_state();
             let custom = listing_agent_with_cli(None, &[]);
-            let copilot = listing_agent(CliSource::Copilot, &[]);
+            let host_copilot = listing_agent(CliSource::Copilot, &[]);
+            let debian_copilot = wsl_listing_agent(CliSource::Copilot, "Debian", &[]);
             {
                 let mut agents = state.agents.lock().await;
-                for agent in [&custom, &copilot] {
+                for agent in [&custom, &host_copilot, &debian_copilot] {
                     let cell: AgentCell = Arc::new(tokio::sync::OnceCell::new());
                     let _ = cell.set(Arc::clone(agent));
                     agents.insert(agent.cmd_key.clone(), cell);
                 }
             }
+            let debian = SessionLocation::Wsl {
+                distro: "Debian".to_string(),
+            };
 
-            let stamped = stamped_cli(None);
-            let found = agent_for_cli(&state, Some(&stamped))
+            // Same provider, different source → must not collapse onto each other.
+            let found = agent_for_row(&state, Some(&CliSource::Copilot), &SessionLocation::Host)
                 .await
-                .expect("custom-stamped row resolves to the unrecognized agent");
+                .expect("host copilot row resolves");
+            assert_eq!(found.cmd_key, host_copilot.cmd_key);
+
+            let found = agent_for_row(&state, Some(&CliSource::Copilot), &debian)
+                .await
+                .expect("debian copilot row resolves");
+            assert_eq!(found.cmd_key, debian_copilot.cmd_key);
+
+            // A custom-stamped row still reaches the unrecognized agent.
+            let stamped = stamped_cli(None);
+            let found = agent_for_row(&state, Some(&stamped), &SessionLocation::Host)
+                .await
+                .expect("custom-stamped row resolves");
             assert_eq!(found.cmd_key, custom.cmd_key);
 
-            // A recognized CLI still routes to its own agent.
-            let found = agent_for_cli(&state, Some(&CliSource::Copilot))
-                .await
-                .expect("copilot row resolves to the copilot agent");
-            assert_eq!(found.cmd_key, copilot.cmd_key);
+            // No agent pooled for that pair → nobody can answer.
+            assert!(agent_for_row(
+                &state,
+                Some(&CliSource::Copilot),
+                &SessionLocation::Wsl {
+                    distro: "Ubuntu".to_string()
+                }
+            )
+            .await
+            .is_none());
         })
         .await;
 }

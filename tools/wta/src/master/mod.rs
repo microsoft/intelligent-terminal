@@ -5961,25 +5961,32 @@ fn row_refreshable_by_connected_agent(
     }
 }
 
-/// The pooled, already-initialized agent CLI whose provider is `cli`, if one is
-/// live. Lets row-driven paths (hooks, the watcher) ask the agent that can
-/// actually answer for a row instead of whichever CLI master happened to launch
-/// with — master multiplexes several at once and the launch one may not even be
-/// the user's current selection.
+/// The pooled, already-initialized agent CLI that owns a row's sessions: same
+/// provider AND same execution source. Lets row-driven paths (hooks, the
+/// watcher) ask the agent that can actually answer for a row instead of
+/// whichever CLI master happened to launch with — master multiplexes several at
+/// once and the launch one may not even be the user's current selection.
 ///
-/// Both sides go through [`stamped_cli`], so a `custom:<name>` agent (whose
-/// `cli_source` is `None`) is reachable by the `Unknown("custom")` stamp its
-/// own rows carry.
-async fn agent_for_cli(
+/// Both halves are load-bearing. Matching the provider alone would route a
+/// `Wsl { Debian }` Copilot row to the *host* Copilot agent, which enumerates a
+/// different `$HOME` and can never see it — the lookup would "succeed" and then
+/// silently fail to find the session. Both sides pass the provider through
+/// [`stamped_cli`], so a `custom:<name>` agent is reachable by the
+/// `Unknown("custom")` stamp its own rows carry.
+async fn agent_for_row(
     state: &MasterStateInner,
     cli: Option<&crate::agent_sessions::CliSource>,
+    location: &crate::agent_sessions::SessionLocation,
 ) -> Option<Arc<AgentCli>> {
     let want = stamped_cli(cli);
     let agents = state.agents.lock().await;
     agents
         .values()
         .filter_map(|cell| cell.get().cloned())
-        .find(|agent| stamped_cli(agent.cli_source.as_ref()) == want)
+        .find(|agent| {
+            stamped_cli(agent.cli_source.as_ref()) == want
+                && &agent.source.session_location() == location
+        })
 }
 
 /// ACP replacement for the former on-disk single-session title refresh. Cheap
@@ -5994,19 +6001,13 @@ async fn try_refresh_title_via_acp(
     if !crate::session_registry::title_is_synthetic(&info) {
         return false;
     }
-    // Ask the agent that owns this row's CLI. Hooks and the file watcher report
-    // machine-wide across CLIs, so the responder is chosen per row, not per
-    // master. An unstamped row falls back to the launch CLI's agent, which
-    // `row_refreshable_by_connected_agent` still permits.
-    let agent = match agent_for_cli(state, info.cli_source.as_ref()).await {
-        Some(agent) => agent,
-        None if info.cli_source.is_none() => {
-            match agent_for_cli(state, state.cli_source.as_ref()).await {
-                Some(agent) => agent,
-                None => return false,
-            }
-        }
-        None => return false,
+    // Ask the agent that owns this row's provider AND source. Hooks and the
+    // file watcher report machine-wide across CLIs and distros, so the
+    // responder is chosen per row, not per master. No pooled agent for that
+    // pair means nobody can title the row right now; a later poll retries once
+    // one is up.
+    let Some(agent) = agent_for_row(state, info.cli_source.as_ref(), &info.location).await else {
+        return false;
     };
     if !row_refreshable_by_connected_agent(&info, Some(&stamped_cli(agent.cli_source.as_ref()))) {
         return false;
