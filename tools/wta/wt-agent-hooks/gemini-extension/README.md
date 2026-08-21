@@ -33,7 +33,6 @@ You should see `wt-agent-hooks` with its hooks active.
 | `SessionEnd`   | `agent.session.end`   |
 | `BeforeAgent`  | `agent.prompt.submit` |
 | `BeforeTool`   | `agent.tool.starting` |
-| `AfterTool`    | `agent.tool.finished` |
 | `AfterAgent`   | `agent.stop`          |
 | `Notification` | `agent.notification`  |
 

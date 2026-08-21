@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμά
 chat.activity_thinking: "Σκέφτομαι…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
-chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
+chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI."
 chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ η διαδρομή marketplace είναι π
 hooks.installed_but_disabled: "⚠ εγκατεστημένο αλλά απενεργοποιημένο"
 hooks.not_installed: "✗ δεν έχει εγκατασταθεί"
 hooks.uninstall_skipped: "παραλείφθηκε (το CLI δεν βρίσκεται στο PATH)"
-hooks.install_attempted: "Δοκιμάστηκε η εγκατάσταση wt-agent-hooks (idempotent). Εκτελέστε `wta hooks status` για έλεγχο αποτελεσμάτων. Αρχείο καταγραφής: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Το wt-agent-hooks είναι εγκατεστημένο για %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "μόλις τώρα"
 time.minute_singular: "πριν από %{count} λεπτό"

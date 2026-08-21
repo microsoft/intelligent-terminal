@@ -287,8 +287,8 @@ struct MasterStateInner {
     /// Independent lock from `session_to_helper` so the per-session
     /// routing hot path never contends on it.
     pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
-    /// Session ids claimed by an *authoritative* producer — a PowerShell agent
-    /// hook (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
+    /// Session ids claimed by an *authoritative* producer — a native agent hook
+    /// (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
     /// session (driven by ACP `session/*`), both of which fully own binding and
     /// activity. The hookless file watcher is a **fallback** only: once a session
     /// id appears here, its watcher-emitted events are dropped in
@@ -1932,7 +1932,7 @@ impl HelperHandler {
         // fallback in session_info_to_agent_session). Enter on it then
         // tries to resume and fails with "unknown CLI" since cli_source
         // is None. Agent-pane sessions never get a SessionStarted hook
-        // (those fire for shell-pane agents through PowerShell hooks
+        // (those fire for shell-pane agents through native CLI hooks
         // only), so master is the only one that can fill these fields.
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
         info.cli_source = agent.cli_source.clone();
@@ -4737,8 +4737,8 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
 ///   * Helper in the closing pane dies before its
 ///     `connection_state` handler runs.
 ///   * Shell-pane Gemini sessions on hard close: Gemini's `SessionEnd`
-///     hook is unreliable on `CTRL_CLOSE_EVENT` (confirmed via
-///     `hook-trace.log`), and the helper observation path may not
+///     hook is unreliable on `CTRL_CLOSE_EVENT`, and the helper observation
+///     path may not
 ///     publish for reasons we have not finished isolating.
 ///
 /// Copilot / Claude's Stop / SessionEnd hooks fire fast enough that

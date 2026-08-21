@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Кабатлап карау өчен Enter т
 chat.activity_thinking: "Уйлыйм…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Акыллы терминал-га рәхим итегез!"
-chat.welcome_disclaimer: "Акыллы терминал AI куллана. Хаталарны тикшерегез."
+chat.welcome_disclaimer: "Акыллы терминал AI куллана."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ marketplace юлы искергән"
 hooks.installed_but_disabled: "⚠ урнатылган ләкин сүндерелгән"
 hooks.not_installed: "✗ урнатылмаган"
 hooks.uninstall_skipped: "калдырылды (CLI PATH-та түгел)"
-hooks.install_attempted: "wt-agent-hooks урнату тырышылды (idempotent). Нәтиҗәне тикшерү өчен `wta hooks status` башкарыгыз. Эз журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} өчен урнатылды"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "яңа гына"
 time.minute_singular: "%{count} минут элек"

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pritisnite Enter da pokušate ponovo ili Esc 
 chat.activity_thinking: "Razmišljam…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Dobrodošli u Inteligentni Terminal!"
-chat.welcome_disclaimer: "Inteligentni Terminal koristi AI. Provjerite greške."
+chat.welcome_disclaimer: "Inteligentni Terminal koristi AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -188,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace putanja je zastarjela"
 hooks.installed_but_disabled: "⚠ instaliran ali onemogućen"
 hooks.not_installed: "✗ nije instaliran"
 hooks.uninstall_skipped: "preskočeno (CLI nije u PATH)"
-hooks.install_attempted: "Pokušana instalacija wt-agent-hooks (idempotentno). Pokrenite `wta hooks status` za pregled rezultata. Dnevnik praćenja: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instaliran za %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n has no CLDR plural support; Rust selects singular vs. other.

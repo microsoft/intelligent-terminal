@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  הקש Enter כדי לנסות שוב, או E
 chat.activity_thinking: "חושב…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ברוכים הבאים ל-מסוף חכם!"
-chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI. בדוק אם יש שגיאות."
+chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI."
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ נתיב חנות מיושן"
 hooks.installed_but_disabled: "⚠ מותקן אך מושבת"
 hooks.not_installed: "✗ לא מותקן"
 hooks.uninstall_skipped: "דולג (CLI לא נמצא ב-PATH)"
-hooks.install_attempted: "בוצע ניסיון התקנת wt-agent-hooks (אידמפוטנטי). הפעל `wta hooks status` כדי לבדוק את התוצאה. יומן מעקב: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks מותקן עבור %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "עכשיו"
 time.minute_singular: "לפני דקה אחת"

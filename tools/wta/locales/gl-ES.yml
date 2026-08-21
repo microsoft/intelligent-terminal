@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Preme Enter para tentalo de novo, ou Esc para
 chat.activity_thinking: "Pensando…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Benvido a Terminal Intelixente!"
-chat.welcome_disclaimer: "Terminal Intelixente usa IA. Comprobe se hai erros."
+chat.welcome_disclaimer: "Terminal Intelixente usa IA."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ ruta da tenda obsoleta"
 hooks.installed_but_disabled: "⚠ instalado pero desactivado"
 hooks.not_installed: "✗ non instalado"
 hooks.uninstall_skipped: "omitido (CLI non está no PATH)"
-hooks.install_attempted: "Intentouse instalar wt-agent-hooks (idempotente). Execute `wta hooks status` para inspeccionar o resultado. Rexistro de rastrexo: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalado para %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "agora mesmo"

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Shtypni Enter për të riprovuar, ose Esc pë
 chat.activity_thinking: "Po mendoj..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Mirë se vini në Terminali inteligjent!"
-chat.welcome_disclaimer: "Terminali inteligjent përdor AI. Kontrolloni për gabime."
+chat.welcome_disclaimer: "Terminali inteligjent përdor AI."
 chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "pikërisht tani"
 time.minute_singular: "%{count} minut më parë"

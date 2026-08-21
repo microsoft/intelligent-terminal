@@ -151,7 +151,7 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
+    /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.

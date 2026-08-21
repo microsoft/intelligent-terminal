@@ -21,6 +21,7 @@ pub const MARKDOWN_QUOTE: Style = AGENT_TEXT
 pub const MARKDOWN_META: Style = AGENT_TEXT.add_modifier(Modifier::DIM);
 pub const MARKDOWN_TABLE_HEADER: Style = AGENT_TEXT.add_modifier(Modifier::BOLD);
 pub const MARKDOWN_TABLE_BORDER: Style = AGENT_TEXT.add_modifier(Modifier::DIM);
+pub const DISCLAIMER_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
 pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
 pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);

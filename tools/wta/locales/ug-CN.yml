@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  قايتا سىناش ئۈچۈن Enter نى �
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ئەقلىي تېرمىنال ھە خوش كەلدىڭىز!"
-chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ. خاتالىقلارنى تەكشۈرۈڭ."
+chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ."
 chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -199,7 +199,7 @@ hooks.marketplace_path_stale: "⚠ marketplace يولى ئەسكىردى"
 hooks.installed_but_disabled: "⚠ ئورنىتىلدى بىراق چەكلەنگەن"
 hooks.not_installed: "✗ ئورنىتىلمىغان"
 hooks.uninstall_skipped: "ئاتلىدى (CLI PATH دا ئەمەس)"
-hooks.install_attempted: "wt-agent-hooks ئورنىتىش سىنالدى (idempotent). نەتىجىنى تەكشۈرۈش ئۈچۈن `wta hooks status` نى ئىجرا قىلىڭ. ئىز خاتىرىسى: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} ئۈچۈن ئورنىتىلدى"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ھازىرلا"
 time.minute_singular: "%{count} مىنۇت بۇرۇن"

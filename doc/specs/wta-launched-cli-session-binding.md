@@ -47,9 +47,12 @@ directly into the `wta-master` registry. Independently mergeable on `main`.
 - **No `SessionOrigin` / UI change.** Sessions stay `Unknown` (Class B); no
   change to `OriginFilter`, `/sessions` rendering or Enter/Resume routing,
   registry serialization, or `history_loader`.
-- **Codex is out of scope.** It cannot pin `--session-id`, so it keeps using
-  `main`'s existing Codex hook (`wt-agent-hooks/codex/.../send-event.ps1`)
-  unchanged.
+- **Codex is out of scope.** It cannot pin `--session-id`, so it stays on the
+  hook-based tracking path (`wt-agent-hooks/codex/.../hooks.json`) rather than
+  becoming born-bound. That hook's *implementation* is not frozen — PR #571
+  moves every CLI, Codex included, from the PowerShell bridge to the native
+  `wtcli agent-hook` command; what is unchanged here is which tracking path
+  Codex uses, not how the hook is spelled.
 - **User-typed (non-WTA-launched) sessions** are untouched here — they stay on
   the existing hook path.
 

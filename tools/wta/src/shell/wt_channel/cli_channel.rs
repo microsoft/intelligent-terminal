@@ -355,7 +355,7 @@ impl CliChannel {
     pub async fn connect() -> anyhow::Result<Self> {
         // WT_COM_CLSID must be set — wtcli reads it from the environment.
         if std::env::var("WT_COM_CLSID").is_err() {
-            bail!("WT_COM_CLSID not set. Must run inside a Windows Terminal pane.");
+            bail!("WT_COM_CLSID not set. Must run inside an Intelligent Terminal pane.");
         }
 
         Ok(Self {
