@@ -1,6 +1,6 @@
 //! Per-pane helper runtime bootstrap and orchestration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -21,8 +21,8 @@ use crate::{
 use super::config::{HelperConfig, InitialView};
 
 #[cfg(windows)]
-fn install_descendant_job() {
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+fn install_descendant_job() -> Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -33,55 +33,48 @@ fn install_descendant_job() {
     unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
         if job.is_null() {
-            tracing::warn!(
-                target: "helper",
-                error = GetLastError(),
-                "failed to create helper descendant job"
-            );
-            return;
+            return Err(io::Error::last_os_error())
+                .context("failed to create helper descendant job");
         }
+        let job = OwnedHandle::from_raw_handle(job);
 
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         if SetInformationJobObject(
-            job,
+            job.as_raw_handle(),
             JobObjectExtendedLimitInformation,
             std::ptr::addr_of!(limits).cast(),
             std::mem::size_of_val(&limits) as u32,
         ) == 0
         {
-            tracing::warn!(
-                target: "helper",
-                error = GetLastError(),
-                "failed to configure helper descendant job"
-            );
-            CloseHandle(job);
-            return;
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to configure helper descendant job");
         }
 
-        if AssignProcessToJobObject(job, GetCurrentProcess()) == 0 {
-            tracing::warn!(
-                target: "helper",
-                error = GetLastError(),
-                "failed to assign helper to descendant job"
-            );
-            CloseHandle(job);
-            return;
+        if AssignProcessToJobObject(job.as_raw_handle(), GetCurrentProcess()) == 0 {
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to assign helper to descendant job");
         }
 
         // This process must retain the only job handle for its entire lifetime.
         // Windows closes it on every exit path, including TerminateProcess, and
         // KILL_ON_JOB_CLOSE then reclaims wtcli and other helper descendants.
+        std::mem::forget(job);
         tracing::info!(
             target: "helper",
             helper_pid = std::process::id(),
             "helper descendant job installed"
         );
+        Ok(())
     }
 }
 
 #[cfg(not(windows))]
-fn install_descendant_job() {}
+fn install_descendant_job() -> Result<()> {
+    Ok(())
+}
 
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
@@ -90,7 +83,7 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
-    install_descendant_job();
+    install_descendant_job()?;
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
