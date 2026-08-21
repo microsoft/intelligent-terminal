@@ -3403,6 +3403,70 @@ fn shell_only_filter_applies_to_registry_fallback_path() {
     assert_eq!(rows[0].key, "shell-key");
 }
 
+/// A session view lists only rows from its own pane's execution source.
+///
+/// Host Copilot, Copilot in WSL Debian, and Copilot in WSL Ubuntu all report
+/// `CliSource::Copilot`, so before this every Copilot pane rendered one merged
+/// list — including rows whose transcripts live on another filesystem and which
+/// that pane's CLI cannot resume.
+#[test]
+fn sessions_view_lists_only_the_panes_own_execution_source() {
+    use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+    let host_row = {
+        let mut info = session_info_for_test("host-row");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Host;
+        info
+    };
+    let ubuntu_row = {
+        let mut info = session_info_for_test("ubuntu-row");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        info
+    };
+    let debian_row = {
+        let mut info = session_info_for_test("debian-row");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl {
+            distro: "Debian".into(),
+        };
+        info
+    };
+    let snapshot = vec![host_row, ubuntu_row, debian_row];
+
+    let keys_for = |source: crate::agent_source::AgentSource| {
+        let mut app = test_app();
+        app.sessions_origin_filter = OriginFilter::All;
+        app.current_agent_source = source;
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(snapshot.clone());
+        app.agents_rows_for_tab(DEFAULT_TAB_ID)
+            .into_iter()
+            .map(|r| r.key)
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        keys_for(crate::agent_source::AgentSource::Host),
+        vec!["host-row".to_string()]
+    );
+    assert_eq!(
+        keys_for(crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }),
+        vec!["ubuntu-row".to_string()]
+    );
+    assert_eq!(
+        keys_for(crate::agent_source::AgentSource::Wsl {
+            distro: "Debian".into()
+        }),
+        vec!["debian-row".to_string()]
+    );
+}
+
 /// The PRODUCTION snapshot path (master pushed `sessions/list` response
 /// into `agents_view.snapshot`) must preserve the `Wsl` location in every
 /// `AgentSession` produced by `agents_rows_for_tab`.
@@ -3412,11 +3476,18 @@ fn shell_only_filter_applies_to_registry_fallback_path() {
 /// rows crossing the master→helper boundary silently lost their distro
 /// stamp.  The fix carries `location` through `SessionInfo`; this test
 /// guards that fix forever.
+///
+/// The pane is a WSL pane because a session view only lists rows from its
+/// own execution source — the distro stamp is exactly what the filter keys
+/// on, so a host pane would (correctly) render nothing here.
 #[test]
 fn agents_rows_snapshot_preserves_wsl_location() {
     use crate::agent_sessions::{OriginFilter, SessionLocation};
 
     let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
     // Use `All` to bypass the MVP ShellOnly filter — we want to confirm
     // location preservation regardless of origin filtering.
     app.sessions_origin_filter = OriginFilter::All;
@@ -3460,6 +3531,9 @@ fn render_sessions_view_paints_wsl_distro_tag() {
 
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
     app.sessions_origin_filter = OriginFilter::All;
 
     let mut info = session_info_for_test("wsl-render-1");
@@ -11209,6 +11283,9 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         },
     };
     let mut app = test_app();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
     app.agent_sessions.merge_historical(vec![row]);
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
