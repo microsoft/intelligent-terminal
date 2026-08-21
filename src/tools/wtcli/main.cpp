@@ -970,10 +970,24 @@ int wmain(int argc, wchar_t** argv)
     // ── listen ──
     std::string listenTarget;
     std::string listenEventFilter;
+    DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
+    listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->callback([&]() {
+        wil::unique_handle parentProcess;
+        if (listenParentPid != 0)
+        {
+            parentProcess.reset(OpenProcess(SYNCHRONIZE, FALSE, listenParentPid));
+            if (!parentProcess)
+            {
+                fprintf(stderr, "[wtcli] listen: failed to open parent process %lu (0x%08X)\n", listenParentPid, GetLastError());
+                exitCode = 1;
+                return;
+            }
+        }
+
         auto server = connect();
         if (!server)
         {
@@ -1016,7 +1030,21 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
 
-        WaitForSingleObject(s_stopEvent, INFINITE);
+        DWORD waitResult = WAIT_OBJECT_0;
+        if (parentProcess)
+        {
+            const HANDLE waitHandles[]{ s_stopEvent, parentProcess.get() };
+            waitResult = WaitForMultipleObjects(ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
+        }
+        else
+        {
+            waitResult = WaitForSingleObject(s_stopEvent, INFINITE);
+        }
+        if (waitResult == WAIT_FAILED)
+        {
+            fprintf(stderr, "[wtcli] listen: wait failed (0x%08X)\n", GetLastError());
+            exitCode = 1;
+        }
         server->Unsubscribe();
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda

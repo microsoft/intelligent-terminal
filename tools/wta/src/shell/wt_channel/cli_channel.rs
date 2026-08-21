@@ -383,9 +383,11 @@ impl CliChannel {
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
         tokio::spawn(async move {
+            let parent_pid = std::process::id();
+            let parent_pid_arg = parent_pid.to_string();
             let mut command = tokio::process::Command::new(&wtcli);
             command
-                .args(["--json", "listen"])
+                .args(["--json", "listen", "--parent-pid", &parent_pid_arg])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
                 .kill_on_drop(true);
@@ -404,6 +406,7 @@ impl CliChannel {
             tracing::info!(
                 target: "wtcli",
                 listener_pid = ?child.id(),
+                parent_pid,
                 "started WT protocol event listener"
             );
 
@@ -431,6 +434,7 @@ impl CliChannel {
             tracing::info!(
                 target: "wtcli",
                 listener_pid = ?child.id(),
+                parent_pid,
                 "WT protocol event listener ended"
             );
         });
