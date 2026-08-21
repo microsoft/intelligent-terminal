@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "راه‌اندازی مجدد عامل هوش مصنوعی"
 commands.stop.summary: "لغو درخواست در حال اجرا"
 commands.sessions.summary: "باز کردن انتخابگر نشست‌های تاریخی (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "مرور و بازیابی برگه‌های ذخیره‌شده"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "عامل این پنل را انتخاب کنید (/agent <id> برای تغییر مستقیم)"  # {Locked="/agent","<id>"}
 
 # ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────

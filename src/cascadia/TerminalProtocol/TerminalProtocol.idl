@@ -20,6 +20,9 @@ namespace Microsoft.Terminal.Protocol
         String Title;
         Boolean IsActive;
         UInt32 PaneCount;
+        // Durable shell-session id this tab is bound to, empty when the tab has
+        // never been saved.
+        String DurableShellSessionId;
     };
 
     struct PaneInfo

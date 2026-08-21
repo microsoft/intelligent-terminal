@@ -3,7 +3,10 @@
 
 #include "Formatting.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <string>
+#include <vector>
 
 void PrintJson(const Json::Value& val)
 {
@@ -64,6 +67,64 @@ void FormatPanesHuman(const Json::Value& panes)
                p["is_active"].asBool() ? "*" : "",
                p["size"]["rows"].asInt(),
                p["size"]["columns"].asInt());
+    }
+}
+
+
+void FormatShellSessionsHuman(const Json::Value& shellSessions)
+{
+    if (!shellSessions.isArray() || shellSessions.empty())
+    {
+        printf("No saved shell sessions.\n");
+        return;
+    }
+
+    constexpr char idHeader[] = "SHELL_SESSION_ID";
+    constexpr char nameHeader[] = "NAME";
+    constexpr char openedHeader[] = "OPENED";
+
+    size_t idWidth = std::char_traits<char>::length(idHeader);
+    size_t nameWidth = std::char_traits<char>::length(nameHeader);
+
+    struct Row
+    {
+        std::string id;
+        std::string name;
+        bool opened;
+    };
+
+    std::vector<Row> rows;
+    rows.reserve(shellSessions.size());
+
+    for (const auto& session : shellSessions)
+    {
+        Row row{
+            session["id"].asString(),
+            session["name"].asString(),
+            session["opened"].asBool(),
+        };
+
+        idWidth = std::max(idWidth, row.id.size());
+        nameWidth = std::max(nameWidth, row.name.size());
+
+        rows.emplace_back(std::move(row));
+    }
+
+    printf("%-*s %-*s %s\n",
+           static_cast<int>(idWidth),
+           idHeader,
+           static_cast<int>(nameWidth),
+           nameHeader,
+           openedHeader);
+
+    for (const auto& row : rows)
+    {
+        printf("%-*s %-*s %s\n",
+               static_cast<int>(idWidth),
+               row.id.c_str(),
+               static_cast<int>(nameWidth),
+               row.name.c_str(),
+               row.opened ? "*" : "");
     }
 }
 

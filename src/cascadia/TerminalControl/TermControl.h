@@ -54,6 +54,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void UpdateControlSettings(Control::IControlSettings settings);
         void UpdateControlSettings(Control::IControlSettings settings, Control::IControlAppearance unfocusedAppearance);
         IControlSettings Settings() const;
+        bool HasUserInput() const noexcept;
 
         void KeyBindings(const Control::IKeyBindings& bindings) { _keyBindings = bindings; }
 

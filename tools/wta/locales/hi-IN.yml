@@ -75,6 +75,7 @@ commands.fix.summary: "सक्रिय टर्मिनल का निद
 commands.restart.summary: "एजेंट पुनः आरंभ करें"
 commands.stop.summary: "चल रहे प्रॉम्प्ट को रद्द करें"
 commands.sessions.summary: "ऐतिहासिक सत्र पिकर खोलें (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "सहेजे गए टैब ब्राउज़ करें और पुनर्स्थापित करें"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "इस टैब के लिए एजेंट चुनें (सीधे बदलने के लिए /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── अनुशंसा पैनल (src/ui/recommendations.rs) ───────────────────────────────

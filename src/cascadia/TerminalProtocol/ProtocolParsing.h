@@ -38,6 +38,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
+        PaneAgentSession,     // Direct to TerminalPage, no broadcast — hookless delegate pane/session binding
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         RestartAgentPane,     // Direct to TerminalPage, no broadcast — master detected helper death; re-warm a fresh helper for this tab
@@ -97,6 +98,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "resume_in_new_agent_tab")
             {
                 return SendEventRoute::ResumeInNewAgentTab;
+            }
+            if (method == "pane_agent_session_changed")
+            {
+                return SendEventRoute::PaneAgentSession;
             }
             if (method == "set_agent_chip_target")
             {

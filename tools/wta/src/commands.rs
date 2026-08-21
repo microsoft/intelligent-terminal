@@ -37,6 +37,7 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    ShellSessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
@@ -115,6 +116,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
+    },
+    CommandSpec {
+        name: "tab-history",
+        summary_key: "commands.tab_history.summary",
+        kind: CommandKind::ShellSessions,
     },
     CommandSpec {
         name: "agent",
@@ -293,7 +299,7 @@ pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
     MOVE_POSITIONS.iter().find(|position| {
         position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
-        })
+    })
 }
 
 /// Prefix-match `/move` positions by full name or one-letter alias.
@@ -376,6 +382,26 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn tab_history_parses() {
+        assert_eq!(
+            parse("/tab-history").unwrap().kind,
+            CommandKind::ShellSessions
+        );
+    }
+
+    #[test]
+    fn registry_summary_keys_follow_command_names() {
+        for spec in REGISTRY {
+            let expected = format!("commands.{}.summary", spec.name.replace('-', "_"));
+            assert_eq!(
+                spec.summary_key, expected,
+                "/{} must use its command-specific localization key",
+                spec.name
+            );
+        }
     }
 
     #[test]
@@ -463,16 +489,15 @@ mod tests {
         let all = matches("");
         assert_eq!(all.len(), REGISTRY.len());
 
-        let h = matches("h");
-        assert_eq!(h.len(), 1);
-        assert_eq!(h[0].name, "help");
+        let h: Vec<_> = matches("h").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(h, vec!["help", "tab-history"]);
 
         let middle = matches("lear");
         assert_eq!(middle.len(), 1);
         assert_eq!(middle[0].name, "clear");
 
         let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
-        assert_eq!(ranked, vec!["stop", "restart"]);
+        assert_eq!(ranked, vec!["stop", "restart", "tab-history"]);
 
         let none = matches("zzz");
         assert!(none.is_empty());

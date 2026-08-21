@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ഏജന്റ് റീസ്റ്റാർട്ട് ചെയ്യുക"
 commands.stop.summary: "നടന്നുകൊണ്ടിരിക്കുന്ന പ്രോംപ്റ്റ് റദ്ദാക്കുക"
 commands.sessions.summary: "ചരിത്ര സെഷനുകളുടെ പിക്കർ തുറക്കുക (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "സംരക്ഷിച്ച ടാബുകള്‍ ബ്രൗസ് ചെയ്ത് പുനഃസ്ഥാപിക്കുക"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "ഈ ടാബിനായി ഏജന്റ് തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ശുപാര്‍ശ പാനല്‍ (src/ui/recommendations.rs) ───────────────────────────────

@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnostiser den aktive terminalen og foreslå en løsnin
 commands.restart.summary: "Start agenten på nytt"
 commands.stop.summary: "Avbryt ledeteksten som pågår"
 commands.sessions.summary: "Åpne velgeren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Bla gjennom og gjenopprett lagrede faner"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Velg agenten for dette panelet (/agent <id> for å bytte direkte)"  # {Locked="/agent","<id>"}
 
 # ── Utføring av anbefaling (src/coordinator.rs) ───────────────────────────
