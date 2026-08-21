@@ -89,6 +89,7 @@ namespace winrt::TerminalApp::implementation
             _pendingAgentSourceProfileGuid.reset();
             return value;
         }
+        void PrepareForCrossWindowTransfer() noexcept { _helperTransferredForDrag = true; }
 
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
@@ -176,6 +177,7 @@ namespace winrt::TerminalApp::implementation
         // is pending. See SetPendingRenameFromTabId / TakePendingRenameFromTabId.
         winrt::hstring _pendingRenameFromTabId{};
         std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
+        bool _helperTransferredForDrag{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

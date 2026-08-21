@@ -602,7 +602,8 @@ namespace winrt::TerminalApp::implementation
                 {
                     return false;
                 }
-                if (!content.try_as<winrt::TerminalApp::AgentPaneContent>())
+                const auto agentContent = content.try_as<winrt::TerminalApp::AgentPaneContent>();
+                if (!agentContent)
                 {
                     return false;
                 }
@@ -624,6 +625,10 @@ namespace winrt::TerminalApp::implementation
                     cid,
                     myStableId,
                     sourceProfileGuid);
+                if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+                {
+                    impl->PrepareForCrossWindowTransfer();
+                }
                 return false;
             });
         }
