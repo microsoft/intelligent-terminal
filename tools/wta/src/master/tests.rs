@@ -5996,6 +5996,15 @@ fn client_connection_to_listing_agent(ids: Vec<String>) -> conn::ClientLink {
 }
 
 fn listing_agent(cli: crate::agent_sessions::CliSource, ids: &[&str]) -> Arc<AgentCli> {
+    listing_agent_with_cli(Some(cli), ids)
+}
+
+/// `cli = None` models a `custom:<name>` provider, which the agent registry
+/// does not resolve to a known `CliSource`.
+fn listing_agent_with_cli(
+    cli: Option<crate::agent_sessions::CliSource>,
+    ids: &[&str],
+) -> Arc<AgentCli> {
     let mut cached_init_resp =
         acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
     cached_init_resp
@@ -6006,7 +6015,7 @@ fn listing_agent(cli: crate::agent_sessions::CliSource, ids: &[&str]) -> Arc<Age
         instance_id: AgentInstanceId::new_v4(),
         conn: client_connection_to_listing_agent(ids.iter().map(|s| s.to_string()).collect()),
         cached_init_resp,
-        cli_source: Some(cli.clone()),
+        cli_source: cli.clone(),
         source: crate::agent_source::AgentSource::Host,
         cmd_key: format!("listing-agent-{cli:?}"),
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
@@ -6138,6 +6147,75 @@ fn is_stale_host_history_row_never_prunes_another_clis_rows() {
     // ...and an agent with no resolved CLI has no authority over anything.
     assert!(!is_stale_host_history_row(&claude_row, &listed, None));
     assert!(!is_stale_host_history_row(&unstamped, &listed, None));
+}
+
+/// A `custom:<name>` provider has `AgentCli::cli_source == None`, but
+/// `host_history_via_acp` stamps its rows `Unknown("custom")`. Reconcile
+/// authority is derived through `stamped_cli`, so the collapsed value matches
+/// the stamp — without it the guard sees `None`, denies authority, and
+/// reconcile silently never prunes an unrecognized agent's stale rows.
+#[test]
+fn custom_agent_reconciles_rows_stamped_with_the_collapsed_cli() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
+    use std::collections::HashSet;
+
+    // What an unrecognized agent's `cli_source: None` collapses to.
+    let custom = stamped_cli(None);
+    assert_eq!(custom, CliSource::Unknown("custom".into()));
+
+    let listed: HashSet<String> = HashSet::new();
+    let mut row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("custom-row".to_string()),
+        std::path::PathBuf::from("C:\\Users\\dev"),
+    );
+    row.status = Some(AgentStatus::Historical);
+    row.origin = Some(SessionOrigin::Unknown);
+    row.cli_source = Some(custom.clone());
+
+    assert!(is_stale_host_history_row(&row, &listed, Some(&custom)));
+    // A recognized CLI still has no authority over a custom row.
+    assert!(!is_stale_host_history_row(
+        &row,
+        &listed,
+        Some(&CliSource::Copilot)
+    ));
+}
+
+/// Row-driven refresh looks the owning agent up by the row's stamped CLI. A
+/// custom agent is pooled with `cli_source: None` while its rows carry
+/// `Unknown("custom")`, so both sides must normalize or the lookup misses and
+/// the row never gets a title.
+#[tokio::test]
+async fn agent_for_cli_routes_a_custom_stamped_row_to_the_unrecognized_agent() {
+    use crate::agent_sessions::CliSource;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let custom = listing_agent_with_cli(None, &[]);
+            let copilot = listing_agent(CliSource::Copilot, &[]);
+            {
+                let mut agents = state.agents.lock().await;
+                for agent in [&custom, &copilot] {
+                    let cell: AgentCell = Arc::new(tokio::sync::OnceCell::new());
+                    let _ = cell.set(Arc::clone(agent));
+                    agents.insert(agent.cmd_key.clone(), cell);
+                }
+            }
+
+            let stamped = stamped_cli(None);
+            let found = agent_for_cli(&state, Some(&stamped))
+                .await
+                .expect("custom-stamped row resolves to the unrecognized agent");
+            assert_eq!(found.cmd_key, custom.cmd_key);
+
+            // A recognized CLI still routes to its own agent.
+            let found = agent_for_cli(&state, Some(&CliSource::Copilot))
+                .await
+                .expect("copilot row resolves to the copilot agent");
+            assert_eq!(found.cmd_key, copilot.cmd_key);
+        })
+        .await;
 }
 
 #[test]

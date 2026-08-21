@@ -289,7 +289,7 @@ never bound an agent, and is explicitly documented as unusable for history.
 Row-driven paths (session hooks, the file watcher) resolve their responder with
 `agent_for_cli(state, row.cli_source)` — the pooled agent that can actually
 enumerate that row — instead of assuming master's launch CLI. This also fixes a
-pre-existing gap: a Claude row could never get a title while master had launched
+preexisting gap: a Claude row could never get a title while master had launched
 as Copilot, even with a live Claude CLI in the pool.
 
 Reconcile is deliberately stricter than title refresh:

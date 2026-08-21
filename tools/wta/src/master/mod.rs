@@ -4990,6 +4990,27 @@ async fn host_session_list_raw(
     outcome
 }
 
+/// The `CliSource` an agent's history rows are stamped with.
+///
+/// An agent we don't recognize (a `custom:<name>` provider) has
+/// `cli_source: None`, but [`host_history_via_acp`] stamps its rows
+/// `Unknown("custom")`. Reconcile authority and row-driven routing must
+/// collapse `None` the same way, or an unrecognized agent can never match its
+/// own rows: reconcile silently no-ops and title refresh never finds the
+/// owning CLI. Every caller that compares an agent against a stamped row goes
+/// through here so the two can't drift apart again.
+///
+/// This does bucket all custom providers together — with two pooled, either
+/// may reconcile the other's rows. That is no worse than the pre-pool behavior
+/// (one listing reconciled every row regardless of CLI) and stays bounded by
+/// the host / Class-B / terminal gates in [`is_stale_host_history_row`].
+fn stamped_cli(
+    cli: Option<&crate::agent_sessions::CliSource>,
+) -> crate::agent_sessions::CliSource {
+    cli.cloned()
+        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()))
+}
+
 /// Host history from `agent`'s `session/list`, gated on the
 /// `sessionCapabilities.list` capability. `None` when unsupported (Gemini,
 /// non-ACP custom) / failed — distinct from `Some(vec![])` (listed, but empty),
@@ -5003,10 +5024,7 @@ async fn host_history_via_acp(
     agent: &AgentCli,
 ) -> Option<Vec<crate::agent_sessions::AgentSession>> {
     let sessions = host_session_list_raw(agent).await?;
-    let cli = agent
-        .cli_source
-        .clone()
-        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()));
+    let cli = stamped_cli(agent.cli_source.as_ref());
     // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
     // *after* session/new lands, so a just-created pane session can be returned by
     // session/list before its index line exists, leaking a phantom historical row.
@@ -5066,7 +5084,11 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
     let rows = host_history_via_acp(state, agent).await?;
     let listed_ids: std::collections::HashSet<String> =
         rows.iter().map(|r| r.key.clone()).collect();
-    let listing_cli = agent.cli_source.as_ref();
+    // Must match how `host_history_via_acp` stamped those same rows, or an
+    // unrecognized (custom) agent could never prove authority over its own
+    // rows and reconcile would silently never prune.
+    let listing_cli = stamped_cli(agent.cli_source.as_ref());
+    let listing_cli = Some(&listing_cli);
 
     // Snapshot once; compute existing ids for the add pass and reconcile the
     // terminal Class-B host rows in the same pass.
@@ -5200,10 +5222,10 @@ fn spawn_wsl_seed(
     if !crate::history_loader::wsl_sessions_enabled() {
         return false;
     }
-    // Claim this CLI's scan slot; skip if a scan for it is already running.
-    // `try_lock` is sound here: the set is only ever held across an insert or a
-    // remove, never across an await, so contention is transient — and a missed
-    // dispatch is recovered by the next poll.
+    // Claim this CLI's scan slot; skip when a scan for this CLI is already
+    // running. `try_lock` is sound here: the set is only ever held across an
+    // insert or a remove, never across an await, so contention is transient —
+    // and a missed dispatch is recovered by the next poll.
     let claimed = match state.wsl_seed_in_flight.try_lock() {
         Ok(mut in_flight) => in_flight.insert(cli.clone()),
         Err(_) => false,
@@ -5859,15 +5881,20 @@ fn row_refreshable_by_connected_agent(
 /// actually answer for a row instead of whichever CLI master happened to launch
 /// with — master multiplexes several at once and the launch one may not even be
 /// the user's current selection.
+///
+/// Both sides go through [`stamped_cli`], so a `custom:<name>` agent (whose
+/// `cli_source` is `None`) is reachable by the `Unknown("custom")` stamp its
+/// own rows carry.
 async fn agent_for_cli(
     state: &MasterStateInner,
     cli: Option<&crate::agent_sessions::CliSource>,
 ) -> Option<Arc<AgentCli>> {
+    let want = stamped_cli(cli);
     let agents = state.agents.lock().await;
     agents
         .values()
         .filter_map(|cell| cell.get().cloned())
-        .find(|agent| agent.cli_source.as_ref() == cli)
+        .find(|agent| stamped_cli(agent.cli_source.as_ref()) == want)
 }
 
 /// ACP replacement for the former on-disk single-session title refresh. Cheap
@@ -5896,7 +5923,7 @@ async fn try_refresh_title_via_acp(
         }
         None => return false,
     };
-    if !row_refreshable_by_connected_agent(&info, agent.cli_source.as_ref()) {
+    if !row_refreshable_by_connected_agent(&info, Some(&stamped_cli(agent.cli_source.as_ref()))) {
         return false;
     }
     let titles = host_titles_via_acp(&agent).await;
