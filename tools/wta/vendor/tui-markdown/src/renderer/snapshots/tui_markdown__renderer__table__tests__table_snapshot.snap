@@ -1,0 +1,10 @@
+---
+source: tui-markdown/src/renderer/table.rs
+expression: text
+---
+┌──────┬───────┐
+│ Name │ Value │
+├──────┼───────┤
+│ foo  │ bar   │
+│ baz  │ qux   │
+└──────┴───────┘
