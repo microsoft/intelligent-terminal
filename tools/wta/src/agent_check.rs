@@ -57,6 +57,7 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
         return find_claude_executable_in_path(
             &path_var,
             std::env::var_os(CLAUDE_CODE_EXECUTABLE).as_deref(),
+            claude_sdk_platform_package(std::env::consts::ARCH),
             Path::is_file,
         )
         .map(|path| path.to_string_lossy().into_owned());
@@ -101,28 +102,62 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
 fn find_claude_executable_in_path(
     path_var: &OsStr,
     configured_executable: Option<&OsStr>,
+    sdk_platform_package: Option<&str>,
     is_file: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
-    if let Some(path) = find_configured_executable(configured_executable, &is_file) {
+    if let Some(path) = find_configured_native_executable(configured_executable, &is_file) {
         return Some(path);
     }
 
     for directory in std::env::split_paths(path_var) {
-        let candidates = [
+        let mut candidates = vec![
             directory.join("claude.exe"),
             directory.join(r"node_modules\@anthropic-ai\claude-code\bin\claude.exe"),
-            directory.join(
-                r"node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe",
-            ),
-            directory.join(
-                r"node_modules\@anthropic-ai\claude-code\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe",
-            ),
         ];
+        if let Some(package) = sdk_platform_package {
+            candidates.push(
+                directory
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join(package)
+                    .join("claude.exe"),
+            );
+            candidates.push(
+                directory
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join("claude-code")
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join(package)
+                    .join("claude.exe"),
+            );
+        }
         if let Some(path) = candidates.into_iter().find(|path| is_file(path)) {
             return Some(path);
         }
     }
     None
+}
+
+fn claude_sdk_platform_package(arch: &str) -> Option<&'static str> {
+    match arch {
+        "x86_64" => Some("claude-agent-sdk-win32-x64"),
+        "aarch64" => Some("claude-agent-sdk-win32-arm64"),
+        _ => None,
+    }
+}
+
+fn find_configured_native_executable(
+    configured_executable: Option<&OsStr>,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let path = PathBuf::from(configured_executable?);
+    let is_exe = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"));
+    (is_exe && is_file(&path)).then_some(path)
 }
 
 fn find_configured_executable(
@@ -636,6 +671,7 @@ mod tests {
         let resolved = find_claude_executable_in_path(
             OsStr::new(r"C:\npm"),
             Some(configured.as_os_str()),
+            Some("claude-agent-sdk-win32-x64"),
             |path| path == configured,
         );
         assert_eq!(resolved.as_deref(), Some(configured));
@@ -645,8 +681,12 @@ mod tests {
     fn claude_resolution_finds_native_binary_next_to_npm_shim_directory() {
         let expected =
             Path::new(r"C:\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe");
-        let resolved =
-            find_claude_executable_in_path(OsStr::new(r"C:\npm"), None, |path| path == expected);
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            None,
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == expected,
+        );
         assert_eq!(resolved.as_deref(), Some(expected));
     }
 
@@ -655,17 +695,37 @@ mod tests {
         let expected = Path::new(
             r"C:\npm\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe",
         );
-        let resolved =
-            find_claude_executable_in_path(OsStr::new(r"C:\npm"), None, |path| path == expected);
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            None,
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == expected,
+        );
         assert_eq!(resolved.as_deref(), Some(expected));
     }
 
     #[test]
     fn claude_resolution_rejects_shim_only_installation() {
-        let resolved = find_claude_executable_in_path(OsStr::new(r"C:\npm"), None, |path| {
-            path == Path::new(r"C:\npm\claude.cmd")
-        });
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            Some(OsStr::new(r"C:\npm\claude.cmd")),
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == Path::new(r"C:\npm\claude.cmd"),
+        );
         assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn claude_sdk_package_matches_windows_architecture() {
+        assert_eq!(
+            claude_sdk_platform_package("x86_64"),
+            Some("claude-agent-sdk-win32-x64")
+        );
+        assert_eq!(
+            claude_sdk_platform_package("aarch64"),
+            Some("claude-agent-sdk-win32-arm64")
+        );
+        assert_eq!(claude_sdk_platform_package("x86"), None);
     }
 
     #[test]
