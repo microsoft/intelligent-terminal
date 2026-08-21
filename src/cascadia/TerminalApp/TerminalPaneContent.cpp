@@ -91,7 +91,11 @@ namespace winrt::TerminalApp::implementation
 
         args.Profile(::Microsoft::Console::Utils::GuidToString(_profile.Guid()));
         // If we know the user's working directory use it instead of the profile.
-        if (const auto dir = _control.WorkingDirectory(); ::Microsoft::Console::Utils::IsValidDirectory(dir.c_str()))
+        // Note that a WSL pane reports a Linux path, which is not a valid
+        // Windows directory but is still usable - ConptyConnection turns it into
+        // `wsl.exe --cd <path>`. IsUsableStartingDirectory accounts for that.
+        if (const auto dir = _control.WorkingDirectory();
+            ::Microsoft::Console::Utils::IsUsableStartingDirectory(controlSettings.Commandline(), dir))
         {
             args.StartingDirectory(dir);
         }
