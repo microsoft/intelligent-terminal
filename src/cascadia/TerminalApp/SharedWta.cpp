@@ -16,6 +16,8 @@ namespace
     // Must remain strictly greater than WTA's 15-second
     // SESSION_CLOSE_TIMEOUT in tools/wta/src/master/mod.rs.
     constexpr auto WtaSessionCloseGracePeriod{ std::chrono::seconds{ 16 } };
+    constexpr auto WtaMasterExitTimeout{ std::chrono::seconds{ 3 } };
+    constexpr auto WtaMasterForcedExitTimeout{ std::chrono::seconds{ 5 } };
 }
 
 namespace winrt::TerminalApp::implementation::details
@@ -367,6 +369,56 @@ namespace winrt::TerminalApp::implementation::details
         operations.terminateProcess(process, 1);
         return false;
     }
+
+    bool EnsureProcessExitedBeforeRestart(
+        const HANDLE process,
+        const DWORD pid,
+        const DWORD exitTimeoutMs,
+        const DWORD forcedExitTimeoutMs,
+        const ProcessRetirementOperations& operations)
+    {
+        const auto waitResult = operations.waitForSingleObject(process, exitTimeoutMs);
+        if (waitResult == WAIT_OBJECT_0)
+        {
+            return true;
+        }
+
+        if (waitResult == WAIT_TIMEOUT)
+        {
+            _agentPaneLog(
+                "wta-master did not exit before restart pid=" + std::to_string(pid) +
+                " timeout_ms=" + std::to_string(exitTimeoutMs) + "; forcing termination");
+        }
+        else
+        {
+            const auto error = GetLastError();
+            _agentPaneLog(
+                "waiting for wta-master before restart failed pid=" + std::to_string(pid) +
+                " result=" + std::to_string(waitResult) +
+                " error=" + std::to_string(error) + "; forcing termination");
+        }
+
+        if (!operations.terminateProcess(process, 1))
+        {
+            const auto error = GetLastError();
+            _agentPaneLog(
+                "failed to terminate wta-master before restart pid=" + std::to_string(pid) +
+                " error=" + std::to_string(error) + "; verifying process exit");
+        }
+
+        const auto reapResult = operations.waitForSingleObject(process, forcedExitTimeoutMs);
+        if (reapResult != WAIT_OBJECT_0)
+        {
+            const auto error = reapResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+            _agentPaneLog(
+                "failed to reap wta-master before restart pid=" + std::to_string(pid) +
+                " result=" + std::to_string(reapResult) +
+                " error=" + std::to_string(error) + "; replacement suppressed");
+            return false;
+        }
+
+        return true;
+    }
 }
 
 namespace winrt::TerminalApp::implementation
@@ -487,6 +539,10 @@ namespace winrt::TerminalApp::implementation
         }
 
         std::lock_guard lock{ _mtx };
+        if (_spawnSuppressed)
+        {
+            return false;
+        }
 
         // Degraded latch: the master died unexpectedly and hasn't been
         // recovered via /restart yet. Open the pane WITHOUT respawning master,
@@ -536,6 +592,10 @@ namespace winrt::TerminalApp::implementation
     bool SharedWta::Restart()
     {
         std::lock_guard lock{ _mtx };
+        if (_spawnSuppressed)
+        {
+            return false;
+        }
 
         // `/restart` is the explicit recovery: clear the degraded latch up
         // front so the teardown+reopen this call drives (and any racing
@@ -561,17 +621,7 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        // Drop the Job first so KILL_ON_JOB_CLOSE reaps the old master +
-        // every agent CLI descendant, then respawn under the same
-        // _masterPipeName. Any helper that's about to be torn down (the
-        // /restart caller closes every agent pane) sees its pipe go EOF
-        // and exits naturally; any helper that races a reconnect against
-        // the respawn finds the new master listening on the same name.
-        // Refcount is left untouched on purpose — the caller is still
-        // holding refs for the panes it's about to close-and-reopen, and
-        // the matching ReleasePane / AcquirePane pair will balance out.
-        _CleanupLocked();
-        return _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
+        return _RestartLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
     }
 
     bool SharedWta::Restart(const std::wstring_view wtaPath,
@@ -584,6 +634,10 @@ namespace winrt::TerminalApp::implementation
         }
 
         std::lock_guard lock{ _mtx };
+        if (_spawnSuppressed)
+        {
+            return false;
+        }
 
         // Settings-change respawn is also an explicit recovery point —
         // clear the degraded latch so the rebuilt stack spawns normally.
@@ -612,14 +666,45 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        // Respawn the master with the *new* args so the running agent
-        // CLI is replaced with whatever the new settings demand. The
-        // surrounding `_RebuildAgentStack` flow has already torn down
-        // every agent pane in this window and is about to reopen one;
-        // refcount is left alone for the same reason as the cached-args
-        // overload — outgoing ReleasePane / incoming AcquirePane balance.
-        _CleanupLocked();
-        return _SpawnLocked(wtaPath, extraArgs, environment);
+        return _RestartLocked(wtaPath, extraArgs, environment);
+    }
+
+    bool SharedWta::_RestartLocked(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        // Own the next inputs independently of the cache. The cached-args
+        // overload passes spans into member vectors that _SpawnLocked updates
+        // after success.
+        const std::wstring nextWtaPath{ wtaPath };
+        const std::vector<std::wstring> nextExtraArgs{ extraArgs.begin(), extraArgs.end() };
+        const std::vector<std::pair<std::wstring, std::wstring>> nextEnvironment{
+            environment.begin(), environment.end()
+        };
+
+        // Closing the KILL_ON_JOB_CLOSE job requests termination, but process
+        // teardown and named-pipe release are asynchronous. Keep the old
+        // process handle until it is signaled so the replacement cannot race
+        // the old master for the stable, process-wide pipe name. Holding _mtx
+        // throughout also preserves cross-window restart deduplication.
+        const auto retiredPid = _pid;
+        auto retiredProcess = _CleanupLocked();
+        if (retiredProcess &&
+            !details::EnsureProcessExitedBeforeRestart(
+                retiredProcess.get(),
+                retiredPid,
+                static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(WtaMasterExitTimeout).count()),
+                static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(WtaMasterForcedExitTimeout).count())))
+        {
+            _spawnSuppressed = true;
+            return false;
+        }
+
+        // Refcount is deliberately untouched. The surrounding pane teardown
+        // and reopen balances its outgoing ReleasePane and incoming
+        // AcquirePane after the replacement has claimed the shared pipe.
+        return _SpawnLocked(nextWtaPath, nextExtraArgs, nextEnvironment);
     }
 
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
@@ -825,16 +910,16 @@ namespace winrt::TerminalApp::implementation
         return true;
     }
 
-    void SharedWta::_CleanupLocked()
+    wil::unique_handle SharedWta::_CleanupLocked()
     {
         // Order matters: drop the job FIRST so KILL_ON_JOB_CLOSE
         // terminates wta + descendants while we still hold a process
-        // handle that lets us observe the termination if needed.
+        // handle that lets restart observe termination and pipe release.
         // Deliberate teardown: the master is reaped silently (job close, no
         // console event), so it can't log its own death — record it here.
         _agentPaneLog("releasing wta-master pid=" + std::to_string(_pid) + " (deliberate teardown via KILL_ON_JOB_CLOSE)");
+        auto process = std::move(_process);
         _job.reset();
-        _process.reset();
         if (_waitHandle)
         {
             // Non-blocking unregister. If the callback is in flight
@@ -844,6 +929,7 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+        return process;
     }
 
     void CALLBACK SharedWta::_OnProcessExitedThunk(PVOID context, BOOLEAN /*timedOut*/)

@@ -41,6 +41,7 @@ namespace winrt::TerminalApp::implementation
                                                                            std::chrono::duration_cast<std::chrono::milliseconds>(
                                                                                AgentHelperExitTimeout)
                                                                                .count()));
+            const auto waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
             if (waitResult == WAIT_OBJECT_0)
             {
                 _agentPaneLog("wta-helper exited after pane close pid=" + std::to_string(pid));
@@ -49,13 +50,75 @@ namespace winrt::TerminalApp::implementation
 
             if (waitResult == WAIT_TIMEOUT)
             {
-                _agentPaneLog("wta-helper did not exit after pane close; terminating pid=" + std::to_string(pid));
-                LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(process.get(), 1));
-                WaitForSingleObject(process.get(), 5000);
-                co_return;
+                _agentPaneLog("wta-helper did not exit after pane close; checking before termination pid=" + std::to_string(pid));
+            }
+            else if (waitResult == WAIT_FAILED)
+            {
+                LOG_WIN32_MSG(waitError, "Waiting for wta-helper after pane close failed (pid=%lu)", pid);
+                _agentPaneLog("waiting for wta-helper after pane close failed error=" + std::to_string(waitError) + "; checking before termination pid=" + std::to_string(pid));
+            }
+            else
+            {
+                _agentPaneLog("waiting for wta-helper after pane close returned unexpected result=" + std::to_string(waitResult) + "; checking before termination pid=" + std::to_string(pid));
             }
 
-            LOG_LAST_ERROR();
+            // The helper may have exited between the initial wait and forced cleanup.
+            const auto preTerminateWaitResult = WaitForSingleObject(process.get(), 0);
+            const auto preTerminateWaitError = preTerminateWaitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+            if (preTerminateWaitResult == WAIT_OBJECT_0)
+            {
+                _agentPaneLog("wta-helper exited before forced termination pid=" + std::to_string(pid));
+                co_return;
+            }
+            if (preTerminateWaitResult == WAIT_FAILED)
+            {
+                LOG_WIN32_MSG(preTerminateWaitError, "Rechecking wta-helper before forced termination failed (pid=%lu)", pid);
+                _agentPaneLog("rechecking wta-helper before forced termination failed error=" + std::to_string(preTerminateWaitError) + " pid=" + std::to_string(pid));
+
+                DWORD exitCode = STILL_ACTIVE;
+                if (GetExitCodeProcess(process.get(), &exitCode))
+                {
+                    if (exitCode != STILL_ACTIVE)
+                    {
+                        _agentPaneLog("wta-helper had already exited before forced termination pid=" + std::to_string(pid));
+                        co_return;
+                    }
+                }
+                else
+                {
+                    const auto exitCodeError = GetLastError();
+                    LOG_WIN32_MSG(exitCodeError, "Querying wta-helper exit code before forced termination failed (pid=%lu)", pid);
+                    _agentPaneLog("querying wta-helper exit code before forced termination failed error=" + std::to_string(exitCodeError) + " pid=" + std::to_string(pid));
+                }
+            }
+
+            _agentPaneLog("terminating wta-helper after pane close pid=" + std::to_string(pid));
+            if (!TerminateProcess(process.get(), 1))
+            {
+                const auto terminateError = GetLastError();
+                LOG_WIN32_MSG(terminateError, "Terminating wta-helper after pane close failed (pid=%lu)", pid);
+                _agentPaneLog("terminating wta-helper after pane close failed error=" + std::to_string(terminateError) + " pid=" + std::to_string(pid));
+            }
+
+            const auto reapResult = WaitForSingleObject(process.get(), 5000);
+            if (reapResult == WAIT_OBJECT_0)
+            {
+                _agentPaneLog("wta-helper reaped after forced termination pid=" + std::to_string(pid));
+            }
+            else if (reapResult == WAIT_TIMEOUT)
+            {
+                _agentPaneLog("timed out waiting to reap wta-helper after forced termination pid=" + std::to_string(pid));
+            }
+            else if (reapResult == WAIT_FAILED)
+            {
+                const auto reapError = GetLastError();
+                LOG_WIN32_MSG(reapError, "Waiting to reap wta-helper after forced termination failed (pid=%lu)", pid);
+                _agentPaneLog("waiting to reap wta-helper after forced termination failed error=" + std::to_string(reapError) + " pid=" + std::to_string(pid));
+            }
+            else
+            {
+                _agentPaneLog("waiting to reap wta-helper after forced termination returned unexpected result=" + std::to_string(reapResult) + " pid=" + std::to_string(pid));
+            }
         }
 
         wil::unique_handle _DuplicateAgentHelperProcess(const winrt::TerminalApp::TerminalPaneContent& inner)

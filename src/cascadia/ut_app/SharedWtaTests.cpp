@@ -25,6 +25,20 @@ namespace TerminalAppUnitTests
 
         thread_local SuspendedProcessCallState* suspendedProcessCallState{ nullptr };
 
+        struct ProcessRetirementCallState
+        {
+            HANDLE process{ nullptr };
+            std::array<DWORD, 2> waitResults{};
+            size_t waitResultCount{ 0 };
+            size_t waitResultIndex{ 0 };
+            std::vector<std::string> calls;
+            std::vector<DWORD> waitTimeouts;
+            BOOL terminateResult{ TRUE };
+            UINT exitCode{ 0 };
+        };
+
+        thread_local ProcessRetirementCallState* processRetirementCallState{ nullptr };
+
         DWORD WINAPI ResumeThreadFailure(const HANDLE thread)
         {
             suspendedProcessCallState->resumedThread = thread;
@@ -43,6 +57,37 @@ namespace TerminalAppUnitTests
             suspendedProcessCallState->terminatedProcess = process;
             suspendedProcessCallState->exitCode = exitCode;
             return TRUE;
+        }
+
+        DWORD WINAPI ScriptProcessWait(const HANDLE process, const DWORD timeout)
+        {
+            auto& state = *processRetirementCallState;
+            state.calls.emplace_back("wait");
+            state.process = process;
+            state.waitTimeouts.emplace_back(timeout);
+            if (state.waitResultIndex >= state.waitResultCount)
+            {
+                return WAIT_FAILED;
+            }
+            const auto result = state.waitResults[state.waitResultIndex++];
+            if (result == WAIT_FAILED)
+            {
+                SetLastError(ERROR_INVALID_HANDLE);
+            }
+            return result;
+        }
+
+        BOOL WINAPI ScriptProcessTerminate(const HANDLE process, const UINT exitCode)
+        {
+            auto& state = *processRetirementCallState;
+            state.calls.emplace_back("terminate");
+            state.process = process;
+            state.exitCode = exitCode;
+            if (!state.terminateResult)
+            {
+                SetLastError(ERROR_ACCESS_DENIED);
+            }
+            return state.terminateResult;
         }
     }
 
@@ -76,6 +121,10 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentValue);
         TEST_METHOD(ResumeFailureCleansUpSuspendedProcess);
+        TEST_METHOD(RestartWaitsForRetiredProcessBeforeContinuing);
+        TEST_METHOD(RestartTimeoutTerminatesThenReapsRetiredProcess);
+        TEST_METHOD(RestartWaitFailureTerminatesThenReapsRetiredProcess);
+        TEST_METHOD(RestartFailsWhenForcedProcessReapTimesOut);
         TEST_METHOD(AllScopeRetirementJoinsSameRequest);
         TEST_METHOD(LiveSettingsObjectSharesGeneration);
         TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
@@ -202,6 +251,95 @@ namespace TerminalAppUnitTests
         VERIFY_IS_NULL(callState.unregisterCompletionEvent);
         VERIFY_ARE_EQUAL(process, callState.terminatedProcess);
         VERIFY_ARE_EQUAL(UINT{ 1 }, callState.exitCode);
+    }
+
+    void SharedWtaTests::RestartWaitsForRetiredProcessBeforeContinuing()
+    {
+        const auto process = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(4));
+        ProcessRetirementCallState callState{
+            .waitResults = { WAIT_OBJECT_0 },
+            .waitResultCount = 1,
+        };
+        processRetirementCallState = &callState;
+        const auto resetCallState = wil::scope_exit([]() noexcept { processRetirementCallState = nullptr; });
+        const details::ProcessRetirementOperations operations{
+            &ScriptProcessWait,
+            &ScriptProcessTerminate,
+        };
+
+        VERIFY_IS_TRUE(details::EnsureProcessExitedBeforeRestart(process, 42, 3000, 5000, operations));
+        VERIFY_ARE_EQUAL(process, callState.process);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, callState.calls.size());
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[0]);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, callState.waitTimeouts.size());
+        VERIFY_ARE_EQUAL(DWORD{ 3000 }, callState.waitTimeouts[0]);
+    }
+
+    void SharedWtaTests::RestartTimeoutTerminatesThenReapsRetiredProcess()
+    {
+        const auto process = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(5));
+        ProcessRetirementCallState callState{
+            .waitResults = { WAIT_TIMEOUT, WAIT_OBJECT_0 },
+            .waitResultCount = 2,
+        };
+        processRetirementCallState = &callState;
+        const auto resetCallState = wil::scope_exit([]() noexcept { processRetirementCallState = nullptr; });
+        const details::ProcessRetirementOperations operations{
+            &ScriptProcessWait,
+            &ScriptProcessTerminate,
+        };
+
+        VERIFY_IS_TRUE(details::EnsureProcessExitedBeforeRestart(process, 43, 3000, 5000, operations));
+        VERIFY_ARE_EQUAL(size_t{ 3 }, callState.calls.size());
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[0]);
+        VERIFY_ARE_EQUAL(std::string{ "terminate" }, callState.calls[1]);
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[2]);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, callState.waitTimeouts.size());
+        VERIFY_ARE_EQUAL(DWORD{ 3000 }, callState.waitTimeouts[0]);
+        VERIFY_ARE_EQUAL(DWORD{ 5000 }, callState.waitTimeouts[1]);
+        VERIFY_ARE_EQUAL(UINT{ 1 }, callState.exitCode);
+    }
+
+    void SharedWtaTests::RestartWaitFailureTerminatesThenReapsRetiredProcess()
+    {
+        const auto process = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(6));
+        ProcessRetirementCallState callState{
+            .waitResults = { WAIT_FAILED, WAIT_OBJECT_0 },
+            .waitResultCount = 2,
+        };
+        processRetirementCallState = &callState;
+        const auto resetCallState = wil::scope_exit([]() noexcept { processRetirementCallState = nullptr; });
+        const details::ProcessRetirementOperations operations{
+            &ScriptProcessWait,
+            &ScriptProcessTerminate,
+        };
+
+        VERIFY_IS_TRUE(details::EnsureProcessExitedBeforeRestart(process, 44, 3000, 5000, operations));
+        VERIFY_ARE_EQUAL(size_t{ 3 }, callState.calls.size());
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[0]);
+        VERIFY_ARE_EQUAL(std::string{ "terminate" }, callState.calls[1]);
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[2]);
+    }
+
+    void SharedWtaTests::RestartFailsWhenForcedProcessReapTimesOut()
+    {
+        const auto process = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(7));
+        ProcessRetirementCallState callState{
+            .waitResults = { WAIT_TIMEOUT, WAIT_TIMEOUT },
+            .waitResultCount = 2,
+        };
+        processRetirementCallState = &callState;
+        const auto resetCallState = wil::scope_exit([]() noexcept { processRetirementCallState = nullptr; });
+        const details::ProcessRetirementOperations operations{
+            &ScriptProcessWait,
+            &ScriptProcessTerminate,
+        };
+
+        VERIFY_IS_FALSE(details::EnsureProcessExitedBeforeRestart(process, 45, 3000, 5000, operations));
+        VERIFY_ARE_EQUAL(size_t{ 3 }, callState.calls.size());
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[0]);
+        VERIFY_ARE_EQUAL(std::string{ "terminate" }, callState.calls[1]);
+        VERIFY_ARE_EQUAL(std::string{ "wait" }, callState.calls[2]);
     }
 
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()

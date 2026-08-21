@@ -161,6 +161,19 @@ namespace winrt::TerminalApp::implementation
             HANDLE process,
             HANDLE& waitHandle,
             const SuspendedProcessOperations& operations = {}) noexcept;
+
+        struct ProcessRetirementOperations
+        {
+            DWORD(WINAPI* waitForSingleObject)(HANDLE, DWORD){ ::WaitForSingleObject };
+            BOOL(WINAPI* terminateProcess)(HANDLE, UINT){ ::TerminateProcess };
+        };
+
+        bool EnsureProcessExitedBeforeRestart(
+            HANDLE process,
+            DWORD pid,
+            DWORD exitTimeoutMs,
+            DWORD forcedExitTimeoutMs,
+            const ProcessRetirementOperations& operations = {});
     }
 
     class SharedWta
@@ -307,7 +320,10 @@ namespace winrt::TerminalApp::implementation
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
                           std::span<const std::pair<std::wstring, std::wstring>> environment);
-        void _CleanupLocked();
+        bool _RestartLocked(const std::wstring_view wtaPath,
+                            std::span<const std::wstring> extraArgs,
+                            std::span<const std::pair<std::wstring, std::wstring>> environment);
+        wil::unique_handle _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
         // a free function. The `context` PVOID carries the PID this
@@ -352,6 +368,10 @@ namespace winrt::TerminalApp::implementation
         // `!_process.is_valid()`, which is also true on a clean cold start
         // or after the last release — those MUST still spawn.
         bool _degraded{ false };
+        // A restart could not confirm that the retired master exited. Never
+        // risk another process claiming the stable pipe in this Terminal
+        // process; recovery requires restarting Terminal.
+        bool _spawnSuppressed{ false };
         details::RetirementCoordinator _retirementCoordinator;
         details::LiveObjectGenerationTracker _settingsGenerations;
     };
