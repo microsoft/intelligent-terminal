@@ -615,24 +615,39 @@ fn badge_style(s: &AgentSession) -> Style {
     }
 }
 
-/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) only on the
-/// active row or the keyboard-selected row — matches the Figma where the
-/// agent icon appears only on the currently-engaged session and avoids
-/// cluttering the historical list.
+/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) and,
+/// for in-distro rows, the WSL distro that runs it — only on the active row or
+/// the keyboard-selected row, matching the Figma where the agent icon appears
+/// only on the currently-engaged session and avoids cluttering the historical
+/// list.
+///
+/// The distro rides this suffix ("· copilot · Ubuntu") rather than a leading
+/// `[WSL-Ubuntu]` tag: `matches_source` already narrows the list to the viewing
+/// pane's own execution source, so every visible row shares one location and the
+/// distro reads as identity, not as disambiguation.
 fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     let surface = selected || matches!(s.status, AgentStatus::Working | AgentStatus::Attention);
     if !surface {
         return String::new();
     }
-    let label = match s.cli_source {
-        CliSource::Claude => "claude",
-        CliSource::Codex => "codex",
-        CliSource::Copilot => "copilot",
-        CliSource::Gemini => "gemini",
-        CliSource::OpenCode => "opencode",
-        CliSource::Unknown(_) => return String::new(),
+    let cli = match s.cli_source {
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
+        CliSource::Copilot => Some("copilot"),
+        CliSource::Gemini => Some("gemini"),
+        CliSource::OpenCode => Some("opencode"),
+        CliSource::Unknown(_) => None,
     };
-    format!("· {}", label)
+    let distro = match &s.location {
+        SessionLocation::Wsl { distro } => Some(distro.as_str()),
+        SessionLocation::Host => None,
+    };
+    [cli, distro]
+        .into_iter()
+        .flatten()
+        .map(|part| format!("· {part}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Surface a tiny "originated from the Intelligent Terminal agent pane"
@@ -647,12 +662,6 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
-    // WSL rows get a bracketed `WSL-<distro>` tag (e.g. "[WSL-Ubuntu] ") so
-    // the user can tell in-distro sessions from host ones. WSL rows are never
-    // AgentPane, so this branch is exclusive with the one below.
-    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
-        return Some(format!("[WSL-{distro}] "));
-    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -1141,7 +1150,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_prefix_shows_distro_for_wsl_rows() {
+    fn cli_suffix_appends_the_wsl_distro() {
         let s = AgentSession {
             key:              "abc".to_string(),
             cli_source:       CliSource::Copilot,
@@ -1160,7 +1169,18 @@ mod tests {
             origin:           SessionOrigin::Unknown,
             location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
         };
-        assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
+        assert_eq!(cli_suffix_for(&s, true), "· copilot · Ubuntu");
+        // The distro follows the provider's surfacing rule, so an unselected
+        // idle row stays clean.
+        assert_eq!(cli_suffix_for(&s, false), String::new());
+        // No provider to name still leaves the distro worth showing.
+        let unknown = AgentSession {
+            cli_source: CliSource::Unknown(String::new()),
+            ..s.clone()
+        };
+        assert_eq!(cli_suffix_for(&unknown, true), "· Ubuntu");
+        // WSL rows no longer carry a leading tag.
+        assert_eq!(origin_prefix_for(&s), None);
     }
 
     /// Release checklist §4 "Session states": the inline activity badge shown next to a session

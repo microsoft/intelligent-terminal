@@ -454,7 +454,8 @@ at all, a pooled agent for its source exists.
 
 ### Still in place
 
-- The `[WSL-<distro>]` row tag (`origin_prefix_for`).
+- Naming the distro on the row, now as a `· <distro>` suffix beside the CLI
+  provider (`cli_suffix_for`) rather than a leading `[WSL-<distro>]` tag.
 - Resume back into the distro, including the `wsl -d <distro> --cd ...` command
   shape and the suppression of Shift+Enter "resume in agent pane" for WSL rows.
 - `SessionLocation` on the wire, which is now load-bearing for filtering rather
