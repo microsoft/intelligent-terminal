@@ -250,6 +250,9 @@ pub(crate) fn spawn_agent_process(
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
     configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
+    if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
+        cmd.arg("--omit=optional");
+    }
 
     // Give the agent CLI a fresh PATH and make this package's `wta.exe`
     // App Execution Alias the first match. The package-specific alias directory
@@ -399,16 +402,47 @@ fn configure_child_environment(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
 ) -> Result<Option<crate::agent_registry::ByokMode>> {
-    match environment_policy {
+    let profile = resolve_spawn_profile(agent_cmd, agent_id);
+    let configured_provider = match environment_policy {
         ChildEnvironmentPolicy::ApplySharedProvider => {
-            let profile = resolve_spawn_profile(agent_cmd, agent_id);
             crate::custom_model_provider::configure_child(command, profile.byok_mode)
         }
         ChildEnvironmentPolicy::CleanCloudDiscovery => {
             crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
             Ok(None)
         }
-    }
+    }?;
+    configure_adapter_executable_environment(command, profile, crate::agent_check::find_exe)?;
+    Ok(configured_provider)
+}
+
+fn configure_adapter_executable_environment(
+    command: &mut tokio::process::Command,
+    profile: &crate::agent_registry::AgentProfile,
+    find_executable: impl FnOnce(&str) -> Option<String>,
+) -> Result<()> {
+    let (variable, missing_message) = match profile.id {
+        crate::agent_registry::CLAUDE_AGENT_ID => (
+            "CLAUDE_CODE_EXECUTABLE",
+            "Claude native binary not found. Reinstall Claude Code or set \
+             CLAUDE_CODE_EXECUTABLE to the full path of claude.exe",
+        ),
+        crate::agent_registry::CODEX_AGENT_ID => (
+            "CODEX_PATH",
+            "Codex executable not found. Reinstall Codex or set CODEX_PATH to its full path",
+        ),
+        _ => return Ok(()),
+    };
+    let executable = find_executable(profile.id).ok_or_else(|| anyhow!(missing_message))?;
+    command.env(variable, executable);
+    Ok(())
+}
+
+fn should_omit_optional_dependencies(agent_cmd: &str, agent_id: Option<&str>) -> bool {
+    matches!(
+        resolve_spawn_profile(agent_cmd, agent_id).id,
+        crate::agent_registry::CLAUDE_AGENT_ID | crate::agent_registry::CODEX_AGENT_ID
+    )
 }
 
 /// Spawn an ACP agent in the selected per-tab execution source.
@@ -635,6 +669,59 @@ mod tests {
                 "cloud policy must scrub {key}"
             );
         }
+    }
+
+    #[test]
+    fn adapter_spawns_use_the_same_executables_as_preflight() {
+        for (agent_id, variable, executable) in [
+            ("claude", "CLAUDE_CODE_EXECUTABLE", r"C:\Claude\claude.exe"),
+            ("codex", "CODEX_PATH", r"C:\Codex\codex.exe"),
+        ] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            configure_adapter_executable_environment(&mut command, profile, |requested_id| {
+                assert_eq!(requested_id, agent_id);
+                Some(executable.to_string())
+            })
+            .unwrap();
+            let configured_env: std::collections::HashMap<_, _> =
+                command.as_std().get_envs().collect();
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(variable)),
+                Some(&Some(std::ffi::OsStr::new(executable)))
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_spawns_fail_before_launch_when_preflight_executable_is_missing() {
+        for agent_id in ["claude", "codex"] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            let error = configure_adapter_executable_environment(&mut command, profile, |_| None)
+                .unwrap_err();
+            assert!(error.to_string().contains("not found"));
+        }
+    }
+
+    #[test]
+    fn only_builtin_host_adapters_omit_optional_npm_dependencies() {
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
+            Some("claude")
+        ));
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
+            Some("codex")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "npx -y @example/custom-agent",
+            Some("custom:test")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "copilot --acp --stdio",
+            Some("copilot")
+        ));
     }
 
     #[test]

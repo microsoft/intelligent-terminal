@@ -9,6 +9,7 @@
 #include "CustomModelProviderEntry.g.cpp"
 #include "EnumEntry.h"
 #include "../inc/AcpModelUtils.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
@@ -171,10 +172,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // installed — the dropdown only offers choices the user can actually
         // launch.
         const auto filteredAcp = Reg::FilteredAcpAgents();
+        const auto availableAcpAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
         std::vector<Editor::AgentEntry> acpEntries;
         for (const auto& a : filteredAcp)
         {
-            if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
+            if (!availableAcpAgents.contains(std::wstring{ a.id }))
             {
                 continue;
             }
