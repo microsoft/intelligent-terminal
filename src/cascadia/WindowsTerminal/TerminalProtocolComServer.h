@@ -139,6 +139,7 @@ private:
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);
+    static void _dispatchAgentSessionsRetiredToPage(const winrt::hstring& eventJson);
 
     static WindowEmperor* s_emperor;
 };

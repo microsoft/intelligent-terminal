@@ -26,19 +26,116 @@
 
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <wil/resource.h>
+#include <winrt/Windows.Foundation.h>
 
 namespace winrt::TerminalApp::implementation
 {
     namespace details
     {
+        class LiveObjectGenerationTracker
+        {
+        public:
+            uint64_t Get(const winrt::Windows::Foundation::IInspectable& object);
+
+        private:
+            struct Entry
+            {
+                winrt::weak_ref<winrt::Windows::Foundation::IInspectable> object;
+                uint64_t generation;
+            };
+
+            std::mutex _mutex;
+            uint64_t _nextGeneration{ 0 };
+            std::vector<Entry> _entries;
+        };
+
+        struct RetirementRegistration
+        {
+            std::string operationId;
+            bool shouldPublish{ false };
+            bool alreadyCompleted{ false };
+        };
+
+        class RetirementCoordinator
+        {
+        public:
+            static constexpr size_t CompletedHistoryLimit{ 64 };
+
+            std::string CreateRequestId();
+            RetirementRegistration Register(bool scopeAll, std::string_view reason, std::string_view requestId = {});
+            bool Complete(std::string_view operationId, bool expireAfterContinuations = false);
+            void ReleaseContinuation(std::string_view operationId);
+            void Expire(std::string_view operationId);
+            bool ClaimAction(std::string_view operationId, std::string_view action);
+
+        private:
+            struct Operation
+            {
+                bool completed{ false };
+                bool expireAfterContinuations{ false };
+                bool recordedInHistory{ false };
+                size_t continuationCount{ 0 };
+                std::optional<std::string> requestId;
+                std::unordered_set<std::string> claimedActions;
+            };
+
+            std::string _CreateIdLocked(std::string_view kind);
+            void _EraseLocked(const std::string& operationId);
+            void _FinalizeCompletedLocked(std::unordered_map<std::string, Operation>::iterator operation);
+            void _PruneCompletedLocked();
+
+            std::mutex _mutex;
+            uint64_t _nextOperationId{ 0 };
+            std::unordered_map<std::string, Operation> _operations;
+            std::unordered_map<std::string, std::string> _allOperationsByRequest;
+            std::deque<std::string> _completedOperations;
+        };
+
+        class TabRetirementTracker
+        {
+        public:
+            bool BeginRebuild(std::string_view tabId);
+            bool RequestClose(std::string_view tabId);
+            bool Complete(std::string_view tabId);
+
+        private:
+            std::unordered_map<std::string, bool> _closeRequested;
+        };
+
+        class RestartSuppressionTracker
+        {
+        public:
+            void Mark(std::string_view tabId);
+            void Clear(std::string_view tabId);
+            bool Consume(std::string_view tabId);
+
+        private:
+            std::unordered_map<std::string, std::chrono::steady_clock::time_point> _marks;
+        };
+
+        class CoalescedRequest
+        {
+        public:
+            void Queue(std::string requestId);
+            std::optional<std::string> Take();
+            void Clear();
+            bool Pending() const noexcept;
+
+        private:
+            std::optional<std::string> _requestId;
+        };
+
         constexpr bool IsValidEnvironmentOverride(const std::wstring_view name, const std::wstring_view value) noexcept
         {
             return !name.empty() &&
@@ -138,6 +235,17 @@ namespace winrt::TerminalApp::implementation
                      std::span<const std::wstring> extraArgs,
                      std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
+        std::string CreateRetirementRequestId();
+        details::RetirementRegistration RegisterRetirement(
+            bool scopeAll,
+            std::string_view reason,
+            std::string_view requestId = {});
+        bool CompleteRetirement(std::string_view operationId, bool expireAfterContinuations = false);
+        void ReleaseRetirementContinuation(std::string_view operationId);
+        void ExpireRetirement(std::string_view operationId);
+        bool ClaimRetirementAction(std::string_view operationId, std::string_view action);
+        uint64_t GetSettingsGeneration(const winrt::Windows::Foundation::IInspectable& settings);
+
         /// Whether wta is currently spawned. Becomes false after a
         /// crash is observed by the wait callback, or after the last
         /// pane releases.
@@ -219,24 +327,6 @@ namespace winrt::TerminalApp::implementation
         std::wstring _cachedWtaPath;
         std::vector<std::wstring> _cachedExtraArgs;
         std::vector<std::pair<std::wstring, std::wstring>> _cachedEnvironment;
-        // Wall-clock-ish stamp of the most recent successful spawn.
-        // Used by the no-arg `Restart()` to dedup the fan-out from
-        // `_dispatchRestartAgentStackToPage`: every open window's
-        // `OnRestartAgentStackRequested` calls `Restart()` on its own
-        // UI thread, and without dedup they sequentially kill each
-        // other's freshly-spawned masters. A short time window is
-        // enough because the fan-out runs in tight succession on
-        // adjacent UI-thread ticks.
-        std::optional<std::chrono::steady_clock::time_point> _lastRespawn;
-        // Stamp of the most recent *restart request* that actually respawned
-        // the master (set in the no-arg `Restart()` after a successful spawn).
-        // The fan-out dedup keys off THIS, not `_lastRespawn`: `_lastRespawn`
-        // is also stamped by the initial spawn, so keying on it would wrongly
-        // suppress a legitimate restart that fires shortly after the master
-        // first comes up (e.g. an auth-recovery restart against a freshly
-        // poisoned master). Keyed on the last restart, only restart-after-
-        // restart (the true fan-out duplicate) is suppressed.
-        std::optional<std::chrono::steady_clock::time_point> _lastRestartRequest;
         // "Degraded" latch: set when the master dies UNEXPECTEDLY
         // (crash/OOM/external kill, observed by the wait callback) while
         // panes still hold refs. While set, `AcquirePane` refuses to
@@ -249,5 +339,7 @@ namespace winrt::TerminalApp::implementation
         // `!_process.is_valid()`, which is also true on a clean cold start
         // or after the last release — those MUST still spawn.
         bool _degraded{ false };
+        details::RetirementCoordinator _retirementCoordinator;
+        details::LiveObjectGenerationTracker _settingsGenerations;
     };
 }

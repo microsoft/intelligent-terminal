@@ -12,6 +12,23 @@ using namespace winrt::TerminalApp::implementation;
 
 namespace TerminalAppUnitTests
 {
+    struct GenerationTestObject :
+        winrt::implements<GenerationTestObject, winrt::Windows::Foundation::IStringable>
+    {
+        explicit GenerationTestObject(winrt::hstring value) :
+            _value{ std::move(value) }
+        {
+        }
+
+        winrt::hstring ToString() const
+        {
+            return _value;
+        }
+
+    private:
+        winrt::hstring _value;
+    };
+
     class SharedWtaTests
     {
         TEST_CLASS(SharedWtaTests);
@@ -24,6 +41,19 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsEqualsInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentValue);
+        TEST_METHOD(AllScopeRetirementJoinsSameRequest);
+        TEST_METHOD(LiveSettingsObjectSharesGeneration);
+        TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
+        TEST_METHOD(DistinctAllScopeRequestsRemainDistinct);
+        TEST_METHOD(TabScopeRetirementIsNeverDeduplicated);
+        TEST_METHOD(RetirementActionIsClaimedOnce);
+        TEST_METHOD(TimedOutSettingsRetirementKeepsRestartClaimableAcrossPages);
+        TEST_METHOD(TimedOutRestartRetirementKeepsRestartClaimableAcrossPages);
+        TEST_METHOD(CompletedRetirementHistoryIsBounded);
+        TEST_METHOD(ExpiredRetirementRequestCanRegisterAgain);
+        TEST_METHOD(CloseSupersedesPendingRebuild);
+        TEST_METHOD(RestartSuppressionClearsBeforeReopen);
+        TEST_METHOD(RepeatedRestartRequestsAreCoalescedOnCompletion);
     };
 
     void SharedWtaTests::EmptyEnvironmentOverridesInheritParent()
@@ -113,5 +143,212 @@ namespace TerminalAppUnitTests
     {
         constexpr wchar_t value[]{ L'd', L'e', L'b', L'u', L'g', L'\0', L't', L'r', L'a', L'c', L'e' };
         VERIFY_IS_FALSE(details::IsValidEnvironmentOverride(L"WTA_LOG", std::wstring_view{ value, std::size(value) }));
+    }
+
+    void SharedWtaTests::AllScopeRetirementJoinsSameRequest()
+    {
+        details::RetirementCoordinator coordinator;
+
+        const auto first = coordinator.Register(true, "restart_agent_stack", "request-1");
+        const auto second = coordinator.Register(true, "restart_agent_stack", "request-1");
+
+        VERIFY_IS_FALSE(first.operationId.empty());
+        VERIFY_IS_TRUE(first.shouldPublish);
+        VERIFY_IS_FALSE(second.shouldPublish);
+        VERIFY_ARE_EQUAL(first.operationId, second.operationId);
+
+        VERIFY_IS_TRUE(coordinator.Complete(first.operationId));
+        coordinator.ReleaseContinuation(first.operationId);
+        const auto lateJoin = coordinator.Register(true, "restart_agent_stack", "request-1");
+        VERIFY_ARE_EQUAL(first.operationId, lateJoin.operationId);
+        VERIFY_IS_TRUE(lateJoin.alreadyCompleted);
+        coordinator.ReleaseContinuation(lateJoin.operationId);
+    }
+
+    void SharedWtaTests::LiveSettingsObjectSharesGeneration()
+    {
+        details::LiveObjectGenerationTracker tracker;
+        const auto settings = winrt::make<GenerationTestObject>(L"A");
+        const auto sameSettings = settings;
+
+        VERIFY_ARE_EQUAL(tracker.Get(settings), tracker.Get(sameSettings));
+    }
+
+    void SharedWtaTests::LaterSettingsObjectGetsNewGenerationAfterValueReuse()
+    {
+        details::LiveObjectGenerationTracker tracker;
+
+        auto settings = winrt::make<GenerationTestObject>(L"A");
+        const auto firstGeneration = tracker.Get(settings);
+        settings = nullptr;
+
+        auto replacement = winrt::make<GenerationTestObject>(L"B");
+        const auto secondGeneration = tracker.Get(replacement);
+        replacement = nullptr;
+
+        const auto sameValueReplacement = winrt::make<GenerationTestObject>(L"A");
+        const auto thirdGeneration = tracker.Get(sameValueReplacement);
+
+        VERIFY_IS_LESS_THAN(firstGeneration, secondGeneration);
+        VERIFY_IS_LESS_THAN(secondGeneration, thirdGeneration);
+    }
+
+    void SharedWtaTests::DistinctAllScopeRequestsRemainDistinct()
+    {
+        details::RetirementCoordinator coordinator;
+
+        const auto first = coordinator.Register(true, "settings_master_configuration_changed", "settings-a");
+        const auto second = coordinator.Register(true, "settings_master_configuration_changed", "settings-b");
+
+        VERIFY_ARE_NOT_EQUAL(first.operationId, second.operationId);
+        VERIFY_IS_TRUE(coordinator.ClaimAction(first.operationId, "restart_master"));
+        VERIFY_IS_TRUE(coordinator.ClaimAction(second.operationId, "restart_master"));
+    }
+
+    void SharedWtaTests::TabScopeRetirementIsNeverDeduplicated()
+    {
+        details::RetirementCoordinator coordinator;
+
+        const auto first = coordinator.Register(false, "agent_switch");
+        const auto second = coordinator.Register(false, "agent_switch");
+
+        VERIFY_IS_TRUE(first.shouldPublish);
+        VERIFY_IS_TRUE(second.shouldPublish);
+        VERIFY_ARE_NOT_EQUAL(first.operationId, second.operationId);
+    }
+
+    void SharedWtaTests::RetirementActionIsClaimedOnce()
+    {
+        details::RetirementCoordinator coordinator;
+        const auto operation = coordinator.Register(true, "restart_agent_stack", "request-1");
+
+        VERIFY_IS_TRUE(coordinator.ClaimAction(operation.operationId, "restart_master"));
+        VERIFY_IS_FALSE(coordinator.ClaimAction(operation.operationId, "restart_master"));
+    }
+
+    void SharedWtaTests::TimedOutSettingsRetirementKeepsRestartClaimableAcrossPages()
+    {
+        details::RetirementCoordinator coordinator;
+        const auto firstPage = coordinator.Register(
+            true,
+            "settings_master_configuration_changed",
+            "settings-timeout");
+        const auto secondPage = coordinator.Register(
+            true,
+            "settings_master_configuration_changed",
+            "settings-timeout");
+
+        VERIFY_ARE_EQUAL(firstPage.operationId, secondPage.operationId);
+        VERIFY_IS_TRUE(coordinator.Complete(firstPage.operationId, true));
+        coordinator.ReleaseContinuation(firstPage.operationId);
+
+        VERIFY_IS_TRUE(coordinator.ClaimAction(secondPage.operationId, "restart_master"));
+        VERIFY_IS_FALSE(coordinator.ClaimAction(firstPage.operationId, "restart_master"));
+        coordinator.ReleaseContinuation(secondPage.operationId);
+
+        VERIFY_IS_FALSE(coordinator.ClaimAction(firstPage.operationId, "restart_master"));
+        VERIFY_IS_FALSE(coordinator.Complete(firstPage.operationId));
+    }
+
+    void SharedWtaTests::TimedOutRestartRetirementKeepsRestartClaimableAcrossPages()
+    {
+        details::RetirementCoordinator coordinator;
+        const auto firstPage = coordinator.Register(true, "restart_agent_stack", "restart-timeout");
+        const auto secondPage = coordinator.Register(true, "restart_agent_stack", "restart-timeout");
+
+        VERIFY_ARE_EQUAL(firstPage.operationId, secondPage.operationId);
+        VERIFY_IS_TRUE(coordinator.Complete(firstPage.operationId, true));
+        VERIFY_IS_TRUE(coordinator.ClaimAction(firstPage.operationId, "restart_master"));
+        coordinator.ReleaseContinuation(firstPage.operationId);
+
+        VERIFY_IS_FALSE(coordinator.ClaimAction(secondPage.operationId, "restart_master"));
+        coordinator.ReleaseContinuation(secondPage.operationId);
+
+        const auto replacement = coordinator.Register(true, "restart_agent_stack", "restart-timeout");
+        VERIFY_ARE_NOT_EQUAL(firstPage.operationId, replacement.operationId);
+        VERIFY_IS_TRUE(replacement.shouldPublish);
+    }
+
+    void SharedWtaTests::CompletedRetirementHistoryIsBounded()
+    {
+        details::RetirementCoordinator coordinator;
+        const auto inFlight = coordinator.Register(true, "restart_agent_stack", "in-flight");
+        std::string firstCompletedId;
+        std::string lastCompletedId;
+
+        for (size_t i = 0; i <= details::RetirementCoordinator::CompletedHistoryLimit; ++i)
+        {
+            const auto requestId = "completed-" + std::to_string(i);
+            const auto operation = coordinator.Register(true, "restart_agent_stack", requestId);
+            if (i == 0)
+            {
+                firstCompletedId = operation.operationId;
+            }
+            lastCompletedId = operation.operationId;
+            VERIFY_IS_TRUE(coordinator.Complete(operation.operationId));
+            coordinator.ReleaseContinuation(operation.operationId);
+        }
+
+        const auto evicted = coordinator.Register(true, "restart_agent_stack", "completed-0");
+        VERIFY_ARE_NOT_EQUAL(firstCompletedId, evicted.operationId);
+        VERIFY_IS_TRUE(evicted.shouldPublish);
+
+        const auto retained = coordinator.Register(
+            true,
+            "restart_agent_stack",
+            "completed-" + std::to_string(details::RetirementCoordinator::CompletedHistoryLimit));
+        VERIFY_ARE_EQUAL(lastCompletedId, retained.operationId);
+        VERIFY_IS_TRUE(retained.alreadyCompleted);
+        coordinator.ReleaseContinuation(retained.operationId);
+
+        VERIFY_IS_TRUE(coordinator.ClaimAction(inFlight.operationId, "restart_master"));
+        VERIFY_IS_TRUE(coordinator.Complete(inFlight.operationId));
+        coordinator.ReleaseContinuation(inFlight.operationId);
+    }
+
+    void SharedWtaTests::ExpiredRetirementRequestCanRegisterAgain()
+    {
+        details::RetirementCoordinator coordinator;
+        const auto first = coordinator.Register(true, "restart_agent_stack", "request-1");
+
+        coordinator.Expire(first.operationId);
+        const auto replacement = coordinator.Register(true, "restart_agent_stack", "request-1");
+
+        VERIFY_ARE_NOT_EQUAL(first.operationId, replacement.operationId);
+        VERIFY_IS_TRUE(replacement.shouldPublish);
+    }
+
+    void SharedWtaTests::CloseSupersedesPendingRebuild()
+    {
+        details::TabRetirementTracker tracker;
+
+        VERIFY_IS_TRUE(tracker.BeginRebuild("tab-1"));
+        VERIFY_IS_FALSE(tracker.RequestClose("tab-1"));
+        VERIFY_IS_FALSE(tracker.Complete("tab-1"));
+    }
+
+    void SharedWtaTests::RestartSuppressionClearsBeforeReopen()
+    {
+        details::RestartSuppressionTracker tracker;
+
+        tracker.Mark("tab-1");
+        tracker.Clear("tab-1");
+        VERIFY_IS_FALSE(tracker.Consume("tab-1"));
+
+        tracker.Mark("tab-1");
+        VERIFY_IS_TRUE(tracker.Consume("tab-1"));
+        VERIFY_IS_FALSE(tracker.Consume("tab-1"));
+    }
+
+    void SharedWtaTests::RepeatedRestartRequestsAreCoalescedOnCompletion()
+    {
+        details::CoalescedRequest pending;
+
+        pending.Queue("restart-1");
+        pending.Queue("restart-2");
+        VERIFY_IS_TRUE(pending.Pending());
+        pending.Clear();
+        VERIFY_IS_FALSE(pending.Pending());
+        VERIFY_IS_FALSE(pending.Take().has_value());
     }
 }

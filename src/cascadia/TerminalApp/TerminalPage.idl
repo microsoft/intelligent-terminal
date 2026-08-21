@@ -215,5 +215,9 @@ namespace TerminalApp
         // re-warms a fresh helper, resuming `session_id`. Suppressed when
         // the pane was torn down deliberately (Ctrl+C×2, tab close).
         void OnAgentPaneRestartRequested(String eventJson);
+
+        // Inbound completion for a destructive agent-session retirement:
+        // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
+        void OnAgentSessionsRetired(String eventJson);
     }
 }

@@ -249,6 +249,12 @@ namespace winrt::TerminalApp::implementation
 
     TerminalPage::~TerminalPage()
     {
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        for (const auto& retirement : _pendingAgentRetirements)
+        {
+            sharedWta.ReleaseRetirementContinuation(retirement.first);
+        }
+
         // wta-helper processes are conpty children of TermControl and so
         // are torn down by the standard pane teardown path. No per-page
         // wta-process watch state to disarm here (removed in Phase 5).
@@ -319,6 +325,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
         _settings = settings;
+        if (!firstLoad && needRefreshUI)
+        {
+            const auto generation =
+                winrt::TerminalApp::implementation::SharedWta::Instance().GetSettingsGeneration(settings);
+            _settingsReloadRequestId =
+                "settings-" +
+                std::to_string(generation) +
+                "-";
+        }
 
         // Seed the agent-settings baseline on first load so that later
         // in-memory mutations (e.g. the bottom-bar agent selector click,
@@ -1672,6 +1687,37 @@ namespace winrt::TerminalApp::implementation
         return snapshot;
     }
 
+    std::string TerminalPage::_AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot)
+    {
+        Json::Value identity{ Json::objectValue };
+        identity["acp_agent"] = winrt::to_string(winrt::hstring{ snapshot.acpAgent });
+        identity["acp_custom_command"] = winrt::to_string(winrt::hstring{ snapshot.acpCustomCommand });
+        identity["acp_model"] = winrt::to_string(winrt::hstring{ snapshot.acpModel });
+        if (snapshot.customModelLaunch)
+        {
+            const auto& custom = *snapshot.customModelLaunch;
+            auto& value = identity["custom_model"];
+            value["selection_id"] = winrt::to_string(winrt::hstring{ custom.selectionId });
+            value["endpoint"] = winrt::to_string(winrt::hstring{ custom.endpoint });
+            value["model_id"] = winrt::to_string(winrt::hstring{ custom.modelId });
+            value["credential_id"] = winrt::to_string(winrt::hstring{ custom.credentialId });
+            value["api_key_required"] = custom.apiKeyRequired;
+        }
+        auto& profiles = identity["profile_backends"];
+        profiles = Json::arrayValue;
+        for (const auto& [profileGuid, backend] : snapshot.profileBackends)
+        {
+            Json::Value value{ Json::objectValue };
+            value["profile"] = winrt::to_string(winrt::to_hstring(profileGuid));
+            value["backend"] = winrt::to_string(winrt::hstring{ backend });
+            profiles.append(std::move(value));
+        }
+
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        return Json::writeString(writer, identity);
+    }
+
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
         // Agent identity and effective model changes rebuild helpers. A profile
@@ -1799,7 +1845,7 @@ namespace winrt::TerminalApp::implementation
                 // event is recognized as a deliberate teardown and skipped
                 // by `OnAgentPaneRestartRequested` rather than respawning a
                 // pane we just intentionally closed.
-                _agentPaneRestartSuppression[tab->StableId()] = std::chrono::steady_clock::now();
+                _agentPaneRestartSuppression.Mark(winrt::to_string(tab->StableId()));
             }
             _agentPaneLog("_TeardownAgentPane: closing agent pane on tab");
             pane->Close();
@@ -1830,22 +1876,50 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        const auto tabId = tab->StableId();
+        const auto tabKey = winrt::to_string(tabId);
+        if (!_agentTabRetirements.BeginRebuild(tabKey))
+        {
+            _agentPaneLog("_RebuildAgentPaneForTab: retirement already pending for tab");
+            return;
+        }
         const bool hadPane = tab->FindAgentPane() != nullptr;
-        _TeardownAgentPane(tab);
+        _BeginAgentSessionRetirement(
+            false,
+            { tabId },
+            "agent_switch",
+            {},
+            [weakThis = get_weak(), tabId, tabKey, hadPane](const std::string_view) {
+                if (const auto strongThis = weakThis.get())
+                {
+                    const bool shouldReopen = strongThis->_agentTabRetirements.Complete(tabKey);
+                    const auto currentTab = strongThis->_FindTabByStableId(tabId);
+                    if (!currentTab)
+                    {
+                        return;
+                    }
 
-        const auto focusedTab = _GetFocusedTabImpl();
-        if (focusedTab && focusedTab == tab)
-        {
-            // `/agent` was entered in this tab's visible agent pane, so reopen
-            // a visible pane immediately.
-            _OpenOrReuseAgentPane(false, L"AgentSwitch");
-        }
-        else if (hadPane)
-        {
-            // Background tab: respawn a stashed (pre-warmed) helper so the
-            // new agent takes effect without stealing focus.
-            _AutoCreateHiddenAgentPaneShared(tab, /*intoSessionsView*/ false, /*autoStash*/ true);
-        }
+                    strongThis->_TeardownAgentPane(currentTab);
+                    if (!shouldReopen)
+                    {
+                        currentTab->SetAgentChipOverride(std::nullopt);
+                        return;
+                    }
+                    strongThis->_agentPaneRestartSuppression.Clear(tabKey);
+                    const auto focusedTab = strongThis->_GetFocusedTabImpl();
+                    if (focusedTab && focusedTab == currentTab)
+                    {
+                        strongThis->_OpenOrReuseAgentPane(false, L"AgentSwitch");
+                    }
+                    else if (hadPane)
+                    {
+                        strongThis->_AutoCreateHiddenAgentPaneShared(
+                            currentTab,
+                            /*intoSessionsView*/ false,
+                            /*autoStash*/ true);
+                    }
+                }
+            });
     }
 
     std::shared_ptr<Pane> TerminalPage::_WrapInAgentPaneContent(std::shared_ptr<Pane> rawPane)
@@ -1906,6 +1980,130 @@ namespace winrt::TerminalApp::implementation
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         _RaiseProtocolEvent("reset_tab_session", tabParams);
+    }
+
+    void TerminalPage::_BeginAgentSessionRetirement(
+        const bool scopeAll,
+        std::vector<winrt::hstring> tabIds,
+        std::string reason,
+        std::string requestId,
+        std::function<void(std::string_view)> continuation)
+    {
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        const auto registration = sharedWta.RegisterRetirement(scopeAll, reason, requestId);
+        if (registration.operationId.empty())
+        {
+            _agentPaneLog("_BeginAgentSessionRetirement: failed to allocate operation id; continuing teardown");
+            continuation({});
+            return;
+        }
+
+        const auto [pending, inserted] = _pendingAgentRetirements.emplace(
+            registration.operationId,
+            _PendingAgentRetirement{ std::move(continuation), reason });
+        if (!inserted)
+        {
+            sharedWta.ReleaseRetirementContinuation(registration.operationId);
+            _agentPaneLog("_BeginAgentSessionRetirement: page already joined operation");
+            return;
+        }
+
+        if (registration.alreadyCompleted)
+        {
+            _CompleteAgentSessionRetirement(registration.operationId, false);
+            return;
+        }
+
+        if (registration.shouldPublish)
+        {
+            Json::Value params;
+            params["operation_id"] = registration.operationId;
+            params["scope"] = scopeAll ? "all" : "tabs";
+            params["reason"] = reason;
+            params["tab_ids"] = Json::arrayValue;
+            for (const auto& tabId : tabIds)
+            {
+                if (!tabId.empty())
+                {
+                    params["tab_ids"].append(winrt::to_string(tabId));
+                }
+            }
+            _RaiseProtocolEvent("retire_agent_sessions", params);
+        }
+
+        _WaitForAgentSessionRetirement(registration.operationId);
+    }
+
+    safe_void_coroutine TerminalPage::_WaitForAgentSessionRetirement(std::string operationId)
+    {
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        co_await winrt::resume_after(std::chrono::seconds{ 17 });
+        co_await winrt::resume_foreground(dispatcher);
+        if (const auto strongThis = weakThis.get())
+        {
+            strongThis->_CompleteAgentSessionRetirement(operationId, true);
+        }
+    }
+
+    void TerminalPage::_CompleteAgentSessionRetirement(const std::string_view operationId, const bool timedOut)
+    {
+        auto pending = _pendingAgentRetirements.find(std::string{ operationId });
+        if (pending == _pendingAgentRetirements.end())
+        {
+            return;
+        }
+
+        auto continuation = std::move(pending->second.continuation);
+        const auto reason = std::move(pending->second.reason);
+        _pendingAgentRetirements.erase(pending);
+
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        sharedWta.CompleteRetirement(operationId, timedOut);
+        if (timedOut)
+        {
+            _agentPaneLog(
+                "_CompleteAgentSessionRetirement: timed out after 17 seconds; continuing local teardown reason=" + reason);
+        }
+        const auto releaseContinuation = wil::scope_exit([&sharedWta, operationId] {
+            sharedWta.ReleaseRetirementContinuation(operationId);
+        });
+        continuation(operationId);
+    }
+
+    void TerminalPage::OnAgentSessionsRetired(hstring eventJson)
+    {
+        Json::Value event;
+        Json::CharReaderBuilder reader;
+        std::istringstream stream{ winrt::to_string(eventJson) };
+        std::string errors;
+        if (!Json::parseFromStream(reader, stream, &event, &errors) ||
+            !event.isMember("params") || !event["params"].isObject())
+        {
+            _agentPaneLog("OnAgentSessionsRetired: malformed event");
+            return;
+        }
+
+        const auto& params = event["params"];
+        if (!params.isMember("operation_id") || !params["operation_id"].isString() ||
+            params["operation_id"].asString().empty() ||
+            !params.isMember("success") || !params["success"].isBool() ||
+            !params.isMember("reason") || !params["reason"].isString() ||
+            !params.isMember("failed_tabs") || !params["failed_tabs"].isArray())
+        {
+            _agentPaneLog("OnAgentSessionsRetired: invalid completion payload");
+            return;
+        }
+
+        const auto operationId = params["operation_id"].asString();
+        winrt::TerminalApp::implementation::SharedWta::Instance().CompleteRetirement(operationId);
+        if (!params["success"].asBool())
+        {
+            _agentPaneLog(
+                "OnAgentSessionsRetired: master used logical fallback for " +
+                std::to_string(params["failed_tabs"].size()) + " tab(s)");
+        }
+        _CompleteAgentSessionRetirement(operationId, false);
     }
 
     // Tells wta that a tab has been destroyed so it can drop the per-tab
@@ -2570,6 +2768,12 @@ namespace winrt::TerminalApp::implementation
         const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
         tab->SplitPaneAtRoot(splitDirection, newPane);
 
+        // A rooted pane is now the authoritative helper generation for this
+        // tab. Deliberate teardown retires the outgoing session before close
+        // (drag replacement sends tab_reset first), so no old recovery event
+        // can legitimately target this replacement after the mark is cleared.
+        _agentPaneRestartSuppression.Clear(winrt::to_string(stableId));
+
         if (autoStash)
         {
             // Pre-warm path: spawn the helper conpty child NOW, then stash
@@ -3176,7 +3380,7 @@ namespace winrt::TerminalApp::implementation
     // Called whenever agent-identity settings may have changed. Diffs the
     // last known snapshot against the current one, tears down + rebuilds
     // the agent pane, and updates the snapshot.
-    void TerminalPage::_RebuildAgentStack()
+    void TerminalPage::_RebuildAgentStack(std::string requestId)
     {
         const auto current = _CaptureAgentSettingsSnapshot();
 
@@ -3261,7 +3465,12 @@ namespace winrt::TerminalApp::implementation
         // Reentrancy guard.
         if (_agentRebuilding)
         {
-            _agentPaneLog("_RebuildAgentStack: already rebuilding, skipping nested trigger");
+            _pendingAgentRebuild = true;
+            if (!requestId.empty())
+            {
+                _pendingAgentRebuildRequestId = std::move(requestId);
+            }
+            _agentPaneLog("_RebuildAgentStack: already rebuilding, queued latest settings reconciliation");
             return;
         }
 
@@ -3275,14 +3484,17 @@ namespace winrt::TerminalApp::implementation
         const auto focusedTab = _GetFocusedTabImpl();
         // Only `==` auto-generates for projected WinRT types — `!=` doesn't.
         const bool canHostPane = focusedTab && !(*focusedTab == _settingsTab);
-        if (!canHostPane)
+        if (!canHostPane && !masterConfigurationChanged)
         {
             _pendingAgentRebuild = true;
+            if (!requestId.empty())
+            {
+                _pendingAgentRebuildRequestId = std::move(requestId);
+            }
             return;
         }
 
         _agentRebuilding = true;
-        auto guard = wil::scope_exit([this]() noexcept { _agentRebuilding = false; });
 
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
@@ -3291,7 +3503,7 @@ namespace winrt::TerminalApp::implementation
         // so every local helper is collected even when its tab has a runtime
         // override. Unselected provider metadata changes stay on the hot path.
         bool hadAny = false;
-        std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
+        std::vector<winrt::hstring> tabIdsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
@@ -3335,88 +3547,111 @@ namespace winrt::TerminalApp::implementation
                 if (tabImpl->FindAgentPane() && affected)
                 {
                     hadAny = true;
-                    tabsThatHadAgentPane.push_back(tabImpl);
+                    tabIdsThatHadAgentPane.push_back(tabImpl->StableId());
                 }
             }
         }
 
-        // Tear down every tab's agent pane first. The user must reopen
-        // each (per-tab toggle) — there's no longer a "shared pane" to
-        // reposition. Tear down is async: the pane's `Closed` handlers
-        // (which call `SharedWta::ReleasePane`) typically haven't fired
-        // yet when control returns to us.
-        for (const auto& tabImpl : tabsThatHadAgentPane)
-        {
-            _TeardownAgentPane(tabImpl);
-        }
-
-        // Built-in agent identity changes do not restart the master. It is now a
-        // multi-agent broker — it spawns/reuses one agent CLI per distinct
-        // agent command line, driven by each helper's `initialize`
-        // handshake (which carries the tab's agent). The master's own
-        // `--agent` is only a fallback default for helpers that don't
-        // declare one (ours always do), so a global-agent change no longer
-        // requires respawning the master. Tearing down + reopening the
-        // affected (non-override) tabs' helpers is enough: each fresh
-        // helper declares the new global agent and the master lazily
-        // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched. Custom commands and model selections
-        // are exceptions: model/provider launch state is supplied on the
-        // master's trusted launch configuration, and a model change requires a
-        // fresh agent CLI rather than mutating the existing ACP session.
-        if (masterConfigurationChanged)
-        {
-            const auto wtaPath = _DetectWtaPath();
-            const auto extraArgs = _BuildSharedWtaExtraArgs();
-            const auto environment = _BuildSharedWtaEnvironment();
-            if (wtaPath.empty() ||
-                !winrt::TerminalApp::implementation::SharedWta::Instance().Restart(
-                    std::wstring_view{ wtaPath },
-                    extraArgs,
-                    environment))
-            {
-                _agentPaneLog("_RebuildAgentStack: master configuration SharedWta::Restart failed");
-            }
-        }
-
-        if (!hadAny)
+        if (!hadAny && !masterConfigurationChanged)
         {
             _lastAgentSettings = current;
+            _agentRebuilding = false;
             _agentPaneLog("_RebuildAgentStack: no affected agent pane, snapshot only");
             return;
         }
 
-        // A master-configuration restart invalidates every helper, so reconnect
-        // all tabs that had panes: active remains visible and background tabs
-        // are pre-warmed stashed. Built-in changes retain the existing
-        // active-tab behavior and leave overrides untouched.
-        if (const auto activeTab = _GetFocusedTabImpl();
-            masterConfigurationChanged && activeTab)
+        if (masterConfigurationChanged && requestId.empty())
         {
-            for (const auto& tabImpl : tabsThatHadAgentPane)
-            {
-                if (tabImpl == activeTab)
-                {
-                    _OpenOrReuseAgentPane(false, L"SettingsReload");
-                }
-                else
-                {
-                    _AutoCreateHiddenAgentPaneShared(tabImpl,
-                                                     /*intoSessionsView*/ false,
-                                                     /*autoStash*/ true);
-                }
-            }
-        }
-        else if (activeTab &&
-                 std::find(tabsThatHadAgentPane.begin(), tabsThatHadAgentPane.end(), activeTab) != tabsThatHadAgentPane.end())
-        {
-            _OpenOrReuseAgentPane(false, L"SettingsReload");
+            requestId = winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId();
         }
 
-        // Snapshot update at the very end of the change-handling block
-        // so any early-failure path above leaves the snapshot stale and
-        // the next entry re-triggers a rebuild attempt.
-        _lastAgentSettings = current;
+        _BeginAgentSessionRetirement(
+            masterConfigurationChanged,
+            tabIdsThatHadAgentPane,
+            masterConfigurationChanged ? "settings_master_configuration_changed" : "settings_agent_changed",
+            masterConfigurationChanged ? std::move(requestId) : std::string{},
+            [weakThis = get_weak(),
+             current,
+             tabIdsThatHadAgentPane,
+             masterConfigurationChanged](const std::string_view operationId) {
+                if (const auto strongThis = weakThis.get())
+                {
+                    std::vector<winrt::com_ptr<Tab>> tabsToReopen;
+                    for (const auto& tabId : tabIdsThatHadAgentPane)
+                    {
+                        if (const auto tab = strongThis->_FindTabByStableId(tabId);
+                            tab && tab->FindAgentPane())
+                        {
+                            tabsToReopen.push_back(tab);
+                            strongThis->_TeardownAgentPane(tab);
+                        }
+                    }
+
+                    if (masterConfigurationChanged)
+                    {
+                        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+                        if (sharedWta.ClaimRetirementAction(operationId, "restart_master"))
+                        {
+                            const auto wtaPath = strongThis->_DetectWtaPath();
+                            const auto extraArgs = strongThis->_BuildSharedWtaExtraArgs();
+                            const auto environment = strongThis->_BuildSharedWtaEnvironment();
+                            if (wtaPath.empty() ||
+                                !sharedWta.Restart(std::wstring_view{ wtaPath }, extraArgs, environment))
+                            {
+                                _agentPaneLog(
+                                    "_RebuildAgentStack: master configuration SharedWta::Restart failed");
+                            }
+                        }
+                    }
+
+                    const auto activeTab = strongThis->_GetFocusedTabImpl();
+                    if (masterConfigurationChanged)
+                    {
+                        for (const auto& tab : tabsToReopen)
+                        {
+                            strongThis->_agentPaneRestartSuppression.Clear(winrt::to_string(tab->StableId()));
+                            if (activeTab && activeTab == tab)
+                            {
+                                strongThis->_OpenOrReuseAgentPane(false, L"SettingsReload");
+                            }
+                            else
+                            {
+                                strongThis->_AutoCreateHiddenAgentPaneShared(
+                                    tab,
+                                    /*intoSessionsView*/ false,
+                                    /*autoStash*/ true);
+                            }
+                        }
+                    }
+                    else if (activeTab)
+                    {
+                        if (const auto affected = std::find(tabsToReopen.begin(), tabsToReopen.end(), activeTab);
+                            affected != tabsToReopen.end())
+                        {
+                            strongThis->_OpenOrReuseAgentPane(false, L"SettingsReload");
+                        }
+                    }
+
+                    strongThis->_lastAgentSettings = current;
+                    strongThis->_agentRebuilding = false;
+                    const auto latest = strongThis->_CaptureAgentSettingsSnapshot();
+                    const bool settingsChangedAgain = TerminalPage::_AgentSettingsChanged(current, latest);
+                    if (settingsChangedAgain)
+                    {
+                        winrt::TerminalApp::implementation::SharedWta::Instance().ExpireRetirement(operationId);
+                    }
+                    if (const auto pendingRestart = strongThis->_pendingAgentStackRestart.Take())
+                    {
+                        strongThis->_RestartAgentStack(*pendingRestart);
+                    }
+                    else if (std::exchange(strongThis->_pendingAgentRebuild, false) ||
+                             settingsChangedAgain)
+                    {
+                        auto pendingRequest = std::exchange(strongThis->_pendingAgentRebuildRequestId, std::nullopt);
+                        strongThis->_RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
+                    }
+                }
+            });
     }
 
     void TerminalPage::_FlushPendingAgentRebuild()
@@ -3431,7 +3666,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _pendingAgentRebuild = false;
-        _RebuildAgentStack();
+        auto pendingRequest = std::exchange(_pendingAgentRebuildRequestId, std::nullopt);
+        _RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
     }
 
     void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource, std::wstring_view initialAuthAgent)
@@ -5532,13 +5768,28 @@ namespace winrt::TerminalApp::implementation
             // Tab is unknown in this window — belongs to another window.
             return;
         }
-        // Tell wta to drop this tab's ACP session.
-        _NotifyAgentTabReset(ownerTab->StableId());
-        // The agent pane (and its helper) is going away, so any chip
-        // override the helper had set is no longer authoritative. Drop it
-        // here so the chip can't get pinned by a dead helper.
-        ownerTab->SetAgentChipOverride(std::nullopt);
-        _TeardownAgentPane(ownerTab);
+        const auto tabKey = winrt::to_string(tabId);
+        if (!_agentTabRetirements.RequestClose(tabKey))
+        {
+            _agentPaneLog("OnCloseAgentPaneRequested: deferred behind pending retirement");
+            return;
+        }
+        _BeginAgentSessionRetirement(
+            false,
+            { tabId },
+            "close_agent_pane",
+            {},
+            [weakThis = get_weak(), tabId, tabKey](const std::string_view) {
+                if (const auto strongThis = weakThis.get())
+                {
+                    strongThis->_agentTabRetirements.Complete(tabKey);
+                    if (const auto currentTab = strongThis->_FindTabByStableId(tabId))
+                    {
+                        currentTab->SetAgentChipOverride(std::nullopt);
+                        strongThis->_TeardownAgentPane(currentTab);
+                    }
+                }
+            });
     }
 
     void TerminalPage::OnDefaultPasteRequested(hstring eventJson)
@@ -5740,7 +5991,8 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             _agentPaneLog("OnAgentSwitchRequested: persisted cloud model selection");
-            _RebuildAgentStack();
+            _RebuildAgentStack(
+                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
             return;
         }
 
@@ -5809,7 +6061,8 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             _agentPaneLog("OnAgentSwitchRequested: persisted BYOK model selection");
-            _RebuildAgentStack();
+            _RebuildAgentStack(
+                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
             return;
         }
 
@@ -5846,88 +6099,102 @@ namespace winrt::TerminalApp::implementation
     // already respawned the master) sees a valid `_process` and just
     // bumps the refcount — connecting the new helper to the freshly-spawned
     // master under the same stable pipe name.
-    void TerminalPage::OnRestartAgentStackRequested(hstring /*eventJson*/)
+    void TerminalPage::OnRestartAgentStackRequested(hstring eventJson)
+    {
+        std::string requestId;
+        Json::Value event;
+        Json::CharReaderBuilder reader;
+        std::istringstream stream{ winrt::to_string(eventJson) };
+        std::string errors;
+        if (Json::parseFromStream(reader, stream, &event, &errors) &&
+            event.isMember("params") && event["params"].isObject() &&
+            event["params"].isMember("request_id") && event["params"]["request_id"].isString())
+        {
+            requestId = event["params"]["request_id"].asString();
+        }
+        if (requestId.empty())
+        {
+            requestId = winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId();
+        }
+        _RestartAgentStack(std::move(requestId));
+    }
+
+    void TerminalPage::_RestartAgentStack(std::string requestId)
     {
         _agentPaneLog("OnRestartAgentStackRequested: /restart received from wta");
 
-        // Reentrancy guard — share the flag with the settings-driven
-        // `_RebuildAgentStack` path. If a settings reload is racing this
-        // request, skip; the reload will pick up where we'd leave off.
         if (_agentRebuilding)
         {
-            _agentPaneLog("OnRestartAgentStackRequested: already rebuilding, skipping");
+            _pendingAgentStackRestart.Queue(std::move(requestId));
+            _agentPaneLog("OnRestartAgentStackRequested: rebuild pending; queued restart");
             return;
         }
         _agentRebuilding = true;
-        auto guard = wil::scope_exit([this]() noexcept { _agentRebuilding = false; });
 
-        // Mirror _RebuildAgentStack's "find every tab that has an agent
-        // pane right now" scan; teardown is per-tab so we have to enumerate
-        // before mutating.
-        std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
+        std::vector<winrt::hstring> tabIds;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
                 if (tabImpl->FindAgentPane())
                 {
-                    tabsThatHadAgentPane.push_back(tabImpl);
+                    tabIds.push_back(tabImpl->StableId());
                 }
             }
         }
 
-        if (tabsThatHadAgentPane.empty())
-        {
-            _agentPaneLog("OnRestartAgentStackRequested: no agent pane in this window, nothing to tear down");
-            // Still kick the master restart — another window may have
-            // panes that need master reset. SharedWta::Restart no-ops if
-            // master isn't running, so this is safe either way.
-            winrt::TerminalApp::implementation::SharedWta::Instance().Restart();
-            return;
-        }
+        _BeginAgentSessionRetirement(
+            true,
+            tabIds,
+            "restart_agent_stack",
+            std::move(requestId),
+            [weakThis = get_weak(), tabIds](const std::string_view operationId) {
+                if (const auto strongThis = weakThis.get())
+                {
+                    std::vector<winrt::com_ptr<Tab>> tabsToReopen;
+                    for (const auto& tabId : tabIds)
+                    {
+                        if (const auto tab = strongThis->_FindTabByStableId(tabId);
+                            tab && tab->FindAgentPane())
+                        {
+                            tabsToReopen.push_back(tab);
+                            strongThis->_TeardownAgentPane(tab);
+                        }
+                    }
 
-        for (const auto& tabImpl : tabsThatHadAgentPane)
-        {
-            _TeardownAgentPane(tabImpl);
-        }
+                    auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+                    if (sharedWta.ClaimRetirementAction(operationId, "restart_master") &&
+                        !sharedWta.Restart())
+                    {
+                        _agentPaneLog("OnRestartAgentStackRequested: SharedWta::Restart returned false");
+                    }
 
-        // Force-respawn master with the cached spawn args (same agent CLI,
-        // same per-process settings). Bypasses AcquirePane's refcount so
-        // we don't have to wait for the just-issued teardowns' async
-        // Closed handlers to fire and drive refcount to zero.
-        if (!winrt::TerminalApp::implementation::SharedWta::Instance().Restart())
-        {
-            _agentPaneLog("OnRestartAgentStackRequested: SharedWta::Restart returned false");
-            // Fall through anyway — the reopen below will retry via
-            // AcquirePane, which lazily spawns when _process is invalid.
-        }
+                    const auto activeTab = strongThis->_GetFocusedTabImpl();
+                    for (const auto& tab : tabsToReopen)
+                    {
+                        strongThis->_agentPaneRestartSuppression.Clear(winrt::to_string(tab->StableId()));
+                        if (activeTab && activeTab == tab)
+                        {
+                            strongThis->_OpenOrReuseAgentPane(false, L"RestartAgent");
+                        }
+                        else
+                        {
+                            strongThis->_AutoCreateHiddenAgentPaneShared(
+                                tab,
+                                /*intoSessionsView*/ false,
+                                /*autoStash*/ true);
+                        }
+                    }
 
-        // Reconnect EVERY tab that had an agent pane, not just the active one
-        // — a /restart recovers the whole stack, so a user who restarts from
-        // one pane shouldn't have to re-toggle every other tab's pane by hand.
-        // The active tab is reopened visible (continuity); the rest are
-        // re-warmed stashed, so their helpers reconnect to the fresh master in
-        // the background and the panes restore as soon as the user switches to
-        // them. Recovery sessions aren't resumed (master is brand new with an
-        // empty registry), so chat history starts fresh — same as before.
-        const auto activeTab = _GetFocusedTabImpl();
-        for (const auto& tabImpl : tabsThatHadAgentPane)
-        {
-            const bool isActive = activeTab && activeTab == tabImpl;
-            if (isActive)
-            {
-                // Active tab: reopen visible via the normal path.
-                _OpenOrReuseAgentPane(false, L"RestartAgent");
-            }
-            else
-            {
-                // Background tab: re-warm a stashed helper so it reconnects
-                // now and the pane restores when the user switches over.
-                _AutoCreateHiddenAgentPaneShared(tabImpl,
-                                                 /*intoSessionsView*/ false,
-                                                 /*autoStash*/ true);
-            }
-        }
+                    strongThis->_agentRebuilding = false;
+                    strongThis->_pendingAgentStackRestart.Clear();
+                    if (std::exchange(strongThis->_pendingAgentRebuild, false))
+                    {
+                        auto pendingRequest = std::exchange(strongThis->_pendingAgentRebuildRequestId, std::nullopt);
+                        strongThis->_RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
+                    }
+                }
+            });
     }
 
     // Inbound event from WTA: {method:"restart_agent_pane",
@@ -5967,15 +6234,10 @@ namespace winrt::TerminalApp::implementation
         // Suppression check (consume on read). A mark within the last few
         // seconds means this tab's helper died because we deliberately tore
         // the pane down — don't respawn it.
-        if (const auto it = _agentPaneRestartSuppression.find(tabId); it != _agentPaneRestartSuppression.end())
+        if (_agentPaneRestartSuppression.Consume(winrt::to_string(tabId)))
         {
-            const auto age = std::chrono::steady_clock::now() - it->second;
-            _agentPaneRestartSuppression.erase(it);
-            if (age < std::chrono::seconds(5))
-            {
-                _agentPaneLog("OnAgentPaneRestartRequested: suppressed (deliberate teardown)");
-                return;
-            }
+            _agentPaneLog("OnAgentPaneRestartRequested: suppressed (deliberate teardown)");
+            return;
         }
 
         const auto ownerTab = _FindTabByStableId(tabId);
@@ -6000,7 +6262,8 @@ namespace winrt::TerminalApp::implementation
         // Tear down any leftover dead/wedged pane first. Suppress so that
         // killing a wedged helper here doesn't loop back into yet another
         // restart event.
-        _TeardownAgentPane(ownerTab, /*suppressMasterRestart*/ true);
+        _TeardownAgentPane(ownerTab, /*suppressMasterRestart*/ false);
+        _agentPaneRestartSuppression.Clear(winrt::to_string(tabId));
 
         _agentPaneLog("OnAgentPaneRestartRequested: re-warming helper after disconnect");
         _AutoCreateHiddenAgentPaneShared(ownerTab,
@@ -9067,7 +9330,12 @@ namespace winrt::TerminalApp::implementation
         // command for either ACP or delegate) changed, tear down and
         // recreate the affected layers so the new values take effect
         // without a terminal restart.
-        _RebuildAgentStack();
+        auto requestId = std::exchange(_settingsReloadRequestId, {});
+        if (!requestId.empty())
+        {
+            requestId.append(_AgentSettingsRequestIdentity(_CaptureAgentSettingsSnapshot()));
+        }
+        _RebuildAgentStack(std::move(requestId));
 
         // Re-project cached per-tab status after settings-only presentation
         // changes, including showTokenUsageAndCost.

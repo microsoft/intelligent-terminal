@@ -20,6 +20,266 @@ namespace
 
 namespace winrt::TerminalApp::implementation::details
 {
+    uint64_t LiveObjectGenerationTracker::Get(const winrt::Windows::Foundation::IInspectable& object)
+    {
+        std::lock_guard lock{ _mutex };
+        for (auto entry = _entries.begin(); entry != _entries.end();)
+        {
+            if (const auto live = entry->object.get())
+            {
+                if (live == object)
+                {
+                    return entry->generation;
+                }
+                ++entry;
+            }
+            else
+            {
+                entry = _entries.erase(entry);
+            }
+        }
+
+        const auto generation = ++_nextGeneration;
+        _entries.emplace_back(winrt::make_weak(object), generation);
+        return generation;
+    }
+
+    std::string RetirementCoordinator::_CreateIdLocked(const std::string_view kind)
+    {
+        auto id = std::to_string(GetCurrentProcessId());
+        id.push_back('-');
+        id.append(kind);
+        id.push_back('-');
+        id.append(std::to_string(++_nextOperationId));
+        return id;
+    }
+
+    std::string RetirementCoordinator::CreateRequestId()
+    {
+        std::lock_guard lock{ _mutex };
+        return _CreateIdLocked("request");
+    }
+
+    RetirementRegistration RetirementCoordinator::Register(
+        const bool scopeAll,
+        const std::string_view /*reason*/,
+        const std::string_view requestId)
+    {
+        std::lock_guard lock{ _mutex };
+
+        if (scopeAll && !requestId.empty())
+        {
+            if (const auto existing = _allOperationsByRequest.find(std::string{ requestId });
+                existing != _allOperationsByRequest.end())
+            {
+                if (const auto operation = _operations.find(existing->second);
+                    operation != _operations.end())
+                {
+                    if (operation->second.recordedInHistory)
+                    {
+                        const auto completed = std::find(
+                            _completedOperations.begin(),
+                            _completedOperations.end(),
+                            operation->first);
+                        if (completed != _completedOperations.end())
+                        {
+                            _completedOperations.erase(completed);
+                        }
+                        operation->second.recordedInHistory = false;
+                    }
+                    ++operation->second.continuationCount;
+                    return {
+                        operation->first,
+                        false,
+                        operation->second.completed,
+                    };
+                }
+            }
+        }
+
+        auto operationId = _CreateIdLocked("operation");
+        Operation operation;
+        if (scopeAll && !requestId.empty())
+        {
+            operation.requestId = requestId;
+            _allOperationsByRequest[*operation.requestId] = operationId;
+        }
+        operation.continuationCount = 1;
+        _operations.emplace(operationId, std::move(operation));
+        return { std::move(operationId), true, false };
+    }
+
+    void RetirementCoordinator::_EraseLocked(const std::string& operationId)
+    {
+        if (const auto operation = _operations.find(operationId);
+            operation != _operations.end())
+        {
+            if (operation->second.requestId)
+            {
+                if (const auto request = _allOperationsByRequest.find(*operation->second.requestId);
+                    request != _allOperationsByRequest.end() && request->second == operationId)
+                {
+                    _allOperationsByRequest.erase(request);
+                }
+            }
+            _operations.erase(operation);
+        }
+    }
+
+    void RetirementCoordinator::_FinalizeCompletedLocked(
+        const std::unordered_map<std::string, Operation>::iterator operation)
+    {
+        if (!operation->second.completed || operation->second.continuationCount != 0)
+        {
+            return;
+        }
+
+        if (operation->second.expireAfterContinuations)
+        {
+            const auto operationId = operation->first;
+            _EraseLocked(operationId);
+        }
+        else if (!operation->second.recordedInHistory)
+        {
+            operation->second.recordedInHistory = true;
+            _completedOperations.emplace_back(operation->first);
+            _PruneCompletedLocked();
+        }
+    }
+
+    void RetirementCoordinator::_PruneCompletedLocked()
+    {
+        while (_completedOperations.size() > CompletedHistoryLimit)
+        {
+            auto operationId = std::move(_completedOperations.front());
+            _completedOperations.pop_front();
+            _EraseLocked(operationId);
+        }
+    }
+
+    bool RetirementCoordinator::Complete(
+        const std::string_view operationId,
+        const bool expireAfterContinuations)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto operation = _operations.find(std::string{ operationId });
+            operation != _operations.end())
+        {
+            operation->second.completed = true;
+            operation->second.expireAfterContinuations =
+                operation->second.expireAfterContinuations || expireAfterContinuations;
+            _FinalizeCompletedLocked(operation);
+            return true;
+        }
+        return false;
+    }
+
+    void RetirementCoordinator::ReleaseContinuation(const std::string_view operationId)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto operation = _operations.find(std::string{ operationId });
+            operation != _operations.end())
+        {
+            if (operation->second.continuationCount != 0)
+            {
+                --operation->second.continuationCount;
+            }
+            if (operation->second.continuationCount == 0 && !operation->second.completed)
+            {
+                const auto id = operation->first;
+                _EraseLocked(id);
+            }
+            else
+            {
+                _FinalizeCompletedLocked(operation);
+            }
+        }
+    }
+
+    void RetirementCoordinator::Expire(const std::string_view operationId)
+    {
+        std::lock_guard lock{ _mutex };
+        const std::string id{ operationId };
+        _EraseLocked(id);
+    }
+
+    bool RetirementCoordinator::ClaimAction(const std::string_view operationId, const std::string_view action)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto operation = _operations.find(std::string{ operationId });
+            operation != _operations.end())
+        {
+            return operation->second.claimedActions.emplace(action).second;
+        }
+        return false;
+    }
+
+    bool TabRetirementTracker::BeginRebuild(const std::string_view tabId)
+    {
+        return _closeRequested.emplace(tabId, false).second;
+    }
+
+    bool TabRetirementTracker::RequestClose(const std::string_view tabId)
+    {
+        const auto [entry, inserted] = _closeRequested.emplace(tabId, true);
+        entry->second = true;
+        return inserted;
+    }
+
+    bool TabRetirementTracker::Complete(const std::string_view tabId)
+    {
+        const auto entry = _closeRequested.find(std::string{ tabId });
+        if (entry == _closeRequested.end())
+        {
+            return false;
+        }
+        const bool shouldReopen = !entry->second;
+        _closeRequested.erase(entry);
+        return shouldReopen;
+    }
+
+    void RestartSuppressionTracker::Mark(const std::string_view tabId)
+    {
+        _marks[std::string{ tabId }] = std::chrono::steady_clock::now();
+    }
+
+    void RestartSuppressionTracker::Clear(const std::string_view tabId)
+    {
+        _marks.erase(std::string{ tabId });
+    }
+
+    bool RestartSuppressionTracker::Consume(const std::string_view tabId)
+    {
+        const auto mark = _marks.find(std::string{ tabId });
+        if (mark == _marks.end())
+        {
+            return false;
+        }
+        const auto age = std::chrono::steady_clock::now() - mark->second;
+        _marks.erase(mark);
+        return age < std::chrono::seconds{ 5 };
+    }
+
+    void CoalescedRequest::Queue(std::string requestId)
+    {
+        _requestId = std::move(requestId);
+    }
+
+    std::optional<std::string> CoalescedRequest::Take()
+    {
+        return std::exchange(_requestId, std::nullopt);
+    }
+
+    void CoalescedRequest::Clear()
+    {
+        _requestId.reset();
+    }
+
+    bool CoalescedRequest::Pending() const noexcept
+    {
+        return _requestId.has_value();
+    }
+
     std::optional<std::wstring> BuildEnvironmentBlock(
         const std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept
     {
@@ -98,6 +358,46 @@ namespace winrt::TerminalApp::implementation
         // cleanup for the master and its descendants.
         static auto* const s_instance = new SharedWta;
         return *s_instance;
+    }
+
+    std::string SharedWta::CreateRetirementRequestId()
+    {
+        return _retirementCoordinator.CreateRequestId();
+    }
+
+    details::RetirementRegistration SharedWta::RegisterRetirement(
+        const bool scopeAll,
+        const std::string_view reason,
+        const std::string_view requestId)
+    {
+        return _retirementCoordinator.Register(scopeAll, reason, requestId);
+    }
+
+    bool SharedWta::CompleteRetirement(
+        const std::string_view operationId,
+        const bool expireAfterContinuations)
+    {
+        return _retirementCoordinator.Complete(operationId, expireAfterContinuations);
+    }
+
+    void SharedWta::ReleaseRetirementContinuation(const std::string_view operationId)
+    {
+        _retirementCoordinator.ReleaseContinuation(operationId);
+    }
+
+    void SharedWta::ExpireRetirement(const std::string_view operationId)
+    {
+        _retirementCoordinator.Expire(operationId);
+    }
+
+    bool SharedWta::ClaimRetirementAction(const std::string_view operationId, const std::string_view action)
+    {
+        return _retirementCoordinator.ClaimAction(operationId, action);
+    }
+
+    uint64_t SharedWta::GetSettingsGeneration(const winrt::Windows::Foundation::IInspectable& settings)
+    {
+        return _settingsGenerations.Get(settings);
     }
 
     SharedWta::~SharedWta()
@@ -232,25 +532,6 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        // Dedup the multi-window fan-out. `/restart` (and auth-recovery)
-        // arrives via `_dispatchRestartAgentStackToPage`, which calls
-        // `OnRestartAgentStackRequested` (and thus `Restart()`) on EVERY
-        // window's UI thread. Without this guard, window B's Restart kills
-        // window A's just-spawned master, breaking the freshly-reopened
-        // helper in window A. Key off the last *restart request*, NOT
-        // `_lastRespawn`: the initial master spawn also stamps `_lastRespawn`,
-        // so keying on it would wrongly suppress a legitimate restart that
-        // fires shortly after the master first comes up (e.g. an auth-recovery
-        // restart against a freshly poisoned master). 500 ms is comfortably
-        // larger than the typical UI-thread RunAsync hop (the 07:32 log showed
-        // a 240 ms gap between windows) and tiny compared to any human- or
-        // recovery-driven legitimate "two restarts in a row".
-        if (_lastRestartRequest &&
-            std::chrono::steady_clock::now() - *_lastRestartRequest < std::chrono::milliseconds(500))
-        {
-            return true;
-        }
-
         // No cached args means we've never successfully spawned in this
         // process, which contradicts `_process.is_valid()` — defensive
         // bail rather than spawning with empty wtaPath.
@@ -269,14 +550,7 @@ namespace winrt::TerminalApp::implementation
         // holding refs for the panes it's about to close-and-reopen, and
         // the matching ReleasePane / AcquirePane pair will balance out.
         _CleanupLocked();
-        const bool spawned = _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
-        if (spawned)
-        {
-            // Stamp the restart (not just the spawn) so the fan-out dedup above
-            // suppresses only follow-up duplicate restarts, never the first.
-            _lastRestartRequest = std::chrono::steady_clock::now();
-        }
-        return spawned;
+        return _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
     }
 
     bool SharedWta::Restart(const std::wstring_view wtaPath,
@@ -324,12 +598,7 @@ namespace winrt::TerminalApp::implementation
         // refcount is left alone for the same reason as the cached-args
         // overload — outgoing ReleasePane / incoming AcquirePane balance.
         _CleanupLocked();
-        const bool spawned = _SpawnLocked(wtaPath, extraArgs, environment);
-        if (spawned)
-        {
-            _lastRestartRequest = std::chrono::steady_clock::now();
-        }
-        return spawned;
+        return _SpawnLocked(wtaPath, extraArgs, environment);
     }
 
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
@@ -528,7 +797,6 @@ namespace winrt::TerminalApp::implementation
         _cachedWtaPath.assign(wtaPath);
         _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
         _cachedEnvironment.assign(environment.begin(), environment.end());
-        _lastRespawn = std::chrono::steady_clock::now();
         return true;
     }
 
