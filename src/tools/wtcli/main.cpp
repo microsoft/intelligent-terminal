@@ -309,7 +309,24 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
 
 // ── Main ──
 
-int main()
+// `wmain` — deliberately NOT `main`. Almost every string this tool forwards to
+// the terminal arrives as an argument: `new-tab -d` starting directories,
+// `-n` tab titles, `-c` command lines, `send-keys` payloads and the JSON blobs
+// of `publish` / `send-event`. All of them may hold non-ASCII text.
+//
+// The CRT's narrow `__argv` is transcoded from the real UTF-16 command line
+// through the *process ANSI code page*, so anything outside that code page is
+// destroyed before we ever see it — on ACP 936 `D:\Obsidian\我的笔记` turns
+// into GBK bytes that `Bstr()` below then decodes as UTF-8 (mojibake), and on
+// a Latin ACP it degrades to literal `?`. Either way `CreateProcessW` on the
+// terminal side fails the starting directory with 0x8007010b ERROR_DIRECTORY
+// (GH#641), and titles / keystrokes / JSON silently lose characters.
+//
+// Taking `wchar_t**` keeps the original UTF-16 and lets CLI11's wide `parse`
+// overload narrow it with `codecvt_utf8_utf16`, so every `std::string` bound
+// to an option really is UTF-8 — which is exactly what `Bstr()` and
+// `winrt::to_hstring` already assume.
+int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
@@ -1019,7 +1036,8 @@ int main()
 
     try
     {
-        app.parse(__argc, __argv);
+        // CLI11's wide overload; see the comment on `wmain` above.
+        app.parse(argc, argv);
     }
     catch (const CLI::ParseError& e)
     {
