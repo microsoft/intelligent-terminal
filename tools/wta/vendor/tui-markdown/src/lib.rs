@@ -57,5 +57,8 @@ mod style_sheet;
 #[cfg(feature = "highlight-code")]
 pub use crate::code_theme::{BuiltinCodeTheme, CodeTheme, CodeThemeLoadError};
 pub use crate::options::{ImageFallback, Options};
-pub use crate::renderer::{from_str, from_str_with_options};
+pub use crate::renderer::{
+    from_str, from_str_with_options, from_str_with_options_and_source_map, SourceMappedBlock,
+    SourceMappedText,
+};
 pub use crate::style_sheet::{AlertKind, DefaultStyleSheet, StyleSheet};

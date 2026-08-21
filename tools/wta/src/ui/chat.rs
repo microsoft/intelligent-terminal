@@ -2488,6 +2488,39 @@ mod tests {
     }
 
     #[test]
+    fn canonical_markdown_projection_exposes_top_level_source_ranges() {
+        let source = "# Heading\n\nParagraph\n\n- one\n- two";
+        let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+
+        let projection = tui_markdown::from_str_with_options_and_source_map(source, &options);
+
+        assert_eq!(projection.blocks.len(), 3);
+        assert_eq!(projection.blocks[0].source, 0..10);
+        assert_eq!(projection.blocks[1].source, 11..21);
+        assert_eq!(projection.blocks[2].source, 22..33);
+        assert_eq!(projection.last_top_level_block_start, Some(22));
+        assert_eq!(projection.blocks[0].lines, 0..1);
+        assert!(projection
+            .blocks
+            .iter()
+            .all(|block| block.lines.end <= projection.text.lines.len()));
+        assert_eq!(
+            projection.text.to_string(),
+            tui_markdown::from_str_with_options(source, &options).to_string()
+        );
+
+        let references = "[docs]: https://example.com\n\nRead [docs].";
+        let reference_projection =
+            tui_markdown::from_str_with_options_and_source_map(references, &options);
+        assert!(reference_projection.has_reference_definitions);
+        assert_eq!(reference_projection.blocks.len(), 1);
+        assert_eq!(
+            reference_projection.last_top_level_block_start,
+            references.find("Read")
+        );
+    }
+
+    #[test]
     fn thinking_activity_follows_turn_lifecycle() {
         let mut tab = streaming_tab("", 0);
         assert!(should_show_turn_activity(&tab));

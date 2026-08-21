@@ -3,7 +3,7 @@
 //! HTML remains visible as literal text. Inline tags compose with enclosing formatting, while HTML
 //! blocks preserve their physical lines and surrounding block spacing.
 
-use pulldown_cmark::{CowStr, Event};
+use pulldown_cmark::CowStr;
 use ratatui_core::text::{Line, Span};
 
 use super::TextWriter;
@@ -11,7 +11,7 @@ use crate::StyleSheet;
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn start_html_block(&mut self) {

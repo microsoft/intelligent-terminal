@@ -8,6 +8,7 @@
 //! descriptions receive those spans first, followed by active table cells, then the output line.
 //! This sink order preserves inline event ordering inside buffered constructs.
 
+use std::ops::Range;
 use std::vec;
 
 use itertools::Itertools;
@@ -35,6 +36,8 @@ mod math;
 mod table;
 #[cfg(test)]
 mod test_support;
+
+type MappedEvent<'a> = (Event<'a>, Option<Range<usize>>);
 
 /// Render Markdown `input` into a [`Text`] using the default [`Options`].
 ///
@@ -73,24 +76,70 @@ pub fn from_str_with_options<'a, S>(input: &'a str, options: &Options<S>) -> Tex
 where
     S: StyleSheet,
 {
-    let mut parse_opts = ParseOptions::empty();
-    parse_opts.insert(ParseOptions::ENABLE_STRIKETHROUGH);
-    parse_opts.insert(ParseOptions::ENABLE_TASKLISTS);
-    parse_opts.insert(ParseOptions::ENABLE_HEADING_ATTRIBUTES);
-    parse_opts.insert(ParseOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS);
-    parse_opts.insert(ParseOptions::ENABLE_SUPERSCRIPT);
-    parse_opts.insert(ParseOptions::ENABLE_SUBSCRIPT);
-    parse_opts.insert(ParseOptions::ENABLE_MATH);
-    parse_opts.insert(ParseOptions::ENABLE_FOOTNOTES);
-    parse_opts.insert(ParseOptions::ENABLE_DEFINITION_LIST);
-    parse_opts.insert(ParseOptions::ENABLE_GFM);
-    parse_opts.insert(ParseOptions::ENABLE_TABLES);
-    let parser = Parser::new_ext(input, parse_opts);
-
-    let writer = TextWriter::new(parser, options.styles.clone(), options.image_fallback);
+    let parser = Parser::new_ext(input, parse_options());
+    let events = parser.map(|event| (event, None));
+    let writer = TextWriter::new(events, options.styles.clone(), options.image_fallback);
     #[cfg(feature = "highlight-code")]
     let writer = writer.with_code_theme(options.selected_code_theme());
-    writer.run()
+    writer.run().0
+}
+
+/// Render Markdown and return top-level source ranges from the same parser pass.
+pub fn from_str_with_options_and_source_map<'a, S>(
+    input: &'a str,
+    options: &Options<S>,
+) -> SourceMappedText<'a>
+where
+    S: StyleSheet,
+{
+    let parser = Parser::new_ext(input, parse_options());
+    let has_reference_definitions = parser.reference_definitions().iter().next().is_some();
+    let events = parser
+        .into_offset_iter()
+        .map(|(event, source)| (event, Some(source)));
+
+    let writer = TextWriter::new(events, options.styles.clone(), options.image_fallback);
+    #[cfg(feature = "highlight-code")]
+    let writer = writer.with_code_theme(options.selected_code_theme());
+    let (text, blocks) = writer.run();
+    SourceMappedText {
+        last_top_level_block_start: blocks.last().map(|block| block.source.start),
+        text,
+        blocks,
+        has_reference_definitions,
+    }
+}
+
+fn parse_options() -> ParseOptions {
+    let mut options = ParseOptions::empty();
+    options.insert(ParseOptions::ENABLE_STRIKETHROUGH);
+    options.insert(ParseOptions::ENABLE_TASKLISTS);
+    options.insert(ParseOptions::ENABLE_HEADING_ATTRIBUTES);
+    options.insert(ParseOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    options.insert(ParseOptions::ENABLE_SUPERSCRIPT);
+    options.insert(ParseOptions::ENABLE_SUBSCRIPT);
+    options.insert(ParseOptions::ENABLE_MATH);
+    options.insert(ParseOptions::ENABLE_FOOTNOTES);
+    options.insert(ParseOptions::ENABLE_DEFINITION_LIST);
+    options.insert(ParseOptions::ENABLE_GFM);
+    options.insert(ParseOptions::ENABLE_TABLES);
+    options
+}
+
+/// A rendered top-level block and its source/line ranges.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceMappedBlock {
+    pub source: Range<usize>,
+    pub lines: Range<usize>,
+}
+
+/// Canonical rendered text plus source metadata produced by the same event pass.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceMappedText<'a> {
+    pub text: Text<'a>,
+    pub blocks: Vec<SourceMappedBlock>,
+    pub last_top_level_block_start: Option<usize>,
+    pub has_reference_definitions: bool,
 }
 
 struct TextWriter<'a, 'theme, I, S: StyleSheet> {
@@ -154,11 +203,16 @@ struct TextWriter<'a, 'theme, I, S: StyleSheet> {
     // Table rendering state.
     /// Active table builder that accumulates cells during table parsing.
     table_builder: Option<table::TableBuilder<'a>>,
+
+    // Top-level source mapping state.
+    source_blocks: Vec<SourceMappedBlock>,
+    current_source_block: Option<(usize, usize)>,
+    tag_depth: usize,
 }
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = MappedEvent<'a>>,
     S: StyleSheet,
 {
     fn new(iter: I, styles: S, image_fallback: ImageFallback) -> Self {
@@ -186,15 +240,40 @@ where
             in_footnote_definition: false,
             in_definition_description: false,
             table_builder: None,
+            source_blocks: vec![],
+            current_source_block: None,
+            tag_depth: 0,
         }
     }
 
-    fn run(mut self) -> Text<'a> {
+    fn run(mut self) -> (Text<'a>, Vec<SourceMappedBlock>) {
         debug!("Running text writer");
-        while let Some(event) = self.iter.next() {
+        while let Some((event, source)) = self.iter.next() {
+            let starts_tag = matches!(event, Event::Start(_));
+            let ends_tag = matches!(event, Event::End(_));
+            let standalone = !starts_tag && !ends_tag && self.tag_depth == 0;
+            if source.is_some() && self.tag_depth == 0 && (starts_tag || standalone) {
+                let source_start = source.as_ref().map_or(0, |source| source.start);
+                self.current_source_block = Some((source_start, self.text.lines.len()));
+            }
+            if starts_tag {
+                self.tag_depth += 1;
+            }
             self.handle_event(event);
+            if ends_tag {
+                self.tag_depth = self.tag_depth.saturating_sub(1);
+            }
+            if source.is_some() && ((ends_tag && self.tag_depth == 0) || standalone) {
+                if let Some((source_start, line_start)) = self.current_source_block.take() {
+                    self.source_blocks.push(SourceMappedBlock {
+                        source: source_start
+                            ..source.as_ref().map_or(source_start, |source| source.end),
+                        lines: line_start..self.text.lines.len(),
+                    });
+                }
+            }
         }
-        self.text
+        (self.text, self.source_blocks)
     }
 
     #[instrument(level = "debug", skip(self))]

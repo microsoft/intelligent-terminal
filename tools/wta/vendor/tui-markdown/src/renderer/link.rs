@@ -3,7 +3,7 @@
 //! Links render as `label (destination)`. The link style applies to the label and destination while
 //! nested inline formatting remains on the label.
 
-use pulldown_cmark::{CowStr, Event};
+use pulldown_cmark::CowStr;
 use ratatui_core::text::Span;
 use tracing::instrument;
 
@@ -12,7 +12,7 @@ use crate::StyleSheet;
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     /// Stores the destination and applies the link style to the label.

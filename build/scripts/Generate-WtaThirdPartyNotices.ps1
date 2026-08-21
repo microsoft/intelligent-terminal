@@ -122,9 +122,16 @@ while ($stack.Count -gt 0) {
 #    attribution.
 # ---------------------------------------------------------------------------
 $attributed = @()
+$vendorRoot = [System.IO.Path]::GetFullPath((Join-Path $wtaRoot 'vendor')).TrimEnd('\') + '\'
 foreach ($pkgId in $seen) {
     $pkg = $packages[$pkgId]
-    if (-not $pkg -or -not $pkg.source) { continue }   # skip path-only deps
+    if (-not $pkg) { continue }
+    if (-not $pkg.source) {
+        $manifestPath = [System.IO.Path]::GetFullPath([string]$pkg.manifest_path)
+        if (-not $manifestPath.StartsWith($vendorRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+    }
     $attributed += $pkg
 }
 $attributed = $attributed | Sort-Object name, version

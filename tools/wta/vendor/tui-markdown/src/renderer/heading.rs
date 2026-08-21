@@ -3,7 +3,7 @@
 //! Headings retain their Markdown `#` prefix. IDs, classes, and key-value attributes render as a
 //! styled attribute-block suffix after the heading text.
 
-use pulldown_cmark::{CowStr, Event, HeadingLevel};
+use pulldown_cmark::{CowStr, HeadingLevel};
 use ratatui_core::text::{Line, Span};
 
 use super::TextWriter;
@@ -55,7 +55,7 @@ impl<'a> HeadingMeta<'a> {
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn start_heading(&mut self, level: HeadingLevel, heading_meta: HeadingMeta<'a>) {

@@ -3,7 +3,7 @@
 //! References render inline as `[label]`. Definitions start with `[label]: ` and retain paragraph
 //! boundaries without leaking their line style into following content.
 
-use pulldown_cmark::{CowStr, Event};
+use pulldown_cmark::CowStr;
 use ratatui_core::text::{Line, Span};
 
 use super::TextWriter;
@@ -11,7 +11,7 @@ use crate::StyleSheet;
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn footnote_reference(&mut self, label: CowStr<'a>) {

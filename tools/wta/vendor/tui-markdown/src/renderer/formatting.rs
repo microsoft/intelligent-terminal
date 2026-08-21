@@ -3,7 +3,6 @@
 //! The inline style stack patches nested formatting over its enclosing style. Closing a formatting
 //! tag restores the previous style.
 
-use pulldown_cmark::Event;
 use ratatui_core::style::Style;
 use tracing::{debug, instrument};
 
@@ -12,7 +11,7 @@ use crate::StyleSheet;
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     #[instrument(level = "trace", skip(self))]

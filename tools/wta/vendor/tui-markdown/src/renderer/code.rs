@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 
 #[cfg(feature = "highlight-code")]
 use ansi_to_tui::IntoText;
-use pulldown_cmark::{CodeBlockKind, CowStr, Event};
+use pulldown_cmark::{CodeBlockKind, CowStr};
 #[cfg(feature = "highlight-code")]
 use ratatui_core::text::Text;
 use ratatui_core::text::{Line, Span};
@@ -31,7 +31,7 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn code(&mut self, code: CowStr<'a>) {

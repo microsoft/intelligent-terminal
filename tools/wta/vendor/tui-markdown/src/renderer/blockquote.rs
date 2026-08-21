@@ -3,7 +3,7 @@
 //! Plain blockquotes use the configured blockquote style and `>` prefix. A recognized GFM alert
 //! adds a styled icon and label, then renders its body with the alert style.
 
-use pulldown_cmark::{BlockQuoteKind, Event};
+use pulldown_cmark::BlockQuoteKind;
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
 
@@ -12,7 +12,7 @@ use crate::{AlertKind, StyleSheet};
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn start_blockquote(&mut self, kind: Option<BlockQuoteKind>) {

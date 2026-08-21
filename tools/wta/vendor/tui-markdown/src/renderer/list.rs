@@ -1,6 +1,5 @@
 //! Markdown list and task-item rendering.
 
-use pulldown_cmark::Event;
 use ratatui_core::style::Stylize;
 use ratatui_core::text::{Line, Span};
 
@@ -31,7 +30,7 @@ pub struct ListItemLayout {
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn start_list(&mut self, index: Option<u64>) {

@@ -22,7 +22,7 @@ const BOTTOM_BORDER: BorderGlyphs = BorderGlyphs::new('└', '┴', '┘');
 
 impl<'a, 'theme, I, S> TextWriter<'a, 'theme, I, S>
 where
-    I: Iterator<Item = pulldown_cmark::Event<'a>>,
+    I: Iterator<Item = super::MappedEvent<'a>>,
     S: StyleSheet,
 {
     pub fn start_table(&mut self, alignments: Vec<Alignment>) {
