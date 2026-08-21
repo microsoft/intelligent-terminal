@@ -2141,9 +2141,9 @@ fn rename_helper_owner_tab_id(old_tab_id: &str, new_tab_id: &str) {
 ///
 /// Used by the helper-over-master path to tell `wta-master` which WT
 /// pane owns the session it's about to create or rehydrate (so focus /
-/// session-list resolution works) and which WT tab owns it (so master
-/// can drive `restart_agent_pane` recovery). Master records both in
-/// `SessionRegistry` / its per-helper recovery map.
+/// session-list resolution works) and which WT tab owns it (so close-by-tab
+/// can resolve the exact helper). Master records both in `SessionRegistry`
+/// and its per-helper ownership map.
 ///
 /// No-op for whichever fields are unavailable: `pane_session_id` when
 /// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
@@ -2611,17 +2611,15 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        // Either way the transport is dead. Emit an AgentError so the state
-        // machine leaves `Connected`, the user sees a clear "connection lost —
-        // /restart" line, and autofix stops firing into a dead transport (F3).
-        // `session_id: None` → current (only) tab. A near-simultaneous in-flight
-        // prompt error is collapsed by the AgentError handler's dedup. On normal
-        // shutdown the helper process is being torn down, so this event is moot.
+        // Either way the transport is dead. Report the typed failure for
+        // diagnostics, then terminate the helper instead of retaining a
+        // disconnected pane or attempting to restore its session.
         let _ = io_event_tx.send(AppEvent::AgentError {
             session_id: None,
             failure: AgentFailure::TransportLost,
             message: t!("connection.lost").into_owned(),
         });
+        let _ = io_event_tx.send(AppEvent::MasterDisconnected);
     });
 
     // Initialize — same as the child-process path. We use a 60s timeout

@@ -4939,10 +4939,8 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
     );
 }
 
-/// The degraded latch (`App::transport_lost`) drives the slash-command
-/// greying. It must arm on a transport loss and stay armed (the helper has
-/// no in-process reconnect), so the popup keeps refusing everything but
-/// /restart until recovery.
+/// The degraded latch (`App::transport_lost`) immediately blocks actions
+/// while the helper processes the terminal transport-loss event.
 #[test]
 fn transport_lost_latch_arms_on_transport_loss() {
     let mut app = test_app();
@@ -4958,6 +4956,19 @@ fn transport_lost_latch_arms_on_transport_loss() {
     assert!(
         app.transport_lost,
         "a transport loss must arm the degraded latch"
+    );
+}
+
+#[test]
+fn master_disconnect_terminates_helper_without_recovery() {
+    let mut app = test_app();
+    assert!(!app.should_quit);
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(
+        app.should_quit,
+        "master disconnect must terminate the helper instead of retaining a recoverable pane"
     );
 }
 

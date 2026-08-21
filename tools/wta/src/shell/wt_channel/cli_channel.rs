@@ -383,14 +383,20 @@ impl CliChannel {
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
         tokio::spawn(async move {
-            let Ok(mut child) = tokio::process::Command::new(&wtcli)
+            let mut command = tokio::process::Command::new(&wtcli);
+            command
                 .args(["--json", "listen"])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
-                .spawn()
-            else {
+                .kill_on_drop(true);
+            let Ok(mut child) = command.spawn() else {
                 return;
             };
+            tracing::info!(
+                target: "wtcli",
+                listener_pid = ?child.id(),
+                "started WT protocol event listener"
+            );
 
             let stdout = child.stdout.take().unwrap();
             let mut reader = tokio::io::BufReader::new(stdout);
@@ -413,6 +419,11 @@ impl CliChannel {
                     Err(_) => break,
                 }
             }
+            tracing::info!(
+                target: "wtcli",
+                listener_pid = ?child.id(),
+                "WT protocol event listener ended"
+            );
         });
     }
 
@@ -557,10 +568,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;

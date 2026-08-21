@@ -4253,24 +4253,6 @@ async fn prompt_forward_survives_reentrant_permission() {
         .await;
 }
 
-#[test]
-fn restart_agent_pane_event_shape_carries_tab_and_session() {
-    let sid = SessionId::from("sess-abc");
-    let evt = build_restart_agent_pane_event("tab-42", Some(&sid));
-    assert_eq!(evt["type"], "event");
-    assert_eq!(evt["method"], "restart_agent_pane");
-    assert_eq!(evt["params"]["tab_id"], "tab-42");
-    assert_eq!(evt["params"]["session_id"], "sess-abc");
-    assert_eq!(evt["params"]["reason"], "helper_disconnect");
-}
-
-#[test]
-fn restart_agent_pane_event_null_session_when_none() {
-    let evt = build_restart_agent_pane_event("tab-7", None);
-    assert!(evt["params"]["session_id"].is_null());
-    assert_eq!(evt["params"]["tab_id"], "tab-7");
-}
-
 fn make_notif(sid: &SessionId) -> SessionNotification {
     SessionNotification::new(
         sid.clone(),

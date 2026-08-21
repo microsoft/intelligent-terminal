@@ -63,10 +63,8 @@ pub struct WtaMeta {
     /// WSL distribution paired with `agent_source=wsl`.
     pub wsl_distro: Option<String>,
     /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
-    /// owns this session. Carried so master can address per-tab events
-    /// (notably `restart_agent_pane` on helper crash recovery) by the
-    /// same StableId C++ routes every other per-tab event with. `None`
-    /// for non-agent-pane helpers / legacy callers.
+    /// owns this session. Carried so master can resolve close-by-tab
+    /// ownership. `None` for non-agent-pane helpers / legacy callers.
     pub owner_tab_id: Option<String>,
     /// JSON-encoded native cloud model catalog. Helpers may supply the host's
     /// last successful snapshot on initialize; master may return a clean-probed

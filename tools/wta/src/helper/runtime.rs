@@ -503,8 +503,7 @@ async fn run_acp_app(
 
             // Seed the process-wide owner tab StableId so `inject_wta_pane_meta`
             // stamps `_meta.wta.owner_tab_id` on every session/new + session/load.
-            // Master needs it to address `restart_agent_pane` crash-recovery
-            // events by the same StableId C++ routes per-tab events with.
+            // Master uses it to resolve close-by-tab ownership.
             protocol::acp::client::set_helper_owner_tab_id(config.owner_tab_id.as_deref());
 
             let explicit_agent_id = config
@@ -534,14 +533,6 @@ async fn run_acp_app(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
             {
-                Some(requested) if config.assume_master_down => {
-                    tracing::warn!(
-                        target: "initial_auth",
-                        requested_agent = %requested,
-                        "--initial-auth-agent ignored because --assume-master-down is active"
-                    );
-                    None
-                }
                 Some(requested) if config.start_stashed => {
                     tracing::warn!(
                         target: "initial_auth",
@@ -619,44 +610,7 @@ async fn run_acp_app(
             // pipe-attached variant immediately. FRE-installed Copilot is the
             // exception: `--initial-auth-agent copilot` starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
-            if config.assume_master_down {
-                // Degraded open: master is known down, so don't even try the
-                // (dead) pipe — go straight to the disconnected view that an
-                // orphaned pane shows, where /restart is the one available
-                // command. /restart routes via wtcli→COM (not the dead pipe),
-                // so it recovers the whole stack from right here.
-                tracing::info!(
-                    target: "helper",
-                    "assume-master-down: starting in disconnected state (master is degraded)"
-                );
-                let _ = event_tx.send(app::AppEvent::AgentError {
-                    session_id: None,
-                    failure: protocol::acp::failure::AgentFailure::TransportLost,
-                    message: t!("connection.lost").into_owned(),
-                });
-                // Keep the /restart path alive even with no master: /restart
-                // doesn't talk to master, it asks the C++ side (via wtcli->COM)
-                // to force-restart the whole agent stack — which respawns
-                // master and reconnects EVERY pane. So we must keep consuming
-                // `restart_rx` and forward it as a `restart_agent_stack` event.
-                // The other receivers (prompt/new_session/…) genuinely have no
-                // master to reach, so they're dropped; they're re-created when
-                // /restart reopens this pane fresh.
-                spawn_restart_agent_stack_forwarder(restart_rx);
-                // The remaining receivers have no master to forward to. They
-                // get re-created when /restart respawns the stack and reopens
-                // this pane fresh.
-                drop((
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    session_hook_rx,
-                    master_ext_rx,
-                ));
-            } else if start_in_initial_auth {
+            if start_in_initial_auth {
                 tracing::info!(
                     target: "initial_auth",
                     agent_id = %canonical_agent_id,

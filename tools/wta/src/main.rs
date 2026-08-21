@@ -134,7 +134,6 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         initial_load_session_id: cli.initial_load_session_id,
         initial_load_cwd: cli.initial_load_cwd,
         start_stashed: cli.start_stashed,
-        assume_master_down: cli.assume_master_down,
     }
 }
 

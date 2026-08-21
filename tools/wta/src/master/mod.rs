@@ -272,17 +272,14 @@ struct MasterStateInner {
     /// don't recognize (e.g. `--agent codex` — tracked in CliSource::Unknown
     /// but not surfaced as a known session management filter).
     pub(crate) cli_source: Option<crate::agent_sessions::CliSource>,
-    /// Per-helper crash-recovery metadata, keyed by `HelperId`.
+    /// Per-helper tab/session ownership metadata, keyed by `HelperId`.
     ///
     /// Populated/refreshed by the `new_session` + `load_session`
-    /// handlers (which see the helper-supplied `_meta.wta.owner_tab_id`
-    /// and the resulting `SessionId`), and consumed by `serve_helper`
-    /// when a helper's pipe disconnects: if the entry carries an
-    /// `owner_tab_id`, master emits a `restart_agent_pane` event so C++
-    /// re-warms a fresh helper for that tab (resuming the recorded
-    /// `last_session_id`). One entry per helper — `last_session_id` is
-    /// the most recently created/loaded session, i.e. the one the user
-    /// was last looking at, which is the right one to resume.
+    /// handlers, which see the helper-supplied `_meta.wta.owner_tab_id`
+    /// and the resulting `SessionId`. Close-by-tab uses it to find the
+    /// exact helper/session pair even while a session transaction is in
+    /// flight. One entry per helper; `last_session_id` is the most
+    /// recently created or loaded session.
     ///
     /// Independent lock from `session_to_helper` so the per-session
     /// routing hot path never contends on it.
@@ -1256,16 +1253,14 @@ fn start_clean_cloud_catalog_probe<F>(
     });
 }
 
-/// Per-helper recovery metadata stashed in
+/// Per-helper ownership metadata stashed in
 /// [`MasterStateInner::helper_meta`]. See the field doc for lifecycle.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HelperRecoveryMeta {
     /// The WT tab StableId that owns this helper's agent pane, from
-    /// `_meta.wta.owner_tab_id`. `None` for non-agent-pane helpers — in
-    /// which case no `restart_agent_pane` is emitted on disconnect.
+    /// `_meta.wta.owner_tab_id`. `None` for non-agent-pane helpers.
     pub(crate) owner_tab_id: Option<String>,
-    /// The most recently created/loaded session for this helper — the
-    /// one to resume via `--initial-load-session-id` on recovery.
+    /// The most recently created or loaded session for this helper.
     pub(crate) last_session_id: Option<acp::schema::v1::SessionId>,
 }
 
@@ -2521,10 +2516,8 @@ impl HelperHandler {
             .ok()
             .map(|d| d.as_millis() as u64);
         self.state.registry.upsert(info.clone()).await;
-        // Record crash-recovery metadata for this helper: the owning
-        // WT tab StableId (so master can address a `restart_agent_pane`
-        // event on disconnect) and the just-created session as the
-        // resume target. See `MasterStateInner::helper_meta`.
+        // Record the owning WT tab and just-created session so close-by-tab
+        // can resolve the exact live session. See `MasterStateInner::helper_meta`.
         {
             self.commit_pending_owner().await;
             let mut meta = self.state.helper_meta.lock().await;
@@ -3037,7 +3030,7 @@ impl HelperHandler {
             }
         }
         self.state.registry.upsert(info.clone()).await;
-        // Refresh crash-recovery metadata so a later resume targets this session.
+        // Refresh ownership metadata so close-by-tab targets this session.
         {
             self.commit_pending_owner().await;
             let mut meta = self.state.helper_meta.lock().await;
@@ -4665,104 +4658,54 @@ async fn serve_helper(
         agent.bound_helpers.lock().await.remove(&helper_id);
     }
 
-    // Publish the stable tab→session fallback before removing the live route.
-    // A close-by-tab request can arrive in the narrow window between route
-    // removal and orphan bookkeeping; pre-recording the candidate makes that
-    // interleaving close the orphan instead of returning a false idempotent
-    // success. Remove the candidate below if this helper no longer owned it.
-    let orphan_tab_candidate = if let Some(agent) = handler.agent.get() {
-        let still_live = {
-            let agents = state.agents.lock().await;
-            agents
-                .get(&agent.cmd_key)
-                .and_then(|cell| cell.get())
-                .is_some_and(|current| Arc::ptr_eq(current, agent))
-        };
-        if still_live {
-            let _ownership_guard = state.tab_ownership_gate.lock().await;
-            let recovery = state.helper_meta.lock().await.get(&helper_id).cloned();
-            if let Some(HelperRecoveryMeta {
-                owner_tab_id: Some(tab_id),
-                last_session_id: Some(session_id),
-            }) = recovery
-            {
-                state.orphaned_tabs.lock().await.insert(
-                    tab_id.clone(),
-                    (agent.cmd_key.clone(), helper_id, session_id.clone()),
-                );
-                Some((tab_id, session_id))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
+    // A disconnected helper is terminal: do not preserve or automatically
+    // resume its live ACP sessions. Cancel and close each session while the
+    // route still proves ownership, then retire any route whose provider-side
+    // cleanup failed or is unsupported. Historical provider data remains
+    // available for an explicit user-initiated session/load later.
+    let owned_sessions = {
+        let routes = state.session_to_helper.lock().await;
+        routes
+            .iter()
+            .filter_map(|(session_id, route)| {
+                (route.helper_id == helper_id).then(|| session_id.clone())
+            })
+            .collect::<Vec<_>>()
     };
-
-    // Drop every session this helper owned so the map can't grow
-    // unboundedly across the master's lifetime, and so the agent
-    // CLI's notifications for already-detached sessions don't keep
-    // lighting up "unknown SessionId" warnings. Master intentionally
-    // sends nothing to the shared CLI here: a closed tab's orphan turn
-    // routes nowhere and the CLI keeps serving every surviving tab.
-    let victims = drop_sessions_for_helper(&state, helper_id).await;
-    if let Some((_tab_id, session_id)) = &orphan_tab_candidate {
-        if !victims.contains(session_id) {
-            let _ownership_guard = state.tab_ownership_gate.lock().await;
-            state.orphaned_tabs.lock().await.retain(
-                |_, (_, orphan_helper_id, orphan_session_id)| {
-                    orphan_helper_id != &helper_id || orphan_session_id != session_id
-                },
-            );
-        }
-    }
-
-    // The dropped sessions are still loaded on the shared CLI — they're now
-    // orphans. Record them under the owning agent's key so a later resume
-    // re-binds directly instead of forwarding a `session/load` that the CLI
-    // rejects "already loaded" (or, mid-turn, wedges behind the running
-    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
-    // is STILL the live pool instance for its key. If that CLI already died
-    // (reaped, possibly respawned under the same command line), these
-    // sessions are gone — recording them would make a later resume skip the
-    // `session/load` the new CLI needs, binding to a session it never had.
-    if !victims.is_empty() {
-        if let Some(agent) = handler.agent.get() {
-            let key = agent.cmd_key.clone();
-            let still_live = {
-                let agents = state.agents.lock().await;
-                agents
-                    .get(&key)
-                    .and_then(|cell| cell.get())
-                    .is_some_and(|current| Arc::ptr_eq(current, agent))
-            };
-            if still_live {
-                let mut orphans = state.orphaned_sessions.lock().await;
-                let set = orphans.entry(key).or_default();
-                for sid in &victims {
-                    set.insert(sid.clone());
-                }
+    if let Some(agent) = handler.agent.get() {
+        for session_id in &owned_sessions {
+            if let Err(error) = close_and_retire_replaced_session(
+                &state,
+                helper_id,
+                agent,
+                session_id,
+                SESSION_CLOSE_TIMEOUT,
+            )
+            .await
+            {
+                tracing::error!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    session_id = %session_id,
+                    error = %error,
+                    "failed to close ACP session after helper disconnect; retiring local route"
+                );
             }
         }
     }
+    let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     tracing::info!(
         target: "master",
         helper_id = ?helper_id,
-        sessions_dropped = victims.len(),
+        sessions_owned = owned_sessions.len(),
+        sessions_retired_after_cleanup = victims.len(),
         "helper disconnected"
     );
 
-    // Crash-recovery: if this helper owned an agent pane (we recorded an
-    // `owner_tab_id` from its `_meta.wta` at session/new|load), tell C++
-    // to re-warm a fresh helper for that tab. A clean helper EXIT also
-    // takes this path, but C++ suppresses the restart when the pane was
-    // torn down deliberately (Ctrl+C×2, tab close) — see
-    // `OnAgentPaneRestartRequested`. The pipe-disconnect that brings us
-    // here is the same signal for both crash and clean exit, which is
-    // exactly what we want: respawn unless C++ knows it was intentional.
+    // Disconnect is terminal for this helper. Remove ownership bookkeeping;
+    // C++ observes the ConPTY process exit and leaves the pane closed. A new
+    // helper/session is created only by an explicit user action.
     {
         let _ownership_guard = state.tab_ownership_gate.lock().await;
         state
@@ -4775,50 +4718,16 @@ async fn serve_helper(
             .lock()
             .await
             .remove(&helper_id);
-        let recovery = state.helper_meta.lock().await.remove(&helper_id);
-        if !intentional_close {
-            if let Some(recovery) = recovery {
-                if let Some(tab_id) = recovery.owner_tab_id {
-                    emit_restart_agent_pane(&tab_id, recovery.last_session_id.as_ref());
-                }
-            }
-        }
+        state.helper_meta.lock().await.remove(&helper_id);
+        tracing::info!(
+            target: "master",
+            helper_id = ?helper_id,
+            intentional_close,
+            "helper ownership retired; automatic recovery disabled"
+        );
     }
 
     result
-}
-
-/// Emit a `restart_agent_pane` WT-protocol event so C++ re-warms a fresh
-/// helper for `tab_id`, resuming `session_id` (when known) via
-/// `--initial-load-session-id`. Routed per-tab by StableId, mirroring
-/// `close_agent_pane`. See `doc/specs/connection-resilience.md` §8.
-fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::schema::v1::SessionId>) {
-    let evt = build_restart_agent_pane_event(tab_id, session_id);
-    tracing::info!(
-        target: "master",
-        tab_id = %tab_id,
-        session_id = ?session_id,
-        "emitting restart_agent_pane (helper disconnected)"
-    );
-    crate::wt_protocol_events::send(evt.to_string());
-}
-
-/// Pure builder for the `restart_agent_pane` WT-protocol event payload.
-/// Split out from [`emit_restart_agent_pane`] so the envelope shape is
-/// unit-testable without the `wtcli publish` side effect.
-fn build_restart_agent_pane_event(
-    tab_id: &str,
-    session_id: Option<&acp::schema::v1::SessionId>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "type": "event",
-        "method": "restart_agent_pane",
-        "params": {
-            "tab_id": tab_id,
-            "session_id": session_id.map(|s| s.0.as_ref()),
-            "reason": "helper_disconnect",
-        }
-    })
 }
 
 /// Remove every `session_to_helper` entry owned by `helper_id` and return

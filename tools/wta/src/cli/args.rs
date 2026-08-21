@@ -182,17 +182,6 @@ pub(crate) struct Cli {
     #[arg(long, hide = true)]
     pub(crate) start_stashed: bool,
 
-    /// Degraded-open mode: the helper is being spawned for a pane the user
-    /// opened *while wta-master is known to be down* (it died unexpectedly and
-    /// hasn't been recovered via /restart — see C++ `SharedWta::IsDegraded`).
-    /// Rather than the helper retrying the dead master pipe for ~75s and
-    /// showing a spinner, it comes up immediately in the disconnected state
-    /// (the same transport-lost view an orphaned pane shows), so the user can
-    /// /restart right there instead of hunting for another pane. Hidden — only
-    /// WT's degraded-open path should set it.
-    #[arg(long, hide = true)]
-    pub(crate) assume_master_down: bool,
-
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
     pub(crate) info: bool,

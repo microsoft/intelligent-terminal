@@ -892,6 +892,13 @@ impl App {
                     }
                 }
             }
+            AppEvent::MasterDisconnected => {
+                tracing::warn!(
+                    target: "helper",
+                    "master disconnected; terminating helper without session recovery"
+                );
+                self.should_quit = true;
+            }
             AppEvent::PostLoginAuthRecovery {
                 failure,
                 tab_id,
