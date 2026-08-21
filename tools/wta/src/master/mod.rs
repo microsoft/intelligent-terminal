@@ -5028,8 +5028,9 @@ fn stamped_cli(
 /// which the reconcile needs to authoritatively drop stale rows. No on-disk
 /// fallback by design.
 ///
-/// Rows are stamped with **`agent`'s** CLI, never the master's launch CLI: an
-/// agent enumerates only its own sessions, and master multiplexes several.
+/// Rows are stamped with **`agent`'s** CLI and execution source, never the
+/// master's launch CLI or a blanket `Host`: an agent enumerates only its own
+/// sessions, and master multiplexes several across host and WSL at once.
 async fn host_history_via_acp(
     state: &MasterStateInner,
     agent: &AgentCli,
@@ -5048,7 +5049,13 @@ async fn host_history_via_acp(
     Some(crate::session_history::classify_and_map(
         &sessions,
         &idx,
-        crate::agent_sessions::SessionLocation::Host,
+        // Where this agent's sessions actually live. Blanket-stamping `Host`
+        // collapsed host Copilot, Copilot in WSL Debian, and Copilot in WSL
+        // Ubuntu into one indistinguishable set — they share a `CliSource`,
+        // so `location` is the only thing that separates them. The live
+        // `session/new` path already stamps the bound agent's source; this is
+        // the historical path catching up.
+        agent.source.session_location(),
         &cli,
     ))
 }

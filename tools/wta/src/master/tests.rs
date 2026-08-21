@@ -6031,6 +6031,29 @@ fn listing_agent_with_cli(
     cli: Option<crate::agent_sessions::CliSource>,
     ids: &[&str],
 ) -> Arc<AgentCli> {
+    listing_agent_from(cli, crate::agent_source::AgentSource::Host, ids)
+}
+
+/// An agent pooled against a WSL distro rather than the host.
+fn wsl_listing_agent(
+    cli: crate::agent_sessions::CliSource,
+    distro: &str,
+    ids: &[&str],
+) -> Arc<AgentCli> {
+    listing_agent_from(
+        Some(cli),
+        crate::agent_source::AgentSource::Wsl {
+            distro: distro.to_string(),
+        },
+        ids,
+    )
+}
+
+fn listing_agent_from(
+    cli: Option<crate::agent_sessions::CliSource>,
+    source: crate::agent_source::AgentSource,
+    ids: &[&str],
+) -> Arc<AgentCli> {
     let mut cached_init_resp =
         acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
     cached_init_resp
@@ -6042,8 +6065,8 @@ fn listing_agent_with_cli(
         conn: client_connection_to_listing_agent(ids.iter().map(|s| s.to_string()).collect()),
         cached_init_resp,
         cli_source: cli.clone(),
-        source: crate::agent_source::AgentSource::Host,
-        cmd_key: format!("listing-agent-{cli:?}"),
+        source: source.clone(),
+        cmd_key: format!("listing-agent-{cli:?}-{source}"),
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
         bound_helpers: Mutex::new(HashSet::new()),
         host_list_cache: Mutex::new(None),
@@ -6091,6 +6114,43 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
             assert!(rows
                 .iter()
                 .any(|r| r.session_id.0.as_ref() == "copilot-row"));
+        })
+        .await;
+}
+
+/// The historical path must stamp each agent's rows with where that agent
+/// actually runs. Host Copilot and Copilot in a WSL distro share a
+/// `CliSource`, so `location` is the only field that separates them; stamping
+/// a blanket `Host` made every source's history indistinguishable and left two
+/// WSL panes rendering one merged list.
+#[tokio::test]
+async fn seeded_history_carries_the_agents_execution_source() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let host = listing_agent(CliSource::Copilot, &["host-row"]);
+            let debian = wsl_listing_agent(CliSource::Copilot, "Debian", &["debian-row"]);
+
+            assert_eq!(seed_host_and_broadcast(&state, &host).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &debian).await, 1);
+
+            let rows = state.registry.snapshot().await;
+            let location_of = |id: &str| {
+                rows.iter()
+                    .find(|r| r.session_id.0.as_ref() == id)
+                    .unwrap_or_else(|| panic!("{id} missing from registry"))
+                    .location
+                    .clone()
+            };
+            assert_eq!(location_of("host-row"), SessionLocation::Host);
+            assert_eq!(
+                location_of("debian-row"),
+                SessionLocation::Wsl {
+                    distro: "Debian".to_string()
+                }
+            );
         })
         .await;
 }
