@@ -3518,13 +3518,13 @@ fn agents_rows_snapshot_preserves_wsl_location() {
 }
 
 /// End-to-end render proof: a WSL `SessionInfo` in the `/sessions`
-/// snapshot must actually paint its bracketed distro tag (`[WSL-Ubuntu]`)
-/// on screen. `agents_rows_snapshot_preserves_wsl_location` proves the
-/// data path and `origin_prefix_shows_distro_for_wsl_rows` proves the
-/// prefix builder; this closes the loop through `crate::ui::render` so a
-/// regression in `agents_view::render`'s own `session_info_to_agent_session`
-/// conversion (a *second* call site, separate from `agents_rows_for_tab`)
-/// can't silently drop the tag.
+/// snapshot must actually paint its distro on screen.
+/// `agents_rows_snapshot_preserves_wsl_location` proves the data path and
+/// `cli_suffix_appends_the_wsl_distro` proves the suffix builder; this closes
+/// the loop through `crate::ui::render` so a regression in
+/// `agents_view::render`'s own `session_info_to_agent_session` conversion (a
+/// *second* call site, separate from `agents_rows_for_tab`) can't silently
+/// drop it.
 #[test]
 fn render_sessions_view_paints_wsl_distro_tag() {
     use crate::agent_sessions::{OriginFilter, SessionLocation};
@@ -3545,11 +3545,17 @@ fn render_sessions_view_paints_wsl_distro_tag() {
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+    // Opening the view for real selects row 0 (`toggle_agents_view`); this test
+    // installs the snapshot directly, so select it here — the distro rides the
+    // CLI suffix, which only surfaces on the selected or active row.
+    app.current_tab_mut().agents_list_state.select(Some(0));
 
     let text = render_to_text(&mut app, 80, 24);
     assert!(
-        text.contains("[WSL-Ubuntu]"),
-        "the /sessions view must paint the bracketed WSL distro tag; rendered:\n{text}"
+        // `session_info_for_test` reports Claude; the distro must ride the same
+        // suffix, right after the provider.
+        text.contains("· claude · Ubuntu"),
+        "the /sessions view must paint the WSL distro beside the CLI; rendered:\n{text}"
     );
 }
 
