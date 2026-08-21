@@ -14,6 +14,13 @@
 #include "../inc/WtaProcess.h"
 #include "AgentPaneLog.h"
 
+namespace
+{
+    // Must remain strictly greater than WTA's 15-second
+    // SESSION_CLOSE_TIMEOUT in tools/wta/src/master/mod.rs.
+    constexpr auto WtaSessionCloseGracePeriod{ std::chrono::seconds{ 16 } };
+}
+
 namespace winrt::TerminalApp::implementation::details
 {
     std::optional<std::wstring> BuildEnvironmentBlock(
@@ -88,15 +95,19 @@ namespace winrt::TerminalApp::implementation
 {
     SharedWta& SharedWta::Instance()
     {
-        // Magic-static initialization is thread-safe in C++11+.
-        static SharedWta s_instance;
-        return s_instance;
+        // Initialization remains thread-safe, but this process singleton must
+        // outlive delayed ReleasePaneAfterSessionClose coroutines. At process
+        // exit Windows closes the Job handle, preserving KILL_ON_JOB_CLOSE
+        // cleanup for the master and its descendants.
+        static auto* const s_instance = new SharedWta;
+        return *s_instance;
     }
 
     SharedWta::~SharedWta()
     {
-        // Process is exiting; tear wta down deterministically via
-        // KILL_ON_JOB_CLOSE rather than letting handles leak.
+        // Process is exiting, so a graceful per-session close can no longer
+        // delay app shutdown. KILL_ON_JOB_CLOSE deterministically reclaims the
+        // master, every agent CLI, and their MCP descendants without orphans.
         //
         // Wait callback synchronisation: cancel the wait WITH a
         // blocking unregister BEFORE we touch the fields it might
@@ -354,6 +365,12 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    winrt::fire_and_forget SharedWta::ReleasePaneAfterSessionClose()
+    {
+        co_await winrt::resume_after(WtaSessionCloseGracePeriod);
+        Instance().ReleasePane();
+    }
+
     bool SharedWta::Restart()
     {
         std::lock_guard lock{ _mtx };
@@ -601,7 +618,7 @@ namespace winrt::TerminalApp::implementation
 
         // Containment: a Job Object with KILL_ON_JOB_CLOSE binds
         // wta's lifetime to ours. When the last pane releases (or
-        // Terminal exits and the destructor runs), the job handle
+        // Terminal exits and Windows closes the final handle), the job handle
         // drops and the OS terminates wta + every descendant it
         // spawned. Any failure here MUST TerminateProcess to avoid
         // leaking a suspended-then-uncontained wta.

@@ -19,7 +19,7 @@ namespace TerminalApp
         // state is one of "connecting" | "connected" | "failed" | "disconnected".
         void UpdateAgentStatus(String name, String version, String model, String state, String backend);
 
-        // Toggle the bar's "agent name + version" header into a "Agent sessions"
+        // Toggle the bar's agent/model header into an "Agent sessions"
         // label (and hide the agent logo) while wta's session management view is
         // active. Driven by TerminalPage whenever the wta view changes.
         void SetSessionsView(Boolean active);

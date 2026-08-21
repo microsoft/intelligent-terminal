@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  Սեղմեք Enter՝ նորից փորձել�
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
 chat.welcome_title: "Բարի գալուստ Խելացի տերմինալ!"
-chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI: Ստուգեք սխալները."
+chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -207,7 +207,7 @@ hooks.marketplace_path_stale: "⚠ marketplace ճանապարհը հնացած �
 hooks.installed_but_disabled: "⚠ տեղադրված է, բայց անջատված է"
 hooks.not_installed: "✗ տեղադրված չէ"
 hooks.uninstall_skipped: "բաց թողվեց (CLI-ն PATH-ում չէ)"
-hooks.install_attempted: "wt-agent-hooks տեղադրման փորձ կատարվեց (իդեմպոտենտ)։ Գործարկեք `wta hooks status` արդյունքը ստուգելու համար։ Հետագծման մատյան՝ %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks-ը տեղադրված է %{clis}-ի համար"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "հենց նոր"
 time.minute_singular: "1 րոպե առաջ"

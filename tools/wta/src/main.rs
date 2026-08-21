@@ -22,6 +22,9 @@ mod event;
 mod helper;
 mod history_loader;
 #[cfg(test)]
+#[path = "hook_contract_tests.rs"]
+mod hook_contract_tests;
+#[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod logging;

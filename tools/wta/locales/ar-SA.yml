@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  اضغط على Enter لإعادة المحا
 chat.activity_thinking: "جارٍ التفكير…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "مرحبًا بك في الوحدة الطرفية الذكية!"
-chat.welcome_disclaimer: "يستخدم الوحدة الطرفية الذكية الذكاء الاصطناعي. تحقق من الأخطاء."
+chat.welcome_disclaimer: "يستخدم الوحدة الطرفية الذكية الذكاء الاصطناعي."
 chat.plan_header: "الخطة:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -193,7 +193,7 @@ hooks.marketplace_path_stale: "⚠ مسار المتجر قديم"
 hooks.installed_but_disabled: "⚠ مثبّت ولكن معطّل"
 hooks.not_installed: "✗ غير مثبّت"
 hooks.uninstall_skipped: "تم التخطي (CLI ليس في PATH)"
-hooks.install_attempted: "تمت محاولة تثبيت wt-agent-hooks (متساوي القوة). شغّل `wta hooks status` لفحص النتيجة. سجل التتبع: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ تم تثبيت wt-agent-hooks لـ %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "الآن"
 time.minute_singular: "منذ دقيقة واحدة"

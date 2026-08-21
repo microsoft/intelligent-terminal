@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pēhia Enter hei ngana anō, Esc rānei hei h
 chat.activity_thinking: "E whakaaro ana..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Nau mai ki Iho Atamai!"
-chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI. Tirohia ngā hapa."
+chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI."
 chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ ara makete kua tawhito"
 hooks.installed_but_disabled: "⚠ kua tautahia engari kua monokia"
 hooks.not_installed: "✗ kaore i tautahia"
 hooks.uninstall_skipped: "kua pekehia (CLI kaore i runga i te PATH)"
-hooks.install_attempted: "Kua ngana ki te tauta i a wt-agent-hooks (idempotent). Whakahautia `wta hooks status` ki te tirotiro i te hua. Raarangi aroturuki: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ kua tautahia a wt-agent-hooks mo %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "inaianei tonu"
 time.minute_singular: "%{count} meneti ki muri"

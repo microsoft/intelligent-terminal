@@ -29,7 +29,7 @@ impl App {
             None
         };
         let display_model = self
-            .current_model_display()
+            .confirmed_model_display()
             .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
             "agent_id": self.current_agent_id,

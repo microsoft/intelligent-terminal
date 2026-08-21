@@ -1925,6 +1925,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
         auto agentContent = winrt::make<winrt::TerminalApp::implementation::AgentPaneContent>(innerTerm);
+        if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+        {
+            agentImpl->UpdateSettings(_settings);
+        }
         // Apply the cached fallback immediately when a pane is created
         // mid-session (#348). The next theme refresh replaces it with the
         // agent pane's own background color.
@@ -2604,7 +2608,7 @@ namespace winrt::TerminalApp::implementation
             // tab's pane tree.
             newPane->Closed([](auto&&, auto&&) {
                 _agentPaneLog("agent pane closed");
-                winrt::TerminalApp::implementation::SharedWta::Instance().ReleasePane();
+                winrt::TerminalApp::implementation::SharedWta::ReleasePaneAfterSessionClose();
             });
         }
 
@@ -5653,6 +5657,75 @@ namespace winrt::TerminalApp::implementation
         _TeardownAgentPane(ownerTab);
     }
 
+    void TerminalPage::OnDefaultPasteRequested(hstring eventJson)
+    {
+        _agentPaneLog("OnDefaultPasteRequested: received");
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs) ||
+            !evt.isMember("params") || !evt["params"].isObject())
+        {
+            _agentPaneLog("OnDefaultPasteRequested: malformed event");
+            return;
+        }
+
+        const auto& params = evt["params"];
+        if (!params.isMember("window_id") || !params["window_id"].isString() ||
+            !params.isMember("tab_id") || !params["tab_id"].isString() ||
+            !params.isMember("pane_id") || !params["pane_id"].isString())
+        {
+            _agentPaneLog("OnDefaultPasteRequested: missing identity fields");
+            return;
+        }
+        if (params["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
+        {
+            _agentPaneLog("OnDefaultPasteRequested: window mismatch");
+            return;
+        }
+
+        const auto tabId = winrt::to_hstring(params["tab_id"].asString());
+        const auto ownerTab = _FindTabByStableId(tabId);
+        const auto focusedTab = _GetFocusedTabImpl();
+        if (!ownerTab || !focusedTab || focusedTab->StableId() != tabId)
+        {
+            _agentPaneLog("OnDefaultPasteRequested: owner tab is not focused");
+            return;
+        }
+
+        const auto ownerPane = ownerTab->FindAgentPane();
+        if (!ownerPane || ownerPane->IsHidden())
+        {
+            _agentPaneLog("OnDefaultPasteRequested: owner pane missing or hidden");
+            return;
+        }
+        const auto rawPaneId = params["pane_id"].asString();
+        try
+        {
+            const auto widePaneId = winrt::to_hstring(rawPaneId);
+            const auto requestedPaneId = (rawPaneId.size() >= 2 && rawPaneId.front() == '{')
+                                             ? winrt::guid{ ::Microsoft::Console::Utils::GuidFromString(widePaneId.c_str()) }
+                                             : winrt::guid{ ::Microsoft::Console::Utils::GuidFromPlainString(widePaneId.c_str()) };
+            if (ownerPane->GetSessionId() != requestedPaneId)
+            {
+                _agentPaneLog("OnDefaultPasteRequested: pane mismatch");
+                return;
+            }
+        }
+        catch (...)
+        {
+            _agentPaneLog("OnDefaultPasteRequested: invalid pane identity");
+            return;
+        }
+
+        if (const auto control = ownerPane->GetTerminalControl())
+        {
+            _agentPaneLog("OnDefaultPasteRequested: requesting clipboard paste");
+            control.PasteTextFromClipboard();
+        }
+    }
+
     // Inbound `/agent` selection from WTA. SendEvent fans out to every page;
     // window_id plus the stable tab id ensure only the owning page applies it.
     void TerminalPage::OnAgentSwitchRequested(hstring eventJson)
@@ -8105,6 +8178,7 @@ namespace winrt::TerminalApp::implementation
         const auto bracketedPaste = eventArgs.BracketedPasteEnabled();
         const auto sourceId = sender.try_as<ControlInteractivity>().Id();
         winrt::hstring agentPasteTabId;
+        std::string agentPastePaneId;
         const auto agentPasteWindowId = std::to_string(_WindowProperties.WindowId());
         bool pasteTargetsAgentPane = false;
 
@@ -8128,6 +8202,7 @@ namespace winrt::TerminalApp::implementation
                     if (pasteTargetsAgentPane)
                     {
                         agentPasteTabId = tab->StableId();
+                        agentPastePaneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sourcePane->GetSessionId()));
                     }
                 }
             }
@@ -8138,6 +8213,7 @@ namespace winrt::TerminalApp::implementation
             Json::Value params{ Json::objectValue };
             params["window_id"] = agentPasteWindowId;
             params["tab_id"] = winrt::to_string(agentPasteTabId);
+            params["pane_id"] = agentPastePaneId;
             _agentPaneLog("agent pane text paste: forwarding structured paste request");
             _RaiseProtocolEvent("agent_paste_text", params);
             co_return;
@@ -8887,12 +8963,17 @@ namespace winrt::TerminalApp::implementation
                 // / tabs.
                 if (const auto focusedTab = _GetFocusedTabImpl())
                 {
-                    if (const auto existingAgentPane = focusedTab->FindAgentPane())
+                    if (focusedTab->FindAgentPane())
                     {
                         _agentPaneLog(
                             std::string{ "_MakeTerminalPane: drag-in tearing down pre-warm leftover on tab " } +
                             winrt::to_string(focusedTab->StableId()));
-                        existingAgentPane->Close();
+                        // This pre-warm helper owns its own ACP session. Close
+                        // it authoritatively before replacing the pane, and
+                        // suppress the expected helper-disconnect recovery so
+                        // it cannot tear down the incoming dragged pane.
+                        _NotifyAgentTabReset(focusedTab->StableId());
+                        _TeardownAgentPane(focusedTab, /*suppressMasterRestart*/ true);
                     }
                 }
 
@@ -8924,7 +9005,7 @@ namespace winrt::TerminalApp::implementation
                     // matching `Release` for that.
                     wrapped->Closed([](auto&&, auto&&) {
                         _agentPaneLog("drag-in agent pane closed");
-                        winrt::TerminalApp::implementation::SharedWta::Instance().ReleasePane();
+                        winrt::TerminalApp::implementation::SharedWta::ReleasePaneAfterSessionClose();
                     });
 
                     if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())

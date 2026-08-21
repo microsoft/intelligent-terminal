@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  დააჭირეთ Enter-ს ხელ�
 chat.activity_thinking: "ვფიქრობ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
-chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს. შეამოწმეთ შეცდომები."
+chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს."
 chat.plan_header: "გეგმა:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ მარკეტის ბილიკი �
 hooks.installed_but_disabled: "⚠ დაინსტალირებული, მაგრამ გათიშული"
 hooks.not_installed: "✗ არ არის დაინსტალირებული"
 hooks.uninstall_skipped: "გამოტოვებული (CLI არ არის PATH-ზე)"
-hooks.install_attempted: "wt-agent-hooks ინსტალაცია სცადეს (იდემპოტენტური). გაუშვით `wta hooks status` შედეგის სანახავად. თრეის ლოგი: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks დაინსტალირებულია %{clis}-სთვის"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ახლახან"
 time.minute_singular: "1 წუთის წინ"

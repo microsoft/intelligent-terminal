@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  Enter を押して再試行するか、Esc �
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
 chat.welcome_title: "インテリジェント ターミナルへようこそ！"
-chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。誤りがないか確認してください。"
+chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。"
 chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -173,7 +173,7 @@ hooks.marketplace_path_stale: "⚠ マーケットプレース パスが古く�
 hooks.installed_but_disabled: "⚠ インストール済みですが無効になっています"
 hooks.not_installed: "✗ 未インストール"
 hooks.uninstall_skipped: "スキップ (CLI が PATH 上にありません)"
-hooks.install_attempted: "wt-agent-hooks のインストールを試行しました (べき等)。結果を確認するには `wta hooks status` を実行してください。トレース ログ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks は %{clis} 用にインストール済みです"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "たった今"
 time.minute_singular: "%{count} 分前"

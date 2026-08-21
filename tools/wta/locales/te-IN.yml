@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  మళ్లీ ప్రయత్నిం�
 chat.activity_thinking: "ఆలోచిస్తోంది…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ఇంటెలిజెంట్ టెర్మినల్-కు స్వాగతం!"
-chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది. తప్పులు ఉన్నాయా తనిఖీ చేయండి."
+chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది."
 chat.plan_header: "ప్లాన్:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ మార్కెట్‌ప్లేస్
 hooks.installed_but_disabled: "⚠ ఇన్‌స్టాల్ చేయబడింది కానీ డిజేబుల్ చేయబడింది"
 hooks.not_installed: "✗ ఇన్‌స్టాల్ చేయబడలేదు"
 hooks.uninstall_skipped: "దాటవేయబడింది (CLI PATH లో లేదు)"
-hooks.install_attempted: "wt-agent-hooks ఇన్‌స్టాల్ ప్రయత్నించబడింది (ఐడెంపోటెంట్). ఫలితాన్ని తనిఖీ చేయడానికి `wta hooks status` అమలు చేయండి. ట్రేస్ లాగ్: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} కోసం ఇన్‌స్టాల్ చేయబడింది"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ఇప్పుడే"

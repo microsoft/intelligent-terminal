@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ مارکیٹ پلیس پاتھ پرانا ہ�
 hooks.installed_but_disabled: "⚠ انسٹال ہے لیکن غیر فعال ہے"
 hooks.not_installed: "✗ انسٹال نہیں ہے"
 hooks.uninstall_skipped: "چھوڑ دیا گیا (CLI PATH میں نہیں ہے)"
-hooks.install_attempted: "wt-agent-hooks انسٹال کی کوشش کی گئی (آئیڈمپوٹنٹ)۔ نتیجہ جانچنے کے لیے `wta hooks status` چلائیں۔ ٹریس لاگ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} کے لیے انسٹال ہے"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ابھی"

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Dréckt Enter fir nach eng Kéier ze probéie
 chat.activity_thinking: "Denkt no…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Wëllkomm am Intelligenten Terminal!"
-chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI. Kuckt no Feeler."
+chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI."
 chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ Marketplace-Wee verélzt"
 hooks.installed_but_disabled: "⚠ installéiert awer deaktivéiert"
 hooks.not_installed: "✗ net installéiert"
 hooks.uninstall_skipped: "iwwersprong (CLI net op PATH)"
-hooks.install_attempted: "wt-agent-hooks Installatioun probéiert (idempotent). Féiert `wta hooks status` aus fir d'Resultat z'iwwerpréiwen. Trace-Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installéiert fir %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "elo grad"

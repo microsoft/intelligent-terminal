@@ -112,7 +112,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Swap the bar between two modes:
-    //   * chat / connecting / etc. (active=false) — agent logo + "<name> <version>"
+    //   * chat / connecting / etc. (active=false) — agent logo + agent/model label
     //   * session management view (active=true)  — no logo, "Agent sessions"
     // Idempotent so callers don't need to dedupe.
     void AgentPaneContent::SetSessionsView(bool active)
@@ -266,9 +266,9 @@ namespace winrt::TerminalApp::implementation
                 text += L" ";
                 text += _agentVersion;
             }
-            else if (!_agentModel.empty())
+            if (_agentState == L"connected" && !_agentModel.empty())
             {
-                text += L" ";
+                text += L" \u00B7 ";
                 text += _agentModel;
             }
         }
@@ -309,6 +309,19 @@ namespace winrt::TerminalApp::implementation
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             impl->UpdateSettings(settings);
+        }
+
+        const winrt::Microsoft::Terminal::Control::KeyChord ctrlV{ Windows::System::VirtualKeyModifiers::Control, 'V', 0 };
+        if (const auto actionMap = settings.ActionMap())
+        {
+            const auto command = actionMap.GetActionByKeyChord(ctrlV);
+            const auto isPasteAction = command && command.ActionAndArgs().Action() == ShortcutAction::PasteText;
+            GetTermControl().EnableAgentPasteShortcutFallback(
+                !actionMap.IsKeyChordExplicitlyUnbound(ctrlV) && (!command || isPasteAction));
+        }
+        else
+        {
+            GetTermControl().EnableAgentPasteShortcutFallback(false);
         }
     }
 

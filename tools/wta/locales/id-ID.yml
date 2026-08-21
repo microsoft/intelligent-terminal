@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tekan Enter untuk mencoba lagi, atau Esc untu
 chat.activity_thinking: "Berpikir…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Selamat datang di Terminal Cerdas!"
-chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI. Periksa kesalahan."
+chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI."
 chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ jalur marketplace sudah usang"
 hooks.installed_but_disabled: "⚠ terinstal tetapi dinonaktifkan"
 hooks.not_installed: "✗ belum terinstal"
 hooks.uninstall_skipped: "dilewati (CLI tidak ada di PATH)"
-hooks.install_attempted: "Instalasi wt-agent-hooks dicoba (idempotent). Jalankan `wta hooks status` untuk memeriksa hasil. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks terinstal untuk %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "baru saja"

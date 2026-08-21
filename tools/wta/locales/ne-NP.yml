@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  फेरि प्रयास गर्न 
 chat.activity_thinking: "सोचिरहेको छ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "इन्टेलिजेन्ट टर्मिनल मा स्वागत छ!"
-chat.welcome_disclaimer: "इन्टेलिजेन्ट टर्मिनल ले AI प्रयोग गर्छ। गल्तीहरू जाँच गर्नुहोस्।"
+chat.welcome_disclaimer: "इन्टेलिजेन्ट टर्मिनल ले AI प्रयोग गर्छ।"
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ �
 hooks.installed_but_disabled: "⚠ स्थापित छ तर असक्षम छ"
 hooks.not_installed: "✗ स्थापित छैन"
 hooks.uninstall_skipped: "छोडियो (CLI PATH मा छैन)"
-hooks.install_attempted: "wt-agent-hooks स्थापना प्रयास गरियो (आइडेम्पोटेन्ट)। नतिजा जाँच्न `wta hooks status` चलाउनुहोस्। ट्रेस लग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} का लागि स्थापित छ"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "अहिले भर्खरै"

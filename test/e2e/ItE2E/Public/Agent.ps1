@@ -255,7 +255,7 @@ function Get-AgentCliStatus {
         installed-unauthenticated, or authed using its non-interactive print mode.
     #>
     [CmdletBinding()] param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini', 'opencode')][string]$Agent,
+        [Parameter(Mandatory)][ValidateSet('copilot', 'claude', 'codex', 'gemini', 'opencode')][string]$Agent,
         [int]$TimeoutSec = 50
     )
     if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) { return 'not-installed' }
@@ -263,6 +263,7 @@ function Get-AgentCliStatus {
     $job = Start-Job -ArgumentList $Agent -ScriptBlock {
         param($AgentId)
         switch ($AgentId) {
+            'copilot' { copilot -p 'Reply with only the token AUTHOK' 2>&1 }
             'claude' { claude -p 'Reply with only the token AUTHOK' 2>&1 }
             'codex'  { $null | codex exec 'Reply with only the token AUTHOK' 2>&1 }
             'gemini' { gemini -p 'Reply with only the token AUTHOK' 2>&1 }

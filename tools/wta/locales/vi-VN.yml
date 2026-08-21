@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc đ�
 chat.activity_thinking: "Đang suy nghĩ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Chào mừng bạn đến Đầu cuối thông minh!"
-chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI. Hãy kiểm tra lỗi."
+chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI."
 chat.plan_header: "Kế hoạch:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ đường dẫn marketplace đã cũ"
 hooks.installed_but_disabled: "⚠ đã cài đặt nhưng bị tắt"
 hooks.not_installed: "✗ chưa cài đặt"
 hooks.uninstall_skipped: "đã bỏ qua (CLI không nằm trong PATH)"
-hooks.install_attempted: "Đã thử cài đặt wt-agent-hooks (idempotent). Chạy `wta hooks status` để kiểm tra kết quả. Nhật ký: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks đã cài đặt cho %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "vừa xong"

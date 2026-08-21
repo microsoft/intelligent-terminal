@@ -156,7 +156,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
 
-        // When true, the bar replaces "<agent> <version>" with "Agent sessions"
+        // When true, the bar replaces the agent/model label with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };

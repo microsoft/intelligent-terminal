@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Қайталау үшін Enter пернес�
 chat.activity_thinking: "Ойланып жатырмын…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Зияткер терминал-ға қош келдіңіз!"
-chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады. Қателерді тексеріңіз."
+chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады."
 chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ marketplace жолы ескірген"
 hooks.installed_but_disabled: "⚠ орнатылған бірақ өшірілген"
 hooks.not_installed: "✗ орнатылмаған"
 hooks.uninstall_skipped: "өткізілді (CLI PATH-те емес)"
-hooks.install_attempted: "wt-agent-hooks орнату әрекеті жасалды (idempotent). Нәтижені тексеру үшін `wta hooks status` іске қосыңыз. Із журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} үшін орнатылған"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "жаңа ғана"
 time.minute_singular: "%{count} минут бұрын"

@@ -43,7 +43,7 @@ chat.activity_thinking: "[Ţĥïñķïñğ…!!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[Ŵéĺçöḿé ţö Intelligent Terminal!!]"
 # {Locked="Intelligent Terminal","AI"} - product name and acronym, do not translate
-chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI. Çĥéçķ ƒöŕ ḿïśţåķéś.!!]"
+chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI.!!]"
 chat.plan_header: "[Ṗĺåñ:!!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "[⚠ ḿåŕķéţṗĺåçé ṗåţĥ śţåĺ�
 hooks.installed_but_disabled: "[⚠ ïñśţåĺĺéď ƀûţ ďïśåƀĺéď!!!! !!!!]"
 hooks.not_installed: "[✗ ñöţ ïñśţåĺĺéď!!]"
 hooks.uninstall_skipped: "[śķïṗṗéď (CLI ñöţ öñ PATH)!!!! !!!!]"
-hooks.install_attempted: "[wt-agent-hooks ïñśţåĺĺ åţţéḿṗţéď (ïďéḿṗöţéñţ). Ŕûñ `wta hooks status` ţö ïñśṗéçţ ţĥé ŕéśûĺţ. Ţŕåçé ĺöğ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+hooks.install_succeeded: "[✓ wt-agent-hooks ïñśţåĺĺéď ƒöŕ %{clis}!!!! !!!! !!!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "just now"
 time.minute_singular: "%{count} minute ago"

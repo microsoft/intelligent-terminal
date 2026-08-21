@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Qayta urinish uchun Enter tugmasini bosing yo
 chat.activity_thinking: "Oʻylayapman…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Aqlli terminal-ga xush kelibsiz!"
-chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi. Xatolarni tekshiring."
+chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi."
 chat.plan_header: "Reja:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -191,7 +191,7 @@ hooks.marketplace_path_stale: "⚠ marketplace yoʻli eskirgan"
 hooks.installed_but_disabled: "⚠ oʻrnatilgan lekin oʻchirilgan"
 hooks.not_installed: "✗ oʻrnatilmagan"
 hooks.uninstall_skipped: "oʻtkazib yuborildi (CLI PATH-da emas)"
-hooks.install_attempted: "wt-agent-hooks oʻrnatish urinildi (idempotent). Natijani tekshirish uchun `wta hooks status` bajaring. Iz jurnali: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} uchun oʻrnatilgan"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "hozirgina"
 time.minute_singular: "%{count} daqiqa oldin"

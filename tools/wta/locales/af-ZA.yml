@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om teru
 chat.activity_thinking: "Dink na…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Welkom by Intelligente Terminaal!"
-chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI. Kyk vir foute."
+chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ markpad verouderd"
 hooks.installed_but_disabled: "⚠ geïnstalleer maar gedeaktiveer"
 hooks.not_installed: "✗ nie geïnstalleer nie"
 hooks.uninstall_skipped: "oorgeslaan (CLI nie op PATH nie)"
-hooks.install_attempted: "wt-agent-hooks-installasie probeer (idempotent). Voer `wta hooks status` uit om die resultaat te ondersoek. Spoerlog: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks geïnstalleer vir %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "nou net"
 time.minute_singular: "%{count} minuut gelede"

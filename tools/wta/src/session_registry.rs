@@ -77,6 +77,10 @@ pub struct WtaMeta {
     /// Requests the master-owned session MCP endpoint. The value is a
     /// versioned contract marker, currently `http-v1`.
     pub proposal_mcp: Option<String>,
+    /// Master-to-helper disposition for a completed session transaction.
+    /// `retired` means the owning tab was reset or closed while the agent
+    /// request was in flight, so the helper must not bind the returned ID.
+    pub session_result: Option<String>,
 }
 
 impl WtaMeta {
@@ -102,6 +106,7 @@ impl WtaMeta {
             && blank(&self.cloud_models)
             && blank(&self.cloud_models_source)
             && blank(&self.proposal_mcp)
+            && blank(&self.session_result)
     }
 }
 
@@ -151,6 +156,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         cloud_models: str_field("cloud_models"),
         cloud_models_source: str_field("cloud_models_source"),
         proposal_mcp: str_field("proposal_mcp"),
+        session_result: str_field("session_result"),
     }
 }
 
@@ -190,6 +196,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("cloud_models", &wta.cloud_models);
     put("cloud_models_source", &wta.cloud_models_source);
     put("proposal_mcp", &wta.proposal_mcp);
+    put("session_result", &wta.session_result);
     // Every field was absent/whitespace-only after filtering — nothing
     // meaningful to attach, so don't litter the wire with an empty
     // `_meta.wta` object (a strict downstream implementer might reject it).
@@ -255,6 +262,16 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/c
 
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
+
+/// ExtRequest method for physically closing the ACP session owned by a
+/// destroyed WT tab. Any surviving helper may send this because master owns
+/// the authoritative tab → helper → session route.
+pub const INTELLTERM_METHOD_CLOSE_TAB_SESSION: &str = "_intellterm.wta/session/close_tab";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CloseTabSessionParams {
+    pub tab_id: String,
+}
 
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
@@ -328,6 +345,22 @@ pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest 
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
+}
+
+pub fn build_close_tab_session_request(tab_id: &str) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&CloseTabSessionParams {
+        tab_id: tab_id.to_string(),
+    })
+    .expect("CloseTabSessionParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_CLOSE_TAB_SESSION, Arc::from(raw))
+}
+
+pub fn parse_close_tab_session_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<CloseTabSessionParams, serde_json::Error> {
+    serde_json::from_str::<CloseTabSessionParams>(raw.get())
 }
 
 pub fn parse_sessions_list_params(
@@ -564,6 +597,10 @@ pub enum WtaExtRequest {
     ShellSessionSave(crate::shell_session_store::ShellSessionSaveParams),
     ShellSessionGet(crate::shell_session_store::ShellSessionGetParams),
     ShellSessionDelete(crate::shell_session_store::ShellSessionDeleteParams),
+    /// `_intellterm.wta/session/close_tab` — close the session belonging to a
+    /// destroyed stable tab id, regardless of which surviving helper observed
+    /// the terminal event.
+    CloseTabSession(CloseTabSessionParams),
     /// Not one of ours (or a future agent-native extension); forward it
     /// verbatim to the agent CLI so unknown extension methods still work.
     ForwardToAgent(acp::schema::v1::ExtRequest),
@@ -623,6 +660,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(ShellSessionGet, parse_shell_session_get_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_DELETE) {
         decode!(ShellSessionDelete, parse_shell_session_delete_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_CLOSE_TAB_SESSION) {
+        decode!(CloseTabSession, parse_close_tab_session_params)
     } else {
         WtaExtRequest::ForwardToAgent(req)
     }
@@ -793,7 +832,7 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
         match value {
             SessionHookCliSource::Known(value) => match value.as_str() {
                 "Claude" | "claude" => Self::Claude,
-                "Codex"  | "codex"  => Self::Codex,
+                "Codex" | "codex" => Self::Codex,
                 "Copilot" | "copilot" => Self::Copilot,
                 "Gemini" | "gemini" => Self::Gemini,
                 "OpenCode" | "opencode" => Self::OpenCode,
@@ -2074,8 +2113,8 @@ mod tests {
                 &acp::schema::v1::SessionId::new("missing".to_string()),
                 &|_| true
             )
-                .await
-                .is_none(),
+            .await
+            .is_none(),
             "remove_if on an absent id returns None"
         );
     }
@@ -2633,11 +2672,11 @@ mod tests {
         let reg = InMemoryRegistry::new();
         let changed = reg
             .apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-1".into(),
-            cli_source: crate::agent_sessions::CliSource::Claude,
-            pane_session_id: "Pane-A".into(),
-            cwd: PathBuf::from("C:\\work"),
-            title: "claude — work".into(),
+                key: "sid-1".into(),
+                cli_source: crate::agent_sessions::CliSource::Claude,
+                pane_session_id: "Pane-A".into(),
+                cwd: PathBuf::from("C:\\work"),
+                title: "claude — work".into(),
             })
             .await;
 
@@ -2931,8 +2970,8 @@ mod tests {
 
         let changed = reg
             .apply_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-            key: "sid".into(),
-            pane_session_id: "New-Pane".into(),
+                key: "sid".into(),
+                pane_session_id: "New-Pane".into(),
             })
             .await;
         let row = reg
@@ -2963,7 +3002,7 @@ mod tests {
         // 1. Master creates an agent-pane session at new_session time
         //    with pane_session_id from _meta.wta (helper's WT_SESSION).
         // 2. The agent runs a tool in a DIFFERENT workspace shell pane.
-        // 3. PowerShell hooks in that shell pane fire SessionStarted
+        // 3. Native CLI hooks in that shell pane fire SessionStarted
         //    with the SHELL pane's GUID, not the helper's.
         // 4. Before this fix: master's reducer clobbered the row's
         //    pane_session_id with the shell GUID. session management Enter on the row
@@ -2982,7 +3021,7 @@ mod tests {
         info.cli_source = Some(CliSource::Copilot);
         reg.upsert(info).await;
 
-        // Now a PowerShell hook fires from a SHELL pane (where the
+        // Now a native CLI hook fires from a SHELL pane (where the
         // agent ran Get-ChildItem), publishing SessionStarted with
         // the SHELL pane's GUID.
         let applied = reg
@@ -3723,7 +3762,7 @@ mod tests {
                     distro: "Ubuntu".to_string()
                 }
             )
-                .await
+            .await
         );
         assert_eq!(
             reg.lookup(&sid).await.unwrap().location,
@@ -3739,7 +3778,7 @@ mod tests {
                     distro: "Ubuntu".to_string()
                 }
             )
-                .await
+            .await
         );
         // Absent id → no change.
         assert!(
@@ -3916,6 +3955,7 @@ mod tests {
                 cloud_models: Some(" ".to_string()),
                 cloud_models_source: Some("\t".to_string()),
                 proposal_mcp: Some(" ".to_string()),
+                session_result: Some(" ".to_string()),
             },
         );
         assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
@@ -3956,6 +3996,7 @@ mod tests {
                 cloud_models: Some(" ".to_string()),
                 cloud_models_source: Some("\t".to_string()),
                 proposal_mcp: Some(" ".to_string()),
+                session_result: Some(" ".to_string()),
             }
             .is_empty(),
             "all-whitespace fields ⇒ empty"

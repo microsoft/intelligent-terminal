@@ -1059,7 +1059,7 @@ fn build_message_lines_with_details<'a>(
                 Span::raw("  "),
                 Span::styled(
                     t!("chat.welcome_disclaimer").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                    theme::DISCLAIMER_TEXT,
                 ),
             ]));
         }
