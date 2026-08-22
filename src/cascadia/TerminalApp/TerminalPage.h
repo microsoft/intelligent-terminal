@@ -595,11 +595,13 @@ namespace winrt::TerminalApp::implementation
         static bool _IsAgentPaneModelHotUpdateTarget(
             const std::optional<AgentPaneSettingsBinding>& binding,
             std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
-            bool helperEventReady) noexcept;
+            bool helperEventReady,
+            bool agentConnected) noexcept;
         static bool _ShouldRecreateAgentPaneForModelHotUpdate(
             const std::optional<AgentPaneSettingsBinding>& binding,
             std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
-            bool helperEventReady) noexcept;
+            bool helperEventReady,
+            bool agentConnected) noexcept;
         static Json::Value _BuildAgentPaneSettingsRebindPayload(
             const AgentPaneSettingsBinding& binding);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);

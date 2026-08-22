@@ -1924,11 +1924,13 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_IsAgentPaneModelHotUpdateTarget(
         const std::optional<AgentPaneSettingsBinding>& binding,
         const std::optional<ConnectionState> connectionState,
-        const bool helperEventReady) noexcept
+        const bool helperEventReady,
+        const bool agentConnected) noexcept
     {
         return binding &&
                binding->launchable &&
                binding->followsGlobalAcpModel &&
+               agentConnected &&
                connectionState &&
                _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
                    AgentPaneSettingsRebindDisposition::Rebind;
@@ -1937,12 +1939,14 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_ShouldRecreateAgentPaneForModelHotUpdate(
         const std::optional<AgentPaneSettingsBinding>& binding,
         const std::optional<ConnectionState> connectionState,
-        const bool helperEventReady) noexcept
+        const bool helperEventReady,
+        const bool agentConnected) noexcept
     {
         return binding &&
                binding->launchable &&
                binding->followsGlobalAcpModel &&
-               (!connectionState ||
+               (!agentConnected ||
+                !connectionState ||
                 _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
                     AgentPaneSettingsRebindDisposition::Recreate);
     }
@@ -3845,10 +3849,13 @@ namespace winrt::TerminalApp::implementation
                     {
                         const auto pane = tabImpl->FindAgentPane();
                         bool helperEventReady = false;
+                        bool agentConnected = false;
                         if (const auto content = tabImpl->FindAgentPaneContent())
                         {
-                            helperEventReady =
-                                winrt::get_self<implementation::AgentPaneContent>(content)->IsHelperEventReady();
+                            const auto contentImpl =
+                                winrt::get_self<implementation::AgentPaneContent>(content);
+                            helperEventReady = contentImpl->IsHelperEventReady();
+                            agentConnected = contentImpl->IsAgentConnected();
                         }
                         std::optional<ConnectionState> connectionState;
                         if (const auto control = pane->GetTerminalControl())
@@ -3861,7 +3868,8 @@ namespace winrt::TerminalApp::implementation
                             if (_ShouldRecreateAgentPaneForModelHotUpdate(
                                     rebindBinding,
                                     connectionState,
-                                    helperEventReady))
+                                    helperEventReady,
+                                    agentConnected))
                             {
                                 panesToRecreate.emplace_back(
                                     tabImpl,
@@ -3872,7 +3880,8 @@ namespace winrt::TerminalApp::implementation
                             else if (_IsAgentPaneModelHotUpdateTarget(
                                          rebindBinding,
                                          connectionState,
-                                         helperEventReady))
+                                         helperEventReady,
+                                         agentConnected))
                             {
                                 hasModelHotUpdateTarget = true;
                             }

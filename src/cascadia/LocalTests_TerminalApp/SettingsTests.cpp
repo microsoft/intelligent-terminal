@@ -2063,24 +2063,28 @@ namespace TerminalAppLocalTests
         });
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
 
-        VERIFY_IS_TRUE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, true));
-        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, true));
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, false));
-        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, false));
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Failed, true));
-        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Failed, true));
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::NotConnected, true));
-        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::NotConnected, true));
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, std::nullopt, true));
-        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, std::nullopt, true));
+        VERIFY_IS_TRUE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, true, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, true, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connecting, true, false));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connecting, true, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, true, false));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, true, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, false, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, false, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Failed, true, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Failed, true, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::NotConnected, true, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::NotConnected, true, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, std::nullopt, true, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, std::nullopt, true, true));
 
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(std::nullopt, State::Connected, true));
-        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(std::nullopt, State::Connected, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(std::nullopt, State::Connected, true, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(std::nullopt, State::Connected, false, false));
 
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(perTabModelOverride, State::Connected, true));
-        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(perTabModelOverride, State::Connected, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(perTabModelOverride, State::Connected, true, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(perTabModelOverride, State::Connected, false, false));
 
-        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(nonLaunchableGlobalFollower, State::Connected, true));
-        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(nonLaunchableGlobalFollower, State::Connected, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(nonLaunchableGlobalFollower, State::Connected, true, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(nonLaunchableGlobalFollower, State::Connected, false, false));
     }
 }
