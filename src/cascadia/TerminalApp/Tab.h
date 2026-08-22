@@ -209,6 +209,8 @@ namespace winrt::TerminalApp::implementation
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
+        til::event<winrt::delegate<std::shared_ptr<Pane>, winrt::Windows::UI::Xaml::DragStartingEventArgs>> PaneDragStarting;
+        til::event<winrt::delegate<std::shared_ptr<Pane>, winrt::Windows::UI::Xaml::DropCompletedEventArgs>> PaneDragCompleted;
 
         // The TabViewIndex is the index this Tab object resides in TerminalPage's _tabs vector.
         WINRT_PROPERTY(uint32_t, TabViewIndex, 0);
@@ -330,6 +332,7 @@ namespace winrt::TerminalApp::implementation
         void _AttachEventHandlersToPane(std::shared_ptr<Pane> pane);
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
+        void _UpdatePaneHeaderVisibility();
         void _UpdateMenuItemStates();
         void _UpdateAgentChipVisibility();
 

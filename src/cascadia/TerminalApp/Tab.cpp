@@ -338,6 +338,7 @@ namespace winrt::TerminalApp::implementation
                 _AttachEventHandlersToContent(pane->Id().value(), content);
             }
         });
+        _UpdatePaneHeaderVisibility();
     }
 
     // Method Description:
@@ -962,6 +963,7 @@ namespace winrt::TerminalApp::implementation
         {
             _UpdateActivePane(focus);
         }
+        _UpdatePaneHeaderVisibility();
     }
 
     // Method Description:
@@ -1496,6 +1498,18 @@ namespace winrt::TerminalApp::implementation
     // - pane: a Pane to mark as active.
     // Return Value:
     // - <none>
+    void Tab::_UpdatePaneHeaderVisibility()
+    {
+        uint32_t visiblePaneCount = 0;
+        _rootPane->WalkTree([&](const auto& pane) {
+            if (pane->_IsLeaf() && !pane->IsHidden() && !pane->IsAgentPane())
+            {
+                ++visiblePaneCount;
+            }
+        });
+        _rootPane->ShowPaneHeaders(visiblePaneCount > 1);
+    }
+
     void Tab::_UpdateActivePane(std::shared_ptr<Pane> pane)
     {
         // Remember previous active pane for source-of-agent tracking.
@@ -1547,6 +1561,7 @@ namespace winrt::TerminalApp::implementation
             _closePaneMenuItem.Visibility(WUX::Visibility::Collapsed);
         }
 
+        _UpdatePaneHeaderVisibility();
         _RecalculateAndApplyReadOnly();
 
         // Raise our own ActivePaneChanged event.
@@ -1677,6 +1692,10 @@ namespace winrt::TerminalApp::implementation
                         tab->_RecalculateAndApplyTabColor();
                     }
                 }
+                else
+                {
+                    tab->_UpdatePaneHeaderVisibility();
+                }
                 tab->_focusState = WUX::FocusState::Programmatic;
                 // This tab has gained focus, remove the bell indicator if it is active
                 if (tab->_tabStatus.BellIndicator())
@@ -1694,6 +1713,20 @@ namespace winrt::TerminalApp::implementation
             {
                 // update this tab's focus state
                 tab->_focusState = WUX::FocusState::Unfocused;
+            }
+        });
+
+        const auto dragStartingToken = pane->DragStarting([weakThis](std::shared_ptr<Pane> sender, const WUX::DragStartingEventArgs& e) {
+            if (const auto tab{ weakThis.get() })
+            {
+                tab->PaneDragStarting.raise(std::move(sender), e);
+            }
+        });
+
+        const auto dragCompletedToken = pane->DragCompleted([weakThis](std::shared_ptr<Pane> sender, const WUX::DropCompletedEventArgs& e) {
+            if (const auto tab{ weakThis.get() })
+            {
+                tab->PaneDragCompleted.raise(std::move(sender), e);
             }
         });
 
@@ -1737,7 +1770,7 @@ namespace winrt::TerminalApp::implementation
         auto detachedToken = std::make_shared<winrt::event_token>();
         // Add a Detached event handler to the Pane to clean up tab state
         // and other event handlers when a pane is removed from this tab.
-        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
+        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closedToken, dragStartingToken, dragCompletedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
             // Make sure we do this at most once
             if (auto pane{ weakPane.lock() })
             {
@@ -1745,6 +1778,8 @@ namespace winrt::TerminalApp::implementation
                 pane->GotFocus(gotFocusToken);
                 pane->LostFocus(lostFocusToken);
                 pane->Closed(closedToken);
+                pane->DragStarting(dragStartingToken);
+                pane->DragCompleted(dragCompletedToken);
 
                 if (auto tab{ weakThis.get() })
                 {

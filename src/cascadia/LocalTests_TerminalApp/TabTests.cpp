@@ -846,27 +846,36 @@ namespace TerminalAppLocalTests
         const auto result = RunOnUIThread([]() {
             const auto activeContent = winrt::make<winrt::TerminalApp::implementation::ScratchpadContent>();
             const auto otherContent = winrt::make<winrt::TerminalApp::implementation::ScratchpadContent>();
-            const auto activePane = std::make_shared<winrt::TerminalApp::implementation::Pane>(activeContent, true);
-            const auto nonActivePane = std::make_shared<winrt::TerminalApp::implementation::Pane>(otherContent);
+            const auto activePane = std::make_shared<Pane>(activeContent, true);
+            const auto nonActivePane = std::make_shared<Pane>(otherContent);
             const auto activeContentId = activePane->ContentId();
-            const auto root = std::make_shared<winrt::TerminalApp::implementation::Pane>(
+            const auto root = std::make_shared<Pane>(
                 activePane,
                 nonActivePane,
-                winrt::TerminalApp::implementation::SplitState::Vertical,
+                SplitState::Vertical,
                 0.5f);
             const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(root);
             tab->Initialize();
 
             VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(Visibility::Visible, activePane->_paneHeaderBorder.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, nonActivePane->_paneHeaderBorder.Visibility());
 
             const auto detached = tab->DetachPane(nonActivePane);
             VERIFY_ARE_EQUAL(nonActivePane, detached);
             VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
             VERIFY_ARE_EQUAL(activeContentId, tab->_activePane->ContentId());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, tab->_rootPane->_paneHeaderBorder.Visibility());
 
             tab->AttachPane(detached);
             VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
             VERIFY_ARE_EQUAL(detached, tab->_rootPane->FindPaneByContentId(*detached->ContentId()));
+            tab->_rootPane->WalkTree([](const auto& pane) {
+                if (pane->_IsLeaf())
+                {
+                    VERIFY_ARE_EQUAL(Visibility::Visible, pane->_paneHeaderBorder.Visibility());
+                }
+            });
         });
         VERIFY_SUCCEEDED(result);
     }

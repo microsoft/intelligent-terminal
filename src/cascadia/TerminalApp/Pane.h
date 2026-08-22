@@ -170,6 +170,7 @@ public:
 
     bool ContainsReadOnly() const;
 
+    void ShowPaneHeaders(bool show);
     bool IsAgentPane() const noexcept;
     void IsAgentPane(bool value) noexcept;
     bool IsSourceOfAgentPane() const noexcept;
@@ -252,6 +253,8 @@ public:
     til::event<gotFocusArgs> GotFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> LostFocus;
     til::event<winrt::delegate<std::shared_ptr<Pane>>> Detached;
+    til::event<winrt::delegate<std::shared_ptr<Pane>, winrt::Windows::UI::Xaml::DragStartingEventArgs>> DragStarting;
+    til::event<winrt::delegate<std::shared_ptr<Pane>, winrt::Windows::UI::Xaml::DropCompletedEventArgs>> DragCompleted;
 
 private:
     struct PanePoint;
@@ -263,6 +266,8 @@ private:
     winrt::Windows::UI::Xaml::Controls::Grid _root{};
     winrt::Windows::UI::Xaml::Controls::Border _borderFirst{};
     winrt::Windows::UI::Xaml::Controls::Border _borderSecond{};
+    winrt::Windows::UI::Xaml::Controls::Border _paneHeaderBorder{ nullptr };
+    winrt::Windows::UI::Xaml::Controls::TextBlock _paneHeaderText{ nullptr };
     // Thin transparent overlay on the split boundary that handles mouse
     // drag-to-resize. Lazily created the first time we need it.
     winrt::Windows::UI::Xaml::Controls::Border _splitter{ nullptr };
@@ -298,6 +303,7 @@ private:
     winrt::Windows::UI::Xaml::UIElement::GotFocus_revoker _gotFocusRevoker;
     winrt::Windows::UI::Xaml::UIElement::LostFocus_revoker _lostFocusRevoker;
     winrt::TerminalApp::IPaneContent::CloseRequested_revoker _closeRequestedRevoker;
+    winrt::TerminalApp::IPaneContent::TitleChanged_revoker _titleChangedRevoker;
 
     Borders _borders{ Borders::None };
 
@@ -318,6 +324,10 @@ private:
     void _SetupChildCloseHandlers();
     winrt::TerminalApp::IPaneContent _takePaneContent();
     void _setPaneContent(winrt::TerminalApp::IPaneContent content, std::optional<uint32_t> contentId = std::nullopt);
+    void _CreatePaneHeader();
+    void _SetupLeafLayout(const winrt::Windows::UI::Xaml::UIElement& control);
+    void _PaneHeaderDragStarting(const winrt::Windows::UI::Xaml::UIElement& sender, const winrt::Windows::UI::Xaml::DragStartingEventArgs& e);
+    void _PaneHeaderDropCompleted(const winrt::Windows::UI::Xaml::UIElement& sender, const winrt::Windows::UI::Xaml::DropCompletedEventArgs& e);
     bool _HasChild(const std::shared_ptr<Pane> child);
     winrt::TerminalApp::TerminalPaneContent _getTerminalContent() const;
 

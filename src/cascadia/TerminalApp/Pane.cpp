@@ -39,7 +39,6 @@ Pane::Pane(IPaneContent content, const bool lastFocused) :
 {
     _setPaneContent(std::move(content), s_nextContentId.fetch_add(1));
     _root.Children().Append(_borderFirst);
-
     const auto& control{ _content.GetRoot() };
     _borderFirst.Child(control);
 
@@ -1277,6 +1276,10 @@ void Pane::UpdateVisuals()
     const auto& brush{ _ComputeBorderColor() };
     _borderFirst.BorderBrush(brush);
     _borderSecond.BorderBrush(brush);
+    if (_paneHeaderBorder && _paneHeaderBorder.Visibility() == Visibility::Visible)
+    {
+        _paneHeaderBorder.Background(brush);
+    }
 }
 
 // Method Description:
@@ -1601,6 +1604,9 @@ void Pane::_CloseChild(const bool closeFirst)
     // If the only child left is a leaf, that means we're a leaf now.
     if (remainingChild->_IsLeaf())
     {
+        const auto showPaneHeader = remainingChild->_paneHeaderBorder &&
+                                    remainingChild->_paneHeaderBorder.Visibility() == Visibility::Visible;
+
         // Find what borders need to persist after we close the child
         _borders = _GetCommonBorders();
 
@@ -1643,10 +1649,17 @@ void Pane::_CloseChild(const bool closeFirst)
         _root.ColumnDefinitions().Clear();
         _root.RowDefinitions().Clear();
 
-        // Reattach the TermControl to our grid.
-        _root.Children().Append(_borderFirst);
         const auto& control{ _content.GetRoot() };
-        _borderFirst.Child(control);
+        if (showPaneHeader)
+        {
+            _CreatePaneHeader();
+            _SetupLeafLayout(control);
+        }
+        else
+        {
+            _root.Children().Append(_borderFirst);
+            _borderFirst.Child(control);
+        }
 
         // Make sure to set our _splitState before focusing the control. If you
         // fail to do this, when the tab handles the GotFocus event and asks us
@@ -1660,6 +1673,8 @@ void Pane::_CloseChild(const bool closeFirst)
             _gotFocusRevoker = control.GotFocus(winrt::auto_revoke, { this, &Pane::_ContentGotFocusHandler });
             _lostFocusRevoker = control.LostFocus(winrt::auto_revoke, { this, &Pane::_ContentLostFocusHandler });
         }
+
+        ShowPaneHeaders(showPaneHeader);
 
         // If we're inheriting the "last active" state from one of our children,
         // focus our control now. This should trigger our own GotFocus event.
@@ -1937,6 +1952,7 @@ void Pane::_SetupChildCloseHandlers()
 IPaneContent Pane::_takePaneContent()
 {
     _closeRequestedRevoker.revoke();
+    _titleChangedRevoker.revoke();
     _contentId = std::nullopt;
     return std::move(_content);
 }
@@ -1960,6 +1976,103 @@ void Pane::_setPaneContent(IPaneContent content, std::optional<uint32_t> content
         _contentId = contentId;
         _closeRequestedRevoker = _content.CloseRequested(winrt::auto_revoke, [this](auto&&, auto&&) { Close(); });
     }
+}
+
+void Pane::_CreatePaneHeader()
+{
+    _paneHeaderText = Controls::TextBlock{};
+    _paneHeaderText.FontSize(12);
+    _paneHeaderText.Padding({ 8, 2, 8, 2 });
+    _paneHeaderText.IsTextSelectionEnabled(false);
+    _paneHeaderText.TextTrimming(TextTrimming::CharacterEllipsis);
+    _paneHeaderText.Text(_content ? _content.Title() : winrt::hstring{});
+    if (_content)
+    {
+        const auto dispatcher = _paneHeaderText.Dispatcher();
+        std::weak_ptr<Pane> weakThis{ shared_from_this() };
+        _titleChangedRevoker = _content.TitleChanged(winrt::auto_revoke, [dispatcher, weakThis](auto&&, auto&&) {
+            dispatcher.RunAsync(
+                CoreDispatcherPriority::Normal,
+                [weakThis]() {
+                    if (const auto pane = weakThis.lock())
+                    {
+                        if (pane->_paneHeaderText && pane->_content)
+                        {
+                            pane->_paneHeaderText.Text(pane->_content.Title());
+                        }
+                    }
+                });
+        });
+    }
+
+    _paneHeaderBorder = Controls::Border{};
+    _paneHeaderBorder.Child(_paneHeaderText);
+    _paneHeaderBorder.Visibility(Visibility::Collapsed);
+    _paneHeaderBorder.CanDrag(true);
+    _paneHeaderBorder.Tapped({ this, &Pane::_borderTappedHandler });
+    _paneHeaderBorder.DragStarting({ this, &Pane::_PaneHeaderDragStarting });
+    _paneHeaderBorder.DropCompleted({ this, &Pane::_PaneHeaderDropCompleted });
+}
+
+void Pane::_SetupLeafLayout(const UIElement& control)
+{
+    auto headerRow = Controls::RowDefinition{};
+    headerRow.Height(GridLengthHelper::Auto());
+    auto contentRow = Controls::RowDefinition{};
+    contentRow.Height(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+    _root.RowDefinitions().Append(headerRow);
+    _root.RowDefinitions().Append(contentRow);
+
+    Controls::Grid::SetRow(_paneHeaderBorder, 0);
+    Controls::Grid::SetRow(_borderFirst, 1);
+    _root.Children().Append(_paneHeaderBorder);
+    _root.Children().Append(_borderFirst);
+
+    if (control)
+    {
+        _borderFirst.Child(control);
+    }
+}
+
+void Pane::ShowPaneHeaders(const bool show)
+{
+    if (_IsLeaf())
+    {
+        const auto visible = show && !_isAgentPane && !_hidden;
+        if (visible && !_paneHeaderBorder)
+        {
+            const auto control = _content ? _content.GetRoot() : nullptr;
+            _root.Children().Clear();
+            _borderFirst.Child(nullptr);
+            _root.RowDefinitions().Clear();
+            _CreatePaneHeader();
+            _SetupLeafLayout(control);
+        }
+
+        if (_paneHeaderBorder)
+        {
+            _paneHeaderBorder.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+            if (visible)
+            {
+                _paneHeaderBorder.Background(_ComputeBorderColor());
+                _paneHeaderText.Foreground(Media::SolidColorBrush(Colors::White()));
+            }
+        }
+        return;
+    }
+
+    _firstChild->ShowPaneHeaders(show);
+    _secondChild->ShowPaneHeaders(show);
+}
+
+void Pane::_PaneHeaderDragStarting(const UIElement& /*sender*/, const DragStartingEventArgs& e)
+{
+    DragStarting.raise(shared_from_this(), e);
+}
+
+void Pane::_PaneHeaderDropCompleted(const UIElement& /*sender*/, const DropCompletedEventArgs& e)
+{
+    DragCompleted.raise(shared_from_this(), e);
 }
 
 // Method Description:
@@ -2552,6 +2665,7 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
     _root.RowDefinitions().Clear();
     _CreateRowColDefinitions();
 
+    Controls::Grid::SetRow(_borderFirst, 0);
     _borderFirst.Child(_firstChild->GetRootElement());
     _borderSecond.Child(_secondChild->GetRootElement());
 

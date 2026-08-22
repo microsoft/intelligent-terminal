@@ -327,7 +327,6 @@ namespace winrt::TerminalApp::implementation
         double _railSplitterStartWidth{ 0.0 };
         Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
-        Windows::UI::Xaml::Controls::Border _paneDragOverlay{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
         Windows::UI::Xaml::Controls::Button _workspaceDropdown{ nullptr };
@@ -611,12 +610,6 @@ namespace winrt::TerminalApp::implementation
             std::shared_ptr<Pane> draggedPane{ nullptr };
             winrt::Windows::Foundation::Point dragOffset{ 0, 0 };
         } _stashed;
-
-        bool _paneDragPending{ false };
-        bool _paneDragInProgress{ false };
-        bool _paneDragCancelled{ false };
-        uint32_t _paneDragPointerId{ 0 };
-        winrt::Windows::Foundation::Point _paneDragStartPoint{ 0, 0 };
 
         safe_void_coroutine _NewTerminalByDrop(const Windows::Foundation::IInspectable&, winrt::Windows::UI::Xaml::DragEventArgs e);
 
@@ -945,12 +938,8 @@ namespace winrt::TerminalApp::implementation
         void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
         void _OnTabDroppedOutsideCore();
 
-        void _UpdatePaneDragOverlay(uint32_t vkey, bool down);
-        void _PaneDragPointerPressed(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
-        void _PaneDragPointerMoved(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
-        void _PaneDragPointerReleased(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
-        void _PaneDragStarting(const winrt::Windows::UI::Xaml::UIElement& sender, const winrt::Windows::UI::Xaml::DragStartingEventArgs& e);
-        safe_void_coroutine _StartPaneDrag(const winrt::Windows::UI::Input::PointerPoint& pointerPoint);
+        void _PaneDragStarting(const winrt::com_ptr<Tab>& tab, const std::shared_ptr<Pane>& pane, const winrt::Windows::UI::Xaml::DragStartingEventArgs& e);
+        void _PaneDragCompleted(const std::shared_ptr<Pane>& pane, const winrt::Windows::UI::Xaml::DropCompletedEventArgs& e);
         void _PaneDragOver(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
         void _PaneDrop(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
         std::shared_ptr<Pane> _GetPaneAtPoint(const winrt::com_ptr<Tab>& tab, const winrt::Windows::Foundation::Point& point) const;

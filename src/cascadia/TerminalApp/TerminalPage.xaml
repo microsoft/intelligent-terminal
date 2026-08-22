@@ -102,12 +102,6 @@
             </Grid.Background>
         </Grid>
 
-        <Border x:Name="PaneDragOverlay"
-                Grid.Row="2"
-                Grid.ColumnSpan="2"
-                Background="Transparent"
-                IsHitTestVisible="False" />
-
         <!-- Bottom Bar: window-level AI agent toolbar. Always visible as
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
