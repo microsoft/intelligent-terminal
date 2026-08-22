@@ -116,8 +116,7 @@ fn publish_blocking(json_payload: &str) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn large_payload_never_enters_wtcli_command_line() {
-        let payload = "x".repeat(128 * 1024);
+    fn publish_command_selects_stdin_transport() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));
         let arguments: Vec<_> = command
             .get_args()
@@ -125,6 +124,5 @@ mod tests {
             .collect();
 
         assert_eq!(arguments, ["publish", "--stdin"]);
-        assert!(!arguments.iter().any(|argument| argument == &payload));
     }
 }
