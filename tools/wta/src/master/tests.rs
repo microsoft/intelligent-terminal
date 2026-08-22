@@ -339,6 +339,43 @@ fn fresh_host_byok_startup_uses_clean_probe_only_when_needed() {
     assert!(matches!(catalog, NativeCloudCatalogState::Pending));
 }
 
+#[test]
+fn helper_initialize_errors_do_not_expose_provider_credentials() {
+    const CREDENTIAL_RESOURCE: &str = "sentinel-credential-resource";
+    const CREDENTIAL_ID: &str = "sentinel-credential-id";
+
+    let internal_error = anyhow::anyhow!(
+        "credential lookup failed for resource {CREDENTIAL_RESOURCE} and id {CREDENTIAL_ID}"
+    )
+    .context("custom provider initialization failed");
+
+    for failure in [
+        HelperInitializeFailure::ProviderResolution,
+        HelperInitializeFailure::AgentStartup,
+    ] {
+        let protocol_error = helper_initialize_error(failure, &internal_error);
+        let visible = format!(
+            "{} {}",
+            protocol_error.message,
+            protocol_error
+                .data
+                .as_ref()
+                .map(serde_json::Value::to_string)
+                .unwrap_or_default()
+        );
+        assert!(!visible.contains(CREDENTIAL_RESOURCE));
+        assert!(!visible.contains(CREDENTIAL_ID));
+        assert!(
+            protocol_error
+                .data
+                .as_ref()
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|detail| !detail.trim().is_empty() && detail.contains("try again")),
+            "helper-visible error detail must remain actionable: {visible}"
+        );
+    }
+}
+
 
 
 
@@ -507,7 +544,7 @@ fn resolve(
     requested_id: Option<&str>,
     model: Option<&str>,
 ) -> (String, Option<String>) {
-    let (command, agent_id, _source) = resolve_agent_selection(
+    let selection = resolve_agent_selection(
         DEFAULT_CMD,
         Some("copilot"),
         allowed,
@@ -517,7 +554,7 @@ fn resolve(
         None,
         HelperId(1),
     );
-    (command, agent_id)
+    (selection.command, selection.agent_id)
 }
 
 #[test]
@@ -531,7 +568,7 @@ fn known_id_with_no_allowlist_is_reconstructed_not_taken_from_pipe() {
 
 #[test]
 fn known_agent_selection_preserves_wsl_source() {
-    let (command, agent_id, source) = resolve_agent_selection(
+    let selection = resolve_agent_selection(
         DEFAULT_CMD,
         Some("copilot"),
         None,
@@ -541,21 +578,25 @@ fn known_agent_selection_preserves_wsl_source() {
         Some("Ubuntu"),
         HelperId(1),
     );
-    assert_eq!(command, "copilot --acp --stdio");
-    assert_eq!(agent_id.as_deref(), Some("copilot"));
+    assert_eq!(selection.command, "copilot --acp --stdio");
+    assert_eq!(selection.agent_id.as_deref(), Some("copilot"));
     assert_eq!(
-        source,
+        selection.explicit_selection,
+        ExplicitAgentSelection::Accepted
+    );
+    assert_eq!(
+        selection.source,
         crate::agent_source::AgentSource::Wsl {
             distro: "Ubuntu".to_string()
         }
     );
     assert_ne!(
         agent_cmd_key(
-            &command,
+            &selection.command,
             Some("copilot"),
             &crate::agent_source::AgentSource::Host,
         ),
-        agent_cmd_key(&command, Some("copilot"), &source),
+        agent_cmd_key(&selection.command, Some("copilot"), &selection.source),
         "host and WSL instances must occupy separate pool slots"
     );
 }
@@ -714,6 +755,73 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
             assert!(
                 !state.agents.lock().await.contains_key(&key),
                 "the final helper disconnect must retire the model generation"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn helper_claim_retries_when_captured_agent_cell_is_replaced() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_id = HelperId(603);
+            let key = "model:replaced-agent".to_string();
+            let make_agent = || {
+                Arc::new(AgentCli {
+                    instance_id: AgentInstanceId::new_v4(),
+                    conn: client_connection_to_model_agent(
+                        false,
+                        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    ),
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
+                    cmd_key: key.clone(),
+                    cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                    bound_helpers: Mutex::new(HashSet::new()),
+                    host_list_cache: Mutex::new(None),
+                    listed_ever: Mutex::new(HashSet::new()),
+                })
+            };
+            let stale = make_agent();
+            let replacement = make_agent();
+            let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(stale_cell.set(Arc::clone(&stale)).is_ok());
+            state.agents.lock().await.insert(key.clone(), stale_cell);
+
+            let replacement_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(replacement_cell.set(Arc::clone(&replacement)).is_ok());
+            let mut attempts = 0;
+            let claimed = acquire_and_bind_agent(&state, helper_id, || {
+                attempts += 1;
+                let attempt = attempts;
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let stale = Arc::clone(&stale);
+                let replacement = Arc::clone(&replacement);
+                let replacement_cell = Arc::clone(&replacement_cell);
+                async move {
+                    if attempt == 1 {
+                        state.agents.lock().await.insert(key, replacement_cell);
+                        Ok(stale)
+                    } else {
+                        Ok(replacement)
+                    }
+                }
+            })
+            .await
+            .expect("replacement agent should be claimed");
+
+            assert_eq!(attempts, 2);
+            assert!(Arc::ptr_eq(&claimed, &replacement));
+            assert!(stale.bound_helpers.lock().await.is_empty());
+            assert!(
+                replacement.bound_helpers.lock().await.contains(&helper_id),
+                "the helper must bind only to the current pool entry"
             );
         })
         .await;
@@ -8918,6 +9026,7 @@ async fn custom_provider_binding_is_resolved_from_terminal_settings() {
         Some("copilot"),
         &crate::agent_source::AgentSource::Host,
         Some("default"),
+        ExplicitAgentSelection::Accepted,
     )
     .await
     .expect("the explicit native provider should resolve without settings");
@@ -8932,6 +9041,7 @@ async fn custom_provider_binding_is_resolved_from_terminal_settings() {
         Some("copilot"),
         &crate::agent_source::AgentSource::Host,
         Some("custom:provider:model-a"),
+        ExplicitAgentSelection::ImplicitDefault,
     )
     .await
     .expect("the master should resolve a configured custom provider");
@@ -8953,6 +9063,66 @@ async fn custom_provider_binding_is_resolved_from_terminal_settings() {
         mock.calls(),
         vec![("get_settings".to_string(), serde_json::Value::Null)]
     );
+}
+
+async fn assert_rejected_selection_uses_native_provider(
+    requested_id: &str,
+    allowed_ids: Option<&std::collections::HashSet<String>>,
+) {
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "customModelProviders": [{
+            "id": "provider",
+            "baseUrl": "https://example.test/v1",
+            "apiContract": "openai-compatible",
+            "apiKeyCredential": "credential-reference",
+            "apiKeyRequired": true,
+            "models": [{ "id": "model-a" }]
+        }]
+    })));
+    let state = make_state_with_wt(mock.clone());
+    let selection = resolve_agent_selection(
+        DEFAULT_CMD,
+        Some("copilot"),
+        allowed_ids,
+        Some(requested_id),
+        None,
+        None,
+        None,
+        HelperId(1),
+    );
+
+    assert_eq!(selection.command, DEFAULT_CMD);
+    assert_eq!(selection.agent_id.as_deref(), Some("copilot"));
+    assert_eq!(
+        selection.explicit_selection,
+        ExplicitAgentSelection::Rejected
+    );
+
+    let binding = resolve_provider_binding(
+        &state,
+        selection.agent_id.as_deref(),
+        &selection.source,
+        Some("custom:provider:model-a"),
+        selection.explicit_selection,
+    )
+    .await
+    .expect("rejected selections should use the native provider");
+    assert!(matches!(binding, ProviderBinding::Native));
+    assert!(
+        mock.calls().is_empty(),
+        "rejected selections must not read custom provider settings"
+    );
+}
+
+#[tokio::test]
+async fn unknown_agent_with_custom_binding_falls_back_to_native_provider() {
+    assert_rejected_selection_uses_native_provider("custom:unknown", None).await;
+}
+
+#[tokio::test]
+async fn policy_blocked_agent_with_custom_binding_falls_back_to_native_provider() {
+    let allowed = allow_set(&["copilot"]);
+    assert_rejected_selection_uses_native_provider("gemini", Some(&allowed)).await;
 }
 
 fn focus_params_for(

@@ -85,6 +85,7 @@ struct CustomModelGeneration {
     generation: u64,
 }
 
+#[derive(Clone)]
 enum ProviderBinding {
     LegacyEnvironment,
     Native,
@@ -2662,7 +2663,12 @@ impl HelperHandler {
                 }
             })
             .unwrap_or_default();
-        let (agent_cmd, agent_id, agent_source) = resolve_agent_selection(
+        let ResolvedAgentSelection {
+            command: agent_cmd,
+            agent_id,
+            source: agent_source,
+            explicit_selection,
+        } = resolve_agent_selection(
             &self.state.default_agent_cmd,
             self.state.default_agent_id.as_deref(),
             self.state.allowed_agent_ids.as_ref(),
@@ -2703,6 +2709,7 @@ impl HelperHandler {
             agent_id.as_deref(),
             &agent_source,
             wta_meta.provider_binding.as_deref(),
+            explicit_selection,
         )
         .await
         .map_err(|error| {
@@ -2713,21 +2720,22 @@ impl HelperHandler {
                 agent_id = ?agent_id,
                 "failed to resolve custom model binding: {error:#}"
             );
-            acp::Error::internal_error().data(serde_json::json!(error.root_cause().to_string()))
+            helper_initialize_error(HelperInitializeFailure::ProviderResolution, &error)
         })?;
 
-        let agent = get_or_spawn_agent(
-            &self.state,
-            &agent_cmd,
-            agent_id.as_deref(),
-            &agent_source,
-            provider_binding,
-            supplied_cloud_models,
-        )
+        let agent = acquire_and_bind_agent(&self.state, self.helper_id, || {
+            get_or_spawn_agent(
+                &self.state,
+                &agent_cmd,
+                agent_id.as_deref(),
+                &agent_source,
+                provider_binding.clone(),
+                supplied_cloud_models.clone(),
+            )
+        })
         .await
         .map_err(|e| {
             let error_chain = format!("{e:#}");
-            let user_detail = e.root_cause().to_string();
             tracing::error!(
                 target: "master",
                 op = "initialize",
@@ -2736,7 +2744,7 @@ impl HelperHandler {
                 error = %error_chain,
                 "failed to spawn/resolve agent CLI for helper"
             );
-            acp::Error::internal_error().data(serde_json::json!(user_detail))
+            helper_initialize_error(HelperInitializeFailure::AgentStartup, &e)
         })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
@@ -2745,11 +2753,6 @@ impl HelperHandler {
             .agent
             .get()
             .expect("helper agent binding is set before initialize response");
-        if !bind_helper_to_agent(&self.state, agent, self.helper_id).await {
-            return Err(acp::Error::internal_error().data(serde_json::json!(
-                "agent CLI exited while the helper was binding"
-            )));
-        }
         let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
@@ -4493,6 +4496,27 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
     Some(set)
 }
 
+#[derive(Clone, Copy)]
+enum HelperInitializeFailure {
+    ProviderResolution,
+    AgentStartup,
+}
+
+fn helper_initialize_error(
+    failure: HelperInitializeFailure,
+    _internal_error: &anyhow::Error,
+) -> acp::Error {
+    let detail = match failure {
+        HelperInitializeFailure::ProviderResolution => {
+            "Unable to load the selected model provider. Review it in Settings and try again."
+        }
+        HelperInitializeFailure::AgentStartup => {
+            "Unable to start the selected AI agent. Verify the agent installation and model provider settings, then try again."
+        }
+    };
+    acp::Error::internal_error().data(serde_json::json!(detail))
+}
+
 /// Decide which agent command the master will spawn for a helper, given
 /// what the helper declared in `_meta.wta` and the master's trusted
 /// defaults / GPO allowlist.
@@ -4506,14 +4530,29 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
 /// creation by choosing the command line — only by selecting among the
 /// host-approved agent ids.
 ///
-/// Returns `(command_line, agent_id_for_cli_source)`. The id is passed
-/// on to `spawn_one_agent` so the per-session `cli_source` is stamped
-/// correctly; `None` lets it be inferred from the command line.
+/// The returned id is passed on to `spawn_one_agent` so the per-session
+/// `cli_source` is stamped correctly; `None` lets it be inferred from the
+/// command line. The explicit-selection status keeps rejected helper metadata
+/// from influencing provider resolution after fallback.
 ///
 /// Fallback to the default happens when the helper declared no id, an
 /// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
 /// `custom:` agent, which the global default already covers), or an id
 /// the host's GPO allowlist excludes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExplicitAgentSelection {
+    ImplicitDefault,
+    Accepted,
+    Rejected,
+}
+
+struct ResolvedAgentSelection {
+    command: String,
+    agent_id: Option<String>,
+    source: crate::agent_source::AgentSource,
+    explicit_selection: ExplicitAgentSelection,
+}
+
 fn resolve_agent_selection(
     default_cmd: &str,
     default_id: Option<&str>,
@@ -4523,7 +4562,7 @@ fn resolve_agent_selection(
     requested_source: Option<&str>,
     requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> (String, Option<String>, crate::agent_source::AgentSource) {
+) -> ResolvedAgentSelection {
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -4546,7 +4585,12 @@ fn resolve_agent_selection(
             let cmd = crate::agent_registry::build_acp_command(id, launch_model);
             let source =
                 crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
-            return (cmd, Some(id.to_string()), source);
+            return ResolvedAgentSelection {
+                command: cmd,
+                agent_id: Some(id.to_string()),
+                source,
+                explicit_selection: ExplicitAgentSelection::Accepted,
+            };
         }
 
         // A real selection we refused — surface why, then fall back.
@@ -4561,11 +4605,16 @@ fn resolve_agent_selection(
         );
     }
 
-    (
-        default_cmd.to_string(),
-        default_id.map(str::to_string),
-        crate::agent_source::AgentSource::Host,
-    )
+    ResolvedAgentSelection {
+        command: default_cmd.to_string(),
+        agent_id: default_id.map(str::to_string),
+        source: crate::agent_source::AgentSource::Host,
+        explicit_selection: if requested.is_some() {
+            ExplicitAgentSelection::Rejected
+        } else {
+            ExplicitAgentSelection::ImplicitDefault
+        },
+    }
 }
 
 async fn resolve_provider_binding(
@@ -4573,7 +4622,12 @@ async fn resolve_provider_binding(
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
     requested_binding: Option<&str>,
+    explicit_selection: ExplicitAgentSelection,
 ) -> Result<ProviderBinding> {
+    if explicit_selection == ExplicitAgentSelection::Rejected {
+        return Ok(ProviderBinding::Native);
+    }
+
     let Some(requested_binding) = requested_binding.map(str::trim).filter(|value| !value.is_empty())
     else {
         return Ok(ProviderBinding::LegacyEnvironment);
@@ -5430,6 +5484,23 @@ async fn bind_helper_to_agent(
     }
     agent.bound_helpers.lock().await.insert(helper_id);
     true
+}
+
+async fn acquire_and_bind_agent<F, Fut>(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    mut acquire: F,
+) -> Result<Arc<AgentCli>>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    loop {
+        let agent = acquire().await?;
+        if bind_helper_to_agent(state, &agent, helper_id).await {
+            return Ok(agent);
+        }
+    }
 }
 
 struct DisconnectedHelperCleanup {
