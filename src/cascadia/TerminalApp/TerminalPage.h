@@ -459,6 +459,33 @@ namespace winrt::TerminalApp::implementation
             Rebind,
             Recreate,
         };
+        struct AgentPaneSettingsBindingRequest
+        {
+            bool hasAgentOverride{ false };
+            std::wstring agentIdOverride;
+            std::wstring agentModelOverride;
+            std::wstring agentCustomCommandOverride;
+            std::wstring agentSourceOverride;
+            std::wstring agentWslDistroOverride;
+            std::wstring profileBackend;
+            std::wstring profileActiveShell;
+            std::wstring globalAgentId;
+            std::wstring globalModel;
+            std::wstring globalAgentCliPath;
+            std::wstring detectedGlobalAgentId;
+            std::wstring customModelSelection;
+        };
+        struct AgentPaneSettingsBinding
+        {
+            std::wstring agentId;
+            std::wstring agentSource;
+            std::wstring agentWslDistro;
+            std::wstring acpModel;
+            std::wstring customModelSelection;
+            bool followsGlobalAcpModel{ false };
+            bool launchable{ false };
+            bool supportsGlobalHostByok{ false };
+        };
         struct AgentPaneRecreationOptions
         {
             bool autoStash;
@@ -558,6 +585,15 @@ namespace winrt::TerminalApp::implementation
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
+        static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
+            const AgentPaneSettingsBindingRequest& request);
+        static bool _IsAgentPaneSettingsRebindAffected(
+            const AgentPaneSettingsBinding& binding,
+            bool globalAgentChanged,
+            bool cloudModelChanged,
+            bool customModelLaunchChanged) noexcept;
+        static Json::Value _BuildAgentPaneSettingsRebindPayload(
+            const AgentPaneSettingsBinding& binding);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot

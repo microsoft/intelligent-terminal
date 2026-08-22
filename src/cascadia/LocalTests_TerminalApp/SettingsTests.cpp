@@ -75,6 +75,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneSettingsRebindClassification);
+        TEST_METHOD(TestAgentPaneSettingsRebindRouting);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1698,6 +1699,15 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             ChangeKind::Rebuild,
             Page::_ClassifyAgentSettingsChange(native, customCommand));
+
+        auto customModelChange = customCommand;
+        customModelChange.acpAgent = L"custom:test";
+        customModelChange.acpModel = L"model-a";
+        auto changedCustomModel = customModelChange;
+        changedCustomModel.acpModel = L"model-b";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::Rebuild,
+            Page::_ClassifyAgentSettingsChange(customModelChange, changedCustomModel));
     }
 
     void SettingsTests::TestAgentSettingsFocusGate()
@@ -1753,5 +1763,271 @@ namespace TerminalAppLocalTests
         const auto stashedBackground = Page::_GetAgentPaneRecreationOptions(true, false);
         VERIFY_IS_TRUE(stashedBackground.autoStash);
         VERIFY_IS_FALSE(stashedBackground.focusPane);
+    }
+
+    void SettingsTests::TestAgentPaneSettingsRebindRouting()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Request = Page::AgentPaneSettingsBindingRequest;
+
+        struct TestCase
+        {
+            const wchar_t* name;
+            Request request;
+            bool globalAgentChanged;
+            bool cloudModelChanged;
+            bool customModelLaunchChanged;
+            bool expectedAffected;
+            bool expectedLaunchable;
+            const wchar_t* expectedAgent;
+            const wchar_t* expectedSource;
+            const wchar_t* expectedModel;
+            const wchar_t* expectedCustomSelection;
+        };
+
+        const Request byokGlobal{
+            .globalAgentId = L"copilot",
+            .globalModel = L"gpt-cloud",
+            .globalAgentCliPath = L"copilot --acp --stdio",
+            .customModelSelection = L"custom:provider:model-b",
+        };
+        const Request cloudGlobal{
+            .globalAgentId = L"copilot",
+            .globalModel = L"gpt-5.6",
+            .globalAgentCliPath = L"copilot --acp --stdio --model gpt-5.6",
+        };
+
+        std::vector<TestCase> cases;
+        cases.push_back({
+            L"global Host Copilot inherits BYOK",
+            byokGlobal,
+            false,
+            false,
+            true,
+            true,
+            true,
+            L"copilot",
+            L"host",
+            L"",
+            L"custom:provider:model-b",
+        });
+
+        auto hostOpenCodeOverride = byokGlobal;
+        hostOpenCodeOverride.hasAgentOverride = true;
+        hostOpenCodeOverride.agentIdOverride = L"opencode";
+        hostOpenCodeOverride.agentModelOverride = L"override-model";
+        hostOpenCodeOverride.agentSourceOverride = L"host";
+        cases.push_back({
+            L"Host OpenCode override inherits BYOK",
+            hostOpenCodeOverride,
+            false,
+            false,
+            true,
+            true,
+            true,
+            L"opencode",
+            L"host",
+            L"",
+            L"custom:provider:model-b",
+        });
+
+        auto hostCopilotProfile = byokGlobal;
+        hostCopilotProfile.profileBackend = L"host:copilot";
+        cases.push_back({
+            L"host Copilot profile inherits BYOK",
+            hostCopilotProfile,
+            false,
+            false,
+            true,
+            true,
+            true,
+            L"copilot",
+            L"host",
+            L"",
+            L"custom:provider:model-b",
+        });
+
+        auto wslOpenCodeOverride = hostOpenCodeOverride;
+        wslOpenCodeOverride.agentSourceOverride = L"wsl";
+        wslOpenCodeOverride.agentWslDistroOverride = L"Ubuntu";
+        cases.push_back({
+            L"WSL OpenCode override does not inherit Host BYOK",
+            wslOpenCodeOverride,
+            false,
+            false,
+            true,
+            false,
+            true,
+            L"opencode",
+            L"wsl",
+            L"override-model",
+            L"",
+        });
+
+        auto wslCopilotProfile = byokGlobal;
+        wslCopilotProfile.profileBackend = L"wsl:Ubuntu:copilot";
+        wslCopilotProfile.profileActiveShell = L"wsl:Ubuntu";
+        cases.push_back({
+            L"WSL Copilot profile does not inherit Host BYOK",
+            wslCopilotProfile,
+            false,
+            false,
+            true,
+            false,
+            true,
+            L"copilot",
+            L"wsl",
+            L"",
+            L"",
+        });
+
+        auto unsupportedOverride = hostOpenCodeOverride;
+        unsupportedOverride.agentIdOverride = L"claude";
+        cases.push_back({
+            L"unsupported Host agent is excluded",
+            unsupportedOverride,
+            false,
+            false,
+            true,
+            false,
+            true,
+            L"claude",
+            L"host",
+            L"override-model",
+            L"",
+        });
+
+        auto customOverride = hostOpenCodeOverride;
+        customOverride.agentIdOverride = L"custom:local";
+        customOverride.agentCustomCommandOverride = L"agent.exe --acp";
+        cases.push_back({
+            L"custom Host agent is excluded",
+            customOverride,
+            false,
+            false,
+            true,
+            false,
+            true,
+            L"custom:local",
+            L"host",
+            L"override-model",
+            L"",
+        });
+
+        auto unlaunchableCustomOverride = customOverride;
+        unlaunchableCustomOverride.agentCustomCommandOverride.clear();
+        cases.push_back({
+            L"unlaunchable custom binding is excluded",
+            unlaunchableCustomOverride,
+            false,
+            false,
+            true,
+            false,
+            false,
+            L"custom:local",
+            L"host",
+            L"override-model",
+            L"",
+        });
+
+        auto unknownProfile = byokGlobal;
+        unknownProfile.profileBackend = L"host:unknown";
+        cases.push_back({
+            L"unknown profile agent is excluded",
+            unknownProfile,
+            false,
+            false,
+            true,
+            false,
+            false,
+            L"unknown",
+            L"host",
+            L"",
+            L"",
+        });
+
+        auto invalidProfile = byokGlobal;
+        invalidProfile.profileBackend = L"host:";
+        cases.push_back({
+            L"invalid profile backend is excluded",
+            invalidProfile,
+            false,
+            false,
+            true,
+            false,
+            false,
+            L"",
+            L"host",
+            L"",
+            L"",
+        });
+
+        cases.push_back({
+            L"native cloud model updates global follower",
+            cloudGlobal,
+            false,
+            true,
+            false,
+            true,
+            true,
+            L"copilot",
+            L"host",
+            L"gpt-5.6",
+            L"",
+        });
+
+        auto cloudOverride = cloudGlobal;
+        cloudOverride.hasAgentOverride = true;
+        cloudOverride.agentIdOverride = L"opencode";
+        cloudOverride.agentModelOverride = L"override-model";
+        cloudOverride.agentSourceOverride = L"host";
+        cases.push_back({
+            L"native cloud model excludes override",
+            cloudOverride,
+            false,
+            true,
+            false,
+            false,
+            true,
+            L"opencode",
+            L"host",
+            L"override-model",
+            L"",
+        });
+
+        for (const auto& test : cases)
+        {
+            Log::Comment(test.name);
+            const auto binding = Page::_ResolveAgentPaneSettingsBinding(test.request);
+            VERIFY_ARE_EQUAL(test.expectedLaunchable, binding.launchable);
+            VERIFY_ARE_EQUAL(std::wstring{ test.expectedAgent }, binding.agentId);
+            VERIFY_ARE_EQUAL(std::wstring{ test.expectedSource }, binding.agentSource);
+            VERIFY_ARE_EQUAL(std::wstring{ test.expectedModel }, binding.acpModel);
+            VERIFY_ARE_EQUAL(std::wstring{ test.expectedCustomSelection }, binding.customModelSelection);
+            VERIFY_ARE_EQUAL(
+                test.expectedAffected,
+                Page::_IsAgentPaneSettingsRebindAffected(
+                    binding,
+                    test.globalAgentChanged,
+                    test.cloudModelChanged,
+                    test.customModelLaunchChanged));
+
+            if (test.expectedAffected)
+            {
+                const auto payload = Page::_BuildAgentPaneSettingsRebindPayload(binding);
+                VERIFY_ARE_EQUAL(
+                    winrt::to_string(winrt::hstring{ test.expectedAgent }),
+                    payload["agent_id"].asString());
+                VERIFY_ARE_EQUAL(
+                    winrt::to_string(winrt::hstring{ test.expectedSource }),
+                    payload["agent_source"].asString());
+                VERIFY_ARE_EQUAL(
+                    winrt::to_string(winrt::hstring{ test.expectedModel }),
+                    payload["acp_model"].asString());
+                VERIFY_ARE_EQUAL(
+                    winrt::to_string(winrt::hstring{ test.expectedCustomSelection }),
+                    payload["custom_model_selection"].asString());
+            }
+        }
     }
 }

@@ -305,7 +305,8 @@ pub fn is_known_id(id: &str) -> bool {
 /// Whether a running ACP session can accept model changes without replacing
 /// its agent process. Gemini currently accepts `--model` only at launch.
 pub fn supports_live_model_switch(id: &str) -> bool {
-    !id.eq_ignore_ascii_case(GEMINI_AGENT_ID)
+    let canonical_id = id.to_ascii_lowercase();
+    is_known_id(&canonical_id) && canonical_id != GEMINI_AGENT_ID
 }
 
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
@@ -564,13 +565,21 @@ mod tests {
 
     #[test]
     fn live_model_switch_capability_matches_agent_transport() {
-        assert!(!supports_live_model_switch("gemini"));
         for agent in ["copilot", "claude", "codex", "opencode"] {
             assert!(
                 supports_live_model_switch(agent),
                 "{agent} should keep its live ACP session when the model changes"
             );
         }
+        for agent in ["gemini", "custom:test", "unknown", ""] {
+            assert!(
+                !supports_live_model_switch(agent),
+                "{agent:?} must not receive live ACP model changes"
+            );
+        }
+
+        assert!(supports_live_model_switch("CoPiLoT"));
+        assert!(!supports_live_model_switch("GeMiNi"));
     }
 
     #[test]

@@ -20,6 +20,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AppendsSupportedModelFlags);
         TEST_METHOD(SuppressesCustomSelectionModelFlags);
         TEST_METHOD(CustomProvidersSupportOnlyChatCompletionsAgents);
+        TEST_METHOD(LiveModelSwitchRequiresKnownSupportedAgent);
         TEST_METHOD(HostCatalogStatusRejectsSameAgentFromWsl);
         TEST_METHOD(RejectsInvalidCatalogShapes);
         TEST_METHOD(ParsesAndNormalizesCatalog);
@@ -66,6 +67,22 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(Registry::SupportsByok(L"claude"));
         VERIFY_IS_FALSE(Registry::SupportsByok(L"codex"));
         VERIFY_IS_FALSE(Registry::SupportsByok(L"gemini"));
+    }
+
+    void AcpModelUtilsTests::LiveModelSwitchRequiresKnownSupportedAgent()
+    {
+        namespace Registry = Microsoft::Terminal::Settings::Model::AgentRegistry;
+        for (const auto agent : { L"copilot", L"claude", L"codex", L"opencode" })
+        {
+            VERIFY_IS_TRUE(Registry::SupportsLiveModelSwitch(agent));
+        }
+        for (const auto agent : { L"gemini", L"custom:test", L"unknown", L"" })
+        {
+            VERIFY_IS_FALSE(Registry::SupportsLiveModelSwitch(agent));
+        }
+
+        VERIFY_IS_TRUE(Registry::SupportsLiveModelSwitch(L"CoPiLoT"));
+        VERIFY_IS_FALSE(Registry::SupportsLiveModelSwitch(L"GeMiNi"));
     }
 
     void AcpModelUtilsTests::HostCatalogStatusRejectsSameAgentFromWsl()
