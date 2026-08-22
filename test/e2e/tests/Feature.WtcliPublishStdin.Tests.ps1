@@ -40,7 +40,14 @@ Describe 'Feature: wtcli publish stdin transport' -Tag 'Feature' -Skip:(-not $sc
                 $stdoutTask = $process.StandardOutput.ReadToEndAsync()
                 $stderrTask = $process.StandardError.ReadToEndAsync()
                 if ($PipeStdin) {
-                    $process.StandardInput.Write($StdIn)
+                    $writeTask = $process.StandardInput.WriteAsync($StdIn)
+                    $writeCompleted = $writeTask.Wait(30000)
+                    if (-not $writeCompleted) {
+                        try { if (-not $process.HasExited) { $process.Kill($true) } } catch { }
+                        $process.WaitForExit(2000) | Out-Null
+                    }
+                    $writeCompleted | Should -BeTrue -Because "wtcli publish process $($process.Id) must drain stdin within 30 seconds"
+                    $writeTask.GetAwaiter().GetResult()
                     $process.StandardInput.Close()
                 }
                 $exited = $process.WaitForExit(30000)

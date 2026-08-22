@@ -18,6 +18,7 @@
 
 #include <wil/resource.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -26,7 +27,6 @@
 #include <fcntl.h>
 #include <io.h>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -845,15 +845,19 @@ int wmain(int argc, wchar_t** argv)
                 exitCode = 1;
                 return;
             }
-            std::ostringstream input;
-            input << std::cin.rdbuf();
-            if (std::cin.bad())
+            std::string input;
+            std::array<char, 8192> buffer;
+            while (std::cin.read(buffer.data(), buffer.size()) || std::cin.gcount() > 0)
+            {
+                input.append(buffer.data(), static_cast<size_t>(std::cin.gcount()));
+            }
+            if (!std::cin.eof())
             {
                 fprintf(stderr, "[wtcli] publish: failed to read JSON from stdin.\n");
                 exitCode = 1;
                 return;
             }
-            publishJson = input.str();
+            publishJson = std::move(input);
         }
         if (publishJson.empty())
         {
