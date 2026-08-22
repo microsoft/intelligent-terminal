@@ -33,15 +33,22 @@ Describe 'Feature: wtcli publish stdin transport' -Tag 'Feature' -Skip:(-not $sc
 
             $process = [System.Diagnostics.Process]::new()
             $process.StartInfo = $psi
+            $started = $false
             try {
                 [void]$process.Start()
+                $started = $true
                 $stdoutTask = $process.StandardOutput.ReadToEndAsync()
                 $stderrTask = $process.StandardError.ReadToEndAsync()
                 if ($PipeStdin) {
                     $process.StandardInput.Write($StdIn)
                     $process.StandardInput.Close()
                 }
-                $process.WaitForExit(30000) | Should -BeTrue
+                $exited = $process.WaitForExit(30000)
+                if (-not $exited) {
+                    try { if (-not $process.HasExited) { $process.Kill($true) } } catch { }
+                    $process.WaitForExit(2000) | Out-Null
+                }
+                $exited | Should -BeTrue -Because "wtcli publish process $($process.Id) must exit within 30 seconds"
                 [pscustomobject]@{
                     ExitCode = $process.ExitCode
                     StdOut   = $stdoutTask.GetAwaiter().GetResult()
@@ -49,6 +56,15 @@ Describe 'Feature: wtcli publish stdin transport' -Tag 'Feature' -Skip:(-not $sc
                 }
             }
             finally {
+                if ($started) {
+                    try {
+                        if (-not $process.HasExited) {
+                            $process.Kill($true)
+                            $process.WaitForExit(2000) | Out-Null
+                        }
+                    }
+                    catch { }
+                }
                 $process.Dispose()
             }
         }

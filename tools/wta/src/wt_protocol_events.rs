@@ -44,10 +44,15 @@ fn publish_blocking(json_payload: &str) {
         .filter(|path| path.exists())
         .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
     let payload_bytes = json_payload.len();
-    let event_method = serde_json::from_str::<serde_json::Value>(json_payload)
-        .ok()
-        .and_then(|event| event.get("method")?.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "<unknown>".to_owned());
+    let event_method = std::sync::OnceLock::new();
+    let event_method = || {
+        event_method.get_or_init(|| {
+            serde_json::from_str::<serde_json::Value>(json_payload)
+                .ok()
+                .and_then(|event| event.get("method")?.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "<unknown>".to_owned())
+        })
+    };
     let mut command = publish_command(&exe);
     match command.spawn() {
         Ok(mut child) => {
@@ -58,7 +63,7 @@ fn publish_blocking(json_payload: &str) {
                             target: "wt_protocol",
                             %error,
                             payload_bytes,
-                            event_method,
+                            event_method = event_method(),
                             "failed writing wtcli publish payload"
                         );
                     }
@@ -68,7 +73,7 @@ fn publish_blocking(json_payload: &str) {
                     tracing::warn!(
                         target: "wt_protocol",
                         payload_bytes,
-                        event_method,
+                        event_method = event_method(),
                         "wtcli publish stdin was not piped"
                     );
                 }
@@ -80,7 +85,7 @@ fn publish_blocking(json_payload: &str) {
                         target: "wt_protocol",
                         ?status,
                         payload_bytes,
-                        event_method,
+                        event_method = event_method(),
                         "wtcli publish failed"
                     );
                 }
@@ -89,7 +94,7 @@ fn publish_blocking(json_payload: &str) {
                         target: "wt_protocol",
                         %error,
                         payload_bytes,
-                        event_method,
+                        event_method = event_method(),
                         "failed waiting for wtcli publish"
                     );
                 }
@@ -101,7 +106,7 @@ fn publish_blocking(json_payload: &str) {
                 target: "wt_protocol",
                 %error,
                 payload_bytes,
-                event_method,
+                event_method = event_method(),
                 "failed to start wtcli publish"
             );
         }

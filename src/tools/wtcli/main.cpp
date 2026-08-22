@@ -841,7 +841,7 @@ int wmain(int argc, wchar_t** argv)
         {
             if (_setmode(_fileno(stdin), _O_BINARY) == -1)
             {
-                fprintf(stderr, "[wtcli] publish: failed to configure stdin for UTF-8 input.\n");
+                fprintf(stderr, "[wtcli] publish: failed to configure stdin for binary input.\n");
                 exitCode = 1;
                 return;
             }
