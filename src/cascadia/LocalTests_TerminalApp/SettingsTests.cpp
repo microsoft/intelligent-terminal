@@ -1720,19 +1720,38 @@ namespace TerminalAppLocalTests
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
 
         VERIFY_ARE_EQUAL(
-            Disposition::RecreateStashed,
+            Disposition::Recreate,
             Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected));
+        VERIFY_ARE_EQUAL(
+            Disposition::Rebind,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting));
+        VERIFY_ARE_EQUAL(
+            Disposition::Rebind,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connected));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Closing));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Closed));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Failed));
 
-        for (const auto state : {
-                 State::Connecting,
-                 State::Connected,
-                 State::Closing,
-                 State::Closed,
-                 State::Failed })
-        {
-            VERIFY_ARE_EQUAL(
-                Disposition::Rebind,
-                Page::_ClassifyAgentPaneSettingsRebind(state));
-        }
+        const auto visibleActive = Page::_GetAgentPaneRecreationOptions(false, true);
+        VERIFY_IS_FALSE(visibleActive.autoStash);
+        VERIFY_IS_TRUE(visibleActive.focusPane);
+
+        const auto visibleBackground = Page::_GetAgentPaneRecreationOptions(false, false);
+        VERIFY_IS_FALSE(visibleBackground.autoStash);
+        VERIFY_IS_FALSE(visibleBackground.focusPane);
+
+        const auto stashedActive = Page::_GetAgentPaneRecreationOptions(true, true);
+        VERIFY_IS_TRUE(stashedActive.autoStash);
+        VERIFY_IS_FALSE(stashedActive.focusPane);
+
+        const auto stashedBackground = Page::_GetAgentPaneRecreationOptions(true, false);
+        VERIFY_IS_TRUE(stashedBackground.autoStash);
+        VERIFY_IS_FALSE(stashedBackground.focusPane);
     }
 }

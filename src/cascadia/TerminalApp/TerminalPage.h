@@ -457,7 +457,12 @@ namespace winrt::TerminalApp::implementation
         enum class AgentPaneSettingsRebindDisposition
         {
             Rebind,
-            RecreateStashed,
+            Recreate,
+        };
+        struct AgentPaneRecreationOptions
+        {
+            bool autoStash;
+            bool focusPane;
         };
         std::string _settingsReloadRequestId;
         std::optional<std::string> _pendingAgentRebuildRequestId;
@@ -550,6 +555,9 @@ namespace winrt::TerminalApp::implementation
             bool masterConfigurationChanged) noexcept;
         static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
+        static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
+            bool wasStashed,
+            bool isActiveTab) noexcept;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot
@@ -612,7 +620,8 @@ namespace winrt::TerminalApp::implementation
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
                                               std::string_view initialLoadCwd = {},
-                                              std::wstring_view initialAuthAgent = {});
+                                              std::wstring_view initialAuthAgent = {},
+                                              bool focusPane = true);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

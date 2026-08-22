@@ -1802,11 +1802,22 @@ namespace winrt::TerminalApp::implementation
     TerminalPage::AgentPaneSettingsRebindDisposition TerminalPage::_ClassifyAgentPaneSettingsRebind(
         const ConnectionState connectionState) noexcept
     {
-        // ConptyConnection::Start transitions synchronously to Connecting
-        // before launching the helper, so NotConnected proves it never started.
-        return connectionState == ConnectionState::NotConnected ?
-                   AgentPaneSettingsRebindDisposition::RecreateStashed :
-                   AgentPaneSettingsRebindDisposition::Rebind;
+        // Only these states can still have a helper subscribed to rebind_agent.
+        // Terminal states leave the pane visible but no durable helper behind.
+        return connectionState == ConnectionState::Connecting ||
+                       connectionState == ConnectionState::Connected ?
+                   AgentPaneSettingsRebindDisposition::Rebind :
+                   AgentPaneSettingsRebindDisposition::Recreate;
+    }
+
+    TerminalPage::AgentPaneRecreationOptions TerminalPage::_GetAgentPaneRecreationOptions(
+        const bool wasStashed,
+        const bool isActiveTab) noexcept
+    {
+        return AgentPaneRecreationOptions{
+            .autoStash = wasStashed,
+            .focusPane = !wasStashed && isActiveTab,
+        };
     }
 
     TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
@@ -2441,7 +2452,8 @@ namespace winrt::TerminalApp::implementation
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
                                                         std::string_view initialLoadCwd,
-                                                        std::wstring_view initialAuthAgent)
+                                                        std::wstring_view initialAuthAgent,
+                                                        bool focusPane)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -2884,6 +2896,12 @@ namespace winrt::TerminalApp::implementation
             tab->StashAgentPane();
             _UpdateBottomBarState();
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done — helper pre-warmed + stashed");
+            return true;
+        }
+
+        if (!focusPane)
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done without changing pane focus");
             return true;
         }
 
@@ -3642,7 +3660,7 @@ namespace winrt::TerminalApp::implementation
                     if (rebindAgentInPlace)
                     {
                         const auto pane = tabImpl->FindAgentPane();
-                        auto disposition = AgentPaneSettingsRebindDisposition::Rebind;
+                        auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
                         if (const auto control = pane->GetTerminalControl())
                         {
                             disposition = _ClassifyAgentPaneSettingsRebind(control.ConnectionState());
@@ -3693,6 +3711,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto strongThis = weakThis.get())
                 {
                     std::vector<winrt::com_ptr<Tab>> tabsToReopen;
+                    const auto activeTab = strongThis->_GetFocusedTabImpl();
                     if (rebindAgentInPlace)
                     {
                         for (const auto& tabId : tabIdsThatHadAgentPane)
@@ -3700,20 +3719,27 @@ namespace winrt::TerminalApp::implementation
                             if (const auto tab = strongThis->_FindTabByStableId(tabId);
                                 tab && tab->FindAgentPane())
                             {
-                                auto disposition = AgentPaneSettingsRebindDisposition::Rebind;
+                                auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
                                 if (const auto control = tab->FindAgentPane()->GetTerminalControl())
                                 {
                                     disposition = _ClassifyAgentPaneSettingsRebind(control.ConnectionState());
                                 }
 
-                                if (disposition == AgentPaneSettingsRebindDisposition::RecreateStashed)
+                                if (disposition == AgentPaneSettingsRebindDisposition::Recreate)
                                 {
-                                    _agentPaneLog("_RebuildAgentStack: recreating unstarted agent pane with current settings");
+                                    const auto recreationOptions = _GetAgentPaneRecreationOptions(
+                                        tab->HasStashedAgentPane(),
+                                        activeTab && activeTab == tab);
+                                    _agentPaneLog("_RebuildAgentStack: recreating terminal-state agent pane with current settings");
                                     strongThis->_TeardownAgentPane(tab);
                                     strongThis->_AutoCreateHiddenAgentPaneShared(
                                         tab,
                                         /*intoSessionsView*/ false,
-                                        /*autoStash*/ true);
+                                        recreationOptions.autoStash,
+                                        {},
+                                        {},
+                                        {},
+                                        recreationOptions.focusPane);
                                     continue;
                                 }
 
@@ -3763,7 +3789,6 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
 
-                    const auto activeTab = strongThis->_GetFocusedTabImpl();
                     if (masterConfigurationChanged)
                     {
                         for (const auto& tab : tabsToReopen)
