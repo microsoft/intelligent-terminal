@@ -296,20 +296,28 @@ async fn connect_to_wt_protocol(
 
 fn spawn_restart_agent_stack_forwarder(
     mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
+    event_tx: tokio::sync::mpsc::UnboundedSender<app::AppEvent>,
 ) {
     tokio::task::spawn_local(async move {
         while let Some(req) = restart_rx.recv().await {
-            tracing::info!(
-                target: "helper",
-                new_agent = ?req.agent_cmd,
-                "restart requested before ACP task is running; asking WT to force-restart the agent stack"
-            );
-            let evt = serde_json::json!({
-                "type": "event",
-                "method": "restart_agent_stack",
-                "params": {},
-            });
-            crate::wt_protocol_events::send(evt.to_string());
+            match req {
+                protocol::acp::client::RestartRequest::RestartStack { agent_cmd } => {
+                    tracing::info!(
+                        target: "helper",
+                        new_agent = ?agent_cmd,
+                        "restart requested before ACP task is running; asking WT to force-restart the agent stack"
+                    );
+                    let evt = serde_json::json!({
+                        "type": "event",
+                        "method": "restart_agent_stack",
+                        "params": {},
+                    });
+                    crate::wt_protocol_events::send(evt.to_string());
+                }
+                protocol::acp::client::RestartRequest::RebindAgent(request) => {
+                    let _ = event_tx.send(app::AppEvent::AgentReconnectReady(request));
+                }
+            }
         }
     });
 }
@@ -684,7 +692,7 @@ async fn run_acp_app(
                 // running yet. The boot App holds the sole restart sender; when
                 // LoginComplete calls `try_start_acp`, it replaces that sender
                 // with a fresh channel and this forwarder exits.
-                spawn_restart_agent_stack_forwarder(restart_rx);
+                spawn_restart_agent_stack_forwarder(restart_rx, event_tx.clone());
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -709,7 +717,7 @@ async fn run_acp_app(
                 let initial_load_sid = config.initial_load_session_id.clone();
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
-                    if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
+                    match protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
                         cloud_models_for_client,
@@ -735,33 +743,44 @@ async fn run_acp_app(
                     )
                     .await
                     {
-                        tracing::error!(
-                            target: "helper",
-                            error = %e,
-                            "run_acp_client_over_pipe failed"
-                        );
-                        // Recover the typed classification: an auth error
-                        // attached at the handshake `new_session` site survives
-                        // the `?`-collapse into `anyhow` via downcast, so it
-                        // still routes to the sign-in screen; other handshake
-                        // failures fall back to `HandshakeFailed`. The raw
-                        // `{e:#}` is also in the log above for diagnosis.
-                        let failure = protocol::acp::failure::classify_anyhow(
-                            &e,
-                            protocol::acp::failure::HandshakeStage::Initialize,
-                        );
-                        let message = match &failure {
-                            protocol::acp::failure::AgentFailure::HandshakeFailed {
-                                detail,
-                                ..
-                            } => detail.clone(),
-                            _ => format!("helper ACP transport failed: {e:#}"),
-                        };
-                        let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
-                            session_id: None,
-                            failure,
-                            message,
-                        });
+                        Ok(protocol::acp::client::AcpClientExit::RebindAgent(request)) => {
+                            let _ = event_tx_for_pipe
+                                .send(app::AppEvent::AgentReconnectReady(request));
+                        }
+                        Ok(protocol::acp::client::AcpClientExit::ChannelsClosed) => {}
+                        Err(e) => {
+                            tracing::error!(
+                                target: "helper",
+                                error = %e,
+                                "run_acp_client_over_pipe failed"
+                            );
+                            // Notify the App before the visible failure so a
+                            // queued Settings rebind can continue with its
+                            // latest target instead of becoming stranded.
+                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
+                            // Recover the typed classification: an auth error
+                            // attached at the handshake `new_session` site survives
+                            // the `?`-collapse into `anyhow` via downcast, so it
+                            // still routes to the sign-in screen; other handshake
+                            // failures fall back to `HandshakeFailed`. The raw
+                            // `{e:#}` is also in the log above for diagnosis.
+                            let failure = protocol::acp::failure::classify_anyhow(
+                                &e,
+                                protocol::acp::failure::HandshakeStage::Initialize,
+                            );
+                            let message = match &failure {
+                                protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                    detail,
+                                    ..
+                                } => detail.clone(),
+                                _ => format!("helper ACP transport failed: {e:#}"),
+                            };
+                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
+                                session_id: None,
+                                failure,
+                                message,
+                            });
+                        }
                     }
                 });
             }
@@ -860,6 +879,7 @@ async fn run_acp_app(
             app_state.set_master_pipe_acp_params(
                 connect_master_pipe.clone(),
                 agent_cmd.clone(),
+                config.agent_id.clone(),
                 config.acp_model.clone(),
                 agent_source.clone(),
                 agent_source_cwd.clone(),

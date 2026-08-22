@@ -429,8 +429,9 @@ namespace winrt::TerminalApp::implementation
                                   const winrt::com_ptr<Tab>& ownerTab);
 
         // Hot-reload of agent/model settings. Snapshot is captured on first
-        // SetSettings and after every rebuild; a diff drives teardown/rebuild
-        // of the agent pane.
+        // SetSettings and after every reconciliation. Built-in global agent
+        // changes rebind the existing helper in place; changes that alter
+        // trusted master launch state keep the destructive rebuild path.
         //
         // Agent identity changes (global acpAgent/acpCustomCommand, the
         // effective model selection, or an effective per-profile backend)
@@ -447,8 +448,15 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
+        enum class AgentSettingsChangeKind
+        {
+            None,
+            AgentRebind,
+            Rebuild,
+        };
         std::string _settingsReloadRequestId;
         std::optional<std::string> _pendingAgentRebuildRequestId;
+        uint64_t _agentSettingsRebindGeneration{ 0 };
         static std::string _AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot);
         // Hot-updatable runtime agent config. When any of these change we
         // push a single consolidated `agent_config_changed` event to the
@@ -526,9 +534,13 @@ namespace winrt::TerminalApp::implementation
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
-        // Compares only agent-CLI *identity* fields — the change that forces
-        // a master respawn. Model/delegate changes are handled by
-        // _EmitAgentRuntimeConfigIfChanged instead.
+        static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
+            const AgentSettingsSnapshot& previous,
+            const AgentSettingsSnapshot& current);
+        static bool _ShouldDeferAgentSettingsChange(
+            AgentSettingsChangeKind changeKind,
+            bool canHostPane,
+            bool masterConfigurationChanged) noexcept;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot

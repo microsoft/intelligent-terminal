@@ -72,6 +72,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestIterableColorSchemeCommands);
 
         TEST_METHOD(TestElevateArg);
+        TEST_METHOD(TestAgentSettingsFocusGate);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1619,4 +1620,15 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void SettingsTests::TestAgentSettingsFocusGate()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using ChangeKind = Page::AgentSettingsChangeKind;
+
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::None, false, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::AgentRebind, false, false));
+        VERIFY_IS_TRUE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, true, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, true));
+    }
 }

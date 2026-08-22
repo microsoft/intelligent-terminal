@@ -27,6 +27,11 @@ pub enum AppEvent {
         load_session_supported: bool,
         image_supported: bool,
     },
+    /// The old helper↔master ACP task has closed its pipe intentionally and
+    /// the stable helper process may start the replacement connection.
+    AgentReconnectReady(crate::protocol::acp::client::AgentReconnectRequest),
+    /// The ACP task exited before it could consume a queued reconnect request.
+    AgentClientFailed,
     SessionAttached {
         tab_id: String,
         session_id: String,

@@ -5,7 +5,7 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
-use crate::app::tab_state::collapsed_prompt_preview;
+use crate::app::tab_state::{collapsed_prompt_preview, PendingTerminalActionProposal};
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 
@@ -78,6 +78,41 @@ pub(super) fn test_app() -> App {
     )
 }
 
+fn test_app_with_restart_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
+) {
+    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        restart_rx,
+    )
+}
+
 fn test_app_with_drop_session_rx() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
@@ -111,6 +146,32 @@ fn test_app_with_drop_session_rx() -> (
         ),
         drop_session_rx,
     )
+}
+
+fn agent_rebind_event(tab_id: &str, generation: u64, agent_id: &str) -> AppEvent {
+    agent_rebind_event_for_window("window-1", tab_id, generation, agent_id)
+}
+
+fn agent_rebind_event_for_window(
+    window_id: &str,
+    tab_id: &str,
+    generation: u64,
+    agent_id: &str,
+) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": format!("op-{generation}"),
+            "generation": generation,
+            "window_id": window_id,
+            "tab_id": tab_id,
+            "agent_id": agent_id,
+            "agent_source": "host",
+            "acp_model": ""
+        }),
+    }
 }
 
 #[test]
@@ -2886,6 +2947,243 @@ fn non_overridden_pane_follows_global_model() {
 }
 
 #[test]
+fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.agent_name = "GitHub Copilot".into();
+    app.agent_model = Some("old-model".into());
+    app.session_id = "old-session".into();
+    app.available_models = vec![model_info("old-model")];
+    app.current_model_id = Some("old-model".into());
+    app.mode = AppMode::Setup;
+    app.preflight_setup_active = true;
+    {
+        let tab = app.tab_mut("owner-tab");
+        tab.input = "keep this draft".into();
+        tab.cursor_pos = tab.input.len();
+        tab.messages.push(ChatMessage::Agent("old response".into()));
+        tab.session_id = Some("old-session".into());
+        tab.usage = Some(usage_snapshot());
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("loading-old-session".into());
+        tab.model_picker_open = true;
+        tab.model_picker_selected = 3;
+        tab.config_picker = ConfigPickerState::Values {
+            option_id: "old-config".into(),
+            selected: 2,
+            parent_selected: Some(1),
+        };
+        tab.config_pending_id = Some("old-config".into());
+        tab.agent_picker_open = true;
+        tab.agent_picker_selected = 2;
+        tab.pending_terminal_action_proposal = Some(PendingTerminalActionProposal {
+            proposal_id: "old-proposal".into(),
+            session_id: "old-session".into(),
+            prompt_id: 42,
+            is_autofix: false,
+            recommendations: RecommendationSet {
+                recommended_choice: None,
+                choices: Vec::new(),
+            },
+        });
+        tab.active_direct_proposal_id = Some("old-direct-proposal".into());
+        tab.autofix.generation = 7;
+        tab.autofix.pane_id = Some("failing-pane".into());
+        tab.autofix.suggested_pane_id = Some("failing-pane".into());
+        tab.autofix.bar_snapshot = AutofixBarSnapshot::Pending {
+            pane_id: "failing-pane".into(),
+            summary: "old failure".into(),
+        };
+    }
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        Some("old-model".into()),
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("other-tab", 1, "claude"));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+
+    match restart_rx
+        .try_recv()
+        .expect("matching helper should begin a controlled reconnect")
+    {
+        RestartRequest::RebindAgent(request) => {
+            assert_eq!(request.agent_id, "claude");
+            assert_eq!(request.generation, 1);
+            assert!(request.acp_model.is_none());
+        }
+        other => panic!("expected RebindAgent, got {other:?}"),
+    }
+    assert_eq!(app.current_agent_id, "claude");
+    assert!(app.agent_name.is_empty());
+    assert!(app.agent_model.is_none());
+    assert!(app.session_id.is_empty());
+    assert!(app.available_models.is_empty());
+    assert!(app.current_model_id.is_none());
+    assert_eq!(app.current_tab().input, "keep this draft");
+    assert!(app.current_tab().messages.is_empty());
+    assert!(app.current_tab().session_id.is_none());
+    assert!(app.current_tab().usage.is_none());
+    assert!(!app.current_tab().loading_session);
+    assert!(app.current_tab().loading_target_session_id.is_none());
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().config_picker,
+        ConfigPickerState::Closed
+    ));
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().agent_picker_open);
+    assert!(app
+        .current_tab()
+        .pending_terminal_action_proposal
+        .is_none());
+    assert!(app.current_tab().active_direct_proposal_id.is_none());
+    assert_eq!(app.current_tab().autofix.generation, 8);
+    assert!(app.current_tab().autofix.pane_id.is_none());
+    assert!(app.current_tab().autofix.suggested_pane_id.is_none());
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+    assert_eq!(app.mode, AppMode::Chat);
+    assert!(!app.preflight_setup_active);
+    assert!(app.auth.is_none());
+    assert!(app.setup.is_none());
+    let deferred = app
+        .deferred_acp
+        .as_ref()
+        .expect("agent target should remain available for reconnect");
+    assert_eq!(deferred.agent_id.as_deref(), Some("claude"));
+    assert!(deferred.acp_model.is_none());
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".into(),
+        display_name: "GitHub Copilot".into(),
+        cli_status: CheckStatus::Failed("stale result".into()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+    assert_eq!(
+        app.mode,
+        AppMode::Chat,
+        "late setup results from the outgoing agent must be ignored"
+    );
+
+    app.handle_event(AppEvent::AgentClientFailed);
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+            detail: "outgoing client failed".into(),
+        },
+        message: "outgoing client failed".into(),
+    });
+    assert!(app.pending_acp_start);
+    assert!(!app.agent_reconnect_disconnect_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "the outgoing client's startup error must not leak into the new agent chat"
+    );
+}
+
+#[test]
+fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 10, "claude"));
+    let first = match restart_rx
+        .try_recv()
+        .expect("first target should trigger transport retirement")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+
+    app.handle_event(agent_rebind_event("owner-tab", 9, "codex"));
+    assert_eq!(app.current_agent_id, "claude");
+    assert!(restart_rx.try_recv().is_err());
+
+    app.handle_event(agent_rebind_event("owner-tab", 11, "gemini"));
+    assert_eq!(app.current_agent_id, "gemini");
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("gemini")
+    );
+
+    app.handle_event(AppEvent::AgentReconnectReady(first));
+
+    assert!(app.pending_acp_start);
+    assert!(!app.agent_reconnect_disconnect_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("gemini"),
+        "the reconnect must use the newest accepted Settings generation"
+    );
+
+    app.window_id = Some("window-2".into());
+    app.handle_event(agent_rebind_event_for_window(
+        "window-2",
+        "owner-tab",
+        1,
+        "codex",
+    ));
+    assert_eq!(app.current_agent_id, "codex");
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(RestartRequest::RebindAgent(AgentReconnectRequest {
+            window_id,
+            generation: 1,
+            ..
+        })) if window_id == "window-2"
+    ));
+
+    app.handle_event(agent_rebind_event("owner-tab", 12, "claude"));
+    assert_eq!(
+        app.current_agent_id, "codex",
+        "an event delayed from the helper's previous window must be ignored"
+    );
+}
+
+#[test]
 fn global_model_hot_update_is_scoped_to_matching_global_followers() {
     use crate::protocol::acp::client::MasterExtRequest;
 
@@ -4983,7 +5281,7 @@ fn protocol_error_ends_turn_without_failing_connection() {
     app.state = ConnectionState::Connected;
 
     app.handle_event(AppEvent::AgentError {
-        session_id: None,
+        session_id: Some("live-session".to_string()),
         failure: crate::protocol::acp::failure::AgentFailure::Protocol {
             code: -32603,
             message: "bad params".to_string(),
@@ -4995,6 +5293,31 @@ fn protocol_error_ends_turn_without_failing_connection() {
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Error(message)) if message == "protocol error"
+    ));
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
+}
+
+#[test]
+fn startup_protocol_error_fails_connection() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("Creating session...".to_string());
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32603,
+            message: "invalid provider configuration".to_string(),
+        },
+        message: "session creation failed".to_string(),
+    });
+
+    assert_eq!(
+        app.state,
+        ConnectionState::Failed("session creation failed".to_string())
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message == "session creation failed"
     ));
     assert_eq!(app.current_tab().turn, TurnState::Idle);
 }
