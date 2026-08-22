@@ -1799,6 +1799,16 @@ namespace winrt::TerminalApp::implementation
                !masterConfigurationChanged;
     }
 
+    TerminalPage::AgentPaneSettingsRebindDisposition TerminalPage::_ClassifyAgentPaneSettingsRebind(
+        const ConnectionState connectionState) noexcept
+    {
+        // ConptyConnection::Start transitions synchronously to Connecting
+        // before launching the helper, so NotConnected proves it never started.
+        return connectionState == ConnectionState::NotConnected ?
+                   AgentPaneSettingsRebindDisposition::RecreateStashed :
+                   AgentPaneSettingsRebindDisposition::Rebind;
+    }
+
     TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
     {
         const auto& globals = _settings.GlobalSettings();
@@ -2063,6 +2073,12 @@ namespace winrt::TerminalApp::implementation
         std::string requestId,
         std::function<void(std::string_view)> continuation)
     {
+        if (!scopeAll && tabIds.empty())
+        {
+            continuation({});
+            return;
+        }
+
         auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
         const auto registration = sharedWta.RegisterRetirement(scopeAll, reason, requestId);
         if (registration.operationId.empty())
@@ -3576,6 +3592,7 @@ namespace winrt::TerminalApp::implementation
         // so every local helper is collected even when its tab has a runtime
         // override. Unselected provider metadata changes stay on the hot path.
         bool hadAny = false;
+        bool hasStartedPaneToRebind = false;
         std::vector<winrt::hstring> tabIdsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
@@ -3622,6 +3639,18 @@ namespace winrt::TerminalApp::implementation
                 {
                     hadAny = true;
                     tabIdsThatHadAgentPane.push_back(tabImpl->StableId());
+                    if (rebindAgentInPlace)
+                    {
+                        const auto pane = tabImpl->FindAgentPane();
+                        auto disposition = AgentPaneSettingsRebindDisposition::Rebind;
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            disposition = _ClassifyAgentPaneSettingsRebind(control.ConnectionState());
+                        }
+                        hasStartedPaneToRebind =
+                            hasStartedPaneToRebind ||
+                            disposition == AgentPaneSettingsRebindDisposition::Rebind;
+                    }
                 }
             }
         }
@@ -3639,11 +3668,16 @@ namespace winrt::TerminalApp::implementation
             requestId = winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId();
         }
 
+        auto tabIdsToRetire = tabIdsThatHadAgentPane;
+        if (rebindAgentInPlace && !hasStartedPaneToRebind)
+        {
+            tabIdsToRetire.clear();
+        }
         const auto rebindGeneration =
             rebindAgentInPlace ? ++_agentSettingsRebindGeneration : 0;
         _BeginAgentSessionRetirement(
             masterConfigurationChanged,
-            tabIdsThatHadAgentPane,
+            std::move(tabIdsToRetire),
             masterConfigurationChanged ?
                 "settings_master_configuration_changed" :
                 (rebindAgentInPlace ?
@@ -3666,6 +3700,23 @@ namespace winrt::TerminalApp::implementation
                             if (const auto tab = strongThis->_FindTabByStableId(tabId);
                                 tab && tab->FindAgentPane())
                             {
+                                auto disposition = AgentPaneSettingsRebindDisposition::Rebind;
+                                if (const auto control = tab->FindAgentPane()->GetTerminalControl())
+                                {
+                                    disposition = _ClassifyAgentPaneSettingsRebind(control.ConnectionState());
+                                }
+
+                                if (disposition == AgentPaneSettingsRebindDisposition::RecreateStashed)
+                                {
+                                    _agentPaneLog("_RebuildAgentStack: recreating unstarted agent pane with current settings");
+                                    strongThis->_TeardownAgentPane(tab);
+                                    strongThis->_AutoCreateHiddenAgentPaneShared(
+                                        tab,
+                                        /*intoSessionsView*/ false,
+                                        /*autoStash*/ true);
+                                    continue;
+                                }
+
                                 Json::Value params{ Json::objectValue };
                                 params["operation_id"] = std::string{ operationId };
                                 params["generation"] = Json::UInt64{ rebindGeneration };
@@ -3743,7 +3794,7 @@ namespace winrt::TerminalApp::implementation
                     strongThis->_agentRebuilding = false;
                     const auto latest = strongThis->_CaptureAgentSettingsSnapshot();
                     const bool settingsChangedAgain = TerminalPage::_AgentSettingsChanged(current, latest);
-                    if (settingsChangedAgain)
+                    if (settingsChangedAgain && !operationId.empty())
                     {
                         winrt::TerminalApp::implementation::SharedWta::Instance().ExpireRetirement(operationId);
                     }

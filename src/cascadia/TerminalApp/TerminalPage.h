@@ -454,6 +454,11 @@ namespace winrt::TerminalApp::implementation
             AgentRebind,
             Rebuild,
         };
+        enum class AgentPaneSettingsRebindDisposition
+        {
+            Rebind,
+            RecreateStashed,
+        };
         std::string _settingsReloadRequestId;
         std::optional<std::string> _pendingAgentRebuildRequestId;
         uint64_t _agentSettingsRebindGeneration{ 0 };
@@ -543,6 +548,8 @@ namespace winrt::TerminalApp::implementation
             AgentSettingsChangeKind changeKind,
             bool canHostPane,
             bool masterConfigurationChanged) noexcept;
+        static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot

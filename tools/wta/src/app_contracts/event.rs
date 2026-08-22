@@ -253,6 +253,11 @@ pub enum AppEvent {
         wsl_sources: Vec<AvailableAgent>,
     },
     PreflightComplete(PreflightResult),
+    AgentReconnectPreflightComplete {
+        operation_id: String,
+        generation: u64,
+        result: PreflightResult,
+    },
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
     AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
     AliveSessionAdded(crate::session_registry::SessionInfo),

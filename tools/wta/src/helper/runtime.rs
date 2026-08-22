@@ -15,7 +15,7 @@ use std::sync::Arc;
 use crate::shell::wt_channel::{CliChannel, WtChannel};
 use crate::shell::ShellManager;
 use crate::{
-    agent_check, agent_hooks_installer, agent_registry, app, event, logging, protocol, shell,
+    agent_hooks_installer, agent_registry, app, event, logging, protocol, shell,
 };
 
 use super::config::{HelperConfig, InitialView};
@@ -912,31 +912,7 @@ async fn run_acp_app(
             if config.setup.is_none() && !start_in_initial_auth {
                 let agent_id = canonical_agent_id.as_str();
                 let preflight_result =
-                    if agent_id.starts_with("custom:") || !agent_registry::is_known_id(agent_id) {
-                        // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
-                        // shell function, …); a PATH probe would lie. The real spawn produces
-                        // the authoritative error via `ConnectionFailed`, so skip preflight.
-                        app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
-                    } else {
-                        let status =
-                            agent_check::check_agent_in_source(agent_id, &agent_source).await;
-                        app::PreflightResult {
-                            agent_id: canonical_agent_id.clone(),
-                            display_name: status.display_name.clone(),
-                            cli_status: if status.cli_found {
-                                app::CheckStatus::Passed
-                            } else {
-                                app::CheckStatus::Failed("Not found on PATH".to_string())
-                            },
-                            cli_path: status.cli_path.clone(),
-                            // Authentication is checked by the ACP handshake rather
-                            // than by a local credential-store preflight.
-                            auth_status: app::CheckStatus::Skipped,
-                            install_hint: status.install_hint.clone(),
-                            install_url: String::new(),
-                            auth_hint: status.auth_hint.clone(),
-                        }
-                    };
+                    app::preflight_agent_in_source(agent_id, &agent_source).await;
                 tracing::info!(
                     target: "preflight",
                     agent_id = %preflight_result.agent_id,

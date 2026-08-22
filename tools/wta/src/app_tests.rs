@@ -174,6 +174,19 @@ fn agent_rebind_event_for_window(
     }
 }
 
+fn passed_preflight(agent_id: &str, display_name: &str) -> PreflightResult {
+    PreflightResult {
+        agent_id: agent_id.into(),
+        display_name: display_name.into(),
+        cli_status: CheckStatus::Passed,
+        cli_path: Some(format!(r"C:\Agents\{agent_id}.exe")),
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }
+}
+
 #[test]
 fn tab_close_drops_state_and_requests_acp_session_close() {
     let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
@@ -3095,13 +3108,88 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
         },
         message: "outgoing client failed".into(),
     });
-    assert!(app.pending_acp_start);
+    assert!(!app.pending_acp_start);
     assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_some());
     assert!(
         app.current_tab().messages.is_empty(),
         "the outgoing client's startup error must not leak into the new agent chat"
     );
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(app.pending_acp_start);
+    assert!(!app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+}
+
+#[test]
+fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "claude".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "claude --acp".into(),
+        Some("claude".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "copilot"));
+    let retired = match restart_rx
+        .try_recv()
+        .expect("the old transport should be retired before target preflight")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(app.current_agent_id, "copilot");
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectReady(retired));
+    assert!(!app.agent_reconnect_disconnect_pending);
+    assert!(app.agent_reconnect_preflight_pending);
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: PreflightResult {
+            agent_id: "copilot".into(),
+            display_name: "GitHub Copilot".into(),
+            cli_status: CheckStatus::Failed("Not found on PATH".into()),
+            cli_path: None,
+            auth_status: CheckStatus::Skipped,
+            install_hint: "Install GitHub Copilot".into(),
+            install_url: String::new(),
+            auth_hint: String::new(),
+        },
+    });
+
+    assert_eq!(app.current_agent_id, "copilot");
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.preflight_setup_active);
+    assert!(!app.pending_acp_start);
+    assert!(!app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+    let setup = app.setup.as_ref().expect("missing target should show Setup");
+    assert_eq!(setup.reason, SetupReason::AgentMissing);
+    assert!(setup.options.iter().any(
+        |option| matches!(option, SetupOption::Install { agent_id, .. } if agent_id == "copilot")
+    ));
 }
 
 #[test]
@@ -3206,15 +3294,36 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
 
     app.handle_event(AppEvent::AgentReconnectReady(first));
 
-    assert!(app.pending_acp_start);
+    assert!(!app.pending_acp_start);
     assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_some());
     assert_eq!(
         app.deferred_acp
             .as_ref()
             .and_then(|params| params.agent_id.as_deref()),
         Some("gemini"),
         "the reconnect must use the newest accepted Settings generation"
+    );
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-11".into(),
+        generation: 11,
+        result: passed_preflight("gemini", "Gemini"),
+    });
+    assert!(app.pending_acp_start);
+    assert!(!app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+
+    app.pending_acp_start = false;
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-11".into(),
+        generation: 11,
+        result: passed_preflight("gemini", "Gemini"),
+    });
+    assert!(
+        !app.pending_acp_start,
+        "a duplicate target preflight must not start a second reconnect"
     );
 
     app.window_id = Some("window-2".into());

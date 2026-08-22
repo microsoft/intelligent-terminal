@@ -296,6 +296,31 @@ pub fn build_setup_options(
     opts
 }
 
+pub async fn preflight_agent_in_source(
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+) -> PreflightResult {
+    if agent_id.starts_with("custom:") || !crate::agent_registry::is_known_id(agent_id) {
+        return PreflightResult::passed_for_custom_agent(agent_id);
+    }
+
+    let status = crate::agent_check::check_agent_in_source(agent_id, source).await;
+    PreflightResult {
+        agent_id: agent_id.to_string(),
+        display_name: status.display_name,
+        cli_status: if status.cli_found {
+            CheckStatus::Passed
+        } else {
+            CheckStatus::Failed("Not found on PATH".to_string())
+        },
+        cli_path: status.cli_path,
+        auth_status: CheckStatus::Skipped,
+        install_hint: status.install_hint,
+        install_url: String::new(),
+        auth_hint: status.auth_hint,
+    }
+}
+
 // --- State types ---
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -968,6 +993,7 @@ pub struct App {
     /// Latest accepted target while the current ACP transport is unwinding.
     pending_agent_reconnect: Option<AgentReconnectRequest>,
     agent_reconnect_disconnect_pending: bool,
+    agent_reconnect_preflight_pending: bool,
     suppress_next_failed_client_error: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
@@ -1302,6 +1328,7 @@ impl App {
             last_agent_rebind_window_id: None,
             pending_agent_reconnect: None,
             agent_reconnect_disconnect_pending: false,
+            agent_reconnect_preflight_pending: false,
             suppress_next_failed_client_error: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
@@ -3512,6 +3539,7 @@ impl App {
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.needs_post_login_authenticate = false;
         self.preflight_setup_active = false;
+        self.agent_reconnect_preflight_pending = false;
         self.mode = AppMode::Chat;
         self.auth = None;
         self.setup = None;
@@ -3565,16 +3593,77 @@ impl App {
         self.publish_agent_status();
     }
 
-    fn complete_pending_agent_reconnect(&mut self) -> Option<AgentReconnectRequest> {
+    fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
         if !self.agent_reconnect_disconnect_pending {
             return None;
         }
 
         self.agent_reconnect_disconnect_pending = false;
-        let latest = self.pending_agent_reconnect.take()?;
+        let latest = self.pending_agent_reconnect.clone()?;
         self.reset_agent_scoped_state();
-        self.pending_acp_start = true;
+        self.agent_reconnect_preflight_pending = true;
+        if let Some(tx) = self.event_tx.clone() {
+            let operation_id = latest.operation_id.clone();
+            let generation = latest.generation;
+            let agent_id = latest.agent_id.clone();
+            let source = latest.agent_source.clone();
+            tokio::task::spawn_local(async move {
+                let result = preflight_agent_in_source(&agent_id, &source).await;
+                let _ = tx.send(AppEvent::AgentReconnectPreflightComplete {
+                    operation_id,
+                    generation,
+                    result,
+                });
+            });
+        }
         Some(latest)
+    }
+
+    fn show_preflight_setup(&mut self, result: PreflightResult) {
+        let reason = SetupReason::AgentMissing;
+        let current_status = if matches!(
+            self.current_agent_source,
+            crate::agent_source::AgentSource::Wsl { .. }
+        ) {
+            None
+        } else {
+            Some(crate::agent_check::AgentStatus {
+                id: result.agent_id.clone(),
+                display_name: result.display_name.clone(),
+                cli_found: result.cli_status == CheckStatus::Passed,
+                cli_path: result.cli_path.clone(),
+                install_hint: result.install_hint.clone(),
+                auth_hint: result.auth_hint.clone(),
+                auto_installable: result.agent_id.eq_ignore_ascii_case("copilot"),
+            })
+        };
+        let options = build_setup_options(&reason, current_status.as_ref());
+        let title = reason.title().to_string();
+        let subtitle = if current_status
+            .as_ref()
+            .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
+        {
+            t!(
+                "setup.subtitle.copilot_missing",
+                agent = &result.display_name
+            )
+            .into_owned()
+        } else {
+            t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
+        };
+        self.mode = AppMode::Setup;
+        self.preflight_setup_active = true;
+        self.setup = Some(SetupState {
+            reason,
+            preflight: result,
+            selected_index: 0,
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options,
+            title,
+            subtitle,
+        });
     }
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
@@ -4252,6 +4341,9 @@ impl App {
             AppEvent::AuthRecoveryTimedOut { .. } => "auth_recovery_timed_out",
             AppEvent::AgentSourcesDiscovered { .. } => "agent_sources_discovered",
             AppEvent::PreflightComplete(_) => "preflight_complete",
+            AppEvent::AgentReconnectPreflightComplete { .. } => {
+                "agent_reconnect_preflight_complete"
+            }
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",

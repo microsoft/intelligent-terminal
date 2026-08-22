@@ -376,7 +376,7 @@ impl App {
                 }
             }
             AppEvent::AgentReconnectReady(completed) => {
-                let Some(latest) = self.complete_pending_agent_reconnect() else {
+                let Some(latest) = self.begin_pending_agent_reconnect_preflight() else {
                     tracing::debug!(
                         target: "agent_rebind",
                         operation_id = %completed.operation_id,
@@ -392,18 +392,18 @@ impl App {
                     target_operation_id = %latest.operation_id,
                     target_generation = latest.generation,
                     target_agent_id = %latest.agent_id,
-                    "old ACP transport retired; reconnecting helper to latest target"
+                    "old ACP transport retired; preflighting latest target"
                 );
             }
             AppEvent::AgentClientFailed => {
-                if let Some(latest) = self.complete_pending_agent_reconnect() {
+                if let Some(latest) = self.begin_pending_agent_reconnect_preflight() {
                     self.suppress_next_failed_client_error = true;
                     tracing::info!(
                         target: "agent_rebind",
                         operation_id = %latest.operation_id,
                         generation = latest.generation,
                         agent_id = %latest.agent_id,
-                        "outgoing ACP client failed during startup; reconnecting to latest target"
+                        "outgoing ACP client failed during startup; preflighting latest target"
                     );
                 }
             }
@@ -1378,6 +1378,17 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if self.agent_reconnect_disconnect_pending
+                    || self.agent_reconnect_preflight_pending
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        current_agent = %self.current_agent_id,
+                        "ignoring startup preflight result during agent rebind"
+                    );
+                    return;
+                }
                 if !self.current_agent_id.is_empty()
                     && !result.agent_id.eq_ignore_ascii_case(&self.current_agent_id)
                 {
@@ -1397,44 +1408,44 @@ impl App {
                     "preflight result received"
                 );
                 if !result.all_passed() {
-                    let reason = SetupReason::AgentMissing;
-                    let current_status = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        None
-                    } else {
-                        Some(crate::agent_check::check_agent(&result.agent_id))
-                    };
-                    let options = build_setup_options(&reason, current_status.as_ref());
-                    let title = reason.title().to_string();
-                    let subtitle = if current_status
-                        .as_ref()
-                        .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
-                    {
-                        t!(
-                            "setup.subtitle.copilot_missing",
-                            agent = &result.display_name
-                        )
-                        .into_owned()
-                    } else {
-                        t!("setup.subtitle.agent_missing", agent = &result.display_name)
-                            .into_owned()
-                    };
-                    self.mode = AppMode::Setup;
-                    self.preflight_setup_active = true;
-                    self.setup = Some(SetupState {
-                        reason,
-
-                        preflight: result,
-                        selected_index: 0,
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
-                        options,
-                        title,
-                        subtitle,
+                    self.show_preflight_setup(result);
+                }
+            }
+            AppEvent::AgentReconnectPreflightComplete {
+                operation_id,
+                generation,
+                result,
+            } => {
+                let matches_pending = self.agent_reconnect_preflight_pending
+                    && self.pending_agent_reconnect.as_ref().is_some_and(|pending| {
+                        pending.operation_id == operation_id
+                            && pending.generation == generation
+                            && pending.agent_id.eq_ignore_ascii_case(&result.agent_id)
                     });
+                if !matches_pending {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "ignoring stale target preflight result"
+                    );
+                    return;
+                }
+
+                self.agent_reconnect_preflight_pending = false;
+                self.pending_agent_reconnect = None;
+                if result.all_passed() {
+                    self.pending_acp_start = true;
+                    tracing::info!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "target preflight passed; reconnecting helper"
+                    );
+                } else {
+                    self.show_preflight_setup(result);
                 }
             }
             AppEvent::AgentSourcesDiscovered {
@@ -1795,12 +1806,10 @@ impl App {
                         self.agent_reconnect_disconnect_pending = true;
                         if self
                             .restart_tx
-                            .send(RestartRequest::RebindAgent(request))
+                            .send(RestartRequest::RebindAgent(request.clone()))
                             .is_err()
                         {
-                            self.agent_reconnect_disconnect_pending = false;
-                            self.pending_agent_reconnect = None;
-                            self.pending_acp_start = true;
+                            let _ = self.begin_pending_agent_reconnect_preflight();
                         }
                     }
                     return;

@@ -74,6 +74,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
+        TEST_METHOD(TestAgentPaneSettingsRebindClassification);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1710,5 +1711,28 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, true, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, true));
+    }
+
+    void SettingsTests::TestAgentPaneSettingsRebindClassification()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Disposition = Page::AgentPaneSettingsRebindDisposition;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+
+        VERIFY_ARE_EQUAL(
+            Disposition::RecreateStashed,
+            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected));
+
+        for (const auto state : {
+                 State::Connecting,
+                 State::Connected,
+                 State::Closing,
+                 State::Closed,
+                 State::Failed })
+        {
+            VERIFY_ARE_EQUAL(
+                Disposition::Rebind,
+                Page::_ClassifyAgentPaneSettingsRebind(state));
+        }
     }
 }
