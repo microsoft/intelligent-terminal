@@ -43,14 +43,14 @@ answered".
 
 ## 2. The taxonomy — one enum, three sources
 
-All failures collapse into a single `AgentFailure`, classified at the **helper
-boundary** (the one place that sees `acp::Error`, the pipe signal, and the
-timeout). Three input sources feed it:
+ACP and startup failures collapse into a single `AgentFailure`, classified at
+the **helper boundary**. Master-pipe closure is a lifecycle signal and bypasses
+this taxonomy by posting `AppEvent::MasterDisconnected` directly.
 
 ```
-acp::Error (typed)        transport signal          timeout / watchdog
-   │  code: ErrorCode         │ pipe EOF/Err            │ no progress past deadline
-   ▼                          ▼                         ▼
+acp::Error (typed)                                  timeout / watchdog
+   │  code: ErrorCode                                  │ no progress past deadline
+   ▼                                                   ▼
                     ┌───────────────────────┐
                     │   classify_failure()  │   protocol/acp/failure.rs (new)
                     └───────────┬───────────┘
@@ -66,18 +66,14 @@ pub enum AgentFailure {
     /// handshake/new_session that came back auth-coded. → sign-in screen.
     AuthRequired { message: String },
 
-    /// Helper↔master pipe ended (master died, agent CLI death cascaded, OS
-    /// killed it). A *signal*, never an ErrorCode. → terminate helper.
-    TransportLost,
-
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` timed out or errored at startup.
     /// `stage` tells the user (and the log) where. → retry w/ backoff.
     HandshakeFailed { stage: HandshakeStage, detail: String },
 
     /// Agent process is ALIVE but produced no progress before the inactivity
-    /// deadline (hop-2 protocol hang). Distinct from TransportLost (which is
-    /// detected) — this is the silent hang. → cancel turn, session survives.
+    /// deadline (hop-2 protocol hang). Distinct from a closed master pipe —
+    /// this is the silent hang. → cancel turn, session survives.
     Unresponsive { stage: Stage },
 
     /// A referenced resource is gone — `session/load` of an expired session,
@@ -134,7 +130,6 @@ to the composer so a resubmit/`/restart` loses nothing.
 | `AgentFailure` | UI surface | `ConnectionState` | Turn | Recovery | Preserve input |
 |---|---|---|---|---|---|
 | `AuthRequired` | Sign-in screen (`AppMode::Setup`, `SetupReason::AgentError`) | `Disconnected` | Idle | run login cmd → auto re-connect | ✅ |
-| `TransportLost` | process-exit diagnostics | terminal | Idle | none; a later user pane-open starts fresh | ✅ |
 | `HandshakeFailed` | inline raw line w/ `stage`, "retrying…" / `/restart` | `Failed(detail)` | Idle | bounded retry w/ backoff, then manual | ✅ |
 | `Unresponsive` | inline "Agent isn't responding — Esc to cancel" + elapsed | `Connected` | Idle on cancel | cancel turn (session/cancel), keep session | ✅ |
 | `ResourceGone` | inline system "That session is no longer available — starting fresh" | `Connected` | Idle | offer/auto `session/new` | ✅ |
@@ -146,8 +141,8 @@ to the composer so a resubmit/`/restart` loses nothing.
 1. **Never lose input.** On any non-`Cancelled` failure, the in-flight prompt
    text is pushed back into the composer (today it is lost). One place:
    `App::handle_agent_failure`.
-2. **Fail closed at transport boundaries.** `TransportLost` terminates the
-   helper and never reloads its session. `Protocol` / `ResourceGone` /
+2. **Fail closed at transport boundaries.** `MasterDisconnected` terminates
+   the helper and never reloads its session. `Protocol` / `ResourceGone` /
    `Unresponsive` keep the session because the transport remains valid.
 3. **Automate only state-preserving recovery.** Auth retry and a recoverable
    missing resource may stay in-process. Process/transport crashes require a
@@ -182,9 +177,8 @@ everything else.
    the concrete `acp::Error`, runs `classify_acp_error`, and emits
    `AgentFailed { failure, detail }`. (The few non-ACP callers wrap as
    `Protocol`/`HandshakeFailed` explicitly.)
-3. **The watchdog** (`run_acp_client_over_pipe`, both `Ok`/`Err` arms) emits
-   `AgentFailed { failure: TransportLost, … }` instead of a localized string.
-   `TransportLost` and then `MasterDisconnected`, which terminates the helper.
+3. **The watchdog** (`run_acp_client_over_pipe`, both `Ok`/`Err` arms) logs the
+   transport result and emits `MasterDisconnected`, which terminates the helper.
 4. **Handshake sites** (`main.rs` raw return, `initialize`/`new_session`/
    `session/load` timeouts in `client.rs`) emit
    `HandshakeFailed { stage, detail }`.
@@ -213,10 +207,10 @@ the session and pane survive.
 
 ### 5.2 Helper transport loss → deterministic exit
 
-On `TransportLost`, the helper does not reconnect to the stable pipe and does
-not call `session/load`. It posts `MasterDisconnected`, ends the TUI, and drops
-owned children. This makes the process boundary deterministic and prevents a
-crashed session from being replayed automatically.
+On `MasterDisconnected`, the helper does not reconnect to the stable pipe or
+call `session/load`. It ends the TUI and drops owned children. This makes the
+process boundary deterministic and prevents a crashed session from being
+replayed automatically.
 
 ### 5.3 Master/helper crash → terminal cleanup, no automatic recovery
 
@@ -261,8 +255,8 @@ state:
 |---|---|---|
 | F1 | agent CLI death → whole master down (single point of failure) | mitigated via §5.3 respawn + Phase 3 reconnect (full in-master agent respawn still future) |
 | F2 | master crash → C++ lazy respawn, zombie panes | **fixed** §5.3 fail-closed helper exit |
-| F3 | idle master death stayed `Connected` | **fixed** (existing watchdog) + typed `TransportLost` |
-| F4 | in-flight prompt death | **fixed** typed `TransportLost`, input preserved |
+| F3 | idle master death stayed `Connected` | **fixed** by direct `MasterDisconnected` termination |
+| F4 | in-flight prompt death | **fixed** by direct `MasterDisconnected` termination |
 | F5 | helper/conpty death → zombie pane | **fixed** §5.3 close-on-exit, no re-warm |
 | F6 | handshake/timeout failures | **typed** `HandshakeFailed{stage}` + retry |
 | F7 | connecting looked frozen | covered by `Reconnecting`/`Connecting` spinner |

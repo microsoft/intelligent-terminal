@@ -517,8 +517,7 @@ use v1 as _schema_marker;
 mod transport_death_tests {
     //! Regression guard for AgentMasterDeath (#329): `spawn_client` /
     //! `spawn_agent`'s `handle_io` must resolve when the transport peer dies, so
-    //! the helper can leave `Connected` and show the `/restart` degraded state
-    //! (`client.rs`: `handle_io.await` -> `AgentFailure::TransportLost`).
+    //! the helper can terminate when `client.rs` observes `handle_io.await`.
     //!
     //! Under ACP 1.0 a `pending` `main_fn` left `connect_with` hung on a *clean*
     //! EOF (exactly what killing wta-master produces), so `handle_io` never fired

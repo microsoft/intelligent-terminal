@@ -393,9 +393,6 @@ impl App {
                 // bump the generation so a still-pending dead-man timer becomes
                 // stale and can't later force the sign-in screen.
                 self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
-                // A live connection cancels the degraded latch (e.g. the
-                // post-sign-in reconnect that goes back through master).
-                self.transport_lost = false;
                 self.proposal_channels.set_agent_transport_available(true);
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
@@ -777,35 +774,6 @@ impl App {
                     crate::protocol::acp::failure::AgentFailure::Protocol { .. }
                 );
 
-                // The transport to master is gone — latch the degraded state
-                // so the slash-command popup greys out everything but
-                // /restart (the only command that can recover without the
-                // dead pipe). Cleared on the next Connected.
-                let transport_lost = matches!(
-                    &failure,
-                    crate::protocol::acp::failure::AgentFailure::TransportLost
-                );
-                let stale_usage_tab = if transport_lost {
-                    self.transport_lost = true;
-                    self.proposal_channels.set_agent_transport_available(false);
-                    let target_tab = session_id
-                        .as_deref()
-                        .map(|sid| self.tab_for_session(sid))
-                        .unwrap_or_else(|| self.active_tab_key().to_string());
-                    let tab = self.tab_mut(&target_tab);
-                    if let Some(snapshot) = tab.usage.as_ref() {
-                        tab.usage_staleness.mark_present_stale(snapshot);
-                        Some(target_tab)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                if let Some(target_tab) = stale_usage_tab {
-                    self.project_tab_state(&target_tab);
-                }
-
                 let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
@@ -873,16 +841,8 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    // Suppress only an *identical* consecutive error, not any
-                    // trailing error. When the master/agent dies, two errors can
-                    // arrive: the raw transport error (returned as-is) and the
-                    // `handle_io` watchdog's connection.lost ("/restart") line.
-                    // Those are different messages and BOTH should show — the raw
-                    // one says what broke, the connection.lost one says how to
-                    // recover. Collapsing every consecutive error (the previous
-                    // behavior) could hide the /restart hint behind an unrelated
-                    // or in-flight error. Dedup only true duplicates so the same
-                    // line never stacks.
+                    // Suppress only an identical consecutive error so repeated
+                    // provider failures do not stack duplicate messages.
                     let is_duplicate = matches!(
                         tab.messages.last(),
                         Some(ChatMessage::Error(prev)) if prev == &message

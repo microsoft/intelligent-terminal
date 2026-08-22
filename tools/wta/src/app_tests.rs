@@ -4848,56 +4848,6 @@ fn autofix_still_triggers_for_non_agent_pane() {
     );
 }
 
-/// F3: a transport death (helper `handle_io` watchdog) moves the UI out of
-/// `Connected`, and its connection.lost ("/restart") line must survive even
-/// when a different error (e.g. the in-flight prompt failure, "returned as
-/// is") is already shown — only identical consecutive errors collapse, so
-/// the recovery hint is never hidden.
-#[test]
-fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
-    let lost = t!("connection.lost").into_owned();
-    let mut app = test_app();
-    app.state = ConnectionState::Connected;
-    // In-flight prompt fails first (raw), then the watchdog's connection.lost.
-    app.handle_event(AppEvent::AgentError {
-        session_id: None,
-        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
-            code: -32603,
-            message: "pipe closed".to_string(),
-        },
-        message: "prompt error: pipe closed".to_string(),
-    });
-    app.handle_event(AppEvent::AgentError {
-        session_id: None,
-        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
-        message: lost.clone(),
-    });
-    assert!(
-        matches!(app.state, ConnectionState::Failed(_)),
-        "a transport loss must move the UI out of Connected (F3)"
-    );
-    assert!(
-        app.current_tab()
-            .messages
-            .iter()
-            .any(|m| matches!(m, ChatMessage::Error(s) if *s == lost)),
-        "the connection.lost /restart hint must be shown, not hidden behind the raw error"
-    );
-    // An identical connection.lost arriving again must not stack a duplicate.
-    app.handle_event(AppEvent::AgentError {
-        session_id: None,
-        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
-        message: lost.clone(),
-    });
-    let n = app
-        .current_tab()
-        .messages
-        .iter()
-        .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
-        .count();
-    assert_eq!(n, 1, "identical connection.lost must not duplicate");
-}
-
 #[test]
 fn typed_pipe_connect_failure_survives_classify_anyhow() {
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5013,26 +4963,6 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
     );
 }
 
-/// The degraded latch (`App::transport_lost`) immediately blocks actions
-/// while the helper processes the terminal transport-loss event.
-#[test]
-fn transport_lost_latch_arms_on_transport_loss() {
-    let mut app = test_app();
-    app.state = ConnectionState::Connected;
-    assert!(!app.transport_lost, "fresh app is not degraded");
-
-    app.handle_event(AppEvent::AgentError {
-        session_id: None,
-        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
-        message: t!("connection.lost").into_owned(),
-    });
-
-    assert!(
-        app.transport_lost,
-        "a transport loss must arm the degraded latch"
-    );
-}
-
 #[test]
 fn master_disconnect_terminates_helper_without_recovery() {
     let mut app = test_app();
@@ -5046,8 +4976,7 @@ fn master_disconnect_terminates_helper_without_recovery() {
     );
 }
 
-/// A non-transport failure (a one-off protocol error) must NOT arm the
-/// latch — the session is still alive, so commands stay enabled.
+/// A one-off protocol error ends the turn while preserving the live session.
 #[test]
 fn protocol_error_ends_turn_without_failing_connection() {
     let mut app = test_app();
@@ -5062,10 +4991,6 @@ fn protocol_error_ends_turn_without_failing_connection() {
         message: "protocol error".to_string(),
     });
 
-    assert!(
-        !app.transport_lost,
-        "a non-transport protocol error must not degrade the pane"
-    );
     assert_eq!(app.state, ConnectionState::Connected);
     assert!(matches!(
         app.current_tab().messages.last(),
@@ -5074,34 +4999,9 @@ fn protocol_error_ends_turn_without_failing_connection() {
     assert_eq!(app.current_tab().turn, TurnState::Idle);
 }
 
-/// An auth failure routes to sign-in, not the dead-transport path, so it
-/// must not arm the degraded latch (otherwise the post-sign-in pane would
-/// wrongly grey out its commands).
 #[test]
-fn auth_failure_does_not_arm_degraded_latch() {
+fn agent_connected_restores_proposal_channels() {
     let mut app = test_app();
-    app.state = ConnectionState::Connected;
-
-    app.handle_event(AppEvent::AgentError {
-        session_id: None,
-        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
-            message: "authentication required".to_string(),
-        },
-        message: "authentication required".to_string(),
-    });
-
-    assert!(
-        !app.transport_lost,
-        "an auth failure must not arm the degraded latch"
-    );
-}
-
-/// A fresh connection (e.g. the post-sign-in reconnect that goes back
-/// through master) must clear the latch so commands re-enable.
-#[test]
-fn agent_connected_clears_degraded_latch() {
-    let mut app = test_app();
-    app.transport_lost = true;
     app.proposal_channels.set_agent_transport_available(false);
 
     app.handle_event(AppEvent::AgentConnected {
@@ -5115,10 +5015,6 @@ fn agent_connected_clears_degraded_latch() {
         image_supported: false,
     });
 
-    assert!(
-        !app.transport_lost,
-        "reaching Connected must clear the degraded latch"
-    );
     assert!(
         app.proposal_channels
             .issue("sid-fresh".into(), 1, None, false)
@@ -11526,60 +11422,4 @@ fn usage_projection_contains_context_cost_and_explicit_null() {
         &TabSession::default(),
     );
     assert!(cleared["params"]["usage"].is_null());
-}
-
-#[test]
-fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
-    let mut app = test_app();
-    app.state = ConnectionState::Connected;
-    app.current_tab_mut().session_id = Some("usage-session".to_string());
-    app.session_to_tab
-        .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
-    app.current_tab_mut().usage = Some(crate::usage::UsageSnapshot {
-        context: Some(crate::usage::UsageContext {
-            used: 20,
-            size: 100,
-        }),
-        context_display: None,
-        cost: Some(crate::usage::UsageCost {
-            amount_decimal_text: "0.004".to_string(),
-            currency: "USD".to_string(),
-        }),
-        provider_metrics: Vec::new(),
-    });
-
-    app.handle_event(AppEvent::AgentError {
-        session_id: Some("usage-session".to_string()),
-        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
-        message: t!("connection.lost").into_owned(),
-    });
-    assert_eq!(
-        app.current_tab().usage_staleness,
-        crate::usage::UsageStaleness {
-            context: true,
-            cost: true,
-            provider_metrics: false,
-        }
-    );
-
-    app.handle_event(AppEvent::UsageReported {
-        session_id: "usage-session".to_string(),
-        snapshot: crate::usage::UsageSnapshot {
-            context: Some(crate::usage::UsageContext {
-                used: 25,
-                size: 100,
-            }),
-            context_display: None,
-            cost: None,
-            provider_metrics: Vec::new(),
-        },
-    });
-    assert_eq!(
-        app.current_tab().usage_staleness,
-        crate::usage::UsageStaleness {
-            context: false,
-            cost: true,
-            provider_metrics: false,
-        }
-    );
 }
