@@ -41,11 +41,12 @@ are *signals*, not ACP errors, and are handled in yet another place
 taxonomy that unifies "agent said no", "transport died", and "nothing
 answered".
 
-## 2. The taxonomy — one enum, three sources
+## 2. The taxonomy — one enum, transport lifecycle separate
 
-ACP and startup failures collapse into a single `AgentFailure`, classified at
-the **helper boundary**. Master-pipe closure is a lifecycle signal and bypasses
-this taxonomy by posting `AppEvent::MasterDisconnected` directly.
+ACP errors and startup/watchdog failures collapse into a single `AgentFailure`,
+classified at the **helper boundary**. Master-pipe closure is a separate
+lifecycle signal and bypasses this taxonomy by posting
+`AppEvent::MasterDisconnected` directly.
 
 ```
 acp::Error (typed)                                  timeout / watchdog
