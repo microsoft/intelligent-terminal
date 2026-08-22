@@ -4724,13 +4724,13 @@ async fn serve_helper(
             }
         }
     }
-    let victims = drop_sessions_for_helper(&state, helper_id).await;
+    let fallback_retired = drop_sessions_for_helper(&state, helper_id).await;
 
     tracing::info!(
         target: "master",
         helper_id = ?helper_id,
         sessions_owned = owned_sessions.len(),
-        sessions_retired_after_cleanup = victims.len(),
+        sessions_fallback_retired = fallback_retired.len(),
         "helper disconnected"
     );
 

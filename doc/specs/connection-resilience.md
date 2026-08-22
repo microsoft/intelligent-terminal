@@ -32,19 +32,17 @@ the pipe to master ends.
 
 **Detection is signal-based, not string-matched.** The helper's `handle_io`
 task is the single sentinel: when the pipe to master ends — on **either** a
-clean EOF (`Ok`) **or** an error (`Err`) — it emits `AgentError { message:
-connection.lost }`.
+clean EOF (`Ok`) **or** an error (`Err`) — it emits `MasterDisconnected`.
 
 - `tools/wta/src/protocol/acp/client.rs` ~2174–2191 (`run_acp_client_over_pipe`,
   the `match handle_io.await { … }` block). Both arms emit. **Keying on `Err`
   only would miss the common case** — a killed master resolves the loop as `Ok`
   (clean EOF), confirmed in a real trace.
 
-**Notification rules** (`AppEvent::AgentError` handler,
-`tools/wta/src/app.rs` ~4049):
+**Notification rules**:
 
-1. **Connection loss** (master/agent died) → typed `TransportLost` diagnostics,
-   followed by `MasterDisconnected`; the helper then exits.
+1. **Connection loss** (master/agent died) → `MasterDisconnected`; the helper
+   exits without attempting recovery.
 2. **A connection that fails to *establish*** (startup handshake: pipe connect /
    `initialize` / `session/new` timeouts) → the raw error is **returned as-is**
    (`helper ACP transport failed: {e:#}`, `tools/wta/src/main.rs` ~2263). Not
@@ -54,10 +52,10 @@ connection.lost }`.
 4. A near-simultaneous prompt error and pipe-loss signal may both be logged.
    The terminal `MasterDisconnected` event wins and ends the helper.
 
-**Crash recovery is not attempted.** After reporting transport loss for
-diagnostics, the helper exits. A later user-initiated pane open creates a fresh
-master/helper/session. `/restart` remains available only while a live helper can
-explicitly request a fresh stack; it is not retained as a crash screen.
+**Crash recovery is not attempted.** The helper exits. A later user-initiated
+pane open creates a fresh master/helper/session. `/restart` remains available
+only while a live helper can explicitly request a fresh stack; it is not
+retained as a crash screen.
 
 **Design principle adopted mid-review:** *no fragile substring classification of
 error text.* An earlier version classified errors into
@@ -98,12 +96,9 @@ live app:
 
 ## 5. Deferred work (out of scope for this round, by decision)
 
-The first round was **Rust/helper-side, manual-retry only**. These were
-explicitly left for later:
-
-- **Wedge detection.** Pipe EOF detects process exit, not a live-but-stuck
-  helper. Heartbeat detection remains deferred; timeout must lead to cleanup,
-  not automatic session recovery.
+The remaining deferred work is **wedge detection**. Pipe EOF detects process
+exit, not a live-but-stuck helper. Heartbeat detection must lead to cleanup, not
+automatic session recovery.
 
 ## 6. Known gaps (genuine, acknowledged)
 
@@ -141,12 +136,12 @@ of PR #141:
 |---|---|---|
 | F1 | agent CLI death → whole master down (single point of failure) | **deferred** (§6) |
 | F2 | master crash → C++ lazy respawn, open panes zombie | **deferred** (§5) |
-| F3 | idle master death silently stayed `Connected` | **fixed** — watchdog both-arm emit |
-| F4 | in-flight prompt death | **fixed** — surfaces error + `connection.lost`, not verified live (§4) |
-| F5 | helper/conpty death → zombie pane, no respawn | **implemented** — §8 (Phase 2); exit-case auto-recovers, wedge deferred |
+| F3 | idle master death silently stayed `Connected` | **fixed** — watchdog exits helper |
+| F4 | in-flight prompt death | **fixed** — transport termination exits helper |
+| F5 | helper/conpty death → zombie pane, no respawn | **fixed** — pane closes; no automatic recovery |
 | F6 | handshake/timeout failures | **handled** — returned as-is (raw), by decision |
 | F7 | connecting looked frozen | **fixed** — animated activity line; cold-start not verified live (§4) |
-| F8 | agent-side session leak on disconnect | **gap** (§6) |
+| F8 | agent-side session leak on disconnect | **fixed** — bounded cancel/close + local retirement |
 | F9 | routing to a dead helper | **already graceful** (no work) |
 | F10 | autofix event dropped in non-Connected state | **intended**, replay possible (§6) |
 
@@ -181,8 +176,8 @@ manual close case.
 
 ### 8.2 Helper exit — master cleans up, Terminal does not respawn
 
-`serve_helper` (`master/mod.rs:1647`) already reads each helper's pipe in a loop until
-EOF/error. A helper exit breaks the pipe, after which master:
+`serve_helper` reads each helper's pipe until EOF/error. A helper exit breaks the
+pipe, after which master:
 
 1. Cancels each helper-owned active turn.
 2. Sends bounded `session/close` when the agent advertises it.
@@ -199,9 +194,10 @@ The helper's ACP I/O task treats both pipe error and clean EOF as master loss. I
 posts `MasterDisconnected`, ends the TUI, and exits. It does not remain in a
 transport-lost view and does not reconnect.
 
-Each helper owns one persistent `wtcli --json listen` child. The child is configured
-with `kill_on_drop(true)`, so helper runtime teardown also terminates the listener.
-This prevents a dead master from leaving helper/listener process pairs behind.
+Each helper owns one persistent `wtcli --json listen` child. Normal teardown uses
+`kill_on_drop(true)`. The listener also watches the owning WTA process through
+`--parent-pid`, so it exits even when the owner is force-terminated and Rust
+destructors do not run.
 
 `SharedWta` records that the master exited and clears its process state. It does not
 recreate panes. If the user later opens an agent pane, that explicit `AcquirePane`
@@ -216,7 +212,7 @@ starts a fresh master and the new helper creates a fresh ACP session.
 - Agent/model settings changes are planned teardown/rebuild operations and start a
   fresh session.
 
-### 8.5 Deferred
+### 8.5 Deliberately deferred
 
 - **Wedge detection (heartbeat).** A helper that hangs without exiting won't break the
   pipe. If wedges prove common, add helper heartbeat detection, but treat timeout as
@@ -235,7 +231,7 @@ starts a fresh master and the new helper creates a fresh ACP session.
 | Helper-owned ACP cancel/close on disconnect | **done** |
 | Automatic pane respawn/session load | **removed** |
 | Helper exit on master pipe EOF | **done** |
-| `wtcli listen` child ownership | **done (`kill_on_drop`)** |
+| `wtcli listen` child ownership | **done (`kill_on_drop` + parent process watcher)** |
 | Explicit history Resume | **preserved** |
 | Wedge heartbeat | **deferred (§8.5)** |
 | Panic hook (diagnostics) | **separate follow-up (§8.5)** |

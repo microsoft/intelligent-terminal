@@ -8463,9 +8463,7 @@ namespace winrt::TerminalApp::implementation
                             std::string{ "_MakeTerminalPane: drag-in tearing down pre-warm leftover on tab " } +
                             winrt::to_string(focusedTab->StableId()));
                         // This pre-warm helper owns its own ACP session. Close
-                        // it authoritatively before replacing the pane, and
-                        // suppress the expected helper-disconnect recovery so
-                        // it cannot tear down the incoming dragged pane.
+                        // it authoritatively before replacing the pane.
                         _NotifyAgentTabReset(focusedTab->StableId());
                         _TeardownAgentPane(focusedTab);
                     }

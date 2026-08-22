@@ -125,8 +125,7 @@ namespace winrt::TerminalApp::implementation
         /// the master with a *different* cmdline. For that case, call
         /// the overload that takes a fresh `wtaPath` + `extraArgs` —
         /// it replaces the cached spawn args before respawning, so
-        /// the new master inherits the new per-process settings and
-        /// any subsequent crash-recovery respawn uses the same.
+        /// the new master inherits the new per-process settings.
         ///
         /// No-op if the master isn't running, or if there were no
         /// cached spawn args (no AcquirePane has succeeded this
