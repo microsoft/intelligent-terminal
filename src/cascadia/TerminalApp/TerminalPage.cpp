@@ -7545,6 +7545,15 @@ namespace winrt::TerminalApp::implementation
         RequestMoveContent.raise(*this, *request);
     }
 
+    void TerminalPage::_PrepareTabForCrossWindowMove(const winrt::com_ptr<Tab>& tab)
+    {
+        if (tab && tab->FindAgentPane())
+        {
+            _NotifyAgentTabReset(tab->StableId());
+            _TeardownAgentPane(tab);
+        }
+    }
+
     bool TerminalPage::_MoveTab(winrt::com_ptr<Tab> tab, MoveTabArgs args)
     {
         if (!tab)
@@ -7566,6 +7575,7 @@ namespace winrt::TerminalApp::implementation
 
             if (tab)
             {
+                _PrepareTabForCrossWindowMove(tab);
                 auto startupActions = tab->BuildStartupActions(BuildStartupKind::Content);
                 _DetachTabFromWindow(tab);
                 _MoveContent(std::move(startupActions), windowId, 0);
@@ -11208,13 +11218,7 @@ namespace winrt::TerminalApp::implementation
                                                const uint32_t tabIndex,
                                                std::optional<winrt::Windows::Foundation::Point> dragPoint)
     {
-        if (const auto& tab = _stashed.draggedTab;
-            tab && tab->FindAgentPane())
-        {
-            _NotifyAgentTabReset(tab->StableId());
-            _TeardownAgentPane(tab);
-        }
-
+        _PrepareTabForCrossWindowMove(_stashed.draggedTab);
         auto startupActions = _stashed.draggedTab->BuildStartupActions(BuildStartupKind::Content);
         _DetachTabFromWindow(_stashed.draggedTab);
 

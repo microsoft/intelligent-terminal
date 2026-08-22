@@ -1,34 +1,34 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist §2 "Master death is a consistent degraded state" (#329):
-#   If wta-master exits, the agent pane shows a single consistent degraded state and requires
-#   /restart to recover — no silent "split-brain" where one pane silently gets a fresh master
-#   while orphaned panes stay dead.
+# Release checklist §2 "Master death fails closed and a later pane open starts fresh" (#329):
+#   If wta-master exits, its helper and pane exit without replaying the crashed session.
+#   A later explicit pane open starts a fresh master/helper/ACP session.
 #
 # This suite exercises the REAL failure by killing wta-master out from under a live helper and
-# asserting the whole contract end-to-end (not just the Rust unit-tested latch):
-#   1. the pane leaves Connected (the degraded state is entered),
-#   2. the `/` popup is filtered to ONLY /restart (the locale-independent degraded signal),
-#   3. NO master is silently respawned while degraded (the anti-split-brain guarantee),
-#   4. /restart brings up exactly one fresh master and the pane reconnects.
+# asserting the fail-closed contract end-to-end:
+#   1. the helper exits and closeOnExit closes the pane,
+#   2. no master, helper, or ACP session is recreated automatically,
+#   3. an explicit pane open creates a fresh master/helper/ACP session without session/load.
 #
 # Architecture facts this relies on (verified live + tools/wta/AGENTS.md):
 #   * master  = `wta.exe --master <pipe>`         (spawned once by C++ SharedWta)
 #   * helper  = `wta.exe --connect-master <pipe>` (one per agent pane)
 #   * both are children of the WindowsTerminal.exe process (this app's Pid), so we kill ONLY
 #     this app's master and never another instance's.
-#   * the helper detects master death proactively (client.rs: "pipe closed (master gone)" ->
-#     AgentFailure::TransportLost -> connection.lost), so no prompt is needed to trigger it.
+#   * the helper detects master death proactively and exits, so no prompt is needed to trigger it.
 #
 #   Invoke-Pester test/e2e/tests/Feature.AgentMasterDeath.Tests.ps1 -Tag Feature
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
-Describe 'Feature §2 master death is a consistent degraded state (#329)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §2 master death fails closed (#329)' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:shellPane = Get-ActivePane -App $script:app
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because 'the agent pane must be connected before we can test losing the connection'
+        $script:initialSession = Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $script:shellPane.session_id
+        $script:initialSession | Should -Not -BeNullOrEmpty
 
         # This app's wta-master(s): a wta.exe child of THIS WindowsTerminal.exe launched with
         # `--master` (not `--connect-master`). Scoping to the app's Pid guarantees we never touch
@@ -41,14 +41,10 @@ Describe 'Feature §2 master death is a consistent degraded state (#329)' -Tag '
                     $_.CommandLine -notmatch '--connect-master'
                 })
         }
-        # The degraded hint reuses the localized `connection.lost` string; match it across every
-        # bundled locale so the assertion is locale-robust (the running build renders one locale).
-        $script:LostRe = Get-WtaLocalizedTextRegex -Key 'connection.lost'
-        if (-not $script:LostRe) { $script:LostRe = '(?i)connection.*lost|/restart' }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'killing wta-master enters a degraded state, blocks all slash commands but /restart, does not silently respawn, and recovers via /restart' {
+    It 'Master death fails closed and a later pane open starts fresh' {
         # --- there is exactly one live master while connected ---
         $masters = & $script:GetMasters
         # A connected agent pane runs EXACTLY ONE wta-master per WindowsTerminal process — the
@@ -59,55 +55,46 @@ Describe 'Feature §2 master death is a consistent degraded state (#329)' -Tag '
         $killedPids = @($masters.ProcessId)
 
         # --- kill the master out from under the live helper ---
+        Initialize-LogOffsets -App $script:app | Out-Null
         foreach ($mp in $killedPids) { Stop-Process -Id $mp -Force -ErrorAction SilentlyContinue }
         Wait-Until -TimeoutSec 15 -Because 'the killed wta-master process(es) to be gone' -Condition {
             @(& $script:GetMasters | Where-Object { $killedPids -contains $_.ProcessId }).Count -eq 0
         } | Out-Null
 
-        # --- (1) the pane leaves Connected: the connected input placeholder disappears ---
-        # Wait-AgentReady returns false once the pane is no longer user-visibly connected. A short
-        # timeout is enough because the helper detects the dead pipe proactively.
-        $stillReady = Wait-AgentReady -App $script:app -TimeoutSec 20
-        $stillReady | Should -BeFalse -Because 'after master dies the pane must drop out of the Connected state, not appear half-alive'
-
-        # --- degraded hint is surfaced somewhere in the pane (best-effort, locale-robust) ---
-        Test-AgentPopupShown -App $script:app -Pattern $script:LostRe -TimeoutSec 20 |
-            Should -BeTrue -Because 'the degraded pane must tell the user the connection was lost and to /restart'
-
-        # --- (2) the `/` popup is filtered to ONLY /restart ---
-        # Type '/' and read the rendered TUI menu. In transport_lost, command_popup_state() is
-        # filtered to /restart only (slash_command_tests.rs), so no other command may appear.
-        Clear-AgentInput -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -Text '/' -NoSubmit | Out-Null
-        Wait-Until -TimeoutSec 12 -Because 'the degraded /restart popup to render' -Condition {
-            (Get-AgentPaneText -App $script:app -MaxLines 40) -match '/restart'
+        Wait-Until -TimeoutSec 20 -Because 'the helper to exit after its master dies' -Condition {
+            -not (Get-CimInstance Win32_Process -Filter "ProcessId=$($script:initialSession.HelperProcessId)" -ErrorAction SilentlyContinue)
         } | Out-Null
-        $menu = Get-AgentPaneText -App $script:app -MaxLines 40
-        $menu | Should -Match '/restart' -Because 'the degraded popup must still offer /restart (the one recovery command)'
-        # No other slash command may be offered while degraded — each would hit the dead pipe.
-        foreach ($blocked in '/help', '/clear', '/new', '/sessions', '/agent', '/model', '/fix', '/stop') {
-            $menu | Should -Not -Match ([regex]::Escape($blocked)) -Because "while degraded the popup must hide $blocked (only /restart runs)"
-        }
+        Wait-Until -TimeoutSec 20 -Because 'the exited helper pane to close' -Condition {
+            -not (Test-AgentPaneOpen -App $script:app)
+        } | Out-Null
+        (Get-AgentPaneSession -App $script:app -PaneSessionId $script:initialSession.PaneSessionId) |
+            Should -BeNullOrEmpty -Because 'the crashed helper session must no longer be live'
 
-        # --- (3) NO silent respawn: while degraded, master count must stay 0 ---
-        # PR #329's core anti-split-brain guarantee: opening/using a degraded pane must NOT lazily
-        # respawn a fresh master. Poll for a few seconds to catch a late respawn.
+        # Once process and pane exit establish completion, observe a bounded quiet period.
+        # Nothing may recreate the stack or load the old conversation without a user action.
         for ($i = 0; $i -lt 6; $i++) {
-            @(& $script:GetMasters).Count | Should -Be 0 -Because 'no wta-master may be silently respawned while the stack is degraded (that would be split-brain)'
+            @(& $script:GetMasters).Count | Should -Be 0 -Because 'master death must not automatically respawn the stack'
+            @(Get-AgentPaneSessions -App $script:app).Count | Should -Be 0 -Because 'master death must not automatically create or load a session'
             Start-Sleep -Milliseconds 500
         }
+        (Get-ItLogText -App $script:app -Name 'wta-main_*.log' -SinceStart) |
+            Should -Not -Match 'forwarding load_session|load_session requested' -Because 'crash handling must not invoke ACP session/load'
 
-        # --- (4) /restart recovers: one fresh master, pane reconnects ---
-        Clear-AgentInput -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -Text '/restart' | Out-Null   # type it and submit
-        Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because '/restart must respawn the stack and reconnect the pane'
+        Open-AgentPane -App $script:app | Out-Null
+        $freshSession = Wait-NewAgentPaneSession -App $script:app `
+            -OwnerPaneSessionId $script:shellPane.session_id `
+            -ExcludePaneSessionId $script:initialSession.PaneSessionId `
+            -TimeoutSec 30
+        $freshSession | Should -Not -BeNullOrEmpty
+        Wait-AgentReady -App $script:app -PaneSessionId $freshSession.PaneSessionId -TimeoutSec 90 |
+            Should -BeTrue -Because 'an explicit pane open must create a usable fresh session'
 
         $recovered = & $script:GetMasters
-        $recovered.Count | Should -Be 1 -Because '/restart must bring up exactly one master (not zero, not a split-brain duplicate)'
-        ($killedPids -contains $recovered[0].ProcessId) | Should -BeFalse -Because 'the recovered master must be a genuinely fresh process, not the killed one'
-
-        # The reconnected pane must actually work again.
-        Send-AgentPrompt -App $script:app -Text 'What is 7 plus 7? Reply with only the number.' | Out-Null
-        Assert-AgentPaneText -App $script:app -Pattern '\b14\b' -TimeoutSec 50
+        $recovered.Count | Should -Be 1 -Because 'the explicit pane open must start exactly one new shared master'
+        ($killedPids -contains $recovered[0].ProcessId) | Should -BeFalse
+        $freshSession.HelperProcessId | Should -Not -Be $script:initialSession.HelperProcessId
+        $freshSession.AcpSessionId | Should -Not -Be $script:initialSession.AcpSessionId
+        (Get-ItLogText -App $script:app -Name 'wta-main_*.log' -SinceStart) |
+            Should -Not -Match 'forwarding load_session|load_session requested' -Because 'explicit reopen must create a fresh session rather than load the crashed one'
     }
 }

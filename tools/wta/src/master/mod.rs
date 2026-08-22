@@ -2083,10 +2083,16 @@ impl HelperHandler {
         let _guard = self.state.tab_ownership_gate.lock().await;
         let helper_is_retired = self
             .state
-            .destructive_session_helpers
+            .closing_session_helpers
             .lock()
             .await
-            .contains(&self.helper_id);
+            .contains(&self.helper_id)
+            || self
+                .state
+                .destructive_session_helpers
+                .lock()
+                .await
+                .contains(&self.helper_id);
         let blocked_by_fence = if let Some(owner_tab_id) = owner_tab_id.as_deref() {
             let blocked_by_unresolved = self
                 .state
@@ -5162,6 +5168,51 @@ async fn serve_helper(
         agent.bound_helpers.lock().await.remove(&helper_id);
     }
 
+    let cleanup = cleanup_disconnected_helper(&handler).await;
+
+    tracing::info!(
+        target: "master",
+        helper_id = ?helper_id,
+        sessions_owned = cleanup.sessions_owned,
+        sessions_fallback_retired = cleanup.sessions_fallback_retired,
+        intentional_close = cleanup.intentional_close,
+        "helper ownership retired; automatic recovery disabled"
+    );
+
+    result
+}
+
+struct DisconnectedHelperCleanup {
+    sessions_owned: usize,
+    sessions_fallback_retired: usize,
+    intentional_close: bool,
+}
+
+async fn cleanup_disconnected_helper(handler: &HelperHandler) -> DisconnectedHelperCleanup {
+    let state = &handler.state;
+    let helper_id = handler.helper_id;
+
+    // Fence the helper before waiting for an in-flight replacement. The
+    // destructive tombstone keeps finish_failed_pending_session from clearing
+    // the closing marker when that transaction fails. FIFO-queued replacements
+    // therefore reject at owner publication before reaching the provider, and
+    // holding the gate through cleanup prevents later state installation.
+    let disconnect_added_closing_marker = {
+        let _ownership_guard = state.tab_ownership_gate.lock().await;
+        let added = state
+            .closing_session_helpers
+            .lock()
+            .await
+            .insert(helper_id);
+        state
+            .destructive_session_helpers
+            .lock()
+            .await
+            .insert(helper_id);
+        added
+    };
+    let _replacement_guard = handler.replacement_gate.lock().await;
+
     // A disconnected helper is terminal: do not preserve or automatically
     // resume its live ACP sessions. Cancel and close each session while the
     // route still proves ownership, then retire any route whose provider-side
@@ -5197,31 +5248,20 @@ async fn serve_helper(
             }
         }
     }
-    let fallback_retired = drop_sessions_for_helper(&state, helper_id).await;
-
-    tracing::info!(
-        target: "master",
-        helper_id = ?helper_id,
-        sessions_owned = owned_sessions.len(),
-        sessions_fallback_retired = fallback_retired.len(),
-        "helper disconnected"
-    );
+    let fallback_retired = drop_sessions_for_helper(state, helper_id).await;
 
     let pending_mcp = state.pending_session_mcp.lock().await.remove(&helper_id);
     if let Some(pending_mcp) = pending_mcp {
         state.session_mcp_capabilities.cancel(&pending_mcp).await;
     }
 
-    let (intentional_close, _) =
+    let (closing_marker_present, _) =
         consume_disconnected_helper_retirement_state(&state, helper_id).await;
-    tracing::info!(
-        target: "master",
-        helper_id = ?helper_id,
-        intentional_close,
-        "helper ownership retired; automatic recovery disabled"
-    );
-
-    result
+    DisconnectedHelperCleanup {
+        sessions_owned: owned_sessions.len(),
+        sessions_fallback_retired: fallback_retired.len(),
+        intentional_close: closing_marker_present && !disconnect_added_closing_marker,
+    }
 }
 
 async fn consume_disconnected_helper_retirement_state(

@@ -253,7 +253,7 @@ state:
 
 | # | Failure point | Target |
 |---|---|---|
-| F1 | agent CLI death → whole master down (single point of failure) | mitigated via §5.3 respawn + Phase 3 reconnect (full in-master agent respawn still future) |
+| F1 | agent CLI death → whole master down (single point of failure) | **fail closed** via §5.3: master/helpers/panes exit; a later explicit pane open starts a fresh session. In-master agent respawn is deferred and is not current behavior. |
 | F2 | master crash → C++ lazy respawn, zombie panes | **fixed** §5.3 fail-closed helper exit |
 | F3 | idle master death stayed `Connected` | **fixed** by direct `MasterDisconnected` termination |
 | F4 | in-flight prompt death | **fixed** by direct `MasterDisconnected` termination |

@@ -143,11 +143,10 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         return { .args = {}, .firstPane = shared_from_this(), .focusedPaneId = std::nullopt, .panesCreated = 0 };
     }
 
-    // Agent panes participate in cross-window move (Content / MovePane); their
-    // conpty + helper child survive via the ContentId reattach mechanism (see
-    // _MakePane), and the helper process is unchanged across the drag.
-    //
-    // Persistence (BuildStartupKind::Persist, i.e. app restart) is different:
+    // Cross-window tab moves tear down agent panes before reaching this method,
+    // so their helper sessions are not transferred. Persistence
+    // (BuildStartupKind::Persist, i.e. app restart) also needs an explicit
+    // exclusion:
     // an agent pane's command line is session-specific (it points at the
     // previous run's wta-master named pipe and an owner-tab-id that no longer
     // exist), and after a restart there is no live master / helper / conpty

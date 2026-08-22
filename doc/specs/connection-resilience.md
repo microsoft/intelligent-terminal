@@ -110,9 +110,9 @@ automatic session recovery.
   silent hang. Hard to inject (would need to SIGSTOP the agent process).
 - **F1 — agent CLI death = whole-master death (single-agent single point of failure).** Master does
   not respawn the agent CLI; it exits and takes every multiplexed helper down
-  (`master/mod.rs` ~1335–1357, ~1565). Blast radius grows with tab count. → an
-  in-master agent respawn + `cached_init_resp` replay would downgrade "agent
-  crash" from "everyone dies" to "brief blip".
+  (`master/mod.rs` ~1335–1357, ~1565). Blast radius grows with tab count.
+  In-master agent respawn plus `cached_init_resp` replay is a deferred proposal,
+  not current recovery behavior.
 - **F8 — agent-side session leak on helper disconnect.** Addressed: master
   cancels the turn, sends bounded `session/close` when supported, and retires
   local routing/registry state.
@@ -135,7 +135,7 @@ of PR #141:
 | # | Failure point | Status |
 |---|---|---|
 | F1 | agent CLI death → whole master down (single point of failure) | **deferred** (§6) |
-| F2 | master crash → C++ lazy respawn, open panes zombie | **deferred** (§5) |
+| F2 | master crash → C++ lazy respawn, open panes zombie | **fixed** — helpers exit, panes close, and only a later explicit pane open starts fresh (§8) |
 | F3 | idle master death silently stayed `Connected` | **fixed** — watchdog exits helper |
 | F4 | in-flight prompt death | **fixed** — transport termination exits helper |
 | F5 | helper/conpty death → zombie pane, no respawn | **fixed** — pane closes; no automatic recovery |

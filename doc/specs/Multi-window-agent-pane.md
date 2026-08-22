@@ -451,15 +451,11 @@ unaffected by the drag (helper process identity stays the same).
 `SharedWta::_OnProcessExited` (existing wait-callback) fires. State is
 cleared so the next `AcquirePane` respawns the master. All existing
 helpers' pipe connections drop:
-- Helper detects pipe disconnect → surfaces a "disconnected from
-  master" banner in its TUI.
-- User can keep typing locally; submission fails until master
-  reconnects.
-- On next `AcquirePane`, a fresh master spawns. Helpers reconnect (via
-  retry loop in helper).
-
-(Auto-reconnect protocol is part of Phase 5 testing — see
-implementation plan.)
+- Each helper detects pipe EOF, ends its TUI, and exits.
+- The Agent Pane profile's `closeOnExit:"always"` closes each pane.
+- No helper reconnects and crash handling never calls `session/load`.
+- A later user-initiated pane open calls `AcquirePane`, which creates a
+  fresh master, helper, and ACP session.
 
 #### Helper crash
 
@@ -807,8 +803,9 @@ architecture:
   helper exits and master refcount decrements.
 - Last-pane close: close last agent pane, verify master exits via
   Job Object.
-- Master crash: kill master mid-conversation, verify helpers
-  surface error and reconnect on next prompt.
+- Master crash: kill master mid-conversation, verify helpers and panes
+  exit, no session is loaded automatically, and a later explicit pane
+  open creates a fresh session.
 - Helper crash: kill helper, verify only its pane is affected.
 - Resize: window resize → conpty resize → helper sees it via
   crossterm `Event::Resize` (no `_internal.resize_pane` needed).
@@ -861,11 +858,10 @@ v1 ships with the simple behavior; future extension is non-breaking.
 
 ### Z-R5. Agent CLI version skew across helpers
 
-A helper started under master version A may continue running when
-master is restarted at version B (e.g. user updates Terminal mid-
-session). The new master may speak a different ACP protocol version
-than the helper. Mitigation: helper performs `initialize` handshake
-on reconnect; on incompatible version, surfaces a clear error.
+A helper never survives a master restart: master pipe EOF terminates
+the helper and closes its pane. A later explicit pane open starts a
+new helper, whose normal `initialize` handshake detects any ACP
+protocol incompatibility before creating a fresh session.
 
 ### Z-R6. Master spawn race
 
@@ -919,11 +915,12 @@ work:
 - **Restructuring agent pane UI to XAML**: Z keeps the Ratatui TUI
   model. Migration to native XAML chat UI is a separate larger spec.
 
-## Future work
+## Deferred future work (not current behavior)
 
-- **F1**: `TabSession` checkpoint + restore across master restarts.
-  Persists chat history to disk; helper reattach via ACP
-  `session/load`. Not blocked by Z but only useful after it.
+- **F1 (deferred proposal)**: `TabSession` checkpoint + restore across
+  master restarts. This would persist chat history to disk and reattach
+  via ACP `session/load`; current crash handling deliberately does
+  neither.
 - **F2**: Per-pane different agent CLI. Master spawns additional
   agent CLI processes keyed by `agent_id`; routes helpers to the
   matching child. Wire format already supports it via
@@ -932,6 +929,7 @@ work:
   hostile or buggy callers. Deprioritized.
 - **F4**: Migration of agent pane UI from Ratatui TUI to native
   XAML chat surface. Separate, larger spec.
-- **F5**: Master high-availability — if master crashes, helpers
-  reconnect to a freshly-respawned master and resume via ACP
-  `session/load`. Builds on F1.
+- **F5 (deferred proposal)**: Master high-availability, in which helpers
+  reconnect to a freshly respawned master and resume via ACP
+  `session/load`. This is explicitly non-current and would require a
+  separate safety design before implementation. Builds on F1.

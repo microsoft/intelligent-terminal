@@ -148,7 +148,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C060` `[UT✓]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `auth_error_routes_to_signin_not_connection_lost` (AuthRequired → sign-in, not a generic failure) + the in-pane auth screen renders `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message` (login guidance + post-sign-in checking state). Driving a real sign-out stays MANUAL.)_
 - [ ] `C216` `[new]` `[E2E]` **GitHub Enterprise Copilot sign-in works:** On the auth screen, pressing **E** lets the user enter a GHE domain (e.g. `*.ghe.com`) and sign in; the last-used host is remembered and the device-verification URL targets that host. _(#362.)_
 - [ ] `C061` `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
-- [ ] `C217` `[new]` `[UT~]` `[E2E]` **Master death is a consistent degraded state:** If `wta-master` exits, the agent pane shows a single consistent degraded state and requires `/restart` to recover — no silent "split-brain" where it looks half-alive. _(#329.)_
+- [ ] `C217` `[new]` `[UT~]` `[E2E]` **Master death fails closed and a later pane open starts fresh:** If `wta-master` exits, its helpers and panes exit without automatic session load; a later explicit pane open creates a fresh master, helper, and ACP session. _(#329; E2E: `Feature.AgentMasterDeath`.)_
 
 ### Input and rendering
 
