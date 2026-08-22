@@ -66,6 +66,22 @@ namespace winrt::TerminalApp::implementation
         // Update the cached pane-position. Fires StateChanged so the
         // bottom bar can refresh its toggle-icon orientation.
         void SetAgentPanePosition(const winrt::hstring& position);
+        void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }
+        winrt::hstring TakePendingRenameFromTabId() noexcept
+        {
+            const auto value = _pendingRenameFromTabId;
+            _pendingRenameFromTabId = {};
+            return value;
+        }
+        void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
+        std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
+        {
+            const auto value = _pendingAgentSourceProfileGuid;
+            _pendingAgentSourceProfileGuid.reset();
+            return value;
+        }
+        void PrepareForCrossWindowTransfer() noexcept { _helperTransferredForDrag = true; }
+
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
         void ApplyThemeColors(const winrt::Windows::UI::Xaml::Media::Brush& background,
@@ -145,6 +161,9 @@ namespace winrt::TerminalApp::implementation
         // TerminalPage updates it from the Tab runtime override or global
         // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
+        winrt::hstring _pendingRenameFromTabId{};
+        std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
+        bool _helperTransferredForDrag{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

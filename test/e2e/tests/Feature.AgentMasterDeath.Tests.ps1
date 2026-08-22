@@ -14,6 +14,7 @@
 #   * helper  = `wta.exe --connect-master <pipe>` (one per agent pane)
 #   * both are children of the WindowsTerminal.exe process (this app's Pid), so we kill ONLY
 #     this app's master and never another instance's.
+#   * each wta owner starts its own direct `wtcli.exe --json listen --parent-pid <owner>` child.
 #   * the helper detects master death proactively and exits, so no prompt is needed to trigger it.
 #
 #   Invoke-Pester test/e2e/tests/Feature.AgentMasterDeath.Tests.ps1 -Tag Feature
@@ -41,6 +42,17 @@ Describe 'Feature §2 master death fails closed (#329)' -Tag 'Feature' -Skip:(-n
                     $_.CommandLine -notmatch '--connect-master'
                 })
         }
+        $script:GetOwnedListeners = {
+            param([int[]]$OwnerPids)
+            @(Get-CimInstance Win32_Process -Filter "Name='wtcli.exe'" -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $ownerPid = [int]$_.ParentProcessId
+                    $parentPattern = '(?i)(?:^|\s)"?[^"]*wtcli\.exe"?\s+--json\s+listen\s+--parent-pid\s+"?' +
+                        [regex]::Escape([string]$ownerPid) + '(?:"|\s|$)'
+                    $OwnerPids -contains $ownerPid -and
+                    $_.CommandLine -match $parentPattern
+                })
+        }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -53,6 +65,13 @@ Describe 'Feature §2 master death fails closed (#329)' -Tag 'Feature' -Skip:(-n
         # second master already exists while connected.
         $masters.Count | Should -Be 1 -Because 'a connected agent pane implies exactly one shared wta-master (SharedWta is a singleton)'
         $killedPids = @($masters.ProcessId)
+        $listenerOwnerPids = @($killedPids + [int]$script:initialSession.HelperProcessId)
+        $ownedListeners = @(& $script:GetOwnedListeners $listenerOwnerPids)
+        foreach ($ownerPid in $listenerOwnerPids) {
+            @($ownedListeners | Where-Object { [int]$_.ParentProcessId -eq $ownerPid }).Count |
+                Should -BeGreaterThan 0 -Because "wta owner $ownerPid must have a direct wtcli --json listen --parent-pid $ownerPid child"
+        }
+        $ownedListenerPids = @($ownedListeners.ProcessId)
 
         # --- kill the master out from under the live helper ---
         Initialize-LogOffsets -App $script:app | Out-Null
@@ -63,6 +82,11 @@ Describe 'Feature §2 master death fails closed (#329)' -Tag 'Feature' -Skip:(-n
 
         Wait-Until -TimeoutSec 20 -Because 'the helper to exit after its master dies' -Condition {
             -not (Get-CimInstance Win32_Process -Filter "ProcessId=$($script:initialSession.HelperProcessId)" -ErrorAction SilentlyContinue)
+        } | Out-Null
+        Wait-Until -TimeoutSec 20 -Because 'the master/helper-owned wtcli listener(s) to exit with their owners' -Condition {
+            @($ownedListenerPids | Where-Object {
+                    Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+                }).Count -eq 0
         } | Out-Null
         Wait-Until -TimeoutSec 20 -Because 'the exited helper pane to close' -Condition {
             -not (Test-AgentPaneOpen -App $script:app)

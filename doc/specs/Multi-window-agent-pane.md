@@ -443,8 +443,11 @@ target window's own `tab_changed` for the new id and the helper's
 per-tab state isn't clobbered by a fresh default. See "Per-tab +
 per-window event routing" below for the full model.
 
-Master does nothing — the SessionId ↔ helper-connection mapping is
-unaffected by the drag (helper process identity stays the same).
+Master keeps the SessionId ↔ helper-connection mapping intact (the helper
+process identity does not change) while rekeying tab ownership, pending
+session ownership, orphan bookkeeping, and any ordered-retirement fences from
+the old StableId to the new one. This is migration bookkeeping, not recovery:
+no process restarts and no ACP `session/load` occurs.
 
 #### Master crash
 

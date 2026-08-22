@@ -156,6 +156,12 @@ Normal pane stash/restore is unaffected because no process or transport failed.
 Explicit history Resume is also unaffected: it is a user action and follows the
 normal agent-scoped `session/load` path.
 
+Ordered cross-window tab migration is also not crash recovery. Both action-driven
+`moveTab` and tab-strip drag carry the live TermControl/conpty/helper through the
+ContentId handoff, transfer the `SharedWta` pane reference, and rekey tab/window
+ownership with `tab_renamed`. The ACP SessionId and chat history remain live; no
+helper restart or `session/load` is involved.
+
 ### 8.1 Two ways a helper "dies"
 
 | | **Exit** | **Wedge** |

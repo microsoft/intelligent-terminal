@@ -253,7 +253,7 @@ namespace winrt::TerminalApp::implementation
                 }
                 const auto newTabId = tabImplCom->StableId();
                 int agentLeavesSeen = 0;
-                rootPane->WalkTree([self, &tabImplCom, &agentLeavesSeen](const std::shared_ptr<Pane>& p) -> void {
+                rootPane->WalkTree([self, &tabImplCom, &newTabId, &agentLeavesSeen](const std::shared_ptr<Pane>& p) -> void {
                     if (!p)
                     {
                         return;
@@ -272,10 +272,32 @@ namespace winrt::TerminalApp::implementation
                         return;
                     }
                     self->_WireAgentPaneEvents(content, tabImplCom);
+
+                    const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+                    if (const auto sourceProfileGuid = impl->TakePendingAgentSourceProfileGuid())
+                    {
+                        tabImplCom->AgentSourceProfileGuid(*sourceProfileGuid);
+                    }
+
+                    const auto oldTabId = impl->TakePendingRenameFromTabId();
+                    if (oldTabId.empty() || oldTabId == newTabId)
+                    {
+                        return;
+                    }
+
+                    Json::Value params;
+                    params["old_tab_id"] = winrt::to_string(oldTabId);
+                    params["new_tab_id"] = winrt::to_string(newTabId);
+                    params["window_id"] = std::to_string(self->_WindowProperties.WindowId());
+                    _agentPaneLog(
+                        std::string{ "_InitializeTab(deferred): emitting tab_renamed old=" } +
+                        winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
+                    self->_RaiseProtocolEvent("tab_renamed", params);
                 });
 
                 // Pre-warm a stashed agent pane on this tab so the helper is
-                // running from the start (autofix needs it).
+                // running from the start (autofix needs it). A transferred
+                // pane keeps its existing helper and skips this path.
                 if (agentLeavesSeen == 0)
                 {
                     _agentPaneLog(

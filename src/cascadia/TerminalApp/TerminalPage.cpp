@@ -25,6 +25,7 @@
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
+#include "AgentPaneDragStash.h"
 #include "AgentPaneLog.h"
 #include "App.h"
 #include "DebugTapConnection.h"
@@ -7545,15 +7546,6 @@ namespace winrt::TerminalApp::implementation
         RequestMoveContent.raise(*this, *request);
     }
 
-    void TerminalPage::_PrepareTabForCrossWindowMove(const winrt::com_ptr<Tab>& tab)
-    {
-        if (tab && tab->FindAgentPane())
-        {
-            _NotifyAgentTabReset(tab->StableId());
-            _TeardownAgentPane(tab);
-        }
-    }
-
     bool TerminalPage::_MoveTab(winrt::com_ptr<Tab> tab, MoveTabArgs args)
     {
         if (!tab)
@@ -7575,7 +7567,6 @@ namespace winrt::TerminalApp::implementation
 
             if (tab)
             {
-                _PrepareTabForCrossWindowMove(tab);
                 auto startupActions = tab->BuildStartupActions(BuildStartupKind::Content);
                 _DetachTabFromWindow(tab);
                 _MoveContent(std::move(startupActions), windowId, 0);
@@ -8690,6 +8681,77 @@ namespace winrt::TerminalApp::implementation
             const auto control = _AttachControlToContent(newTerminalArgs.ContentId());
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
+
+            const uint64_t contentId = newTerminalArgs.ContentId();
+            winrt::hstring oldTabId;
+            std::optional<winrt::guid> sourceProfileGuid;
+            if (winrt::TerminalApp::implementation::AgentPaneDragStash::Take(
+                    contentId,
+                    oldTabId,
+                    sourceProfileGuid))
+            {
+                // A deferred pre-warm can race the serialized SplitPane action.
+                // Retire only that destination-local helper before installing
+                // the live helper carried by the ContentId.
+                if (const auto focusedTab = _GetFocusedTabImpl();
+                    focusedTab && focusedTab->FindAgentPane())
+                {
+                    _NotifyAgentTabReset(focusedTab->StableId());
+                    _TeardownAgentPane(focusedTab);
+                }
+
+                if (auto wrapped = _WrapInAgentPaneContent(resultPane))
+                {
+                    wrapped->IsAgentPane(true);
+
+                    // The source's SharedWta reference moves with the helper.
+                    // The destination owns its matching release from now on.
+                    wrapped->Closed([](auto&&, auto&&) {
+                        _agentPaneLog("transferred agent pane closed");
+                        winrt::TerminalApp::implementation::SharedWta::ReleasePaneAfterSessionClose();
+                    });
+
+                    if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                    {
+                        agentContent.SetAgentPanePosition(_settings.GlobalSettings().AgentPanePosition());
+                        _WireAgentPaneEvents(agentContent, winrt::com_ptr<Tab>{ nullptr });
+                    }
+
+                    if (const auto focusedTab = _GetFocusedTabImpl())
+                    {
+                        if (sourceProfileGuid)
+                        {
+                            focusedTab->AgentSourceProfileGuid(*sourceProfileGuid);
+                        }
+
+                        const auto newTabId = focusedTab->StableId();
+                        if (!oldTabId.empty() && !newTabId.empty() && oldTabId != newTabId)
+                        {
+                            Json::Value params;
+                            params["old_tab_id"] = winrt::to_string(oldTabId);
+                            params["new_tab_id"] = winrt::to_string(newTabId);
+                            params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                            _agentPaneLog(
+                                std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
+                                winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
+                            _RaiseProtocolEvent("tab_renamed", params);
+                        }
+                    }
+                    else if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
+                    {
+                        if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent))
+                        {
+                            impl->SetPendingRenameFromTabId(oldTabId);
+                            impl->SetPendingAgentSourceProfileGuid(sourceProfileGuid);
+                        }
+                    }
+
+                    _agentPaneLog("_MakeTerminalPane: re-wrapped transferred agent pane");
+                    return wrapped;
+                }
+
+                _agentPaneLog("_MakeTerminalPane: transferred agent pane wrap failed");
+            }
 
             return resultPane;
         }
@@ -11218,12 +11280,13 @@ namespace winrt::TerminalApp::implementation
                                                const uint32_t tabIndex,
                                                std::optional<winrt::Windows::Foundation::Point> dragPoint)
     {
-        _PrepareTabForCrossWindowMove(_stashed.draggedTab);
         auto startupActions = _stashed.draggedTab->BuildStartupActions(BuildStartupKind::Content);
         _DetachTabFromWindow(_stashed.draggedTab);
 
         _MoveContent(std::move(startupActions), windowId, tabIndex, dragPoint);
         // _RemoveTab will make sure to null out the _stashed.draggedTab.
+        // movingAway preserves the source-side SharedWta reference; the
+        // destination pane assumes ownership after the ContentId reattach.
         _RemoveTab(*_stashed.draggedTab, /*movingAway*/ true);
     }
 

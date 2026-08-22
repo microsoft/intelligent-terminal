@@ -717,7 +717,6 @@ namespace winrt::TerminalApp::implementation
         bool _MoveFocus(const Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool _SwapPane(const Microsoft::Terminal::Settings::Model::FocusDirection& direction);
         bool _MovePane(const Microsoft::Terminal::Settings::Model::MovePaneArgs args);
-        void _PrepareTabForCrossWindowMove(const winrt::com_ptr<Tab>& tab);
         bool _MoveTab(winrt::com_ptr<Tab> tab, const Microsoft::Terminal::Settings::Model::MoveTabArgs args);
 
         std::shared_ptr<ThrottledFunc<>> _adjustProcessPriorityThrottled;

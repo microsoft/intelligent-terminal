@@ -453,11 +453,15 @@ namespace winrt::TerminalApp::implementation
     void AgentPaneContent::Close()
     {
         _unwireInnerEvents();
-        auto helperProcess = _DuplicateAgentHelperProcess(_inner);
+        auto helperProcess = _helperTransferredForDrag ? wil::unique_handle{} : _DuplicateAgentHelperProcess(_inner);
         const auto helperPid = helperProcess ? GetProcessId(helperProcess.get()) : 0;
         if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
         {
             impl->Close();
+        }
+        if (_helperTransferredForDrag)
+        {
+            _agentPaneLog("skipping wta-helper exit enforcement for cross-window transfer");
         }
         if (helperProcess)
         {

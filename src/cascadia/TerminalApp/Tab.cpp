@@ -5,6 +5,7 @@
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
 #include "AgentPaneContent.h"
+#include "AgentPaneDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -575,6 +576,45 @@ namespace winrt::TerminalApp::implementation
     std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind) const
     {
         ASSERT_UI_THREAD();
+
+        // Content serialization is a live cross-window move. Preserve the
+        // helper and record enough identity for the destination to restore
+        // AgentPaneContent and rekey the existing WTA session.
+        if (kind == BuildStartupKind::Content && _rootPane)
+        {
+            const auto& stableId = _stableId;
+            const auto sourceProfileGuid = _agentSourceProfileGuid;
+            _rootPane->WalkTree([&stableId, &sourceProfileGuid](const auto& pane) {
+                if (!pane->_IsLeaf())
+                {
+                    return false;
+                }
+
+                const auto& content = pane->GetContent();
+                const auto agentContent = content ? content.try_as<winrt::TerminalApp::AgentPaneContent>() : nullptr;
+                if (!agentContent)
+                {
+                    return false;
+                }
+
+                const auto args = content.GetNewTerminalArgs(BuildStartupKind::Content);
+                const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
+                if (!terminalArgs || terminalArgs.ContentId() == 0)
+                {
+                    return false;
+                }
+
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                    terminalArgs.ContentId(),
+                    stableId,
+                    sourceProfileGuid);
+                if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+                {
+                    impl->PrepareForCrossWindowTransfer();
+                }
+                return false;
+            });
+        }
 
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.

@@ -111,6 +111,7 @@
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
     <ClInclude Include="AgentPaneLog.h" />
+    <ClInclude Include="AgentPaneDragStash.h" />
     <ClInclude Include="Tab.h">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClInclude>
