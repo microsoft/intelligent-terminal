@@ -2907,12 +2907,16 @@
     <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Hook の削除に失敗しました。詳細については %LOCALAPPDATA%\IntelligentTerminal\logs\ を確認してください。</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","%LOCALAPPDATA%","IntelligentTerminal","logs"}</comment>
+    <value>Hook の削除に失敗しました。詳細については {0} を確認してください。</value>
+    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
   </data>
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Hooks のインストールに失敗しました。詳細については %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log を確認してください。</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","%LOCALAPPDATA%","IntelligentTerminal","logs","wta-install-hooks.log"}</comment>
+    <value>Hooks のインストールに失敗しました。詳細については {0} を確認してください。</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
+    <value>{0} の Hooks のインストールに失敗しました。詳細については {1} を確認してください。</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>エラーの自動検出</value>
@@ -2930,8 +2934,8 @@
     <value>インテリジェント ターミナルがエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOM プロバイダー</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>BYOK プロバイダー</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>OpenAI 互換の Chat Completions API エンドポイントを使用します。GitHub Copilot と OpenCode をサポートします。</value>
@@ -2940,6 +2944,14 @@
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} は、OpenAI 互換のカスタム Chat Completions プロバイダーをサポートしていません。保存済みのプロバイダーは、GitHub Copilot または OpenCode に切り替えると使用できます。</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>API キーがありません。このプロバイダーを削除して、もう一度追加してください。</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>保存された API キーを Windows 資格情報マネージャーから削除できませんでした。"{0}" という名前の汎用資格情報を手動で削除してから、もう一度お試しください。</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>削除</value>
@@ -2952,6 +2964,10 @@
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>モデル ID</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>API キー (省略可能)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>新規追加</value>
@@ -2966,8 +2982,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 互換</value>

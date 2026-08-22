@@ -372,6 +372,79 @@ impl App {
             return;
         }
 
+        // Help is rendered above every other modal, so Esc must dismiss it
+        // before interacting with the modal underneath.
+        if self.help_overlay_visible && key.code == KeyCode::Esc {
+            self.help_overlay_visible = false;
+            return;
+        }
+
+        // A session MCP clarification blocks the Agent's current tool call.
+        // Keep all editing inside the modal so keys never leak into the normal
+        // prompt input behind it.
+        if !self.current_tab().user_input.is_empty() {
+            use crate::agent_tools::user_input::{UserInputResponse, MAX_ANSWER_CHARS};
+
+            let mut resolved = None;
+            {
+                let Some(request) = self.current_tab_mut().user_input.front_mut() else {
+                    return;
+                };
+                match key.code {
+                    KeyCode::Up => {
+                        request.selected = request.selected.saturating_sub(1);
+                    }
+                    KeyCode::Down => {
+                        request.selected = (request.selected + 1)
+                            .min(request.selection_count().saturating_sub(1));
+                    }
+                    KeyCode::Char(character)
+                        if request.request.allow_freeform
+                            && !key
+                                .modifiers
+                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                            && request.input.chars().count() < MAX_ANSWER_CHARS =>
+                    {
+                        request.selected = request.request.choices.len();
+                        request.input.push(character);
+                    }
+                    KeyCode::Backspace if request.freeform_selected() => {
+                        request.input.pop();
+                    }
+                    KeyCode::Enter => {
+                        if request.freeform_selected() {
+                            let answer = request.input.trim();
+                            if !answer.is_empty() {
+                                resolved = Some(UserInputResponse::Answered {
+                                    answer: answer.to_string(),
+                                    selected_index: None,
+                                });
+                            }
+                        } else if let Some(answer) =
+                            request.request.choices.get(request.selected)
+                        {
+                            resolved = Some(UserInputResponse::Answered {
+                                answer: answer.clone(),
+                                selected_index: Some(request.selected),
+                            });
+                        }
+                    }
+                    KeyCode::Esc => {
+                        resolved = Some(UserInputResponse::Cancelled);
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(response) = resolved {
+                if let Some(mut request) = self.current_tab_mut().user_input.pop_front() {
+                    if let Some(responder) = request.responder.take() {
+                        let _ = responder.send(response);
+                    }
+                }
+            }
+            return;
+        }
+
         // If permission card is showing, route keys there. Buttons are
         // rendered horizontally inside the embedded card (same chrome as
         // recommendations), so Left/Right move the focus; Up/Down kept as
@@ -441,6 +514,17 @@ impl App {
                 KeyCode::Down => self.model_picker_down(),
                 KeyCode::Enter => self.commit_model_pick(),
                 KeyCode::Esc => self.close_model_picker(),
+                _ => {}
+            }
+            return;
+        }
+
+        if self.config_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.config_picker_up(),
+                KeyCode::Down => self.config_picker_down(),
+                KeyCode::Enter => self.config_picker_enter(),
+                KeyCode::Esc => self.config_picker_escape(),
                 _ => {}
             }
             return;
@@ -535,7 +619,7 @@ impl App {
             KeyCode::Esc if self.current_tab().selected_completed_turn_idx.is_some() => {
                 // Esc clears the past-turn selection without any other side
                 // effect. Lets the user back out of the history nav cleanly.
-                self.current_tab_mut().selected_completed_turn_idx = None;
+                self.current_tab_mut().clear_completed_turn_selection();
             }
             KeyCode::Up if self.current_tab().selected_completed_turn_idx.is_some() => {
                 self.current_tab_mut().select_older_completed_turn();

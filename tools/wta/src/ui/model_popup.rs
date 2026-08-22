@@ -1,7 +1,7 @@
 //! `/model` picker modal.
 //!
 //! Opened by the `/model` slash command (`App::cmd_model`), this overlay
-//! lists the configured BYOM models. Cloud/native models are intentionally
+//! lists the configured BYOK models. Cloud/native models are intentionally
 //! omitted; restart-required choices remain visible but dimmed and must be
 //! changed in Settings. Modeled on the
 //! slash-command

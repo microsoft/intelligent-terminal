@@ -10,6 +10,7 @@
 
 #include "../WinRTUtils/inc/Utils.h"
 #include "../inc/AgentPaneBackend.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/ShellIntegrationProfileGate.h"
 #include "../inc/WslShellIntegration.h"
@@ -55,18 +56,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return id.empty() ? winrt::hstring{ L"Agent" } : winrt::hstring{ id };
     }
 
-    static bool _HostAgentInstalled(const std::wstring_view id)
-    {
-        wchar_t path[MAX_PATH];
-        const std::wstring executable{ id };
-        if (SearchPathW(nullptr, executable.c_str(), L".exe", MAX_PATH, path, nullptr) > 0)
-        {
-            return true;
-        }
-        const auto commandShim = executable + L".cmd";
-        return SearchPathW(nullptr, commandShim.c_str(), nullptr, MAX_PATH, path, nullptr) > 0;
-    }
-
     static void _RebuildAgentBackendList(
         const Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
         const std::wstring_view globalId,
@@ -77,6 +66,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Backend = ::Microsoft::Terminal::Settings::Model;
 
+        const auto availableHostAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
         std::vector<Editor::AgentEntry> entries;
         const auto globalEntry = winrt::make<implementation::AgentEntry>(
             L"",
@@ -89,7 +79,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool globalEntryAdded = false;
         for (const auto& agent : allowedAgents)
         {
-            if (_HostAgentInstalled(agent.id))
+            if (availableHostAgents.contains(std::wstring{ agent.id }))
             {
                 const bool isGlobalAgent = agent.id == globalId;
                 entries.emplace_back(winrt::make<implementation::AgentEntry>(

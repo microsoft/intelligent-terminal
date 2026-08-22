@@ -7,6 +7,7 @@
 #include "FreOverlay.g.cpp"
 
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/WtaProcess.h"
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
@@ -115,6 +116,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
+        const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
         auto items = AgentComboBox().Items();
         items.Clear();
         int32_t selectedIndex = 0;
@@ -122,7 +124,7 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& a : allowedAgents)
         {
-            const bool installed = _IsAgentInstalled(std::wstring{ a.id }.c_str());
+            const bool installed = availableAgents.contains(std::wstring{ a.id });
             const bool isCopilot = (a.id == L"copilot");
 
             // Show Copilot always + detected agents only
@@ -1573,10 +1575,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // After installing prerequisites, refresh the current process's
-        // PATH from the Windows registry so SearchPathW (used by
-        // _DetectAgentCli, Settings UI, etc.) can find freshly-installed
-        // CLIs without restarting Terminal.
+        // After installing prerequisites, refresh the current process's PATH
+        // from the Windows registry so generic executable checks and child
+        // processes can find freshly-installed CLIs without restarting.
         if (needsCopilot || needsNode)
         {
             _agentPaneLog("[FRE] Refreshing process PATH from registry");

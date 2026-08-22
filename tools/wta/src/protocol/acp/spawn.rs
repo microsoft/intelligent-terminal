@@ -81,11 +81,18 @@ impl AgentStderrLog {
         })
     }
 
+    /// Kill the child, drain its stderr, and return the captured startup lines
+    /// so the caller can surface them.
+    ///
+    /// The lines are the only description of *why* the agent died. Without
+    /// them the user sees the transport symptom — "response to `initialize`
+    /// never received: oneshot canceled" — while the actual cause (a missing
+    /// CLI, a broken sandbox, an auth prompt) reaches the log only.
     pub(crate) async fn finish_failed_startup(
         &self,
         child: &mut tokio::process::Child,
         stderr_task: Option<tokio::task::JoinHandle<()>>,
-    ) {
+    ) -> Vec<String> {
         let _ = child.start_kill();
         if let Some(mut stderr_task) = stderr_task {
             if tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, &mut stderr_task)
@@ -96,7 +103,7 @@ impl AgentStderrLog {
                 let _ = stderr_task.await;
             }
         }
-        self.mark_failed();
+        self.mark_failed()
     }
 
     pub(crate) fn mark_initialized(&self) {
@@ -108,14 +115,18 @@ impl AgentStderrLog {
         inner.startup_lines.clear();
     }
 
-    pub(crate) fn mark_failed(&self) {
+    /// Promote the captured startup stderr to the log and return it.
+    ///
+    /// Returns empty when the phase already advanced (a second call, or the
+    /// agent had already initialized), so a caller can't double-report.
+    pub(crate) fn mark_failed(&self) -> Vec<String> {
         let startup_lines = {
             let mut inner = self
                 .inner
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if inner.phase != StderrPhase::Startup {
-                return;
+                return Vec::new();
             }
             inner.phase = StderrPhase::Failed;
             inner.startup_lines.drain(..).collect::<Vec<_>>()
@@ -130,7 +141,7 @@ impl AgentStderrLog {
                 "agent startup failed; promoting captured stderr"
             );
         }
-        for line in startup_lines {
+        for line in &startup_lines {
             tracing::warn!(
                 target: "agent_stderr",
                 agent = %self.agent,
@@ -138,6 +149,7 @@ impl AgentStderrLog {
                 "{line}"
             );
         }
+        startup_lines
     }
 
     fn log_line(&self, line: &str) {
@@ -250,6 +262,9 @@ pub(crate) fn spawn_agent_process(
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
     configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
+    if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
+        cmd.arg("--omit=optional");
+    }
 
     // Give the agent CLI a fresh PATH and make this package's `wta.exe`
     // App Execution Alias the first match. The package-specific alias directory
@@ -280,15 +295,13 @@ pub(crate) fn spawn_agent_process(
     }
     cmd.env("WTA_CLI_PATH", wta_cli_directory()?.join("wta.exe"));
 
-    // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
-    // CLI → node → powershell process chain) where to write their diagnostic
-    // trace. PowerShell can't resolve our package-private log dir on its own
-    // (it only sees the un-redirected `%LOCALAPPDATA%`, and doesn't know the
-    // package family name), so we hand it the already-resolved path. The hook
-    // falls back to bare `%LOCALAPPDATA%\IntelligentTerminal\logs` when this
-    // is unset (unpackaged dev runs, or an older wta that didn't set it).
-    // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
-    // `hook-trace.log` lands alongside this build's Rust + C++ logs.
+    // Keep the log path available to pre-0.1.5 hook bundles while startup
+    // auto-upgrade replaces their PowerShell bridge with `wtcli agent-hook`.
+    // The only reader is the deleted `send-event.ps1`, which can still be
+    // cached on disk for one agent lifetime after an IT upgrade.
+    //
+    // RETIREMENT (#620): delete once no supported upgrade path can leave a
+    // pre-0.1.5 `wt-agent-hooks` bundle installed.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
     // Forward the user's locale to the agent process via standard POSIX
@@ -401,16 +414,47 @@ fn configure_child_environment(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
 ) -> Result<Option<crate::agent_registry::ByokMode>> {
-    match environment_policy {
+    let profile = resolve_spawn_profile(agent_cmd, agent_id);
+    let configured_provider = match environment_policy {
         ChildEnvironmentPolicy::ApplySharedProvider => {
-            let profile = resolve_spawn_profile(agent_cmd, agent_id);
             crate::custom_model_provider::configure_child(command, profile.byok_mode)
         }
         ChildEnvironmentPolicy::CleanCloudDiscovery => {
             crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
             Ok(None)
         }
-    }
+    }?;
+    configure_adapter_executable_environment(command, profile, crate::agent_check::find_exe)?;
+    Ok(configured_provider)
+}
+
+fn configure_adapter_executable_environment(
+    command: &mut tokio::process::Command,
+    profile: &crate::agent_registry::AgentProfile,
+    find_executable: impl FnOnce(&str) -> Option<String>,
+) -> Result<()> {
+    let (variable, missing_message) = match profile.id {
+        crate::agent_registry::CLAUDE_AGENT_ID => (
+            "CLAUDE_CODE_EXECUTABLE",
+            "Claude native binary not found. Reinstall Claude Code or set \
+             CLAUDE_CODE_EXECUTABLE to the full path of claude.exe",
+        ),
+        crate::agent_registry::CODEX_AGENT_ID => (
+            "CODEX_PATH",
+            "Codex executable not found. Reinstall Codex or set CODEX_PATH to its full path",
+        ),
+        _ => return Ok(()),
+    };
+    let executable = find_executable(profile.id).ok_or_else(|| anyhow!(missing_message))?;
+    command.env(variable, executable);
+    Ok(())
+}
+
+fn should_omit_optional_dependencies(agent_cmd: &str, agent_id: Option<&str>) -> bool {
+    matches!(
+        resolve_spawn_profile(agent_cmd, agent_id).id,
+        crate::agent_registry::CLAUDE_AGENT_ID | crate::agent_registry::CODEX_AGENT_ID
+    )
 }
 
 /// Spawn an ACP agent in the selected per-tab execution source.
@@ -640,6 +684,59 @@ mod tests {
     }
 
     #[test]
+    fn adapter_spawns_use_the_same_executables_as_preflight() {
+        for (agent_id, variable, executable) in [
+            ("claude", "CLAUDE_CODE_EXECUTABLE", r"C:\Claude\claude.exe"),
+            ("codex", "CODEX_PATH", r"C:\Codex\codex.exe"),
+        ] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            configure_adapter_executable_environment(&mut command, profile, |requested_id| {
+                assert_eq!(requested_id, agent_id);
+                Some(executable.to_string())
+            })
+            .unwrap();
+            let configured_env: std::collections::HashMap<_, _> =
+                command.as_std().get_envs().collect();
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(variable)),
+                Some(&Some(std::ffi::OsStr::new(executable)))
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_spawns_fail_before_launch_when_preflight_executable_is_missing() {
+        for agent_id in ["claude", "codex"] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            let error = configure_adapter_executable_environment(&mut command, profile, |_| None)
+                .unwrap_err();
+            assert!(error.to_string().contains("not found"));
+        }
+    }
+
+    #[test]
+    fn only_builtin_host_adapters_omit_optional_npm_dependencies() {
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
+            Some("claude")
+        ));
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
+            Some("codex")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "npx -y @example/custom-agent",
+            Some("custom:test")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "copilot --acp --stdio",
+            Some("copilot")
+        ));
+    }
+
+    #[test]
     fn packaged_wta_cli_uses_package_specific_execution_alias() {
         let directory = wta_cli_directory_for(
             Some(std::ffi::OsStr::new("IntelligentTerminal_test")),
@@ -792,6 +889,36 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(inner.phase, StderrPhase::Failed);
         assert!(inner.startup_lines.is_empty());
+    }
+
+    /// `mark_failed` must hand the captured lines back, not just log them —
+    /// they are what turns a pane's "oneshot canceled" into an actionable
+    /// message. The second call returns empty so a caller can't double-report.
+    #[test]
+    fn mark_failed_returns_the_captured_lines_once() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("cannot preserve mount namespace");
+        log.log_line("unexpected eof from helper process");
+
+        let promoted = log.mark_failed();
+        assert_eq!(
+            promoted,
+            vec![
+                "cannot preserve mount namespace".to_string(),
+                "unexpected eof from helper process".to_string(),
+            ]
+        );
+        assert!(log.mark_failed().is_empty(), "second call must be empty");
+    }
+
+    /// An agent that initialized successfully has nothing to promote, so a
+    /// later failure path can't resurrect stale startup noise.
+    #[test]
+    fn mark_failed_returns_nothing_after_initialize() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("startup detail");
+        log.mark_initialized();
+        assert!(log.mark_failed().is_empty());
     }
 
     #[test]

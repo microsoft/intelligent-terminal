@@ -4,6 +4,9 @@
 #pragma once
 
 #include <ThrottledFunc.h>
+#include <functional>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "TerminalPage.g.h"
 #include "Tab.h"
@@ -17,6 +20,7 @@
 #include "WindowListEntry.g.h"
 #include "WindowListRequest.g.h"
 #include "Toast.h"
+#include "SharedWta.h"
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -255,11 +259,12 @@ namespace winrt::TerminalApp::implementation
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
+        void OnDefaultPasteRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
-        void OnAgentPaneRestartRequested(hstring eventJson);
+        void OnAgentSessionsRetired(hstring eventJson);
 
         til::property_changed_event PropertyChanged;
 
@@ -314,6 +319,18 @@ namespace winrt::TerminalApp::implementation
         // (which is a root when the tabs are in the titlebar.)
         Microsoft::UI::Xaml::Controls::TabView _tabView{ nullptr };
         TerminalApp::TabRowControl _tabRow{ nullptr };
+        // Spec A §4.1: the alternate strip used when tabLayout == vertical.
+        // Populated with real TabViewItems via the routed _tabItems() helper.
+        TerminalApp::TabStrip _tabStrip{ nullptr };
+        bool _isVerticalLayout{ false };
+        // Spec A §5.2: hand-rolled splitter for resizing the vertical rail.
+        // Lives in column 1 of the Root Grid, hugging its left edge, so the
+        // hit strip straddles the column boundary.
+        Windows::UI::Xaml::Controls::Border _verticalRailSplitter{ nullptr };
+        Windows::UI::Core::CoreCursor _railSplitterPriorCursor{ nullptr };
+        bool _railSplitterDragging{ false };
+        double _railSplitterStartWidth{ 0.0 };
+        Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
@@ -430,6 +447,9 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
+        std::string _settingsReloadRequestId;
+        std::optional<std::string> _pendingAgentRebuildRequestId;
+        static std::string _AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot);
         // Hot-updatable runtime agent config. When any of these change we
         // push a single consolidated `agent_config_changed` event to the
         // running wta-helper(s) so they update in place — no agent-pane
@@ -469,6 +489,14 @@ namespace winrt::TerminalApp::implementation
         std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
         std::mutex _shellIntegrationReconcileMutex;
         bool _agentRebuilding{ false };
+        details::CoalescedRequest _pendingAgentStackRestart;
+        struct _PendingAgentRetirement
+        {
+            std::function<void(std::string_view)> continuation;
+            std::string reason;
+        };
+        std::unordered_map<std::string, _PendingAgentRetirement> _pendingAgentRetirements;
+        details::TabRetirementTracker _agentTabRetirements;
         // Set when a settings change wants a rebuild but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
         // _FlushPendingAgentRebuild runs the deferred rebuild from
@@ -497,15 +525,6 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
-        // Short-lived marks keyed by tab StableId: set whenever an agent
-        // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
-        // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
-        // consumes a mark to skip respawning a pane the user/we just
-        // closed — the master's `restart_agent_pane` event fires for both
-        // deliberate teardown and genuine crash, so this is how C++
-        // distinguishes them. Entries are consumed on read and otherwise
-        // expire after a few seconds.
-        std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         // Compares only agent-CLI *identity* fields — the change that forces
         // a master respawn. Model/delegate changes are handled by
@@ -520,8 +539,16 @@ namespace winrt::TerminalApp::implementation
         // ProtocolVtSequenceReceived. Single source of the wta protocol-event
         // wire shape — callers just supply the method name and a params object.
         void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
-        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
-        void _RebuildAgentStack();
+        void _BeginAgentSessionRetirement(bool scopeAll,
+                                          std::vector<winrt::hstring> tabIds,
+                                          std::string reason,
+                                          std::string requestId,
+                                          std::function<void(std::string_view)> continuation);
+        safe_void_coroutine _WaitForAgentSessionRetirement(std::string operationId);
+        void _CompleteAgentSessionRetirement(std::string_view operationId, bool timedOut);
+        void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
+        void _RebuildAgentStack(std::string requestId = {});
+        void _RestartAgentStack(std::string requestId);
         // Scoped per-tab rebuild after a tab's agent override changes
         // (agent-bar chip flyout). Does not restart the shared master.
         void _RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab);
@@ -722,6 +749,14 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
+        // Spec A §4.1: routing indirection so TabManagement.cpp doesn't have to
+        // branch on the tab-layout mode at every call site. Phase 2 forwards
+        // unconditionally to _tabView; Phase 3 flips the vertical branch to
+        // _tabStrip once real Tab objects are wired.
+        Windows::Foundation::Collections::IVector<Windows::Foundation::IInspectable> _tabItems() const;
+        Windows::Foundation::IInspectable _selectedTabItem() const;
+        void _selectedTabItem(const Windows::Foundation::IInspectable& item);
+
         void _HandleClosePaneRequested(std::shared_ptr<Pane> pane);
         void _NotifyPanesClosing(const std::shared_ptr<Pane>& rootPane);
         bool _ShouldWarnOnClose() const;
@@ -784,9 +819,23 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _OnTabPointerReleasedCloseTab(IInspectable sender);
 
         void _OnTabSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::Controls::SelectionChangedEventArgs& eventArgs);
+        void _OnTabStripSelectionChanged(const IInspectable& sender, const TerminalApp::TabStripSelectionChangedEventArgs& eventArgs);
+        void _OnSelectionChangedCore();
         void _OnTabItemsChanged(const IInspectable& sender, const Windows::Foundation::Collections::IVectorChangedEventArgs& eventArgs);
         void _OnTabCloseRequested(const IInspectable& sender, const Microsoft::UI::Xaml::Controls::TabViewTabCloseRequestedEventArgs& eventArgs);
+        void _OnTabStripCloseRequested(const IInspectable& sender, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs);
+        void _HandleTabCloseRequestedCore(const Microsoft::UI::Xaml::Controls::TabViewItem& tabViewItem);
         void _OnFirstLayout(const IInspectable& sender, const IInspectable& eventArgs);
+        void _ApplyVerticalLayoutReshape();
+        void _InstallVerticalRailSplitter();
+        void _SetRailSplitterCursor();
+        void _RestoreRailSplitterCursor();
+        void _OnRailSplitterPointerEntered(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerExited(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerPressed(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerMoved(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerReleased(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _OnRailSplitterPointerCaptureLost(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
         void _UpdatedSelectedTab(const winrt::TerminalApp::Tab& tab);
         void _UpdateBackground(const winrt::Microsoft::Terminal::Settings::Model::Profile& profile);
 
@@ -903,9 +952,13 @@ namespace winrt::TerminalApp::implementation
         void _windowPropertyChanged(const IInspectable& sender, const winrt::Windows::UI::Xaml::Data::PropertyChangedEventArgs& args);
 
         void _onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView& sender, const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e);
+        void _OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDragStartingEventArgs& e);
+        void _OnTabDragStartingCore(const winrt::Microsoft::UI::Xaml::Controls::TabViewItem& tab, const winrt::Windows::ApplicationModel::DataTransfer::DataPackage& data);
         void _onTabStripDragOver(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
         void _onTabStripDrop(winrt::Windows::Foundation::IInspectable sender, winrt::Windows::UI::Xaml::DragEventArgs e);
         void _onTabDroppedOutside(winrt::Windows::Foundation::IInspectable sender, winrt::Microsoft::UI::Xaml::Controls::TabViewTabDroppedOutsideEventArgs e);
+        void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
+        void _OnTabDroppedOutsideCore();
 
         void _DetachPaneFromWindow(std::shared_ptr<Pane> pane);
         void _DetachTabFromWindow(const winrt::com_ptr<Tab>& tabImpl);

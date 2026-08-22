@@ -352,6 +352,34 @@ pub enum SessionEvent {
     ResumePaneAssigned { key: AgentKey, pane_session_id: String },
 }
 
+/// Tool names that mean "the agent is soliciting input from the user".
+///
+/// This list is **half of a cross-language contract**. The hook producer
+/// (`userInputTools` in `src/tools/wtcli/wtcli_functions.h`) uses the same
+/// names to decide whether to keep `tool_input` in the broadcast payload;
+/// if it strips a name that this list matches, the consumer below asks for
+/// `tool_input.question` and finds nothing, silently degrading the
+/// notification to placeholder text. `hook_contract_tests` fails the build
+/// when the two lists drift.
+///
+/// Entries must be lowercase — [`is_user_input_tool`] lowercases its input
+/// before comparing, so a mixed-case entry here would be dead weight.
+pub const USER_INPUT_TOOL_NAMES: &[&str] = &[
+    "ask_user",
+    "askuser",
+    "ask-user",
+    "ask_question",
+    "askquestion",
+    "askuserquestion",
+    "ask_user_question",
+    "ask_for_clarification",
+    "request_input",
+    "request_user_input",
+    "user_input",
+    "prompt_user",
+    "clarification_request",
+];
+
 /// Returns `true` for tool names that represent the agent soliciting input
 /// from the user (a clarifying question or a forced-choice prompt) rather
 /// than running an autonomous task. Such tools never auto-complete — they
@@ -364,21 +392,8 @@ pub enum SessionEvent {
 /// Speculative aliases for other CLIs are included so the heuristic catches
 /// the common variants without needing per-CLI plumbing.
 pub fn is_user_input_tool(name: &str) -> bool {
-    matches!(name.to_ascii_lowercase().as_str(),
-        "ask_user"
-        | "askuser"
-        | "ask-user"
-        | "ask_question"
-        | "askquestion"
-        | "askuserquestion"
-        | "ask_user_question"
-        | "ask_for_clarification"
-        | "request_input"
-        | "request_user_input"
-        | "user_input"
-        | "prompt_user"
-        | "clarification_request"
-    )
+    let lowered = name.to_ascii_lowercase();
+    USER_INPUT_TOOL_NAMES.contains(&lowered.as_str())
 }
 
 #[derive(Default)]

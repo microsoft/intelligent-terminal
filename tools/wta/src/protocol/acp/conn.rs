@@ -28,9 +28,9 @@ use std::future::Future;
 
 use agent_client_protocol as acp;
 use acp::schema::v1::{
-    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CreateTerminalRequest,
-    CreateTerminalResponse, ExtNotification, ExtRequest, ExtResponse, InitializeRequest,
-    InitializeResponse,
+    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
+    CloseSessionResponse, CreateTerminalRequest, CreateTerminalResponse, ExtNotification,
+    ExtRequest, ExtResponse, InitializeRequest, InitializeResponse,
     KillTerminalRequest, KillTerminalResponse, ListSessionsRequest, ListSessionsResponse,
     LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
     PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
@@ -127,6 +127,13 @@ impl ClientLink {
     }
 
     pub async fn load_session(&self, req: LoadSessionRequest) -> acp::Result<LoadSessionResponse> {
+        self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn close_session(
+        &self,
+        req: CloseSessionRequest,
+    ) -> acp::Result<CloseSessionResponse> {
         self.cx().await?.send_request(req).block_task().await
     }
 
@@ -510,8 +517,7 @@ use v1 as _schema_marker;
 mod transport_death_tests {
     //! Regression guard for AgentMasterDeath (#329): `spawn_client` /
     //! `spawn_agent`'s `handle_io` must resolve when the transport peer dies, so
-    //! the helper can leave `Connected` and show the `/restart` degraded state
-    //! (`client.rs`: `handle_io.await` -> `AgentFailure::TransportLost`).
+    //! the helper can terminate when `client.rs` observes `handle_io.await`.
     //!
     //! Under ACP 1.0 a `pending` `main_fn` left `connect_with` hung on a *clean*
     //! EOF (exactly what killing wta-master produces), so `handle_io` never fired

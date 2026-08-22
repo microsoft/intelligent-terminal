@@ -60,7 +60,9 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, NoticeKind, PermissionState, RecommendationFocus, TabSession, View,
+    ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
+    RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
+    ToolCallOutput, UserInputState, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -340,6 +342,40 @@ fn open_url_in_browser(url: &str) -> std::io::Result<()> {
     crate::win32::open_url_in_default_browser(url)
 }
 
+/// Members of `params.payload` that [`route_agent_event_to_registry_with_hook_sink`]
+/// actually reads.
+///
+/// This is the other half of the cross-language contract described on
+/// [`crate::agent_sessions::USER_INPUT_TOOL_NAMES`]. The hook producer
+/// (`BuildAgentHookEventJson` in `src/tools/wtcli/wtcli_functions.h`) redacts
+/// the payload with a denylist before broadcasting it, so a key that lands in
+/// that denylist while still being read here goes silently empty — no error,
+/// no log, just a blank cwd or a lost notification message.
+/// `hook_contract_tests` asserts the denylist and this list stay disjoint.
+///
+/// Nested lookups (`tool_input.question` / `.prompt` / `.message`) are covered
+/// by their `tool_input` parent, which the producer strips only for tools
+/// outside `USER_INPUT_TOOL_NAMES`.
+pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
+    "cwd",
+    "tool_name",
+    "toolName",
+    "tool_input",
+    "message",
+    "notification_type",
+    "reason",
+    "error",
+];
+
+/// Members of `payload.tool_input` the routing function reads when the tool is
+/// a user-input tool.
+///
+/// The producer projects `tool_input` down to exactly these when an event
+/// overflows its wire budget (`ReduceOversizedHookPayload` in
+/// `src/tools/wtcli/wtcli_functions.h`), so a name missing here is dropped
+/// from the degraded payload and the notification loses its question text.
+pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
@@ -542,7 +578,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                        .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -567,20 +603,57 @@ where
         // request, with many tool pairs in between). So ignore tool completions
         // here and let `agent.stop` own the turn-end → Idle, mirroring the
         // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
-        // hook events at all, so this only affects Copilot/Gemini.
+        // ignore `tool.execution_complete`.
+        //
+        // Because these are dropped, no bundle subscribes them any more: each
+        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
+        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
+        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
+        // `tool.execute.after` were all removed. The arm stays so an older
+        // installed bundle that still emits them is ignored rather than
+        // mis-routed.
         "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
             return reg.take_dirty();
         }
         "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => SessionEvent::Notification {
-            key,
-            message: payload
-                .get("message")
+        "agent.notification" => {
+            // Not every notification means "the agent is blocked on you".
+            // Claude's `Notification` hook covers two cases, distinguished by
+            // `notification_type`:
+            //
+            //   * `permission_prompt` — the agent wants approval for a tool.
+            //     Genuinely Attention: nothing proceeds until the user acts.
+            //   * `idle_prompt` — the agent already finished its turn and has
+            //     simply been sitting at an empty prompt for 60s. It fires
+            //     *after* `agent.stop` has correctly moved the row to Idle, so
+            //     treating it as Attention parks every session at "Claude is
+            //     waiting for your input" between turns.
+            //
+            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
+            // turn-end transition, the same division of labour the tool
+            // completion arm above relies on. Deliberately *not* mapped to
+            // Idle: an unanswered `permission_prompt` also goes idle after
+            // 60s, and demoting that row would hide a pending approval.
+            //
+            // Unknown types stay Attention on purpose. Over-reporting costs a
+            // stale badge the next event clears; under-reporting loses a
+            // permission request with no other signal that it happened.
+            let notification_type = payload
+                .get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                return reg.take_dirty();
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
             key,
             reason: payload
@@ -906,13 +979,15 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
-    /// BYOM-only projection used by the `/model` command. Cloud/native models
+    /// BYOK-only projection used by the `/model` command. Cloud/native models
     /// remain in `available_models` for Settings but are not shown in-pane.
     model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
     /// Latest ACP model config for each session. Notifications can race ahead
     /// of the event that attaches their session to a tab.
     session_model_configs: HashMap<String, (Vec<AcpModelInfo>, Option<String>)>,
+    /// Complete ordered ACP select config options, keyed by SessionId.
+    session_config_options: HashMap<String, Vec<crate::app_contracts::AcpSessionConfigOption>>,
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -943,22 +1018,19 @@ pub struct App {
     // state (the command-completion candidates as the user types `/he…`)
     // lives on `TabSession`.
     pub help_overlay_visible: bool,
-    /// True once the helper's ACP transport to wta-master is lost
-    /// (`AgentFailure::TransportLost` — master died/crashed/was killed). The
-    /// helper has no in-process reconnect, so every slash command except
-    /// `/restart` would only fail against the dead pipe. While this is set the
-    /// command popup is filtered down to just `/restart` (other commands are
-    /// hidden, not greyed), and typing/Entering any other command is refused
-    /// with the reconnect hint. `/restart` is the one recovery that routes via
-    /// `wtcli publish` → C++ `SharedWta::Restart` (a path that doesn't touch
-    /// the dead pipe). Cleared when a fresh connection reaches `Connected`
-    /// (e.g. the post-sign-in reconnect).
-    pub transport_lost: bool,
     // Debug panel
     pub debug_messages: Vec<DebugMessage>,
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
     pub(crate) text_selection: crate::text_selection::TextSelection,
+    pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
+    pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
+    pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) pressed_input_dialog_tab: Option<String>,
+    pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
+    pub(crate) painted_completed_turn_action_links:
+        Vec<crate::action_links::CompletedTurnActionLink>,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -1131,10 +1203,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude  => Some("claude"),
-        CliSource::Codex   => Some("codex"),
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini  => Some("gemini"),
+        CliSource::Gemini => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1230,6 +1302,7 @@ impl App {
             model_picker_models: Vec::new(),
             current_model_id: None,
             session_model_configs: HashMap::new(),
+            session_config_options: HashMap::new(),
             prompt_name: None,
             session_id: String::new(),
             wt_connected,
@@ -1249,11 +1322,17 @@ impl App {
             master_request_tx,
             debug_capture_enabled,
             help_overlay_visible: false,
-            transport_lost: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
             debug_scroll: 0,
             text_selection: crate::text_selection::TextSelection::default(),
+            completed_turn_hits: Vec::new(),
+            pressed_completed_turn: None,
+            last_completed_turn_click: None,
+            input_dialog_area: None,
+            pressed_input_dialog_tab: None,
+            completed_turn_action_links: Vec::new(),
+            painted_completed_turn_action_links: Vec::new(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -1473,30 +1552,30 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                                pipe_name,
-                                acp_model,
+                            pipe_name,
+                            acp_model,
                             cloud_models,
-                                agent_id_opt,
-                                agent_source,
-                                source_cwd,
-                                owner_tab_opt,
-                                None, // initial_load_session_id: already handled by the dead initial task
-                                event_tx_for_pipe.clone(),
-                                prompt_rx,
-                                cancel_rx,
-                                new_session_rx,
-                                load_session_rx,
-                                drop_session_rx,
-                                rename_session_rx,
-                                restart_rx,
-                                shrx,
-                                master_ext_rx,
-                                shell_mgr,
-                                wt_connected,
-                                post_login_auth, // only true on genuine LoginComplete reconnects
+                            agent_id_opt,
+                            agent_source,
+                            source_cwd,
+                            owner_tab_opt,
+                            None, // initial_load_session_id: already handled by the dead initial task
+                            event_tx_for_pipe.clone(),
+                            prompt_rx,
+                            cancel_rx,
+                            new_session_rx,
+                            load_session_rx,
+                            drop_session_rx,
+                            rename_session_rx,
+                            restart_rx,
+                            shrx,
+                            master_ext_rx,
+                            shell_mgr,
+                            wt_connected,
+                            post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                            )
-                            .await
+                        )
+                        .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -1679,7 +1758,7 @@ impl App {
             });
             merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
-                name: format!("{} (BYOM)", custom.model_id),
+                name: format!("{} (BYOK)", custom.model_id),
                 description: None,
             });
         }
@@ -1804,7 +1883,12 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(&self, session_id: Option<String>, model: String) {
+    fn send_session_model(
+        &self,
+        session_id: Option<String>,
+        model: String,
+        pane_override: bool,
+    ) {
         if model.trim().is_empty() {
             return;
         }
@@ -1812,6 +1896,7 @@ impl App {
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
                 session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
+                pane_override,
             },
         );
     }
@@ -1838,7 +1923,7 @@ impl App {
                 continue;
             }
             if let Some(sid) = tab.session_id.clone() {
-                self.send_session_model(Some(sid), model.clone());
+                self.send_session_model(Some(sid), model.clone(), false);
             }
         }
     }
@@ -1856,7 +1941,6 @@ impl App {
         }
 
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
-        self.recompute_current_model_id();
         self.send_acp_model_update();
         self.publish_agent_status();
         true
@@ -2002,6 +2086,7 @@ impl App {
     fn open_agent_picker(&mut self, selected: usize) {
         let tab = self.current_tab_mut();
         tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.agent_picker_open = true;
         tab.agent_picker_selected = selected;
     }
@@ -2056,6 +2141,174 @@ impl App {
         tab.scroll_to_bottom();
     }
 
+    // ── /config picker ──────────────────────────────────────────────────
+
+    fn config_picker_visible(&self) -> bool {
+        self.current_tab().config_picker.is_open()
+    }
+
+    fn current_session_config_options(&self) -> &[crate::app_contracts::AcpSessionConfigOption] {
+        self.current_tab()
+            .session_id
+            .as_deref()
+            .and_then(|session_id| self.session_config_options.get(session_id))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    fn cmd_config(&mut self) {
+        if self.current_session_config_options().is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::info(
+                t!("system.no_config_options").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        self.open_config_picker();
+    }
+
+    fn open_config_picker(&mut self) {
+        if self.current_session_config_options().is_empty() {
+            return;
+        }
+        let tab = self.current_tab_mut();
+        tab.agent_picker_open = false;
+        tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Options { selected: 0 };
+    }
+
+    fn open_config_value_picker(&mut self, config_id: String) {
+        let Some(option) = self
+            .current_session_config_options()
+            .iter()
+            .find(|option| option.id == config_id)
+        else {
+            return;
+        };
+        let selected = option
+            .values
+            .iter()
+            .position(|value| value.id == option.current_value)
+            .unwrap_or(0);
+        let tab = self.current_tab_mut();
+        tab.agent_picker_open = false;
+        tab.model_picker_open = false;
+        tab.config_picker = ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected: None,
+        };
+    }
+
+    fn config_picker_row_count(&self) -> usize {
+        let options = self.current_session_config_options();
+        self.current_tab()
+            .config_picker
+            .option_id()
+            .and_then(|config_id| options.iter().find(|option| option.id == config_id))
+            .map(|option| option.values.len())
+            .unwrap_or(options.len())
+    }
+
+    fn config_picker_up(&mut self) {
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = selected.saturating_sub(1);
+            }
+            ConfigPickerState::Closed => {}
+        }
+    }
+
+    fn config_picker_down(&mut self) {
+        let max = self.config_picker_row_count().saturating_sub(1);
+        match &mut self.current_tab_mut().config_picker {
+            ConfigPickerState::Options { selected }
+            | ConfigPickerState::Values { selected, .. } => {
+                *selected = (*selected + 1).min(max);
+            }
+            ConfigPickerState::Closed => {}
+        }
+    }
+
+    fn config_picker_escape(&mut self) {
+        let next = match &self.current_tab().config_picker {
+            ConfigPickerState::Values {
+                parent_selected: Some(selected),
+                ..
+            } => ConfigPickerState::Options {
+                selected: *selected,
+            },
+            _ => ConfigPickerState::Closed,
+        };
+        self.current_tab_mut().config_picker = next;
+    }
+
+    fn config_picker_enter(&mut self) {
+        let picker = self.current_tab().config_picker.clone();
+        let options = self.current_session_config_options();
+
+        if let ConfigPickerState::Values {
+            option_id: config_id,
+            selected,
+            parent_selected,
+        } = picker
+        {
+            let Some(option) = options.iter().find(|option| option.id == config_id) else {
+                self.config_picker_escape();
+                return;
+            };
+            let Some(value) = option.values.get(selected) else {
+                return;
+            };
+            if value.id == option.current_value {
+                self.config_picker_escape();
+                return;
+            }
+
+            let session_id = self.current_tab().session_id.clone();
+            let config_id = option.id.clone();
+            let value_id = value.id.clone();
+            if let Some(session_id) = session_id {
+                let tab = self.current_tab_mut();
+                if tab.config_pending_id.is_some() {
+                    return;
+                }
+                tab.config_pending_id = Some(config_id.clone());
+                tab.config_picker = parent_selected
+                    .map(|selected| ConfigPickerState::Options { selected })
+                    .unwrap_or(ConfigPickerState::Closed);
+                let _ = self.master_request_tx.send(
+                    crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+                        session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
+                        config_id,
+                        value: value_id,
+                    },
+                );
+            }
+            return;
+        }
+
+        let ConfigPickerState::Options { selected } = picker else {
+            return;
+        };
+        let Some(option) = options.get(selected) else {
+            return;
+        };
+        let value_selected = option
+            .values
+            .iter()
+            .position(|value| value.id == option.current_value)
+            .unwrap_or(0);
+        let option_id = option.id.clone();
+        self.current_tab_mut().config_picker = ConfigPickerState::Values {
+            option_id,
+            selected: value_selected,
+            parent_selected: Some(selected),
+        };
+    }
+
     // ── /model picker ───────────────────────────────────────────────────
 
     /// True while the model picker modal is up for the active tab.
@@ -2064,10 +2317,21 @@ impl App {
     }
 
     /// `/model [id]` — show models from the mode selected in Settings. Cloud
-    /// mode shows only agent/cloud models; local mode shows only BYOM models.
+    /// mode shows only agent/cloud models; custom-provider mode shows only BYOK models.
     /// Crossing modes requires changing Settings and restarting the agent.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
+        let model_config_id = self
+            .current_session_config_options()
+            .iter()
+            .find(|option| option.is_model())
+            .map(|option| option.id.clone());
+        if arg.is_empty() {
+            if let Some(config_id) = model_config_id {
+                self.open_config_value_picker(config_id);
+                return;
+            }
+        }
         if self.model_picker_models.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages
@@ -2124,6 +2388,7 @@ impl App {
             .unwrap_or(0);
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
+        tab.config_picker = ConfigPickerState::Closed;
         tab.model_picker_open = true;
         tab.model_picker_selected = selected;
     }
@@ -2156,7 +2421,7 @@ impl App {
         let idx = self.current_tab().model_picker_selected;
         let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
-        self.close_model_picker();
+            self.close_model_picker();
             self.apply_model_pick(id);
         }
     }
@@ -2186,26 +2451,21 @@ impl App {
             return;
         }
 
-        let name = self
-            .available_models
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| model_id.clone());
-        let session_id = {
-            let tab = self.current_tab_mut();
-            tab.model_override = Some(model_id.clone());
-            tab.messages.push(ChatMessage::success(
-                t!("system.model_set", model = name.as_str()).into_owned(),
-            ));
-            tab.scroll_to_bottom();
-            tab.session_id.clone()
-        };
-        self.current_model_id = Some(model_id.clone());
-        self.agent_current_model_id = Some(model_id.clone());
+        let session_id = self.current_tab().session_id.clone();
         if let Some(session_id) = session_id {
-            self.send_session_model(Some(session_id), model_id);
+            self.send_session_model(Some(session_id), model_id, true);
+            return;
         }
+
+        let name = self.model_display_name(&model_id);
+        let tab = self.current_tab_mut();
+        tab.model_override = Some(model_id.clone());
+        tab.messages.push(ChatMessage::success(
+            t!("system.model_set", model = name.as_str()).into_owned(),
+        ));
+        tab.scroll_to_bottom();
+        self.current_model_id = Some(model_id.clone());
+        self.agent_current_model_id = Some(model_id);
         self.publish_agent_status();
     }
 
@@ -2264,6 +2524,15 @@ impl App {
     /// see and resume their history.
     pub fn current_cli_filter(&self) -> Option<crate::agent_sessions::CliSource> {
         crate::agent_sessions::CliSource::from_agent_id(&self.current_agent_id)
+    }
+
+    /// Execution source this pane's agent runs in, used to narrow the session
+    /// view alongside [`Self::current_cli_filter`]. `CliSource` does not
+    /// distinguish host Copilot from Copilot inside a WSL distro, so without
+    /// this every Copilot pane renders one merged list of sessions from every
+    /// source — including rows it cannot resume.
+    pub fn current_location_filter(&self) -> crate::agent_sessions::SessionLocation {
+        self.current_agent_source.session_location()
     }
 
     /// Extracted focus-pane dispatch for Live rows. Shared between the
@@ -3099,6 +3368,7 @@ impl App {
 
     fn agents_rows_for_tab(&self, tab_id: &str) -> Vec<crate::agent_sessions::AgentSession> {
         let filter = self.current_cli_filter();
+        let source = self.current_location_filter();
         let origin = self.sessions_origin_filter;
         let query = self
             .tab_sessions
@@ -3127,6 +3397,7 @@ impl App {
             // `matches(&s.origin)` is sufficient and stays consistent
             // with the registry branch below.
             rows.retain(|s| origin.matches(&s.origin));
+            rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         } else {
@@ -3136,6 +3407,7 @@ impl App {
                 .into_iter()
                 .cloned()
                 .collect();
+            rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         }
@@ -3620,6 +3892,13 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string())
     }
 
+    fn bound_tab_for_session(&self, session_id: &str) -> Option<String> {
+        self.session_to_tab.get(session_id).cloned().or_else(|| {
+            (self.current_tab().session_id.as_deref() == Some(session_id))
+                .then(|| self.active_tab_key().to_string())
+        })
+    }
+
     /// Mutable view of the tab that owns the given session id. Lazily
     /// creates the `TabSession` if missing.
     pub fn session_tab_mut(&mut self, session_id: &str) -> &mut TabSession {
@@ -3761,6 +4040,11 @@ impl App {
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
         self.text_selection.snapshot_and_render(frame.buffer_mut());
+        let action_overlay = crate::action_links::build_overlay(
+            frame.buffer_mut(),
+            &self.painted_completed_turn_action_links,
+            &self.completed_turn_action_links,
+        );
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`
@@ -3778,6 +4062,10 @@ impl App {
         });
 
         terminal.swap_buffers();
+
+        crate::action_links::paint(terminal.backend_mut(), &action_overlay)?;
+        self.painted_completed_turn_action_links
+            .clone_from(&self.completed_turn_action_links);
 
         let backend_flush_started = std::time::Instant::now();
         terminal.backend_mut().flush()?;
@@ -3810,6 +4098,11 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::ModelSetCompleted { .. } => "model_set_completed",
+            AppEvent::ModelSetFailed { .. } => "model_set_failed",
+            AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
+            AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
+            AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -3817,6 +4110,7 @@ impl App {
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
+            AppEvent::MasterDisconnected => "master_disconnected",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
@@ -3828,9 +4122,12 @@ impl App {
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
+            AppEvent::ToolTerminalOutput { .. } => "tool_terminal_output",
             AppEvent::HideToolCall { .. } => "hide_tool_call",
             AppEvent::Plan { .. } => "plan",
             AppEvent::PermissionRequest { .. } => "permission_request",
+            AppEvent::UserInputRequest { .. } => "user_input_request",
+            AppEvent::CancelUserInputRequest { .. } => "cancel_user_input_request",
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
@@ -3871,7 +4168,9 @@ impl App {
             tab.messages.len(),
             tab.completed_turns.len(),
             tab.input.chars().count(),
-            tab.turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            tab.streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             tab.chat_scroll.offset,
             tab.activity_frame,
             tab.turn.recommendations().map(|r| r.choices.len()).unwrap_or(0),
@@ -4019,13 +4318,21 @@ impl App {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let target_tab = params.get("tab_id").and_then(|v| v.as_str()).unwrap_or("");
+        let target_pane = params.get("pane_id").and_then(|v| v.as_str()).unwrap_or("");
         let our_window = self.window_id.as_deref().unwrap_or("");
         let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+        let our_pane = self.pane_id.as_deref().unwrap_or("");
+        let pane_matches = !target_pane.is_empty()
+            && !our_pane.is_empty()
+            && target_pane
+                .trim_matches(['{', '}'])
+                .eq_ignore_ascii_case(our_pane.trim_matches(['{', '}']));
 
         if target_window.is_empty()
             || target_tab.is_empty()
             || owner_tab.is_empty()
             || target_tab != owner_tab
+            || !pane_matches
             || (!our_window.is_empty() && target_window != our_window)
         {
             tracing::debug!(
@@ -4034,6 +4341,8 @@ impl App {
                 our_window,
                 target_tab,
                 owner_tab,
+                target_pane,
+                our_pane,
                 "ignoring paste event not targeted at this helper"
             );
             return None;
@@ -4045,7 +4354,7 @@ impl App {
     fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
         self.tab_sessions
             .get(target_tab)
-            .map(|tab| tab.current_view == View::Chat && tab.input_has_nav_focus())
+            .map(|tab| tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus())
             .unwrap_or(false)
     }
 
@@ -4090,10 +4399,11 @@ impl App {
         let byte_len = text.len();
         let line_count = text.split('\n').count();
         let tab = self.tab_mut(target_tab);
-        if tab.current_view != View::Chat || !tab.input_has_nav_focus() {
+        if !tab.pane_open || tab.current_view != View::Chat || !tab.input_has_nav_focus() {
             tracing::debug!(
                 target: "agent_paste",
                 tab_id = target_tab,
+                pane_open = tab.pane_open,
                 view = ?tab.current_view,
                 input_live = tab.input_has_nav_focus(),
                 byte_len,
@@ -4114,6 +4424,44 @@ impl App {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompletedTurnHitKind {
+    Triangle,
+    UserInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletedTurnHitRegion {
+    pub(crate) start_column: u16,
+    pub(crate) end_column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) kind: CompletedTurnHitKind,
+}
+
+impl CompletedTurnHitRegion {
+    pub(crate) fn contains(self, column: u16, row: u16) -> bool {
+        self.row == row && column >= self.start_column && column < self.end_column
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PressedCompletedTurn {
+    pub(crate) tab_id: String,
+    pub(crate) hit: CompletedTurnHitRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CompletedTurnClickRecord {
+    pub(crate) tab_id: String,
+    pub(crate) column: u16,
+    pub(crate) row: u16,
+    pub(crate) turn_index: usize,
+    pub(crate) previous_selected_index: Option<usize>,
+    pub(crate) previous_selection_pending: bool,
+    pub(crate) previous_expanded: bool,
+}
+
 #[path = "app_events.rs"]
 mod app_events;
 
@@ -4132,12 +4480,10 @@ impl App {
         }
     }
 
-    /// Number of *user-visible* characters in a tab's streaming buffer, i.e.
-    /// the length of what the renderer would show in full. `None` when the
-    /// tab is not streaming visible prose.
+    /// Number of user-visible characters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        let buf = tab.turn.buffer()?;
-        crate::ui::chat::user_visible_stream_text(buf).map(|t| t.chars().count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
+            .map(|text| text.chars().count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
@@ -4248,7 +4594,7 @@ impl App {
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        self.current_tab().turn.is_in_flight()
+        self.current_tab().should_show_thinking()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).
@@ -4292,26 +4638,10 @@ impl App {
         if !self.command_popup_visible() {
             return None;
         }
-        // When the transport to master is lost, only /restart can run — so the
-        // popup simply doesn't show the other commands (rather than greying
-        // them). Collapse the candidate list to /restart if it's among the
-        // prefix matches; otherwise show nothing (the typed prefix excludes
-        // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
         let agent_candidates: Vec<_> = self.agent_command_candidates().collect();
-        let candidates = if self.transport_lost {
-            let filtered: Vec<&'static crate::commands::CommandSpec> = tab
-                .command_popup_candidates
-                .iter()
-                .copied()
-                .filter(|s| s.kind == crate::commands::CommandKind::Restart)
-                .collect();
-            if filtered.is_empty() {
-                return None;
-            }
-            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
-        } else if !agent_candidates.is_empty() {
+        let candidates = if !agent_candidates.is_empty() {
             crate::ui::PopupCandidates::Agents(agent_candidates)
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
@@ -4324,6 +4654,7 @@ impl App {
             candidates,
             selected: tab.command_popup_selected,
             pane_focused: self.pane_focused,
+            command_query: tab.input.trim_start().strip_prefix('/').unwrap_or_default(),
             current_model: self.current_model_display(),
         })
     }
@@ -4345,55 +4676,45 @@ impl App {
             .or_else(|| self.current_model_id.clone())
             .or_else(|| self.acp_model.clone())
             .filter(|s| !s.trim().is_empty())?;
-        let name = self
-            .available_models
-            .iter()
-            .find(|m| m.id == id)
-            .map(|m| m.name.clone())
-            .unwrap_or(id);
-        Some(name)
+        Some(self.model_display_name(&id))
     }
 
-    /// Whether the command popup is *effectively* visible — i.e. actually
-    /// rendered. This is the same condition `command_popup_state()` uses to
-    /// decide whether to draw, so key handlers gate on the real on-screen
-    /// state: in degraded mode the candidate list is filtered to `/restart`,
-    /// so when the typed prefix excludes it (e.g. `/new`) nothing is drawn and
-    /// this returns false — the Up/Down/Tab/Enter arms then fall through to
-    /// their normal behavior instead of swallowing the key against an
-    /// invisible popup.
+    fn confirmed_model_display(&self) -> Option<String> {
+        let id = self
+            .current_tab()
+            .model_override
+            .as_deref()
+            .or(self.agent_current_model_id.as_deref())
+            .or_else(|| self.selected_custom_model_id())
+            .map(str::trim)
+            .filter(|id| !id.is_empty())?;
+        Some(self.model_display_name(id))
+    }
+
+    fn model_display_name(&self, id: &str) -> String {
+        self.available_models
+            .iter()
+            .find(|model| model.id == id)
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| id.to_string())
+    }
+
+    /// Whether the command popup is effectively visible this frame.
     pub(super) fn command_popup_visible(&self) -> bool {
-        if !self.current_tab().command_popup_visible()
-            && self.agent_command_candidates().next().is_none()
-        {
-            return false;
-        }
-        if self.transport_lost {
-            // Only /restart is offered; if the prefix excludes it the popup
-            // isn't drawn.
-            return self
-                .current_tab()
-                .command_popup_candidates
-                .iter()
-                .any(|s| s.kind == crate::commands::CommandKind::Restart);
-        }
-        true
+        self.current_tab().command_popup_visible()
+            || self.agent_command_candidates().next().is_some()
     }
 
     fn agent_command_candidates(&self) -> impl Iterator<Item = &AvailableAgent> {
-        let prefix = if self.transport_lost {
-            None
-        } else {
-            commands::agent_id_prefix(&self.current_tab().input)
-        };
+        let prefix = commands::agent_id_prefix(&self.current_tab().input);
         self.available_agents.iter().filter(move |agent| {
-                prefix.is_some_and(|prefix| {
-                    agent
-                        .id
-                        .get(..prefix.len())
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
-                })
+            prefix.is_some_and(|prefix| {
+                agent
+                    .id
+                    .get(..prefix.len())
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
             })
+        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4458,6 +4779,28 @@ impl App {
         })
     }
 
+    pub fn config_popup_state(&self) -> Option<crate::ui::ConfigPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.config_picker.is_open() {
+            return None;
+        }
+        let options = self.current_session_config_options();
+        if options.is_empty() {
+            return None;
+        }
+        let value_option = tab
+            .config_picker
+            .option_id()
+            .and_then(|config_id| options.iter().find(|option| option.id == config_id));
+        Some(crate::ui::ConfigPopupState {
+            options,
+            value_option,
+            selected: tab.config_picker.selected(),
+            pending_config_id: tab.config_pending_id.as_deref(),
+            pane_focused: self.pane_focused,
+        })
+    }
+
     pub fn agent_popup_state(&self) -> Option<crate::ui::AgentPopupState<'_>> {
         let tab = self.current_tab();
         if !tab.agent_picker_open || self.available_agents.is_empty() {
@@ -4490,42 +4833,27 @@ impl App {
         //    `/he` → /help) and never submits the raw text as a prompt, so
         //    this arm is always consumed even if there is no selection.
         if self.command_popup_visible() {
-            // When the transport to master is lost, only /restart is runnable
-            // (everything else would hit the dead pipe). Pick the /restart
-            // spec if it's in the filtered candidate list; otherwise there's
-            // nothing to run, so consume Enter and show the reconnect hint.
-            if !self.transport_lost {
-                let selected_agent = self.selected_agent_command_candidate();
-                if let Some(parsed) =
-                    agent_command_on_enter(&self.current_tab().input, selected_agent)
-                {
-                    self.current_tab_mut().clear_input();
-                    self.handle_slash_command(parsed);
-                    return true;
-                }
-                if let Some(position) = self.current_tab().selected_move_position() {
-                    let spec = commands::lookup("move").expect("/move is registered");
-                    let parsed = ParsedCommand {
-                        kind: CommandKind::Move,
-                        spec,
-                        rest: position.name.to_string(),
-                    };
-                    self.current_tab_mut().clear_input();
-                    self.handle_slash_command(parsed);
-                    return true;
-                }
+            let selected_agent = self.selected_agent_command_candidate();
+            if let Some(parsed) =
+                agent_command_on_enter(&self.current_tab().input, selected_agent)
+            {
+                self.current_tab_mut().clear_input();
+                self.handle_slash_command(parsed);
+                return true;
+            }
+            if let Some(position) = self.current_tab().selected_move_position() {
+                let spec = commands::lookup("move").expect("/move is registered");
+                let parsed = ParsedCommand {
+                    kind: CommandKind::Move,
+                    spec,
+                    rest: position.name.to_string(),
+                };
+                self.current_tab_mut().clear_input();
+                self.handle_slash_command(parsed);
+                return true;
             }
 
-            let spec = if self.transport_lost {
-                self.current_tab()
-                    .command_popup_candidates
-                    .iter()
-                    .copied()
-                    .find(|s| s.kind == CommandKind::Restart)
-            } else {
-                self.current_tab().selected_command_spec()
-            };
-            match spec {
+            match self.current_tab().selected_command_spec() {
                 Some(spec) => {
                     let parsed = ParsedCommand {
                         kind: spec.kind,
@@ -4537,9 +4865,6 @@ impl App {
                 }
                 None => {
                     self.current_tab_mut().clear_input();
-                    if self.transport_lost {
-                        self.push_degraded_command_hint();
-                    }
                 }
             }
             return true;
@@ -4551,13 +4876,6 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                // Degraded: a typed command other than /restart can't run
-                // against the dead pipe — swallow it with the reconnect hint.
-                if self.transport_lost && cmd.kind != CommandKind::Restart {
-                    self.current_tab_mut().clear_input();
-                    self.push_degraded_command_hint();
-                    return true;
-                }
                 self.current_tab_mut().clear_input();
                 self.handle_slash_command(cmd);
                 true
@@ -4575,17 +4893,6 @@ impl App {
         }
     }
 
-    /// Append the localized "connection to the agent was lost — /restart to
-    /// reconnect" line to the active tab. Shown when the user invokes any
-    /// slash command other than /restart while the transport to master is
-    /// down (reuses the existing `connection.lost` string).
-    fn push_degraded_command_hint(&mut self) {
-        let msg = t!("connection.lost").into_owned();
-        self.current_tab_mut()
-            .messages
-            .push(ChatMessage::warning(msg));
-    }
-
     /// Dispatch a parsed slash-command. The Enter handler is responsible
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
@@ -4596,16 +4903,6 @@ impl App {
             in_flight,
             "dispatch"
         );
-
-        // Transport to master is lost — only /restart can recover (it routes
-        // via wtcli→COM, not the dead pipe). Refuse everything else with the
-        // reconnect hint so a command can never silently fail against a dead
-        // connection. This is the defensive backstop; the Enter handler and
-        // greyed popup already steer the user here.
-        if self.transport_lost && cmd.kind != CommandKind::Restart {
-            self.push_degraded_command_hint();
-            return;
-        }
 
         // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
         // single command can be read and unit-tested in isolation. `in_flight`
@@ -4620,6 +4917,7 @@ impl App {
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Config => self.cmd_config(),
             CommandKind::Move => self.cmd_move(cmd.rest),
         }
     }
@@ -4634,7 +4932,6 @@ impl App {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
-        tab.selected_completed_turn_idx = None;
         tab.scroll_to_bottom();
     }
 
@@ -4668,8 +4965,9 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4678,18 +4976,18 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-                tab_id,
-                cwd: self.source_cwd.clone(),
-            });
+            tab_id,
+            cwd: self.source_cwd.clone(),
+        });
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
+            self.session_config_options.remove(&session_id);
         }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.completed_turns.clear();
-        tab.selected_completed_turn_idx = None;
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -4697,7 +4995,7 @@ impl App {
     /// `/fix [hint]` — run the auto-fix prompt on demand against the active
     /// terminal pane. Reuses the error-triggered autofix pipeline
     /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
-    /// template plus the working pane's recent output, and any `hint` typed
+    /// instruction overlay plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
@@ -4714,8 +5012,9 @@ impl App {
     fn cmd_fix(&mut self, in_flight: bool, hint: String) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::warning(t!("system.busy_use_stop").into_owned()));
+            tab.messages.push(ChatMessage::warning(
+                t!("system.busy_use_stop").into_owned(),
+            ));
             tab.scroll_to_bottom();
             return;
         }
@@ -4875,13 +5174,13 @@ impl App {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();
         self.session_model_configs.clear();
+        self.session_config_options.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
-            tab.selected_completed_turn_idx = None;
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
@@ -4899,68 +5198,20 @@ impl App {
         }
     }
 
-    /// Height of the recommendations panel — grows to fit content, capped so
-    /// input and chat still have room, but floored at the tallest card's
-    /// height so any card is fully renderable when scrolled to. Using the
-    /// tallest (not just the recommended) means Down/Up navigation never
-    /// lands on a card too tall for the panel.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols` — passing the wrong one
-    /// under-counts wrap rows and clips the bottom card when the debug panel
-    /// is open.
-    pub fn rec_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(recs) = self.current_tab().turn.recommendations() else {
-            return 0;
-        };
-        let card_heights = recs
-            .choices
-            .iter()
-            .map(|c| rec_card_height(c, panel_width) as u16);
-        let total = card_heights.clone().sum::<u16>();
-        let floor = card_heights.max().unwrap_or(ui::card::CARD_MIN_SIZE);
-        // Reserve: input(3) + chat_min(1) + rec_hint(1) = 5.
-        let ceiling = self.terminal_rows.saturating_sub(5);
-        total.min(ceiling).max(floor)
-    }
-
-    /// Height reserved for the embedded permission card. Returns 0 only when
-    /// no permission is pending — when one *is* pending, the user must be
-    /// able to see it (the agent flow is blocked until they answer), so we
-    /// fall back to a 1-row compact strip when the full card can't fit.
-    /// `permission::render` reads the actual reserved height and switches
-    /// between full and compact rendering.
-    ///
-    /// `panel_width` is the actual render width (`main_area.width` after the
-    /// debug-panel split), not `terminal_cols`.
-    pub fn permission_panel_height(&self, panel_width: u16) -> u16 {
-        let Some(perm) = self.current_tab().permission.front() else {
-            return 0;
-        };
-        let card_h = permission_card_height(perm, panel_width) as u16;
-        // Permission is modal — only hard-reserve input(3).
-        let ceiling = self.terminal_rows.saturating_sub(3);
-        let h = card_h.min(ceiling);
-        if h >= ui::card::CARD_MIN_SIZE {
-            h
-        } else {
-            1
-        }
-    }
-
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
     /// `recommendations::render` so the renderer stays `&App` and any
     /// wheel-driven over-scroll is clamped before paint.
-    pub fn sync_rec_scroll_max(&mut self, panel_width: u16) {
-        let panel_cards_h = self.rec_panel_height(panel_width) as usize;
+    pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
+        let panel_cards_h = panel_height as usize;
+        self.current_tab_mut().rec_viewport_height = panel_height;
         let Some(recs) = self.current_tab().turn.recommendations() else {
             return;
         };
         let total: usize = recs
             .choices
             .iter()
-            .map(|c| rec_card_height(c, panel_width))
+            .map(|c| ui::action_panel::recommendation_card_height(c, panel_width))
             .sum();
         self.current_tab_mut()
             .rec_scroll
@@ -4971,22 +5222,30 @@ impl App {
         self.current_tab_mut().clear_recommendations();
     }
 
-    /// Scroll the rec panel so the selected card's top sits at the panel top.
+    /// Keep the selected recommendation visible without moving a card that
+    /// already fits in the full panel viewport. Compact mode renders only the
+    /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
-        let panel_height = self.rec_panel_height(panel_width) as usize;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
+        let viewport_height = self.current_tab().rec_viewport_height as usize;
+        if viewport_height < ui::card::CARD_MIN_SIZE as usize {
+            self.current_tab_mut().rec_scroll.set(0);
+            return;
+        }
 
         let mut line_top = 0usize;
         for (idx, choice) in recs.choices.iter().enumerate() {
-            let card_h = rec_card_height(choice, panel_width);
+            let card_h = ui::action_panel::recommendation_card_height(choice, panel_width);
             if idx == self.current_tab().selected_recommendation {
-                let tab = self.current_tab_mut();
-                if line_top < tab.rec_scroll.offset
-                    || line_top + card_h > tab.rec_scroll.offset + panel_height
-                {
-                    tab.rec_scroll.set(line_top);
+                let offset = self.current_tab().rec_scroll.offset;
+                // `card_h` includes the inter-card gap, so subtracting it
+                // yields the rendered card's exclusive bottom row.
+                let rendered_bottom_exclusive = line_top.saturating_add(card_h.saturating_sub(1));
+                let viewport_bottom = offset.saturating_add(viewport_height);
+                if line_top < offset || rendered_bottom_exclusive > viewport_bottom {
+                    self.current_tab_mut().rec_scroll.set(line_top);
                 }
                 return;
             }
@@ -5012,6 +5271,9 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
+        self.pressed_completed_turn = None;
+        self.last_completed_turn_click = None;
+        self.pressed_input_dialog_tab = None;
         if let Some(owner) = self.owner_tab_id.as_deref() {
             if owner != new_tab_id {
                 tracing::debug!(
@@ -5046,6 +5308,7 @@ impl App {
         self.agent_models = models;
         self.agent_current_model_id = current;
         self.rebuild_model_catalog_from_agent_state();
+        self.publish_agent_status();
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
@@ -5082,18 +5345,17 @@ impl App {
         let removed = self.tab_sessions.remove(closed_tab_id);
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
+            self.session_config_options.remove(session_id);
         }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
         // Tell the ACP client to release the binding for this tab so
-        // the agent process can `session/cancel` the orphaned session.
+        // master can `session/close` the orphaned session.
         // Without this, every closed tab leaves a live ACP session
         // behind on the CLI side — `tab_sessions` and `session_to_tab`
         // are cleaned above but the ACP layer's own `tab_to_session`
         // map and the agent's session state are not.
-        let _ = self.drop_session_tx.send(DropSessionRequest {
-            tab_id: closed_tab_id.to_string(),
-        });
+        self.request_tab_session_close(closed_tab_id);
 
         if self.tab_id.as_deref() == Some(closed_tab_id) {
             // Active tab is gone; the next focused tab's tab_changed will
@@ -5114,6 +5376,18 @@ impl App {
             remaining_tabs = self.tab_sessions.len(),
             "drop_tab_session"
         );
+    }
+
+    /// Ask master to close the ACP session for a destroyed stable tab id
+    /// without touching this helper's local per-window tab state. WT events
+    /// are process-wide, so helpers in other windows use this path to cover
+    /// the race where every helper in the owning window exits before handling
+    /// `tab_closed`.
+    pub(crate) fn request_tab_session_close(&self, closed_tab_id: &str) {
+        let _ = self.drop_session_tx.send(DropSessionRequest {
+            tab_id: closed_tab_id.to_string(),
+            notify_master: true,
+        });
     }
 
     /// Rekey per-tab state after a tab-drag rename. WT mints a fresh
@@ -5160,6 +5434,7 @@ impl App {
                     entry = existing;
                 }
             }
+            entry.invalidate_pending_paste();
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {
@@ -5277,10 +5552,10 @@ impl App {
     ///   - Conversation history, completed turns, in-flight state are gone.
     ///   - `session_to_tab` entries pointing at this tab are pruned so any
     ///     late ACP events for the old SessionId can't route back in.
-    ///   - The ACP client task is asked to drop the binding in
-    ///     `tab_to_session` and cancel any in-flight prompt for the old
-    ///     SessionId; the next prompt on this tab lazily creates a fresh
-    ///     ACP session.
+    ///   - The ACP client task drops the binding in `tab_to_session` and
+    ///     cancels any in-flight prompt for the old SessionId. The master
+    ///     consumes the same process-wide WT event and owns the physical
+    ///     close; the next prompt lazily creates a fresh ACP session.
     /// Unlike `drop_tab_session`, this preserves the HashMap key — the
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
@@ -5295,11 +5570,11 @@ impl App {
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.completed_turns.clear();
-            tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
             self.session_model_configs.remove(&session_id);
+            self.session_config_options.remove(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -5309,6 +5584,7 @@ impl App {
         // Ask the ACP client task to release the binding for this tab.
         let _ = self.drop_session_tx.send(DropSessionRequest {
             tab_id: tab_id.to_string(),
+            notify_master: false,
         });
 
         tracing::info!(
@@ -5506,97 +5782,6 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 
 #[path = "app_turn.rs"]
 mod app_turn;
-
-/// Computes the rendered height (in terminal rows) of a recommendation card.
-/// Includes one trailing row used as the inter-card gap in the rec panel.
-pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -> usize {
-    use crate::coordinator::RecommendedAction;
-    let inner_width = ui::card::card_content_width(panel_width);
-
-    let text = choice
-        .actions
-        .iter()
-        .find_map(|action| match action {
-            RecommendedAction::Send { input, .. } => Some(input.clone()),
-            RecommendedAction::OpenAndSend { agent, input, .. } => {
-                let label = agent.as_deref().unwrap_or("agent");
-                Some(format!("{}: {}", label, input))
-            }
-            RecommendedAction::Open {
-                target, cwd, title, ..
-            } => {
-                use crate::coordinator::OpenTarget;
-                let kind = match target {
-                    OpenTarget::Tab => "tab",
-                    OpenTarget::Panel => "panel",
-                };
-                Some(match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        format!("New {} ({}) in {}", kind, t, c)
-                    }
-                    (Some(t), _) if !t.is_empty() => format!("New {} ({})", kind, t),
-                    (_, Some(c)) if !c.is_empty() => format!("New {} in {}", kind, c),
-                    _ => format!("New {} (empty)", kind),
-                })
-            }
-        })
-        .unwrap_or_else(|| choice.title.clone());
-
-    let content_lines: usize = text
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
-
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows + 1 gap.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
-}
-
-/// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
-/// a header line (`{kind_label} {title}` or just `title`) plus, for a
-/// path target, one wrapped line, or for a command target, one line per
-/// split statement (see `ui::command_format`) — NOT `description`, which
-/// is only the fallback text for the 1-row compact card. No inter-card
-/// gap — only one card is ever shown.
-pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
-    let inner_width = ui::card::card_content_width(panel_width);
-    let wrap_lines = |text: &str| -> usize {
-        text.lines()
-            .map(|line| {
-                let chars = line.chars().count();
-                if chars == 0 {
-                    1
-                } else {
-                    chars.div_ceil(inner_width)
-                }
-            })
-            .sum::<usize>()
-            .max(1)
-    };
-
-    let header = match &perm.kind_label {
-        Some(icon) => format!("{icon} {}", perm.title),
-        None => perm.title.clone(),
-    };
-    let mut content_lines = wrap_lines(&header);
-    if let Some(target) = &perm.target {
-        if perm.target_is_command {
-            content_lines += ui::command_format::command_display_lines(target).len();
-        } else {
-            content_lines += wrap_lines(target);
-        }
-    }
-    // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
-    ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
-}
 
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
 ///

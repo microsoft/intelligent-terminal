@@ -8,6 +8,8 @@
 #include "../TerminalApp/MinMaxCloseControl.h"
 #include "../TerminalApp/TabRowControl.h"
 #include "../TerminalApp/ShortcutActionDispatch.h"
+#include "../TerminalApp/AgentPaneContent.h"
+#include "../TerminalApp/AgentPaneDragStash.h"
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
@@ -84,6 +86,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CloseZoomedPane);
 
         TEST_METHOD(SwapPanes);
+        TEST_METHOD(BuildStartupActionsContentStashesAgentFirstPaneAsNewTab);
+        TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
+        TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
+        TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -108,6 +114,9 @@ namespace TerminalAppLocalTests
         }
 
     private:
+        void _verifyBuildStartupActionsContentStashesAgentPane(SplitDirection splitDirection,
+                                                               winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
+                                                               const winrt::guid& sourceProfileGuid);
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                      CascadiaSettings initialSettings);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
@@ -1042,6 +1051,182 @@ namespace TerminalAppLocalTests
             // Inspect the tree to make sure we swapped
             VERIFY_ARE_EQUAL(fourthId, tab->_rootPane->_secondChild->_secondChild->Id().value());
             VERIFY_ARE_EQUAL(thirdId, tab->_rootPane->_secondChild->_firstChild->Id().value());
+        });
+    }
+
+    void TabTests::TransferredAgentContentFirstPaneDefersTabRekey()
+    {
+        auto page = _commonSetup();
+        const auto sourceProfileGuid = winrt::guid{ L"{6239a42c-5555-49a3-80bd-e8fdd045185c}" };
+        const auto oldTabId = winrt::hstring{ L"source-tab-id" };
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto destinationAgentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(destinationAgentPane);
+            destinationAgentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, destinationAgentPane);
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() != nullptr);
+            VERIFY_IS_FALSE(focusedTab->AgentSourceProfileGuid().has_value());
+
+            auto transferredSourcePane = page->_MakePane(nullptr, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(transferredSourcePane);
+            const auto transferredControl = transferredSourcePane->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(transferredControl);
+            const auto contentId = transferredControl.ContentId();
+            page->_manager.Detach(transferredControl);
+
+            winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                contentId,
+                oldTabId,
+                sourceProfileGuid,
+                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(contentId);
+            auto transferredPane = page->_MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(transferredPane);
+            VERIFY_IS_TRUE(transferredPane->IsAgentPane());
+
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() != nullptr);
+            VERIFY_IS_FALSE(focusedTab->AgentSourceProfileGuid().has_value());
+
+            const auto agentContent = transferredPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId() == oldTabId);
+            const auto pendingSourceProfileGuid = impl->TakePendingAgentSourceProfileGuid();
+            VERIFY_IS_TRUE(pendingSourceProfileGuid.has_value());
+            VERIFY_IS_TRUE(pendingSourceProfileGuid.value() == sourceProfileGuid);
+        });
+    }
+
+    void TabTests::_verifyBuildStartupActionsContentStashesAgentPane(const SplitDirection splitDirection,
+                                                                     const winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
+                                                                     const winrt::guid& sourceProfileGuid)
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            const auto oldTabId = focusedTab->StableId();
+            focusedTab->AgentSourceProfileGuid(sourceProfileGuid);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, splitDirection, 0.5f, agentPane);
+
+            const auto agentContentArgs = agentPane->GetContent().GetNewTerminalArgs(BuildStartupKind::Content).try_as<NewTerminalArgs>();
+            VERIFY_IS_NOT_NULL(agentContentArgs);
+            const auto agentContentId = agentContentArgs.ContentId();
+            VERIFY_ARE_NOT_EQUAL(0ull, agentContentId);
+
+            const auto actions = focusedTab->BuildStartupActions(BuildStartupKind::Content);
+            VERIFY_IS_TRUE(actions.size() >= 2);
+            VERIFY_ARE_EQUAL(ShortcutAction::NewTab, actions.at(0).Action());
+
+            const auto newTabArgs = actions.at(0).Args().try_as<NewTabArgs>();
+            VERIFY_IS_NOT_NULL(newTabArgs);
+            const auto firstPaneArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_IS_NOT_NULL(firstPaneArgs);
+
+            if (expectedDisposition == winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab)
+            {
+                VERIFY_ARE_EQUAL(agentContentId, firstPaneArgs.ContentId());
+            }
+            else
+            {
+                VERIFY_ARE_NOT_EQUAL(agentContentId, firstPaneArgs.ContentId());
+                VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, actions.at(1).Action());
+
+                const auto splitPaneArgs = actions.at(1).Args().try_as<SplitPaneArgs>();
+                VERIFY_IS_NOT_NULL(splitPaneArgs);
+                const auto splitContentArgs = splitPaneArgs.ContentArgs().try_as<NewTerminalArgs>();
+                VERIFY_IS_NOT_NULL(splitContentArgs);
+                VERIFY_ARE_EQUAL(agentContentId, splitContentArgs.ContentId());
+            }
+
+            winrt::hstring stashedTabId;
+            std::optional<winrt::guid> stashedSourceProfileGuid;
+            auto actualDisposition = winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
+            VERIFY_IS_TRUE(winrt::TerminalApp::implementation::AgentPaneDragStash::Take(
+                agentContentId,
+                stashedTabId,
+                stashedSourceProfileGuid,
+                actualDisposition));
+            VERIFY_IS_TRUE(stashedTabId == oldTabId);
+            VERIFY_IS_TRUE(stashedSourceProfileGuid.has_value());
+            VERIFY_IS_TRUE(stashedSourceProfileGuid.value() == sourceProfileGuid);
+            VERIFY_IS_TRUE(actualDisposition == expectedDisposition);
+        });
+    }
+
+    void TabTests::BuildStartupActionsContentStashesAgentFirstPaneAsNewTab()
+    {
+        _verifyBuildStartupActionsContentStashesAgentPane(
+            SplitDirection::Left,
+            winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab,
+            winrt::guid{ L"{6239a42c-7777-49a3-80bd-e8fdd045185c}" });
+    }
+
+    void TabTests::BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab()
+    {
+        _verifyBuildStartupActionsContentStashesAgentPane(
+            SplitDirection::Right,
+            winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit,
+            winrt::guid{ L"{6239a42c-8888-49a3-80bd-e8fdd045185c}" });
+    }
+
+    void TabTests::TransferredAgentContentSplitPaneRetiresDestinationAgentPane()
+    {
+        auto page = _commonSetup();
+        const auto sourceProfileGuid = winrt::guid{ L"{6239a42c-6666-49a3-80bd-e8fdd045185c}" };
+        const auto oldTabId = winrt::hstring{ L"source-tab-id" };
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto destinationAgentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(destinationAgentPane);
+            destinationAgentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, destinationAgentPane);
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() != nullptr);
+            VERIFY_IS_FALSE(focusedTab->AgentSourceProfileGuid().has_value());
+
+            auto transferredSourcePane = page->_MakePane(nullptr, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(transferredSourcePane);
+            const auto transferredControl = transferredSourcePane->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(transferredControl);
+            const auto contentId = transferredControl.ContentId();
+            page->_manager.Detach(transferredControl);
+
+            winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                contentId,
+                oldTabId,
+                sourceProfileGuid,
+                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit);
+
+            NewTerminalArgs newTerminalArgs{};
+            newTerminalArgs.ContentId(contentId);
+            auto transferredPane = page->_MakeTerminalPane(newTerminalArgs, nullptr, nullptr);
+            VERIFY_IS_NOT_NULL(transferredPane);
+            VERIFY_IS_TRUE(transferredPane->IsAgentPane());
+
+            VERIFY_IS_TRUE(focusedTab->FindAgentPane() == nullptr);
+            VERIFY_IS_TRUE(focusedTab->AgentSourceProfileGuid().has_value());
+            VERIFY_IS_TRUE(focusedTab->AgentSourceProfileGuid().value() == sourceProfileGuid);
+
+            const auto agentContent = transferredPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId().empty());
+            VERIFY_IS_FALSE(impl->TakePendingAgentSourceProfileGuid().has_value());
         });
     }
 

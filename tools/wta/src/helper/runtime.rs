@@ -1,6 +1,6 @@
 //! Per-pane helper runtime bootstrap and orchestration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -20,6 +20,62 @@ use crate::{
 
 use super::config::{HelperConfig, InitialView};
 
+#[cfg(windows)]
+fn install_descendant_job() -> Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return Err(io::Error::last_os_error())
+                .context("failed to create helper descendant job");
+        }
+        let job = OwnedHandle::from_raw_handle(job);
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job.as_raw_handle(),
+            JobObjectExtendedLimitInformation,
+            std::ptr::addr_of!(limits).cast(),
+            std::mem::size_of_val(&limits) as u32,
+        ) == 0
+        {
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to configure helper descendant job");
+        }
+
+        if AssignProcessToJobObject(job.as_raw_handle(), GetCurrentProcess()) == 0 {
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to assign helper to descendant job");
+        }
+
+        // This process must retain the only job handle for its entire lifetime.
+        // Windows closes it on every exit path, including TerminateProcess, and
+        // KILL_ON_JOB_CLOSE then reclaims wtcli and other helper descendants.
+        std::mem::forget(job);
+        tracing::info!(
+            target: "helper",
+            helper_pid = std::process::id(),
+            "helper descendant job installed"
+        );
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn install_descendant_job() -> Result<()> {
+    Ok(())
+}
+
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
 /// named pipe and forwards ACP traffic over it.
@@ -27,6 +83,7 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
+    install_descendant_job()?;
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
@@ -486,8 +543,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // cancels any in-flight prompt for it; the next prompt on that
-            // tab lazily creates a fresh session.
+            // closes the session after cancelling any in-flight prompt; the
+            // next prompt on that tab lazily creates a fresh session.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
@@ -503,8 +560,7 @@ async fn run_acp_app(
 
             // Seed the process-wide owner tab StableId so `inject_wta_pane_meta`
             // stamps `_meta.wta.owner_tab_id` on every session/new + session/load.
-            // Master needs it to address `restart_agent_pane` crash-recovery
-            // events by the same StableId C++ routes per-tab events with.
+            // Master uses it to resolve close-by-tab ownership.
             protocol::acp::client::set_helper_owner_tab_id(config.owner_tab_id.as_deref());
 
             let explicit_agent_id = config
@@ -534,14 +590,6 @@ async fn run_acp_app(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
             {
-                Some(requested) if config.assume_master_down => {
-                    tracing::warn!(
-                        target: "initial_auth",
-                        requested_agent = %requested,
-                        "--initial-auth-agent ignored because --assume-master-down is active"
-                    );
-                    None
-                }
                 Some(requested) if config.start_stashed => {
                     tracing::warn!(
                         target: "initial_auth",
@@ -619,44 +667,7 @@ async fn run_acp_app(
             // pipe-attached variant immediately. FRE-installed Copilot is the
             // exception: `--initial-auth-agent copilot` starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
-            if config.assume_master_down {
-                // Degraded open: master is known down, so don't even try the
-                // (dead) pipe — go straight to the disconnected view that an
-                // orphaned pane shows, where /restart is the one available
-                // command. /restart routes via wtcli→COM (not the dead pipe),
-                // so it recovers the whole stack from right here.
-                tracing::info!(
-                    target: "helper",
-                    "assume-master-down: starting in disconnected state (master is degraded)"
-                );
-                let _ = event_tx.send(app::AppEvent::AgentError {
-                    session_id: None,
-                    failure: protocol::acp::failure::AgentFailure::TransportLost,
-                    message: t!("connection.lost").into_owned(),
-                });
-                // Keep the /restart path alive even with no master: /restart
-                // doesn't talk to master, it asks the C++ side (via wtcli->COM)
-                // to force-restart the whole agent stack — which respawns
-                // master and reconnects EVERY pane. So we must keep consuming
-                // `restart_rx` and forward it as a `restart_agent_stack` event.
-                // The other receivers (prompt/new_session/…) genuinely have no
-                // master to reach, so they're dropped; they're re-created when
-                // /restart reopens this pane fresh.
-                spawn_restart_agent_stack_forwarder(restart_rx);
-                // The remaining receivers have no master to forward to. They
-                // get re-created when /restart respawns the stack and reopens
-                // this pane fresh.
-                drop((
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    session_hook_rx,
-                    master_ext_rx,
-                ));
-            } else if start_in_initial_auth {
+            if start_in_initial_auth {
                 tracing::info!(
                     target: "initial_auth",
                     agent_id = %canonical_agent_id,
@@ -739,10 +750,17 @@ async fn run_acp_app(
                             &e,
                             protocol::acp::failure::HandshakeStage::Initialize,
                         );
+                        let message = match &failure {
+                            protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                detail,
+                                ..
+                            } => detail.clone(),
+                            _ => format!("helper ACP transport failed: {e:#}"),
+                        };
                         let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                             session_id: None,
                             failure,
-                            message: format!("helper ACP transport failed: {e:#}"),
+                            message,
                         });
                     }
                 });
@@ -1151,6 +1169,18 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+            else if let Some(pane_id) = std::env::var("WT_SESSION")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+            {
+                tracing::info!(
+                    target: "tab_session",
+                    pane_id = %pane_id,
+                    "seeded app_state.pane_id from WT_SESSION fallback"
+                );
+                app_state.pane_id = Some(pane_id);
             }
 
             // WT knows the owning window authoritatively when it creates the

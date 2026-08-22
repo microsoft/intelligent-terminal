@@ -116,7 +116,9 @@ pub struct CancelRequest {
 /// User-initiated request to spin up a fresh ACP session for a given tab,
 /// dropping the previous session's history. Emitted by the `/new` slash
 /// command. The ACP client task removes the old SessionId from its
-/// per-tab cache and calls `new_session(cwd)`; the resulting
+/// per-tab cache, cancels any active turn, and calls `new_session(cwd)`.
+/// Once the replacement is bound, master retires the old session's routing,
+/// live-registry row, and session-scoped capabilities. The resulting
 /// [`AppEvent::SessionAttached`] then propagates back to the UI to
 /// rewire `session_to_tab` and update the model dropdown.
 #[derive(Debug, Clone)]
@@ -169,7 +171,27 @@ pub enum MasterExtRequest {
     SetSessionModel {
         session_id: Option<acp::schema::v1::SessionId>,
         model: String,
+        pane_override: bool,
     },
+    SetSessionConfigOption {
+        session_id: acp::schema::v1::SessionId,
+        config_id: String,
+        value: String,
+    },
+}
+
+fn publish_session_config_options(
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    session_id: &acp::schema::v1::SessionId,
+    options: Option<&[acp::schema::v1::SessionConfigOption]>,
+) {
+    let options = options
+        .map(crate::protocol::acp::session_config::select_options)
+        .unwrap_or_default();
+    let _ = event_tx.send(AppEvent::SessionConfigUpdated {
+        session_id: session_id.to_string(),
+        options,
+    });
 }
 
 /// User-initiated request to resume a historical agent session by calling
@@ -209,6 +231,10 @@ pub struct LoadSessionForTab {
 #[derive(Debug, Clone)]
 pub struct DropSessionRequest {
     pub tab_id: String,
+    /// `false` when WT already published a process-wide reset event that the
+    /// master consumes directly. The helper still clears its local binding
+    /// and cancellation state, but must not race a duplicate physical close.
+    pub notify_master: bool,
 }
 
 /// Rekey the `tab_to_session` binding when WT mints a new stable tab id
@@ -337,6 +363,15 @@ fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
 
+fn acp_error_detail(error: &acp::Error) -> String {
+    error
+        .data
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&error.message)
+        .to_string()
+}
+
 /// Log potentially-sensitive content (user prompt / agent message text,
 /// previews, full ACP payloads) at **trace only**, so it never lands in
 /// shipping (`info`) or default-troubleshooting (`debug`) logs. Enable with
@@ -374,7 +409,7 @@ struct ClientState {
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
-    hidden_tool_calls: std::sync::Mutex<HashSet<(String, String)>>,
+    hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), SessionMcpTool>>,
 }
 
 #[derive(Default)]
@@ -416,11 +451,248 @@ struct WtaClient {
     state: Arc<ClientState>,
 }
 
+struct UserInputUiGuard {
+    event_tx: mpsc::UnboundedSender<AppEvent>,
+    request_id: String,
+    session_id: String,
+    armed: bool,
+}
+
+impl UserInputUiGuard {
+    fn new(
+        event_tx: mpsc::UnboundedSender<AppEvent>,
+        request_id: String,
+        session_id: String,
+    ) -> Self {
+        Self {
+            event_tx,
+            request_id,
+            session_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for UserInputUiGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = self.event_tx.send(AppEvent::CancelUserInputRequest {
+                request_id: self.request_id.clone(),
+                session_id: self.session_id.clone(),
+            });
+        }
+    }
+}
+
 /// Maximum characters kept in a tool-call `location` hint before truncation.
 /// Long enough for a typical path or one-line shell command, short enough
 /// that a runaway `raw_input` value (e.g. a full file-edit payload) can't
 /// blow up the chat card into a wall of text.
 const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
+const TOOL_CALL_OUTPUT_MAX_CHARS: usize = 4000;
+
+fn tool_call_kind(kind: acp::schema::v1::ToolKind) -> crate::app::ToolCallKind {
+    use crate::app::ToolCallKind as AppKind;
+    use acp::schema::v1::ToolKind;
+
+    match kind {
+        ToolKind::Read => AppKind::Read,
+        ToolKind::Edit => AppKind::Edit,
+        ToolKind::Delete => AppKind::Delete,
+        ToolKind::Move => AppKind::Move,
+        ToolKind::Search => AppKind::Search,
+        ToolKind::Execute => AppKind::Execute,
+        ToolKind::Think => AppKind::Think,
+        ToolKind::Fetch => AppKind::Fetch,
+        ToolKind::SwitchMode => AppKind::SwitchMode,
+        _ => AppKind::Other,
+    }
+}
+
+fn bounded_tool_output_parts<'a>(
+    parts: impl DoubleEndedIterator<Item = &'a str>,
+) -> Option<crate::app::ToolCallOutput> {
+    let mut reversed = String::new();
+    let mut kept_chars = 0;
+    let mut has_content = false;
+    let mut truncated = false;
+
+    'parts: for part in parts.rev().filter(|part| !part.is_empty()) {
+        if has_content {
+            if kept_chars == TOOL_CALL_OUTPUT_MAX_CHARS {
+                truncated = true;
+                break;
+            }
+            reversed.push('\n');
+            kept_chars += 1;
+        }
+        has_content = true;
+        for ch in part.chars().rev() {
+            if kept_chars == TOOL_CALL_OUTPUT_MAX_CHARS {
+                truncated = true;
+                break 'parts;
+            }
+            reversed.push(ch);
+            kept_chars += 1;
+        }
+    }
+
+    has_content.then(|| crate::app::ToolCallOutput {
+        text: reversed.chars().rev().collect(),
+        truncated,
+    })
+}
+
+fn tool_call_content_text(
+    content: &[acp::schema::v1::ToolCallContent],
+) -> Option<crate::app::ToolCallOutput> {
+    bounded_tool_output_parts(content.iter().filter_map(|item| {
+        let acp::schema::v1::ToolCallContent::Content(content) = item else {
+            return None;
+        };
+        let acp::schema::v1::ContentBlock::Text(text) = &content.content else {
+            return None;
+        };
+        Some(text.text.as_str())
+    }))
+}
+
+fn bounded_tool_output(text: &str) -> crate::app::ToolCallOutput {
+    bounded_tool_output_parts(std::iter::once(text)).unwrap_or(crate::app::ToolCallOutput {
+        text: String::new(),
+        truncated: false,
+    })
+}
+
+fn tool_call_content(
+    content: &[acp::schema::v1::ToolCallContent],
+) -> Vec<crate::app::ToolCallContent> {
+    use crate::app::ToolCallContent as AppContent;
+    use acp::schema::v1::{ContentBlock, EmbeddedResourceResource, ToolCallContent};
+
+    content
+        .iter()
+        .map(|item| match item {
+            ToolCallContent::Content(content) => match &content.content {
+                ContentBlock::Text(text) => AppContent::Text(bounded_tool_output(&text.text)),
+                ContentBlock::Image(image) => AppContent::Attachment {
+                    label: image.mime_type.clone(),
+                    uri: image.uri.clone(),
+                },
+                ContentBlock::Audio(audio) => AppContent::Attachment {
+                    label: audio.mime_type.clone(),
+                    uri: None,
+                },
+                ContentBlock::ResourceLink(resource) => AppContent::Attachment {
+                    label: resource
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| resource.name.clone()),
+                    uri: Some(resource.uri.clone()),
+                },
+                ContentBlock::Resource(resource) => match &resource.resource {
+                    EmbeddedResourceResource::TextResourceContents(resource) => {
+                        AppContent::Attachment {
+                            label: resource.uri.clone(),
+                            uri: None,
+                        }
+                    }
+                    EmbeddedResourceResource::BlobResourceContents(resource) => {
+                        AppContent::Attachment {
+                            label: resource
+                                .mime_type
+                                .as_deref()
+                                .map_or_else(|| resource.uri.clone(), str::to_string),
+                            uri: resource.mime_type.as_ref().map(|_| resource.uri.clone()),
+                        }
+                    }
+                    _ => AppContent::Attachment {
+                        label: "?".to_string(),
+                        uri: None,
+                    },
+                },
+                _ => AppContent::Attachment {
+                    label: "?".to_string(),
+                    uri: None,
+                },
+            },
+            ToolCallContent::Diff(diff) => AppContent::Diff {
+                path: diff.path.to_string_lossy().into_owned(),
+                old_text: diff.old_text.as_deref().map(bounded_tool_output),
+                new_text: bounded_tool_output(&diff.new_text),
+            },
+            ToolCallContent::Terminal(terminal) => AppContent::Terminal {
+                id: terminal.terminal_id.to_string(),
+                output: None,
+                exit_code: None,
+            },
+            _ => AppContent::Attachment {
+                label: "?".to_string(),
+                uri: None,
+            },
+        })
+        .collect()
+}
+
+fn tool_call_locations(
+    locations: &[acp::schema::v1::ToolCallLocation],
+) -> Vec<crate::app::ToolCallLocation> {
+    locations
+        .iter()
+        .map(|location| crate::app::ToolCallLocation {
+            path: location.path.to_string_lossy().into_owned(),
+            line: location.line,
+        })
+        .collect()
+}
+
+fn raw_output_text(raw_output: &serde_json::Value) -> Option<crate::app::ToolCallOutput> {
+    if let Some(text) = raw_output.as_str().filter(|text| !text.is_empty()) {
+        return bounded_tool_output_parts(std::iter::once(text));
+    }
+
+    let object = raw_output.as_object()?;
+    let streams = ["stdout", "stderr"]
+        .into_iter()
+        .filter_map(|key| object.get(key)?.as_str())
+        .filter(|text| !text.is_empty());
+    if let Some(output) = bounded_tool_output_parts(streams) {
+        return Some(output);
+    }
+
+    ["output", "text"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_str().filter(|text| !text.is_empty()))
+        .and_then(|text| bounded_tool_output_parts(std::iter::once(text)))
+}
+
+fn tool_call_output(
+    content: &[acp::schema::v1::ToolCallContent],
+    raw_output: Option<&serde_json::Value>,
+) -> Option<crate::app::ToolCallOutput> {
+    tool_call_content_text(content).or_else(|| raw_output.and_then(raw_output_text))
+}
+
+fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
+    let object = raw_input?.as_object()?;
+    ["cwd", "workingDirectory", "working_directory"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_str())
+        .map(str::trim)
+        .filter(|cwd| !cwd.is_empty())
+        .map(str::to_string)
+}
+
+fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
+    let object = raw_output?.as_object()?;
+    ["exitCode", "exit_code"]
+        .into_iter()
+        .find_map(|key| object.get(key)?.as_i64())
+}
 
 /// Best-effort extraction of *what* a tool call is touching: a file path
 /// (from `locations`/`raw_input.path`/`raw_input.file_path`) or a shell
@@ -437,12 +709,15 @@ fn tool_call_target(
     locations: &[acp::schema::v1::ToolCallLocation],
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
-    if let Some(path) = locations
+    if let Some(location) = locations
         .iter()
-        .map(|loc| loc.path.to_string_lossy())
-        .find(|path| !path.trim().is_empty())
+        .find(|loc| !loc.path.to_string_lossy().trim().is_empty())
     {
-        return Some((path.into_owned(), false));
+        let path = location.path.to_string_lossy().into_owned();
+        let target = location
+            .line
+            .map_or_else(|| path.clone(), |line| format!("{path}:{line}"));
+        return Some((target, false));
     }
     let raw_input = raw_input?;
     if let Some(p) = raw_input
@@ -594,41 +869,79 @@ fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&
     raw_input?.as_object()?.get("command")?.as_str()
 }
 
-fn is_proposal_mcp_server_name(name: &str) -> bool {
-    crate::agent_tools::action_proposal::mcp::server_name_matches(name)
+fn is_session_mcp_server_name(name: &str) -> bool {
+    crate::agent_tools::session_mcp::server_name_matches(name)
 }
 
-fn is_proposal_mcp_tool_title(title: Option<&str>) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionMcpTool {
+    TerminalActions,
+    UserInput,
+}
+
+impl SessionMcpTool {
+    fn name(self) -> &'static str {
+        match self {
+            Self::TerminalActions => "request_terminal_actions",
+            Self::UserInput => "request_user_input",
+        }
+    }
+}
+
+fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     let Some(title) = title.map(str::trim) else {
-        return false;
+        return None;
     };
     let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
-    if let Some(server_name) = title.strip_suffix("/request_terminal_actions") {
-        return is_proposal_mcp_server_name(server_name);
+    for tool in [SessionMcpTool::TerminalActions, SessionMcpTool::UserInput] {
+        for separator in ["/", "-"] {
+            if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
+                if is_session_mcp_server_name(server_name) {
+                    return Some(tool);
+                }
+            }
+        }
+        if title
+            .strip_prefix("mcp__")
+            .and_then(|title| title.strip_suffix(&format!("__{}", tool.name())))
+            .is_some_and(is_session_mcp_server_name)
+        {
+            return Some(tool);
+        }
     }
-    if let Some(server_name) = title.strip_suffix("-request_terminal_actions") {
-        return is_proposal_mcp_server_name(server_name);
-    }
-    title
-        .strip_prefix("mcp__")
-        .and_then(|title| title.strip_suffix("__request_terminal_actions"))
-        .is_some_and(is_proposal_mcp_server_name)
+    None
 }
 
-fn is_proposal_mcp_tool_call(title: Option<&str>, raw_input: Option<&serde_json::Value>) -> bool {
-    if is_proposal_mcp_tool_title(title) {
-        return true;
+fn session_mcp_tool_call(
+    title: Option<&str>,
+    raw_input: Option<&serde_json::Value>,
+) -> Option<SessionMcpTool> {
+    if let Some(tool) = session_mcp_tool_from_title(title) {
+        return Some(tool);
     }
-    if title.map(str::trim) != Some("request_terminal_actions") {
-        return false;
-    }
-    let Some(raw_input) = raw_input else {
-        return false;
+    let tool = match title.map(str::trim) {
+        Some("request_terminal_actions") => SessionMcpTool::TerminalActions,
+        Some("request_user_input") => SessionMcpTool::UserInput,
+        _ => return None,
     };
-    serde_json::to_vec(raw_input).is_ok_and(|payload| {
-        crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
-            .is_ok()
-    })
+    let Some(raw_input) = raw_input else {
+        return None;
+    };
+    let valid = match tool {
+        SessionMcpTool::TerminalActions => serde_json::to_vec(raw_input).is_ok_and(|payload| {
+            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
+                .is_ok()
+        }),
+        SessionMcpTool::UserInput => serde_json::from_value::<
+            crate::agent_tools::user_input::UserInputRequest,
+        >(raw_input.clone())
+        .is_ok_and(|request| request.validate().is_ok()),
+    };
+    if valid {
+        Some(tool)
+    } else {
+        None
+    }
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -693,7 +1006,7 @@ impl WtaClient {
     async fn dispatch_session_notification(&self, args: acp::schema::v1::SessionNotification) {
         let usage_session_id =
             matches!(&args.update, acp::schema::v1::SessionUpdate::UsageUpdate(_))
-        .then(|| args.session_id.0.to_string());
+                .then(|| args.session_id.0.to_string());
 
         if self.session_notification(args).await.is_err() {
             if let Some(session_id) = usage_session_id {
@@ -712,24 +1025,34 @@ impl WtaClient {
         }
     }
 
-    fn hide_proposal_tool_call(&self, session_id: &str, tool_call_id: &str) {
+    fn hide_session_mcp_tool_call(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool: SessionMcpTool,
+    ) {
         self.state
             .hidden_tool_calls
             .lock()
             .unwrap()
-            .insert((session_id.to_string(), tool_call_id.to_string()));
+            .insert((session_id.to_string(), tool_call_id.to_string()), tool);
         let _ = self.state.event_tx.send(AppEvent::HideToolCall {
             session_id: session_id.to_string(),
             id: tool_call_id.to_string(),
         });
     }
 
-    fn tool_call_is_hidden(&self, session_id: &str, tool_call_id: &str) -> bool {
+    fn hidden_session_mcp_tool(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+    ) -> Option<SessionMcpTool> {
         self.state
             .hidden_tool_calls
             .lock()
             .unwrap()
-            .contains(&(session_id.to_string(), tool_call_id.to_string()))
+            .get(&(session_id.to_string(), tool_call_id.to_string()))
+            .copied()
     }
 
     async fn request_permission(
@@ -745,12 +1068,19 @@ impl WtaClient {
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let proposal_candidate = proposal_permission_command_candidate(&args);
-        let proposal_mcp_tool = is_proposal_mcp_tool_call(
+        let session_mcp_tool = session_mcp_tool_call(
             args.tool_call.fields.title.as_deref(),
             args.tool_call.fields.raw_input.as_ref(),
-        ) || self.tool_call_is_hidden(&session_id, &tool_call_id);
-        if proposal_mcp_tool || proposal_candidate.is_some_and(looks_like_proposal_command) {
-            self.hide_proposal_tool_call(&session_id, &tool_call_id);
+        )
+        .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
+        if let Some(tool) = session_mcp_tool {
+            self.hide_session_mcp_tool_call(&session_id, &tool_call_id, tool);
+        } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
+            self.hide_session_mcp_tool_call(
+                &session_id,
+                &tool_call_id,
+                SessionMcpTool::TerminalActions,
+            );
         }
         let title = args
             .tool_call
@@ -778,7 +1108,7 @@ impl WtaClient {
             .prompt_timing
             .permission_requested(&session_id, &description);
 
-        if proposal_mcp_tool {
+        if let Some(tool) = session_mcp_tool {
             let Some(option) = args
                 .options
                 .iter()
@@ -791,28 +1121,32 @@ impl WtaClient {
                     acp::schema::v1::RequestPermissionOutcome::Cancelled,
                 ));
             };
-            let permission_result = self
-                .state
-                .proposal_channels
-                .validate_mcp_permission(&session_id);
+            let permission_result = match tool {
+                SessionMcpTool::TerminalActions => self
+                    .state
+                    .proposal_channels
+                    .validate_mcp_permission(&session_id),
+                SessionMcpTool::UserInput => Ok(()),
+            };
             tracing::info!(
-                target: "proposal_permission",
+                target: "session_mcp_permission",
                 session_id = %session_id,
+                tool = tool.name(),
                 approved = permission_result.is_ok(),
                 status = ?permission_result.as_ref().err().map(|failure| failure.status),
-                "silently resolving proposal MCP permission"
+                "silently resolving session MCP permission"
             );
             if permission_result.is_err() {
                 self.state
                     .prompt_timing
-                    .permission_resolved(&session_id, "proposal_permission_rejected");
+                    .permission_resolved(&session_id, "session_mcp_permission_rejected");
                 return Ok(acp::schema::v1::RequestPermissionResponse::new(
                     acp::schema::v1::RequestPermissionOutcome::Cancelled,
                 ));
             }
             self.state
                 .prompt_timing
-                .permission_resolved(&session_id, "proposal_allow_once");
+                .permission_resolved(&session_id, "session_mcp_allow_once");
             return Ok(acp::schema::v1::RequestPermissionResponse::new(
                 acp::schema::v1::RequestPermissionOutcome::Selected(
                     acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
@@ -1004,14 +1338,23 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if is_proposal_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
-                    || proposal_command_candidate(tool_call.raw_input.as_ref())
-                        .is_some_and(looks_like_proposal_command)
+                if let Some(tool) =
+                    session_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
                 {
-                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
-                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                if proposal_command_candidate(tool_call.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
+                {
+                    self.hide_session_mcp_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        SessionMcpTool::TerminalActions,
+                    );
+                    return Ok(());
+                }
+                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
                     return Ok(());
                 }
                 self.state
@@ -1030,52 +1373,76 @@ impl WtaClient {
                     id: tool_call_id,
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
+                    kind: tool_call_kind(tool_call.kind),
                     location,
                     location_is_command,
+                    cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
+                    output: tool_call_output(&tool_call.content, tool_call.raw_output.as_ref()),
+                    exit_code: tool_call_exit_code(tool_call.raw_output.as_ref()),
+                    content: tool_call_content(&tool_call.content),
+                    locations: tool_call_locations(&tool_call.locations),
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if is_proposal_mcp_tool_call(
+                if let Some(tool) = session_mcp_tool_call(
                     update.fields.title.as_deref(),
                     update.fields.raw_input.as_ref(),
-                )
-                    || proposal_command_candidate(update.fields.raw_input.as_ref())
-                        .is_some_and(looks_like_proposal_command)
+                ) {
+                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
+                    return Ok(());
+                }
+                if proposal_command_candidate(update.fields.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
                 {
-                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                    self.hide_session_mcp_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        SessionMcpTool::TerminalActions,
+                    );
                     return Ok(());
                 }
-                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
                     return Ok(());
                 }
-                if let Some(status) = &update.fields.status {
-                    // Failed updates frequently carry a `raw_output.message`
-                    // explaining *why* (e.g. Copilot in non-interactive ACP
-                    // mode emits `{"code":"rejected","message":"The user
-                    // rejected this tool call."}` when permission is auto-
-                    // denied). Surface it through the existing status string
-                    // so the chat view renders something more useful than a
-                    // bare "Failed".
+                // Failed updates frequently carry a `raw_output.message`
+                // explaining why. Keep that concise reason in the status
+                // while also forwarding any reported output independently.
+                let status = update.fields.status.as_ref().map(|status| {
                     let reason = update
                         .fields
                         .raw_output
                         .as_ref()
                         .and_then(|v| v.get("message"))
                         .and_then(|m| m.as_str())
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty());
-                    let status_str = match reason {
-                        Some(msg) => format!("{:?}: {}", status, msg),
-                        None => format!("{:?}", status),
-                    };
-                    // Only compute a location when this update actually
-                    // carried fresh `locations`/`raw_input` — otherwise send
-                    // `None` so `app_events.rs` leaves the card's existing
-                    // hint alone instead of blanking it on every status-only
-                    // update (e.g. Pending -> InProgress -> Completed).
-                    let (location, location_is_command) =
-                        if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
+                        .map(str::trim)
+                        .filter(|message| !message.is_empty());
+                    match reason {
+                        Some(message)
+                            if matches!(status, acp::schema::v1::ToolCallStatus::Failed) =>
+                        {
+                            format!("{:?}: {}", status, message)
+                        }
+                        _ => format!("{:?}", status),
+                    }
+                });
+                // Collections in ACP updates replace their previous value.
+                // An empty content collection therefore emits an empty output
+                // patch so the reducer clears stale text.
+                let output = if let Some(content) = &update.fields.content {
+                    Some(
+                        tool_call_content_text(content)
+                            .or_else(|| update.fields.raw_output.as_ref().and_then(raw_output_text))
+                            .unwrap_or(crate::app::ToolCallOutput {
+                                text: String::new(),
+                                truncated: false,
+                            }),
+                    )
+                } else {
+                    update.fields.raw_output.as_ref().and_then(raw_output_text)
+                };
+                let (location, location_is_command) =
+                    if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
                         match tool_call_location_hint(
                             update.fields.title.as_deref().unwrap_or(""),
                             update.fields.locations.as_deref().unwrap_or(&[]),
@@ -1087,12 +1454,33 @@ impl WtaClient {
                     } else {
                         (None, false)
                     };
+                let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
+                let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
+                let content = update.fields.content.as_deref().map(tool_call_content);
+                let locations = update.fields.locations.as_deref().map(tool_call_locations);
+                if update.fields.title.is_some()
+                    || status.is_some()
+                    || update.fields.kind.is_some()
+                    || location.is_some()
+                    || output.is_some()
+                    || cwd.is_some()
+                    || exit_code.is_some()
+                    || content.is_some()
+                    || locations.is_some()
+                {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: tool_call_id,
-                        status: status_str,
+                        title: update.fields.title,
+                        status,
+                        kind: update.fields.kind.map(tool_call_kind),
                         location,
                         location_is_command,
+                        output,
+                        content,
+                        locations,
+                        cwd,
+                        exit_code,
                     });
                 }
             }
@@ -1137,6 +1525,12 @@ impl WtaClient {
                         &update.config_options,
                     )
                     .unwrap_or_default();
+                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
+                    session_id: sid.clone(),
+                    options: crate::protocol::acp::session_config::select_options(
+                        &update.config_options,
+                    ),
+                });
                 let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
                     session_id: sid,
                     available_models,
@@ -1195,8 +1589,14 @@ impl WtaClient {
                     id: id.clone(),
                     title,
                     status: "running".to_string(),
+                    kind: crate::app::ToolCallKind::Execute,
                     location,
                     location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 });
                 Ok(acp::schema::v1::CreateTerminalResponse::new(id))
             }
@@ -1215,6 +1615,16 @@ impl WtaClient {
             .await
         {
             Ok(output) => {
+                let terminal_id = args.terminal_id.to_string();
+                let session_id = args.session_id.0.to_string();
+                let app_output = bounded_tool_output(&output.data);
+                let exit_code = output.exit_status.map(i64::from);
+                let _ = self.state.event_tx.send(AppEvent::ToolTerminalOutput {
+                    session_id,
+                    terminal_id,
+                    output: app_output,
+                    exit_code,
+                });
                 let mut resp = acp::schema::v1::TerminalOutputResponse::new(output.data, false);
                 if let Some(code) = output.exit_status {
                     resp = resp
@@ -1239,9 +1649,16 @@ impl WtaClient {
                 let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                     session_id,
                     id: tid,
-                    status: format!("exited ({})", code),
+                    title: None,
+                    status: Some(format!("exited ({})", code)),
+                    kind: None,
                     location: None,
                     location_is_command: false,
+                    output: None,
+                    content: None,
+                    locations: None,
+                    cwd: None,
+                    exit_code: Some(i64::from(code)),
                 });
                 Ok(acp::schema::v1::WaitForTerminalExitResponse::new(
                     acp::schema::v1::TerminalExitStatus::new().exit_code(code),
@@ -1287,15 +1704,16 @@ impl WtaClient {
             ValidationPhase,
         };
 
-        let request: crate::agent_tools::action_proposal::mcp::HelperRequest =
+        let request: crate::agent_tools::session_mcp::HelperRequest =
             serde_json::from_str(args.params.get()).map_err(|error| {
                 acp::Error::invalid_params().data(format!(
                     "invalid terminal action request parameters: {error}"
                 ))
             })?;
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
-            acp::Error::internal_error()
-                .data(format!("failed to encode terminal action arguments: {error}"))
+            acp::Error::internal_error().data(format!(
+                "failed to encode terminal action arguments: {error}"
+            ))
         })?;
         if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
             let response = ProposalValidationResponse {
@@ -1349,24 +1767,20 @@ impl WtaClient {
                 .reject_validation(&proposal_id, false);
             return Err(acp::Error::internal_error().data("Helper UI is unavailable"));
         }
-        let decision = match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            validation_rx,
-        )
-        .await
-        {
-            Ok(Ok(decision)) => decision,
-            Ok(Err(_)) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper dropped the validation response".to_string()),
-                retryable: false,
-            },
-            Err(_) => ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason: Some("Helper validation timed out".to_string()),
-                retryable: false,
-            },
-        };
+        let decision =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), validation_rx).await {
+                Ok(Ok(decision)) => decision,
+                Ok(Err(_)) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper dropped the validation response".to_string()),
+                    retryable: false,
+                },
+                Err(_) => ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some("Helper validation timed out".to_string()),
+                    retryable: false,
+                },
+            };
         if decision.status != ProposalValidationStatus::Accepted {
             let retryable = self
                 .state
@@ -1431,6 +1845,68 @@ impl WtaClient {
             acp::Error::internal_error().data(format!("encode proposal response: {error}"))
         })?;
         Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+    }
+
+    async fn request_user_input(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        let helper_request: crate::agent_tools::session_mcp::UserInputHelperRequest =
+            serde_json::from_str(args.params.get()).map_err(|error| {
+                acp::Error::invalid_params()
+                    .data(format!("invalid user input request parameters: {error}"))
+            })?;
+        let request = helper_request
+            .request
+            .validate()
+            .map_err(|error| acp::Error::invalid_params().data(error.to_string()))?;
+        let (responder, response) = tokio::sync::oneshot::channel();
+        let mut guard = UserInputUiGuard::new(
+            self.state.event_tx.clone(),
+            helper_request.request_id.clone(),
+            helper_request.session_id.clone(),
+        );
+        self.state
+            .event_tx
+            .send(AppEvent::UserInputRequest {
+                request_id: helper_request.request_id,
+                session_id: helper_request.session_id,
+                request,
+                responder,
+            })
+            .map_err(|_| acp::Error::internal_error().data("Helper UI is unavailable"))?;
+        let response = response
+            .await
+            .unwrap_or(crate::agent_tools::user_input::UserInputResponse::Cancelled);
+        guard.disarm();
+        let raw = serde_json::value::to_raw_value(&response).map_err(|error| {
+            acp::Error::internal_error().data(format!("encode user input response: {error}"))
+        })?;
+        Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+    }
+
+    async fn cancel_user_input(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        let request: crate::agent_tools::session_mcp::CancelUserInputHelperRequest =
+            serde_json::from_str(args.params.get()).map_err(|error| {
+                acp::Error::invalid_params().data(format!(
+                    "invalid user input cancellation parameters: {error}"
+                ))
+            })?;
+        self.state
+            .event_tx
+            .send(AppEvent::CancelUserInputRequest {
+                request_id: request.request_id,
+                session_id: request.session_id,
+            })
+            .map_err(|_| acp::Error::internal_error().data("Helper UI is unavailable"))?;
+        Ok(acp::schema::v1::ExtResponse::new(
+            serde_json::value::RawValue::from_string("{}".to_string())
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?
+                .into(),
+        ))
     }
 
     /// Receive `intellterm.wta/session_{added,removed}` notifications
@@ -1622,28 +2098,40 @@ async fn probe_private_usage(
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
 
-/// Process-wide owner tab StableId for this helper, seeded once at
-/// startup from `--owner-tab-id`. A helper process owns exactly one WT
-/// tab for its lifetime, so a `OnceLock` is the right shape: set once in
-/// `main()`, read by [`inject_wta_pane_meta`] on every `session/new` /
-/// `session/load` so master can record `owner_tab_id` on the routing
-/// entry and address `restart_agent_pane` recovery events by StableId.
-static HELPER_OWNER_TAB_ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+/// Process-wide owner tab StableId for this helper, seeded at startup and
+/// rekeyed when WT drags the tab into another window. Every later
+/// `session/new` / `session/load` reads the current value so master does not
+/// get re-poisoned with the pre-drag StableId.
+static HELPER_OWNER_TAB_ID: std::sync::OnceLock<std::sync::RwLock<Option<String>>> =
+    std::sync::OnceLock::new();
 
-/// Seed the process-wide owner tab StableId. Idempotent — only the first
-/// call wins (subsequent calls are ignored), matching the "one tab per
-/// helper for its whole life" invariant. Empty/blank ids are stored as
+/// Seed the process-wide owner tab StableId. Empty/blank ids are stored as
 /// `None`.
 pub fn set_helper_owner_tab_id(owner_tab_id: Option<&str>) {
     let normalized = owner_tab_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from);
-    let _ = HELPER_OWNER_TAB_ID.set(normalized);
+    *HELPER_OWNER_TAB_ID
+        .get_or_init(|| std::sync::RwLock::new(None))
+        .write()
+        .unwrap() = normalized;
 }
 
 fn helper_owner_tab_id() -> Option<String> {
-    HELPER_OWNER_TAB_ID.get().cloned().flatten()
+    HELPER_OWNER_TAB_ID
+        .get()
+        .and_then(|owner| owner.read().unwrap().clone())
+}
+
+fn rename_helper_owner_tab_id(old_tab_id: &str, new_tab_id: &str) {
+    let Some(owner) = HELPER_OWNER_TAB_ID.get() else {
+        return;
+    };
+    let mut owner = owner.write().unwrap();
+    if owner.as_deref() == Some(old_tab_id) {
+        *owner = Some(new_tab_id.to_string());
+    }
 }
 
 /// Inject `_meta.wta.pane_session_id = $WT_SESSION` (lowercased, no
@@ -1653,17 +2141,14 @@ fn helper_owner_tab_id() -> Option<String> {
 ///
 /// Used by the helper-over-master path to tell `wta-master` which WT
 /// pane owns the session it's about to create or rehydrate (so focus /
-/// session-list resolution works) and which WT tab owns it (so master
-/// can drive `restart_agent_pane` recovery). Master records both in
-/// `SessionRegistry` / its per-helper recovery map.
+/// session-list resolution works) and which WT tab owns it (so close-by-tab
+/// can resolve the exact helper). Master records both in `SessionRegistry`
+/// and its per-helper ownership map.
 ///
 /// No-op for whichever fields are unavailable: `pane_session_id` when
 /// `WT_SESSION` is unset/empty (e.g. running outside a WT pane in
 /// tests), `owner_tab_id` when `--owner-tab-id` wasn't supplied.
-fn inject_wta_pane_meta(
-    meta: &mut Option<acp::schema::v1::Meta>,
-    proposal_mcp_enabled: bool,
-) {
+fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>, proposal_mcp_enabled: bool) {
     let wt_session = std::env::var("WT_SESSION").unwrap_or_default();
     let pane_session_id = {
         let normalized = wt_session
@@ -1688,6 +2173,13 @@ fn inject_wta_pane_meta(
             ..Default::default()
         },
     );
+}
+
+fn take_retired_session_result(meta: &mut Option<acp::schema::v1::Meta>) -> bool {
+    crate::session_registry::extract_wta_meta(meta)
+        .session_result
+        .as_deref()
+        == Some("retired")
 }
 
 fn elapsed_ms_since(start: std::time::Instant) -> f64 {
@@ -1765,9 +2257,7 @@ async fn handle_load_failure(
     tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     error_message: String,
-    _proposal_channels: Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     if let Some(old) = old_sid {
@@ -1796,7 +2286,16 @@ async fn handle_load_failure(
     let fallback = conn.new_session(new_req).await;
     log_acp_new_session_result("HelperPipeFallback", fallback_started, &fallback);
     match fallback {
-        Ok(resp) => {
+        Ok(mut resp) => {
+            if take_retired_session_result(&mut resp.meta) {
+                tracing::info!(
+                    target: "acp_load_session",
+                    tab = %tab_id,
+                    session_id = %resp.session_id,
+                    "ignoring boot-time fallback session retired during tab reset or close"
+                );
+                return;
+            }
             let new_sid = resp.session_id.clone();
             tracing::info!(
                 target: "acp_load_session",
@@ -1826,6 +2325,7 @@ async fn handle_load_failure(
                 available_models,
                 current_model_id,
             });
+            publish_session_config_options(&event_tx, &new_sid, resp.config_options.as_deref());
         }
         Err(e) => {
             tracing::error!(
@@ -1978,7 +2478,7 @@ pub async fn run_acp_client_over_pipe(
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
-        hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+        hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
     let client = WtaClient {
@@ -2025,13 +2525,37 @@ pub async fn run_acp_client_over_pipe(
                                 c.kill_terminal(a).await.map(R::KillTerminalResponse),
                             ),
                             Q::ExtMethodRequest(a)
-                                if crate::agent_tools::action_proposal::mcp::helper_method_matches(
+                                if crate::agent_tools::session_mcp::helper_method_matches(
                                     &a.method,
                                 ) =>
                             {
                                 conn::respond_enum(
                                     responder,
                                     c.request_terminal_actions(a)
+                                        .await
+                                        .map(R::ExtMethodResponse),
+                                )
+                            }
+                            Q::ExtMethodRequest(a)
+                                if crate::agent_tools::session_mcp::user_input_helper_method_matches(
+                                    &a.method,
+                                ) =>
+                            {
+                                conn::respond_enum(
+                                    responder,
+                                    c.request_user_input(a)
+                                        .await
+                                        .map(R::ExtMethodResponse),
+                                )
+                            }
+                            Q::ExtMethodRequest(a)
+                                if crate::agent_tools::session_mcp::cancel_user_input_helper_method_matches(
+                                    &a.method,
+                                ) =>
+                            {
+                                conn::respond_enum(
+                                    responder,
+                                    c.cancel_user_input(a)
                                         .await
                                         .map(R::ExtMethodResponse),
                                 )
@@ -2087,17 +2611,9 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        // Either way the transport is dead. Emit an AgentError so the state
-        // machine leaves `Connected`, the user sees a clear "connection lost —
-        // /restart" line, and autofix stops firing into a dead transport (F3).
-        // `session_id: None` → current (only) tab. A near-simultaneous in-flight
-        // prompt error is collapsed by the AgentError handler's dedup. On normal
-        // shutdown the helper process is being torn down, so this event is moot.
-        let _ = io_event_tx.send(AppEvent::AgentError {
-            session_id: None,
-            failure: AgentFailure::TransportLost,
-            message: t!("connection.lost").into_owned(),
-        });
+        // Either way the transport is dead. Terminate the helper instead of
+        // retaining a disconnected pane or attempting to restore its session.
+        let _ = io_event_tx.send(AppEvent::MasterDisconnected);
     });
 
     // Initialize — same as the child-process path. We use a 60s timeout
@@ -2195,11 +2711,14 @@ pub async fn run_acp_client_over_pipe(
                 error = %e,
                 "ACP initialize over master pipe failed"
             );
-            anyhow::anyhow!("initialize over master pipe failed: {}", e)
+            anyhow::Error::new(AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Initialize,
+                detail: acp_error_detail(&e),
+            })
+            .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    let cloud_catalog =
-        crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+    let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
     {
@@ -2374,9 +2893,8 @@ pub async fn run_acp_client_over_pipe(
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
-    let (session_id, available_models, current_model_id, has_bootstrap) = if let Some(load_sid) =
-        initial_load_session_id.as_deref()
-    {
+    let (session_id, mut available_models, mut current_model_id, mut session_config, has_bootstrap) =
+        if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
             // sid as a placeholder so the App flips to Connected (and
             // binds session_id → owner_tab in `session_to_tab` early,
@@ -2398,6 +2916,7 @@ pub async fn run_acp_client_over_pipe(
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
                 Vec::<AcpModelInfo>::new(),
                 None,
+                Vec::new(),
                 false,
             )
         } else {
@@ -2412,7 +2931,7 @@ pub async fn run_acp_client_over_pipe(
                 new_session_started,
                 &new_session_result,
             );
-            let session = new_session_result.map_err(|e| {
+            let mut session = new_session_result.map_err(|e| {
                 let failure = AgentFailure::from_acp_error(&e);
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
@@ -2453,6 +2972,9 @@ pub async fn run_acp_client_over_pipe(
                 anyhow::Error::new(failure)
                     .context(format!("new_session over master pipe failed: {e}"))
             })?;
+            if take_retired_session_result(&mut session.meta) {
+                anyhow::bail!("bootstrap session retired during tab reset or close");
+            }
 
             let session_id = session.session_id.clone();
             startup_probe.log(&format!("Session created (over pipe): {}", session_id));
@@ -2474,7 +2996,18 @@ pub async fn run_acp_client_over_pipe(
 
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&session);
-            (session_id, available_models, current_model_id, true)
+            let session_config = session
+                .config_options
+                .as_deref()
+                .map(crate::protocol::acp::session_config::select_options)
+                .unwrap_or_default();
+            (
+                session_id,
+                available_models,
+                current_model_id,
+                session_config,
+                true,
+            )
         };
 
     // Apply --acp-model if requested. Only valid when we actually have
@@ -2498,10 +3031,22 @@ pub async fn run_acp_client_over_pipe(
             )
             .await;
             match model_result {
-                Ok(()) => startup_probe.log(&format!(
-                    "ACP session model set to {} (over pipe)",
-                    requested_model
-                )),
+                Ok(config_options) => {
+                    if let Some(config_options) = config_options {
+                        (available_models, current_model_id) =
+                            crate::protocol::acp::model_select::models_from_config_options(
+                                session_id.0.as_ref(),
+                                &config_options,
+                            )
+                            .unwrap_or_default();
+                        session_config =
+                            crate::protocol::acp::session_config::select_options(&config_options);
+                    }
+                    startup_probe.log(&format!(
+                        "ACP session model set to {} (over pipe)",
+                        requested_model
+                    ));
+                }
                 Err(error) if is_redundant_startup_model_error(&prompt_usage_identity, &error) => {
                     tracing::warn!(
                         target: "helper",
@@ -2552,6 +3097,10 @@ pub async fn run_acp_client_over_pipe(
         current_model_id,
         load_session_supported,
         image_supported,
+    });
+    let _ = event_tx.send(AppEvent::SessionConfigUpdated {
+        session_id: session_id.to_string(),
+        options: session_config,
     });
     // Per-tab session cache. Only
     // prepopulate the owner-tab binding when we actually have a
@@ -2682,10 +3231,16 @@ pub async fn run_acp_client_over_pipe(
                 );
             }
             Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
+                dispatch_drop_session(
+                    req,
+                    &conn,
+                    &tab_to_session,
+                    &template_memo,
+                    &cancel_signals,
+                ).await;
             }
             Some(req) = rename_session_rx.recv() => {
-                dispatch_rename_session(req, &tab_to_session);
+                dispatch_rename_session(req, &tab_to_session).await;
             }
             Some(prompt) = prompt_rx.recv() => {
                 dispatch_prompt(
@@ -2854,7 +3409,11 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
-            MasterExtRequest::SetSessionModel { session_id, model } => {
+            MasterExtRequest::SetSessionModel {
+                session_id,
+                model,
+                pane_override,
+            } => {
                 // Apply to the targeted session, or to every live session
                 // this helper owns when no target is given (normally just the
                 // one bound to its owner tab). Best-effort: a failure on one
@@ -2879,6 +3438,12 @@ fn dispatch_master_ext_request(
                             model = %model,
                             "set_session_model targeted an unknown/stale session; no live session updated"
                         );
+                        let _ = event_tx.send(AppEvent::ModelSetFailed {
+                            session_id: target.to_string(),
+                            model: model.clone(),
+                            pane_override,
+                            message: "the session is no longer active".to_string(),
+                        });
                     }
                 }
                 for sid in sessions {
@@ -2889,19 +3454,135 @@ fn dispatch_master_ext_request(
                     )
                     .await
                     {
-                        Ok(_) => tracing::info!(
+                        Ok(config_options) => {
+                            if let Some(config_options) = config_options {
+                                let (available_models, current_model_id) =
+                                    crate::protocol::acp::model_select::models_from_config_options(
+                                        sid.0.as_ref(),
+                                        &config_options,
+                                    )
+                                    .unwrap_or_default();
+                                publish_session_config_options(
+                                    &event_tx,
+                                    &sid,
+                                    Some(&config_options),
+                                );
+                                let _ = event_tx.send(AppEvent::ModelConfigUpdated {
+                                    session_id: sid.to_string(),
+                                    available_models,
+                                    current_model_id,
+                                });
+                            }
+                            let _ = event_tx.send(AppEvent::ModelSetCompleted {
+                                session_id: sid.to_string(),
+                                model: model.clone(),
+                                pane_override,
+                            });
+                            tracing::info!(
+                                target: "acp",
+                                session_id = %sid.0,
+                                model = %model,
+                                "acp-model hot-applied to live session"
+                            );
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                target: "acp",
+                                session_id = %sid.0,
+                                model = %model,
+                                error = ?err,
+                                "model hot-update failed"
+                            );
+                            let _ = event_tx.send(AppEvent::ModelSetFailed {
+                                session_id: sid.to_string(),
+                                model: model.clone(),
+                                pane_override,
+                                message: err.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+            MasterExtRequest::SetSessionConfigOption {
+                session_id,
+                config_id,
+                value,
+            } => {
+                let is_live = {
+                    let sessions = tab_to_session.lock().await;
+                    sessions.values().any(|known| known == &session_id)
+                };
+                if !is_live {
+                    let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                        session_id: session_id.to_string(),
+                        config_id,
+                        message: "the session is no longer active".to_string(),
+                    });
+                    return;
+                }
+
+                let model_compat = crate::protocol::acp::model_select::is_model_config(
+                    session_id.0.as_ref(),
+                    &config_id,
+                );
+                let result = if model_compat {
+                    crate::protocol::acp::model_select::apply_session_model(
+                        &conn,
+                        session_id.clone(),
+                        value.clone(),
+                    )
+                    .await
+                } else {
+                    let request = acp::schema::v1::SetSessionConfigOptionRequest::new(
+                        session_id.clone(),
+                        config_id.clone(),
+                        value.as_str(),
+                    );
+                    conn.set_session_config_option(request)
+                        .await
+                        .map(|response| Some(response.config_options))
+                };
+                match result {
+                    Ok(config_options) => {
+                        if let Some(config_options) = config_options {
+                            let (available_models, current_model_id) =
+                                crate::protocol::acp::model_select::models_from_config_options(
+                                    session_id.0.as_ref(),
+                                    &config_options,
+                                )
+                                .unwrap_or_default();
+                            publish_session_config_options(
+                                &event_tx,
+                                &session_id,
+                                Some(&config_options),
+                            );
+                            let _ = event_tx.send(AppEvent::ModelConfigUpdated {
+                                session_id: session_id.to_string(),
+                                available_models,
+                                current_model_id,
+                            });
+                        }
+                        let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
+                            session_id: session_id.to_string(),
+                            config_id,
+                            value,
+                            model_compat,
+                        });
+                    }
+                    Err(error) => {
+                        tracing::warn!(
                             target: "acp",
-                            session_id = %sid.0,
-                            model = %model,
-                            "acp-model hot-applied to live session"
-                        ),
-                        Err(err) => tracing::warn!(
-                            target: "acp",
-                            session_id = %sid.0,
-                            model = %model,
-                            error = ?err,
-                            "model hot-update failed"
-                        ),
+                            session_id = %session_id,
+                            config_id,
+                            value,
+                            error = ?error,
+                            "session config update failed"
+                        );
+                        let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                            session_id: session_id.to_string(),
+                            config_id,
+                            message: error.to_string(),
+                        });
                     }
                 }
             }
@@ -2932,9 +3613,7 @@ fn dispatch_load_session(
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
     timeout: std::time::Duration,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -2971,9 +3650,18 @@ fn dispatch_load_session(
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
-            let _ = conn
+            if let Err(e) = conn
                 .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    target: "acp_load_session",
+                    tab = %req.tab_id,
+                    session_id = %old,
+                    error = ?e,
+                    "session/cancel before load failed (likely unsupported)"
+                );
+            }
         }
 
         let session_id = acp::schema::v1::SessionId::new(req.session_id.clone());
@@ -2993,7 +3681,16 @@ fn dispatch_load_session(
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
 
         match load_result {
-            Ok(Ok(resp)) => {
+            Ok(Ok(mut resp)) => {
+                if take_retired_session_result(&mut resp.meta) {
+                    tracing::info!(
+                        target: "acp_load_session",
+                        tab = %req.tab_id,
+                        session_id = %req.session_id,
+                        "ignoring session/load result retired during tab reset or close"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "acp_load_session",
                     tab = %req.tab_id,
@@ -3027,6 +3724,11 @@ fn dispatch_load_session(
                     available_models,
                     current_model_id,
                 });
+                publish_session_config_options(
+                    &event_tx,
+                    &session_id,
+                    resp.config_options.as_deref(),
+                );
             }
             Ok(Err(e)) => {
                 tracing::warn!(
@@ -3105,9 +3807,7 @@ async fn dispatch_load_failure(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     message: String,
-    proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     if use_load_failure_handler {
@@ -3156,9 +3856,7 @@ fn dispatch_new_session(
     is_agent_pane: bool,
     inject_pane_meta: bool,
     log_label: &'static str,
-    _proposal_channels: &Arc<
-        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
-    >,
+    _proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
 ) {
     tracing::info!(
@@ -3207,7 +3905,7 @@ fn dispatch_new_session(
         let new_session_started = std::time::Instant::now();
         let new_session_result = conn.new_session(new_session_req).await;
         log_acp_new_session_result(log_label, new_session_started, &new_session_result);
-        let new_session = match new_session_result {
+        let mut new_session = match new_session_result {
             Ok(s) => s,
             Err(e) => {
                 let _ = event_tx.send(AppEvent::AgentError {
@@ -3218,6 +3916,15 @@ fn dispatch_new_session(
                 return;
             }
         };
+        if take_retired_session_result(&mut new_session.meta) {
+            tracing::info!(
+                target: "acp_new_session",
+                tab = %req.tab_id,
+                session_id = %new_session.session_id,
+                "ignoring session/new result retired during tab reset or close"
+            );
+            return;
+        }
 
         let new_sid = new_session.session_id.clone();
         if is_agent_pane {
@@ -3237,7 +3944,6 @@ fn dispatch_new_session(
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
-
         {
             let mut g = tab_to_session.lock().await;
             g.insert(req.tab_id.clone(), new_sid.clone());
@@ -3249,16 +3955,17 @@ fn dispatch_new_session(
             available_models,
             current_model_id,
         });
+        publish_session_config_options(&event_tx, &new_sid, new_session.config_options.as_deref());
     });
 }
 
-/// Drop a tab's ACP session binding without creating a replacement
-/// (Ctrl+C×2 close-pane path). Signals any in-flight prompt for that
-/// session to bail out of `conn.prompt().await`, forgets its template
-/// memo, and best-effort notifies the agent via `session/cancel`.
+/// Close a tab's ACP session without creating a replacement (tab close or
+/// Ctrl+C×2 close-pane path). Signals any in-flight prompt to bail out of
+/// `conn.prompt().await`, forgets its template memo, and asks master to
+/// physically release the session through master's close-by-tab extension.
 /// No-op when the tab holds no session. Called by
 /// `run_acp_client_over_pipe`.
-fn dispatch_drop_session(
+async fn dispatch_drop_session(
     req: DropSessionRequest,
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
@@ -3268,39 +3975,53 @@ fn dispatch_drop_session(
     tracing::info!(
         target: "acp_drop_session",
         tab = %req.tab_id,
-        "drop_session requested (no replacement)"
+        "close session requested (no replacement)"
     );
+    let old_sid = {
+        let mut sessions = tab_to_session.lock().await;
+        sessions.remove(&req.tab_id)
+    };
+    if let Some(old) = old_sid {
+        let old_str = old.to_string();
+        crate::protocol::acp::model_select::forget_session(&old_str);
+        template_memo.forget(&old_str).await;
+        if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
+            let _ = sig.send(());
+        }
+    }
+
+    if !req.notify_master {
+        return;
+    }
+
+    // The helper that owns the closing tab may be destroyed before it can
+    // process this event. Every surviving helper therefore asks master to
+    // resolve the stable tab id against its authoritative routing metadata.
+    // Duplicate requests are intentionally idempotent. Keep the bounded
+    // master RPC off the helper's main receive loop so sibling work remains
+    // responsive while the agent unwinds the cancelled turn.
+    let close_tab_request = crate::session_registry::build_close_tab_session_request(&req.tab_id);
     let conn = conn.clone();
-    let tab_to_session = Arc::clone(tab_to_session);
-    let template_memo = template_memo.clone();
-    let cancel_signals = Arc::clone(cancel_signals);
+    let tab_id = req.tab_id;
     tokio::task::spawn_local(async move {
-        let old_sid: Option<acp::schema::v1::SessionId> = {
-            let mut g = tab_to_session.lock().await;
-            g.remove(&req.tab_id)
-        };
-        if let Some(old) = old_sid {
-            // Signal any in-flight prompt for this session to bail out of
-            // conn.prompt().await immediately, then send a session/cancel
-            // to the agent. Mirrors the new_session cancel path, minus the
-            // new_session round-trip.
-            let old_str = old.to_string();
-            crate::protocol::acp::model_select::forget_session(&old_str);
-            template_memo.forget(&old_str).await;
-            if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
-                let _ = sig.send(());
-            }
-            if let Err(e) = conn
-                .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
-                .await
-            {
-                tracing::warn!(
-                    target: "acp_drop_session",
-                    tab = %req.tab_id,
-                    error = ?e,
-                    "session/cancel after drop failed (likely unsupported)"
-                );
-            }
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(18),
+            conn.ext_method(close_tab_request),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => tracing::warn!(
+                target: "acp_drop_session",
+                tab = %tab_id,
+                error = ?error,
+                "master close-by-tab request failed"
+            ),
+            Err(_) => tracing::warn!(
+                target: "acp_drop_session",
+                tab = %tab_id,
+                "master close-by-tab request timed out"
+            ),
         }
     });
 }
@@ -3340,27 +4061,25 @@ fn dispatch_cancel(
 /// `rename_session_rx` arm of `run_acp_client_over_pipe`, so the rekey
 /// can be unit-tested against
 /// the shared map. No-op when `old_tab_id` is absent.
-fn dispatch_rename_session(
+async fn dispatch_rename_session(
     req: RenameSessionRequest,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
 ) {
-    let tab_to_session = Arc::clone(tab_to_session);
-    tokio::task::spawn_local(async move {
-        let mut g = tab_to_session.lock().await;
-        let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
-            g.insert(req.new_tab_id.clone(), sid);
-            true
-        } else {
-            false
-        };
-        tracing::info!(
-            target: "acp_rename_session",
-            old_tab_id = %req.old_tab_id,
-            new_tab_id = %req.new_tab_id,
-            old_existed,
-            "tab_to_session rekeyed via drag"
-        );
-    });
+    rename_helper_owner_tab_id(&req.old_tab_id, &req.new_tab_id);
+    let mut g = tab_to_session.lock().await;
+    let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
+        g.insert(req.new_tab_id.clone(), sid);
+        true
+    } else {
+        false
+    };
+    tracing::info!(
+        target: "acp_rename_session",
+        old_tab_id = %req.old_tab_id,
+        new_tab_id = %req.new_tab_id,
+        old_existed,
+        "tab_to_session rekeyed via drag"
+    );
 }
 
 /// Assemble the ACP prompt content: the (already-templated) text block,
@@ -3489,7 +4208,7 @@ async fn dispatch_prompt_body(
                 new_session_started,
                 &new_session_result,
             );
-            let new_session = match new_session_result {
+            let mut new_session = match new_session_result {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = event_tx_task.send(AppEvent::AgentError {
@@ -3501,6 +4220,16 @@ async fn dispatch_prompt_body(
                     return;
                 }
             };
+            if take_retired_session_result(&mut new_session.meta) {
+                tracing::info!(
+                    target: "acp_new_session",
+                    tab = %tab_key_task,
+                    session_id = %new_session.session_id,
+                    "abandoning prompt because its lazy session was retired during tab reset or close"
+                );
+                in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                return;
+            }
             let new_sid = new_session.session_id.clone();
             if is_agent_pane {
                 let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
@@ -3525,6 +4254,11 @@ async fn dispatch_prompt_body(
                 available_models,
                 current_model_id,
             });
+            publish_session_config_options(
+                &event_tx_task,
+                &new_sid,
+                new_session.config_options.as_deref(),
+            );
             g.insert(tab_key_task.clone(), new_sid.clone());
             new_sid
         }
@@ -3536,9 +4270,7 @@ async fn dispatch_prompt_body(
     } else {
         TemplateKind::Planner
     };
-    let include_template = template_memo
-        .should_ship(&prompt_session_id_str, kind)
-        .await;
+    let include_base_prompt = template_memo.should_ship_base(&prompt_session_id_str).await;
 
     prompt_timing_task.activate(
         &prompt_session_id_str,
@@ -3551,7 +4283,7 @@ async fn dispatch_prompt_body(
         prompt.submitted_at_unix_s,
         &prompt.text,
         prompt.autofix_text_kind,
-        include_template,
+        include_base_prompt,
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
@@ -3596,7 +4328,7 @@ async fn dispatch_prompt_body(
         prompt.id,
         &prompt_session_id_str,
         kind,
-        include_template,
+        include_base_prompt,
         &text,
     );
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
@@ -3713,18 +4445,56 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::acp;
     use super::{
-        acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        is_proposal_mcp_tool_title, is_redundant_startup_model_error,
-        post_login_authenticate_error,
-        timeout_result_failure_fields, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SoftStopReason, WtaClient,
+        acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
+        complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
+        post_login_authenticate_error, session_mcp_tool_from_title, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn acp_error_detail_prefers_actionable_data() {
+        let error = acp::Error::internal_error()
+            .data("The saved API key was not found in Windows Credential Manager.");
+
+        assert_eq!(
+            acp_error_detail(&error),
+            "The saved API key was not found in Windows Credential Manager."
+        );
+    }
+
+    #[test]
+    fn bounded_tool_output_parts_keeps_unicode_tail_without_joining_full_input() {
+        let prefix = "界".repeat(4000);
+        let output = bounded_tool_output_parts([prefix.as_str(), "TAIL"].into_iter())
+            .expect("expected bounded output");
+
+        assert!(output.truncated);
+        assert_eq!(output.text.chars().count(), 4000);
+        assert!(output.text.ends_with("\nTAIL"));
+    }
+
+    #[test]
+    fn tool_call_exit_code_ignores_generic_code_fields() {
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "code": 200 }))),
+            None
+        );
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "exitCode": 7 }))),
+            Some(7)
+        );
+        assert_eq!(
+            tool_call_exit_code(Some(&serde_json::json!({ "exit_code": 9 }))),
+            Some(9)
+        );
+    }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
         use acp::schema::v1::{
@@ -3788,7 +4558,7 @@ mod tests {
             provider_probe_capture: super::ProviderProbeCapture::default(),
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
-            hidden_tool_calls: Mutex::new(HashSet::new()),
+            hidden_tool_calls: Mutex::new(HashMap::new()),
         });
         (WtaClient { state }, event_rx)
     }
@@ -3877,6 +4647,155 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn user_input_mcp_permission_is_silent() {
+        use acp::schema::v1::{
+            PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
+            ToolCallUpdate, ToolCallUpdateFields,
+        };
+
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+        let response = client
+            .request_permission(RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("input-session"),
+                ToolCallUpdate::new(
+                    ToolCallId::new("input-tool"),
+                    ToolCallUpdateFields::new()
+                        .title("request_user_input")
+                        .raw_input(serde_json::json!({
+                            "question": "Choose",
+                            "choices": ["A", "B"]
+                        })),
+                ),
+                vec![PermissionOption::new(
+                    "allow-once",
+                    "Allow once",
+                    PermissionOptionKind::AllowOnce,
+                )],
+            ))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            response.outcome,
+            acp::schema::v1::RequestPermissionOutcome::Selected(_)
+        ));
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "input-session" && id == "input-tool"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_user_input_extension_cancels_its_modal() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let params = serde_json::value::to_raw_value(
+                    &crate::agent_tools::session_mcp::UserInputHelperRequest {
+                        request_id: "request-1".into(),
+                        session_id: "input-session".into(),
+                        request: crate::agent_tools::user_input::UserInputRequest {
+                            question: "Choose".into(),
+                            choices: vec!["A".into()],
+                            allow_freeform: false,
+                        },
+                    },
+                )
+                .unwrap();
+                let task = tokio::task::spawn_local(async move {
+                    client
+                        .request_user_input(acp::schema::v1::ExtRequest::new(
+                            crate::agent_tools::session_mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+                            params.into(),
+                        ))
+                        .await
+                });
+
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::UserInputRequest {
+                        request_id,
+                        session_id,
+                        ..
+                    }) if request_id == "request-1" && session_id == "input-session"
+                ));
+                task.abort();
+                let _ = task.await;
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::CancelUserInputRequest {
+                        request_id,
+                        session_id,
+                    }) if request_id == "request-1" && session_id == "input-session"
+                ));
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn user_input_extension_returns_the_modal_answer() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let params = serde_json::value::to_raw_value(
+                    &crate::agent_tools::session_mcp::UserInputHelperRequest {
+                        request_id: "request-2".into(),
+                        session_id: "input-session".into(),
+                        request: crate::agent_tools::user_input::UserInputRequest {
+                            question: "Choose".into(),
+                            choices: vec!["A".into(), "B".into()],
+                            allow_freeform: false,
+                        },
+                    },
+                )
+                .unwrap();
+                let task = tokio::task::spawn_local(async move {
+                    client
+                        .request_user_input(acp::schema::v1::ExtRequest::new(
+                            crate::agent_tools::session_mcp::USER_INPUT_HELPER_REQUEST_METHOD,
+                            params.into(),
+                        ))
+                        .await
+                });
+
+                let responder = match event_rx.recv().await {
+                    Some(AppEvent::UserInputRequest { responder, .. }) => responder,
+                    _ => panic!("expected user input request"),
+                };
+                responder
+                    .send(
+                        crate::agent_tools::user_input::UserInputResponse::Answered {
+                            answer: "B".into(),
+                            selected_index: Some(1),
+                        },
+                    )
+                    .unwrap();
+                let response = task.await.unwrap().unwrap();
+                let decoded: crate::agent_tools::user_input::UserInputResponse =
+                    serde_json::from_str(response.0.get()).unwrap();
+                assert_eq!(
+                    decoded,
+                    crate::agent_tools::user_input::UserInputResponse::Answered {
+                        answer: "B".into(),
+                        selected_index: Some(1),
+                    }
+                );
+                assert!(event_rx.try_recv().is_err());
+            })
+            .await;
+    }
+
+    #[tokio::test]
     async fn proposal_mcp_extension_validates_and_commits_on_the_owning_helper() {
         let manager =
             Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
@@ -3884,19 +4803,18 @@ mod tests {
             .issue("proposal-session".into(), 1, None, false)
             .unwrap();
         let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
-        let params = serde_json::value::to_raw_value(
-            &crate::agent_tools::action_proposal::mcp::HelperRequest {
+        let params =
+            serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
                 arguments: serde_json::json!({
                     "type": "send",
                     "title": "Run test",
                     "input": "cargo test"
                 }),
-            },
-        )
-        .unwrap();
+            })
+            .unwrap();
         let request = acp::schema::v1::ExtRequest::new(
-            crate::agent_tools::action_proposal::mcp::HELPER_REQUEST_METHOD,
+            crate::agent_tools::session_mcp::HELPER_REQUEST_METHOD,
             params.into(),
         );
 
@@ -4089,29 +5007,32 @@ mod tests {
     }
 
     #[test]
-    fn proposal_mcp_tool_title_accepts_copilot_http_permission_shape() {
+    fn session_mcp_tool_title_accepts_supported_permission_shapes() {
         let dynamic = "intellterm_01234567890123456789";
-        assert!(is_proposal_mcp_tool_title(Some(
-            "Use MCP tool: intelligent_terminal/request_terminal_actions"
-        )));
-        assert!(is_proposal_mcp_tool_title(Some(
-            "intelligent_terminal-request_terminal_actions"
-        )));
-        assert!(is_proposal_mcp_tool_title(Some(&format!(
-            "Use MCP tool: {dynamic}/request_terminal_actions"
-        ))));
-        assert!(is_proposal_mcp_tool_title(Some(&format!(
-            "mcp__{dynamic}__request_terminal_actions"
-        ))));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "intellterm_0123456789abcdef/request_terminal_actions"
-        )));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "intellterm_0123456789012345678A/request_terminal_actions"
-        )));
-        assert!(!is_proposal_mcp_tool_title(Some(
-            "Use MCP tool: other/request_terminal_actions"
-        )));
+        for title in [
+            "Use MCP tool: intelligent_terminal/request_terminal_actions".to_string(),
+            "intelligent_terminal-request_terminal_actions".to_string(),
+            format!("Use MCP tool: {dynamic}/request_terminal_actions"),
+            format!("mcp__{dynamic}__request_terminal_actions"),
+        ] {
+            assert_eq!(
+                session_mcp_tool_from_title(Some(&title)),
+                Some(SessionMcpTool::TerminalActions)
+            );
+        }
+        assert_eq!(
+            session_mcp_tool_from_title(Some(&format!(
+                "Use MCP tool: {dynamic}/request_user_input"
+            ))),
+            Some(SessionMcpTool::UserInput)
+        );
+        for title in [
+            "intellterm_0123456789abcdef/request_terminal_actions",
+            "intellterm_0123456789012345678A/request_terminal_actions",
+            "Use MCP tool: other/request_terminal_actions",
+        ] {
+            assert_eq!(session_mcp_tool_from_title(Some(title)), None);
+        }
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe
@@ -4319,8 +5240,8 @@ mod tests {
 
         // Outer future elapsed → Timeout, no ACP code.
         let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
-        .await
-        .expect_err("a zero-duration timeout over a pending future must elapse");
+            .await
+            .expect_err("a zero-duration timeout over a pending future must elapse");
         let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }
@@ -4417,7 +5338,7 @@ mod tests {
                 proposal_channels: Arc::new(
                     crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
                 ),
-                hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
+                hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
             });
             (WtaClient { state }, rx)
         }

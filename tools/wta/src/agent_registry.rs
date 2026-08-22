@@ -127,7 +127,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // `claude` shim implies node/npx are present, so this works whenever
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
-        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0",
+        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
@@ -147,7 +147,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &[],
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
-        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.4",
+        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.13",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         byok_mode: ByokMode::Unsupported,
@@ -347,7 +347,7 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
 /// E.g. `build_acp_command("copilot", Some("gpt-5"))` → `"copilot --acp --stdio --model gpt-5"`.
 /// For agents whose CLI doesn't speak ACP natively (claude, codex), this
 /// returns the adapter launch command instead — e.g.
-/// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp"`.
+/// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp@0.65.0"`.
 pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
     let profile = lookup_profile_by_id(agent_id);
 
@@ -571,11 +571,11 @@ mod tests {
     fn resolve_agent_id_from_cmd_recognises_adapter_launches() {
         // Exact match against the known adapter command.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.59.0"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.65.0"),
             "claude",
         );
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.4"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.13"),
             "codex",
         );
         assert_eq!(
@@ -589,7 +589,7 @@ mod tests {
         // Adapter prefix with extra trailing args still resolves.
         assert_eq!(
             resolve_agent_id_from_cmd(
-                "npx -y @agentclientprotocol/claude-agent-acp@0.59.0 --debug"
+                "npx -y @agentclientprotocol/claude-agent-acp@0.65.0 --debug"
             ),
             "claude",
         );
@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn strip_acp_flags_recognises_codex_adapter_compatibility_commands() {
         for command in [
-            "npx -y @agentclientprotocol/codex-acp@1.1.4",
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
             "npx -y @agentclientprotocol/codex-acp",
             "npx -y @zed-industries/codex-acp",
             "npx -y @zed-industries/codex-acp --debug",
@@ -630,7 +630,7 @@ mod tests {
     fn codex_acp_launch_command_stays_pinned() {
         assert_eq!(
             build_acp_command("codex", None),
-            "npx -y @agentclientprotocol/codex-acp@1.1.4",
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
         );
     }
 

@@ -5,7 +5,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.session.start"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.start; exit 0",
+          "shell": "bash"
         }]
       }
     ],
@@ -14,7 +15,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.session.end"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.end; exit 0",
+          "shell": "bash"
         }]
       }
     ],
@@ -23,7 +25,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.notification"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.notification; exit 0",
+          "shell": "bash"
         }]
       }
     ],
@@ -32,7 +35,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.prompt.submit"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.prompt.submit; exit 0",
+          "shell": "bash"
         }]
       }
     ],
@@ -41,7 +45,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.error"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.error; exit 0",
+          "shell": "bash"
         }]
       }
     ],
@@ -50,7 +55,8 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/send-event.ps1\" -CliSource claude agent.stop"
+          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.stop; exit 0",
+          "shell": "bash"
         }]
       }
     ]

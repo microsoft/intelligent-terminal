@@ -1,0 +1,79 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+// PROTOTYPE — see investigation-vertical-tabs.md. Not shipped.
+//
+// TabStrip is a ListView-backed alternative to Microsoft.UI.Xaml.Controls.TabView.
+// It exposes the subset of TabView's public surface that TerminalPage +
+// TabManagement.cpp call, so those call sites don't have to branch on which
+// strip is live. Orientation is a public property (per the B→C migration
+// rules in the investigation doc); the prototype only implements Vertical.
+
+namespace TerminalApp
+{
+    enum TabStripOrientation
+    {
+        Horizontal = 0,
+        Vertical = 1,
+    };
+
+    [default_interface] runtimeclass TabStripSelectionChangedEventArgs
+    {
+        Object AddedItem { get; };
+        Object RemovedItem { get; };
+    };
+
+    [default_interface] runtimeclass TabStripCloseRequestedEventArgs
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+    };
+
+    [default_interface] runtimeclass TabStripDragStartingEventArgs
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        Object Item { get; };
+        Windows.ApplicationModel.DataTransfer.DataPackage Data { get; };
+        Boolean Cancel;
+    };
+
+    [default_interface] runtimeclass TabStripDroppedOutsideEventArgs
+    {
+        Microsoft.UI.Xaml.Controls.TabViewItem Tab { get; };
+        Object Item { get; };
+    };
+
+    [default_interface] runtimeclass TabStrip : Windows.UI.Xaml.Controls.UserControl
+    {
+        TabStrip();
+
+        TabStripOrientation Orientation;
+
+        // Mirrors TabView.TabItems — TabManagement.cpp calls InsertAt/RemoveAt/
+        // IndexOf/Size/GetAt on this collection, so the signature must match.
+        Windows.Foundation.Collections.IObservableVector<Object> TabItems { get; };
+
+        Object SelectedItem;
+        Int32 SelectedIndex;
+
+        // Mirrors TabView.ContainerFromIndex — used by tearoff drop-position math.
+        Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
+
+        Boolean CanReorderTabs;
+        Boolean CanDragTabs;
+
+        // Top/bottom (or leading/trailing in horizontal) slots. Populated by
+        // TabRowControl.xaml with the elevation shield / workspaces button
+        // (leading) and the new-tab split button (trailing).
+        Windows.UI.Xaml.UIElement LeadingContent;
+        Windows.UI.Xaml.UIElement TrailingContent;
+
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripSelectionChangedEventArgs> SelectionChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripCloseRequestedEventArgs> TabCloseRequested;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Windows.Foundation.Collections.IVectorChangedEventArgs> TabItemsChanged;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripDragStartingEventArgs> TabDragStarting;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Object> TabDragCompleted;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDragOver;
+        event Windows.Foundation.TypedEventHandler<TabStrip, Windows.UI.Xaml.DragEventArgs> TabStripDrop;
+        event Windows.Foundation.TypedEventHandler<TabStrip, TabStripDroppedOutsideEventArgs> TabDroppedOutside;
+    };
+}

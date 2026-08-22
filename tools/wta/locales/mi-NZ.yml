@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pēhia Enter hei ngana anō, Esc rānei hei h
 chat.activity_thinking: "E whakaaro ana..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Nau mai ki Iho Atamai!"
-chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI. Tirohia ngā hapa."
+chat.welcome_disclaimer: "Ka whakamahia e Iho Atamai te AI."
 chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ ara makete kua tawhito"
 hooks.installed_but_disabled: "⚠ kua tautahia engari kua monokia"
 hooks.not_installed: "✗ kaore i tautahia"
 hooks.uninstall_skipped: "kua pekehia (CLI kaore i runga i te PATH)"
-hooks.install_attempted: "Kua ngana ki te tauta i a wt-agent-hooks (idempotent). Whakahautia `wta hooks status` ki te tirotiro i te hua. Raarangi aroturuki: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ kua tautahia a wt-agent-hooks mo %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "inaianei tonu"
 time.minute_singular: "%{count} meneti ki muri"
@@ -214,8 +214,17 @@ system.agent_switch_unavailable: "Kāore i te wātea te whakawhiti māngai i wah
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
+commands.config.summary: "Whirihorahia tēnei teho māngai"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Neke i te papa agent o tēnei ripa (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Whirihoranga teho (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Kāore te māngai hono i pānui i ētahi kōwhiringa teho ka taea te whirihora."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "I rahua te updating %{option}: %{error}"
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}

@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 //
 // Fuzzing harness for wtcli CLI utility functions.
-// Targets: BuildSendEventJson, MatchesEventFilter.
+// Targets: BuildSendEventJson, BuildAgentHookEventJson, MatchesEventFilter.
 //
 // Built under the Fuzzing MSBuild configuration with LibFuzzer
 // instrumentation; submittable to OneFuzz via the CI pipeline.
@@ -43,26 +43,32 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     }
 
     // Split the entire input into segments for use across all targets.
-    // We need at least 4 segments: [eventType] [paramsJson]
-    // [sessionId] [eventTypeFilter]
-    auto parts = SplitInput(data, size, 4);
+    // We need 6 segments: [eventType] [cliSource] [hookJson]
+    // [sessionId] [agentSessionId] [eventTypeFilter].
+    auto parts = SplitInput(data, size, 6);
 
     // ── Target 1: BuildSendEventJson ──
     // Fuzz all three input parameters: eventType, paramsJson, and sessionId.
     {
         Json::Value evt;
-        wtcli::BuildSendEventJson(parts[0], parts[1], parts[2], evt);
+        wtcli::BuildSendEventJson(parts[0], parts[2], parts[3], evt);
     }
 
-    // ── Target 2: MatchesEventFilter ──
+    // ── Target 2: BuildAgentHookEventJson ──
+    {
+        Json::Value evt;
+        wtcli::BuildAgentHookEventJson(parts[0], parts[1], parts[2], parts[3], parts[4], evt);
+    }
+
+    // ── Target 3: MatchesEventFilter ──
     // Construct valid JSON from fuzzed fields using Json::Value so the parser
     // succeeds and the deep matching logic (session_id, wildcard) is reached
     // even when fuzzed strings contain quotes/backslashes/control chars.
     {
         // 2a: Fuzzed event structure with fuzzed filter.
-        const auto& fuzzedSessionId = parts[2];
+        const auto& fuzzedSessionId = parts[3];
         const auto& fuzzedEvent = parts[0];
-        const auto& fuzzedFilter = parts[3];
+        const auto& fuzzedFilter = parts[5];
 
         Json::Value params;
         params["session_id"] = fuzzedSessionId;

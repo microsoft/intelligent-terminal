@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,58 @@ pub enum NoticeKind {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallKind {
+    Read,
+    Edit,
+    Delete,
+    Move,
+    Search,
+    Execute,
+    Think,
+    Fetch,
+    SwitchMode,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallOutput {
+    pub text: String,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallLocation {
+    pub path: String,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallContent {
+    Text(ToolCallOutput),
+    Diff {
+        path: String,
+        #[serde(default)]
+        old_text: Option<ToolCallOutput>,
+        new_text: ToolCallOutput,
+    },
+    Terminal {
+        id: String,
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        #[serde(default)]
+        exit_code: Option<i64>,
+    },
+    Attachment {
+        label: String,
+        #[serde(default)]
+        uri: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
@@ -32,6 +84,8 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        #[serde(default)]
+        kind: ToolCallKind,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -40,6 +94,21 @@ pub enum ChatMessage {
         /// Commands render on their own indented line below the title.
         #[serde(default)]
         location_is_command: bool,
+        /// Working directory reported by the Agent for an execute tool.
+        #[serde(default)]
+        cwd: Option<String>,
+        /// Bounded text reported through ACP tool-call content/raw output.
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        /// Process exit code, only when explicitly reported by the Agent.
+        #[serde(default)]
+        exit_code: Option<i64>,
+        /// Standard ACP tool content, retained for expanded details.
+        #[serde(default)]
+        content: Vec<ToolCallContent>,
+        /// All standard ACP locations, including optional line numbers.
+        #[serde(default)]
+        locations: Vec<ToolCallLocation>,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -47,7 +116,7 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
+    /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
@@ -154,6 +223,25 @@ pub struct PermissionState {
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
 }
 
+pub struct UserInputState {
+    pub request_id: String,
+    pub request: crate::agent_tools::user_input::UserInputRequest,
+    pub selected: usize,
+    pub input: String,
+    pub responder:
+        Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
+}
+
+impl UserInputState {
+    pub fn selection_count(&self) -> usize {
+        self.request.choices.len() + usize::from(self.request.allow_freeform)
+    }
+
+    pub fn freeform_selected(&self) -> bool {
+        self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
+}
+
 impl PermissionState {
     /// Index of the first "allow" option, used by the `y` quick-key and the
     /// `[Y]` button label.
@@ -224,6 +312,74 @@ pub(crate) struct PendingTerminalActionProposal {
     pub recommendations: super::RecommendationSet,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum ConfigPickerState {
+    #[default]
+    Closed,
+    Options {
+        selected: usize,
+    },
+    Values {
+        option_id: String,
+        selected: usize,
+        parent_selected: Option<usize>,
+    },
+}
+
+impl ConfigPickerState {
+    pub fn is_open(&self) -> bool {
+        !matches!(self, Self::Closed)
+    }
+
+    pub fn selected(&self) -> usize {
+        match self {
+            Self::Closed => 0,
+            Self::Options { selected } | Self::Values { selected, .. } => *selected,
+        }
+    }
+
+    pub fn option_id(&self) -> Option<&str> {
+        match self {
+            Self::Values { option_id, .. } => Some(option_id),
+            _ => None,
+        }
+    }
+
+    pub fn reconcile(&mut self, options: &[crate::app_contracts::AcpSessionConfigOption]) {
+        let next = match std::mem::take(self) {
+            Self::Closed => Self::Closed,
+            Self::Options { selected } if !options.is_empty() => Self::Options {
+                selected: selected.min(options.len() - 1),
+            },
+            Self::Values {
+                option_id,
+                selected,
+                parent_selected,
+            } => {
+                let value_count = options
+                    .iter()
+                    .find(|option| option.id == option_id)
+                    .map(|option| option.values.len());
+                match value_count {
+                    Some(value_count) if value_count > 0 => Self::Values {
+                        option_id,
+                        selected: selected.min(value_count - 1),
+                        parent_selected,
+                    },
+                    _ => parent_selected
+                        .filter(|_| !options.is_empty())
+                        .map(|selected| Self::Options {
+                            selected: selected.min(options.len() - 1),
+                        })
+                        .unwrap_or(Self::Closed),
+                }
+            }
+            Self::Options { .. } => Self::Closed,
+        };
+        *self = next;
+    }
+}
+
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -248,17 +404,16 @@ pub struct TabSession {
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
     pub selected_completed_turn_idx: Option<usize>,
+    /// Set when keyboard navigation changes the completed-turn selection.
+    /// The chat render pass consumes it after adjusting scroll just enough to
+    /// reveal the selected turn.
+    pub completed_turn_selection_visible_pending: bool,
     pub chat_scroll: Scroll,
 
-    // Streaming state
-    pub pending_agent_response: String,
-    /// Accumulator for `session/update` user_message_chunk events
-    /// arriving during an ACP `session/load` replay (the historical
-    /// user prompt for the next replayed turn). Flushed as a
-    /// `ChatMessage::User` whenever a turn boundary is detected — an
-    /// agent message / thought / tool call starts, OR the load
-    /// completes (SessionAttached for the loading tab).
-    pub pending_user_replay: String,
+    // Session replay state. These buffers are used only while loading_session
+    // is true and never share storage with a live turn.
+    pub replay_agent_buffer: String,
+    pub replay_user_buffer: String,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
     /// call. While set, session/update chunk handlers accept chunks
@@ -279,28 +434,28 @@ pub struct TabSession {
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
     pub activity_frame: usize,
-    /// Typewriter reveal cursor: how many characters of the *user-visible*
-    /// streaming text are currently shown. The full text lives in
-    /// `turn.buffer()`; the renderer only emits the first `reveal_chars`
-    /// chars of it. Advanced toward the full length by `RevealTick`
+    /// Typewriter reveal cursor for the final assistant-text item in the
+    /// active transcript. Advanced toward its full length by `RevealTick`
     /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
     /// made irrelevant on finalize (the committed message renders in full).
     pub reveal_chars: usize,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
-    // Tool calls / permission
-    pub tool_calls: HashMap<String, (String, String)>,
+    // Blocking action queues
     /// FIFO of pending permission requests for this session. The front
     /// entry is the one currently rendered and accepting keys; the rest
     /// queue up.
     pub permission: VecDeque<PermissionState>,
+    /// FIFO of blocking clarification requests from the session MCP tool.
+    pub user_input: VecDeque<UserInputState>,
     // Recommendation card UI focus (the set itself lives on
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
     pub selected_button: usize,
     pub recommendation_focus: RecommendationFocus,
     pub rec_scroll: Scroll,
+    pub rec_viewport_height: u16,
 
     /// Last value the helper published for this tab in a
     /// `set_agent_chip_target` event.
@@ -335,6 +490,10 @@ pub struct TabSession {
     pub model_picker_open: bool,
     /// Highlighted row in the open model picker.
     pub model_picker_selected: usize,
+    /// Navigation state for the ACP session configuration picker.
+    pub config_picker: ConfigPickerState,
+    /// Config option currently awaiting a `session/set_config_option` response.
+    pub config_pending_id: Option<String>,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
@@ -357,22 +516,45 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn invalidate_pending_paste(&mut self) {
+        self.paste_pending = false;
+        self.paste_generation = self.paste_generation.wrapping_add(1);
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
 
     pub(crate) fn should_show_thinking(&self) -> bool {
         self.turn.is_in_flight()
+            && self.turn.recommendations().is_none()
+            && self.permission.is_empty()
+            && self.user_input.is_empty()
+            && self.streaming_agent_text().is_none_or(|text| text.trim().is_empty())
+            && !self.messages.iter().any(|message| {
+                matches!(
+                    message,
+                    ChatMessage::ToolCall { status, .. }
+                        if status.eq_ignore_ascii_case("pending")
+                            || status.eq_ignore_ascii_case("inprogress")
+                            || status.eq_ignore_ascii_case("running")
+                )
+            })
     }
 
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && (self.turn.recommendations().is_none()
+        self.selected_completed_turn_idx.is_none() && self.input_can_receive_nav_focus()
+    }
+
+    pub fn input_can_receive_nav_focus(&self) -> bool {
+        (self.turn.recommendations().is_none()
                 || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
+            && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
+            && !self.config_picker.is_open()
             && !self.agent_picker_open
     }
 
@@ -381,6 +563,7 @@ impl TabSession {
         self.selected_button = 0;
         self.recommendation_focus = RecommendationFocus::Button;
         self.rec_scroll.reset();
+        self.rec_viewport_height = 0;
     }
 
     /// The pane the "Agent" chip should be pinned to while this tab has a
@@ -406,32 +589,76 @@ impl TabSession {
 
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
-        self.tool_calls.clear();
         self.permission.clear();
+        self.user_input.clear();
         self.activity_frame = 0;
-        self.pending_agent_response.clear();
-        self.pending_user_replay.clear();
+        self.replay_agent_buffer.clear();
+        self.replay_user_buffer.clear();
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
+        self.clear_completed_turn_selection();
         self.turn = TurnState::Idle;
         self.clear_recommendations();
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.clear_history_draft_attachments();
-        self.paste_pending = false;
-        self.paste_generation = self.paste_generation.wrapping_add(1);
+        self.invalidate_pending_paste();
     }
 
     pub fn flush_load_replay_pending(&mut self) {
-        if !self.pending_user_replay.is_empty() {
-            let text = std::mem::take(&mut self.pending_user_replay);
+        if !self.replay_user_buffer.is_empty() {
+            let text = std::mem::take(&mut self.replay_user_buffer);
             self.messages.push(ChatMessage::User(text));
         }
-        if !self.pending_agent_response.is_empty() {
-            let text = std::mem::take(&mut self.pending_agent_response);
+        if !self.replay_agent_buffer.is_empty() {
+            let text = std::mem::take(&mut self.replay_agent_buffer);
             self.messages.push(ChatMessage::Agent(text));
         }
+    }
+
+    pub fn append_agent_chunk(&mut self, text: &str) {
+        match self.messages.last_mut() {
+            Some(ChatMessage::Agent(current)) => current.push_str(text),
+            _ => {
+                self.messages.push(ChatMessage::Agent(text.to_string()));
+                self.reveal_chars = 0;
+            }
+        }
+    }
+
+    pub fn streaming_agent_message_index(&self) -> Option<usize> {
+        self.turn
+            .is_streaming()
+            .then(|| self.messages.len().checked_sub(1))
+            .flatten()
+            .filter(|index| matches!(self.messages.get(*index), Some(ChatMessage::Agent(_))))
+    }
+
+    pub fn streaming_agent_text(&self) -> Option<&str> {
+        let index = self.streaming_agent_message_index()?;
+        match self.messages.get(index) {
+            Some(ChatMessage::Agent(text)) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub fn active_agent_text(&self) -> String {
+        self.messages
+            .iter()
+            .filter_map(|message| match message {
+                ChatMessage::Agent(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
+        std::mem::take(&mut self.messages)
+            .into_iter()
+            .filter(|message| !matches!(message, ChatMessage::User(_)))
+            .collect()
     }
 
     pub fn pack_replayed_messages_into_turns(&mut self) {
@@ -479,7 +706,7 @@ impl TabSession {
     pub fn select_older_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -487,12 +714,13 @@ impl TabSession {
             Some(0) => None,
             Some(index) => Some(index - 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
     }
 
     pub fn select_newer_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -500,23 +728,38 @@ impl TabSession {
             Some(index) if index + 1 >= len => None,
             Some(index) => Some(index + 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
+    }
+
+    pub fn clear_completed_turn_selection(&mut self) {
+        self.selected_completed_turn_idx = None;
+        self.completed_turn_selection_visible_pending = false;
+    }
+
+    pub fn select_completed_turn(&mut self, index: usize) -> bool {
+        if index >= self.completed_turns.len() {
+            return false;
+        }
+        self.selected_completed_turn_idx = Some(index);
+        self.completed_turn_selection_visible_pending = true;
+        true
+    }
+
+    pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        turn.expanded = !turn.expanded;
+        true
     }
 
     pub fn toggle_selected_completed_turn(&mut self) {
         let Some(index) = self.selected_completed_turn_idx else {
             return;
         };
-        if let Some(turn) = self.completed_turns.get_mut(index) {
-            turn.expanded = !turn.expanded;
+        if self.toggle_completed_turn(index) {
+            self.completed_turn_selection_visible_pending = true;
         }
-    }
-
-    pub fn current_turn_details(&self) -> Vec<ChatMessage> {
-        self.messages
-            .iter()
-            .filter(|message| !matches!(message, ChatMessage::User(_)))
-            .cloned()
-            .collect()
     }
 }
 

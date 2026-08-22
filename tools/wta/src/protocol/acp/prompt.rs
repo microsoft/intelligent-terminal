@@ -47,7 +47,10 @@ pub(crate) fn merge_runtime_sections(template: &str, runtime_sections: &[String]
         .join("\n\n");
 
     if runtime_block.is_empty() {
-        return template.trim_end().to_string();
+        return template
+            .replace(RUNTIME_CONTEXT_MARKER, "")
+            .trim_end()
+            .to_string();
     }
 
     if template.contains(RUNTIME_CONTEXT_MARKER) {
@@ -71,7 +74,7 @@ fn load_autofix_prompt_template_from_root(
         let user_path = prompt_root.join(AUTOFIX_USER_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&user_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-Fix Agent".to_string(),
+                display_name: "Auto-Fix Instructions".to_string(),
                 content,
                 source_label: format!("user:{}", user_path.display()),
             };
@@ -80,7 +83,7 @@ fn load_autofix_prompt_template_from_root(
         let default_path = prompt_root.join(AUTOFIX_DEFAULT_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&default_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-Fix Agent".to_string(),
+                display_name: "Auto-Fix Instructions".to_string(),
                 content,
                 source_label: format!("default:{}", default_path.display()),
             };
@@ -88,7 +91,7 @@ fn load_autofix_prompt_template_from_root(
     }
 
     PlannerPromptTemplate {
-        display_name: "Auto-Fix Agent".to_string(),
+        display_name: "Auto-Fix Instructions".to_string(),
         content: embedded_default_prompt.to_string(),
         source_label: "embedded:auto-fix.md".to_string(),
     }
@@ -266,6 +269,16 @@ mod tests {
     }
 
     #[test]
+    fn merge_runtime_sections_removes_marker_when_context_is_empty() {
+        let merged = merge_runtime_sections(
+            &format!("before\n{}\nafter", RUNTIME_CONTEXT_MARKER),
+            &[],
+        );
+
+        assert_eq!(merged, "before\n\nafter");
+    }
+
+    #[test]
     fn embedded_prompts_use_the_mcp_tool_schema_as_authority() {
         for prompt in [EMBEDDED_DEFAULT_PROMPT, EMBEDDED_AUTOFIX_PROMPT] {
             assert!(prompt.contains("provides an MCP server for this session"));
@@ -276,6 +289,8 @@ mod tests {
             assert!(!prompt.contains("```json"));
         }
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("`request_user_input`"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("instead of guessing"));
         assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Submit exactly one `send` action"));
     }
 

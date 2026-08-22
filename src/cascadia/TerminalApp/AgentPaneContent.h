@@ -66,21 +66,12 @@ namespace winrt::TerminalApp::implementation
         // Update the cached pane-position. Fires StateChanged so the
         // bottom bar can refresh its toggle-icon orientation.
         void SetAgentPanePosition(const winrt::hstring& position);
-        // --- Cross-window drag rename plumbing ---
-        // When a tab is dragged into this window, the source side has stashed
-        // the originating tab's StableId keyed by ContentId. The target
-        // window's `_MakeTerminalPane` consumes that entry, wraps the
-        // ContentId-reattached pane back into an AgentPaneContent, and stores
-        // the old StableId here. After the new Tab is constructed (with its
-        // own fresh StableId), the page walks the agent leaves and emits a
-        // `tab_renamed` event so the wta-helper can rekey its `--owner-tab-id`.
-        // Internal-only (not on IDL) — only TerminalPage calls these.
         void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }
         winrt::hstring TakePendingRenameFromTabId() noexcept
         {
-            const auto v = _pendingRenameFromTabId;
+            const auto value = _pendingRenameFromTabId;
             _pendingRenameFromTabId = {};
-            return v;
+            return value;
         }
         void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
         std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
@@ -89,6 +80,7 @@ namespace winrt::TerminalApp::implementation
             _pendingAgentSourceProfileGuid.reset();
             return value;
         }
+        void PrepareForCrossWindowTransfer() noexcept { _helperTransferredForDrag = true; }
 
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
@@ -152,7 +144,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
 
-        // When true, the bar replaces "<agent> <version>" with "Agent sessions"
+        // When true, the bar replaces the agent/model label with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
@@ -169,13 +161,9 @@ namespace winrt::TerminalApp::implementation
         // TerminalPage updates it from the Tab runtime override or global
         // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
-
-        // Source-tab StableId stashed during a cross-window agent-pane drag
-        // (target side, between `_MakeTerminalPane` ContentId-reattach and
-        // post-Tab-construction in `_InitializeTab`). Empty when no rename
-        // is pending. See SetPendingRenameFromTabId / TakePendingRenameFromTabId.
         winrt::hstring _pendingRenameFromTabId{};
         std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
+        bool _helperTransferredForDrag{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

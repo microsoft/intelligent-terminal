@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Brúigh Enter chun triail a bhaint as arís, 
 chat.activity_thinking: "Ag smaoineamh…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Fáilte go Teirminéal Cliste!"
-chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI. Seiceáil le haghaidh botúin."
+chat.welcome_disclaimer: "Úsáideann Teirminéal Cliste AI."
 chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ conair mhargaidh as feidhm"
 hooks.installed_but_disabled: "⚠ suiteáilte ach díchumasaithe"
 hooks.not_installed: "✗ níl suiteáilte"
 hooks.uninstall_skipped: "léimthe (CLI níl ar PATH)"
-hooks.install_attempted: "Rinneadh iarracht wt-agent-hooks a shuiteáil (iompóiteach). Rith `wta hooks status` chun an toradh a iniúchadh. Loga rianaithe: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks suiteáilte do %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "anois díreach"
 time.minute_singular: "%{count} nóiméad ó shin"
@@ -214,8 +214,17 @@ system.agent_switch_unavailable: "Níl athrú gníomhaire ar fáil lasmuigh de c
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
+commands.config.summary: "Cumfiguraigh an seisiún gníomhaire seo"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bog pána gníomhaire an chluaisín seo (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Cumraíocht seisiúin (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Níor fhógair an gníomhaire nasctha aon roghanna seisiúin in-cumraithe."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Theip ar nuashonrú %{option}: %{error}"
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}

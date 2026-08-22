@@ -1075,6 +1075,9 @@ try
         // and tears down that tab's agent pane.
         _dispatchCloseAgentPaneToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::DefaultPaste:
+        _dispatchDefaultPasteToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentState:
         // Per-tab agent-pane UI snapshot from wta. Page-side handler
         // routes by `tab_id` to the matching AgentPaneContent (creating
@@ -1097,12 +1100,8 @@ try
         // wta-master process via SharedWta.
         _dispatchRestartAgentStackToPage(eventH);
         return S_OK;
-    case ProtocolParsing::SendEventRoute::RestartAgentPane:
-        // Master detected a helper's pipe disconnect (crash or clean
-        // exit). Page-side handler resolves the tab via `tab_id` and
-        // re-warms a fresh helper, resuming `session_id`. Suppressed when
-        // the pane was torn down deliberately (Ctrl+C×2, tab close).
-        _dispatchRestartAgentPaneToPage(eventH);
+    case ProtocolParsing::SendEventRoute::AgentSessionsRetired:
+        _dispatchAgentSessionsRetiredToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
@@ -1260,17 +1259,12 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
     }
 }
 
-void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchDefaultPasteToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
     {
         return;
     }
-    // Fan out to every window so each page tears down its own agent panes.
-    // The actual `SharedWta::Restart()` call inside each page-side handler
-    // takes the shared lock and is safe to invoke multiple times — only the
-    // first one in flight does work; the others observe `_process` invalid
-    // (or already-respawned by the winning thread) and no-op.
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -1288,7 +1282,55 @@ void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hs
             [page, eventJson]() {
                 try
                 {
-                    page.OnRestartAgentStackRequested(eventJson);
+                    page.OnDefaultPasteRequested(eventJson);
+                }
+                catch (...)
+                {
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    Json::Value event;
+    if (!ProtocolParsing::ParseJson(winrt::to_string(eventJson), event))
+    {
+        return;
+    }
+    static std::atomic<uint64_t> nextRequestId{ 0 };
+    const auto requestId =
+        std::to_string(GetCurrentProcessId()) + "-restart-" +
+        std::to_string(++nextRequestId);
+    ProtocolParsing::EnsureRequestId(event, requestId);
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const auto stampedEvent = winrt::to_hstring(Json::writeString(writer, event));
+
+    // Stamp once before fan-out so every page joins the same retirement
+    // operation, even when one window handles the dispatch much later.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, stampedEvent]() {
+                try
+                {
+                    page.OnRestartAgentStackRequested(stampedEvent);
                 }
                 catch (...)
                 {
@@ -1298,15 +1340,12 @@ void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hs
     }
 }
 
-void TerminalProtocolComServer::_dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchAgentSessionsRetiredToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
     {
         return;
     }
-    // Fan out to every window; the wta-master is shared across all windows
-    // and the page-side handler resolves the right tab via `tab_id`. Pages
-    // without a matching tab no-op (see OnAgentPaneRestartRequested).
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -1324,11 +1363,10 @@ void TerminalProtocolComServer::_dispatchRestartAgentPaneToPage(const winrt::hst
             [page, eventJson]() {
                 try
                 {
-                    page.OnAgentPaneRestartRequested(eventJson);
+                    page.OnAgentSessionsRetired(eventJson);
                 }
                 catch (...)
                 {
-                    // Swallow: page may have been torn down during dispatch.
                 }
             });
     }

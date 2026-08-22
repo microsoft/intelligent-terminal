@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  Enter を押して再試行するか、Esc �
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"
 chat.welcome_title: "インテリジェント ターミナルへようこそ！"
-chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。誤りがないか確認してください。"
+chat.welcome_disclaimer: "インテリジェント ターミナルは AI を使用しています。"
 chat.plan_header: "プラン:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -173,7 +173,7 @@ hooks.marketplace_path_stale: "⚠ マーケットプレース パスが古く�
 hooks.installed_but_disabled: "⚠ インストール済みですが無効になっています"
 hooks.not_installed: "✗ 未インストール"
 hooks.uninstall_skipped: "スキップ (CLI が PATH 上にありません)"
-hooks.install_attempted: "wt-agent-hooks のインストールを試行しました (べき等)。結果を確認するには `wta hooks status` を実行してください。トレース ログ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks は %{clis} 用にインストール済みです"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "たった今"
 time.minute_singular: "%{count} 分前"
@@ -210,8 +210,17 @@ system.agent_switch_unavailable: "Windows Terminal タブの外ではエージ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
+commands.config.summary: "このエージェント セッションを構成"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "このタブのエージェント ペインを移動 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "セッションの構成 (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "接続されているエージェントは、構成可能なセッション オプションを一切通知しませんでした。"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} の更新に失敗しました: %{error}"
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}

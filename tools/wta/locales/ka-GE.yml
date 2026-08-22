@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  დააჭირეთ Enter-ს ხელ�
 chat.activity_thinking: "ვფიქრობ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
-chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს. შეამოწმეთ შეცდომები."
+chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს."
 chat.plan_header: "გეგმა:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ მარკეტის ბილიკი �
 hooks.installed_but_disabled: "⚠ დაინსტალირებული, მაგრამ გათიშული"
 hooks.not_installed: "✗ არ არის დაინსტალირებული"
 hooks.uninstall_skipped: "გამოტოვებული (CLI არ არის PATH-ზე)"
-hooks.install_attempted: "wt-agent-hooks ინსტალაცია სცადეს (იდემპოტენტური). გაუშვით `wta hooks status` შედეგის სანახავად. თრეის ლოგი: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks დაინსტალირებულია %{clis}-სთვის"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ახლახან"
 time.minute_singular: "1 წუთის წინ"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "აგენტის გადართვა
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
+commands.config.summary: "აგენტის ამ სესიის კონფიგურაცია"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ამ ჩანართის აგენტის პანელის გადატანა (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "სესიის კონფიგურაცია (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "დაკავშირებულ აგენტს არ გამოუცხადებია სესიის კონფიგურირებადი პარამეტრები."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option}-ის განახლება ვერ შესრულდა: %{error}"
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}

@@ -10,10 +10,10 @@
 ## Overview
 
 WTA is a Rust application. **Current model (see OVERVIEW.md):** it runs as a
-`wta-master` singleton (owns the agent CLI) plus one `wta-helper` TUI per agent
-pane (ACP over a named pipe), with stateless **CLI helpers** (`wta list-panes`,
-`wta capture-pane`, …) for one-shot WT control. There is no standalone TUI and no
-MCP server.
+`wta-master` singleton (owns a lazy agent CLI pool) plus one `wta-helper` TUI
+per agent pane (ACP over a named pipe), with stateless **CLI helpers**
+(`wta list-panes`, `wta capture-pane`, …) for one-shot WT control. There is no
+standalone TUI or standalone MCP server mode.
 
 *The historical description below predates that change:*
 

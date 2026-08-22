@@ -143,11 +143,9 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         return { .args = {}, .firstPane = shared_from_this(), .focusedPaneId = std::nullopt, .panesCreated = 0 };
     }
 
-    // Agent panes participate in cross-window move (Content / MovePane); their
-    // conpty + helper child survive via the ContentId reattach mechanism (see
-    // _MakePane), and the helper process is unchanged across the drag.
-    //
-    // Persistence (BuildStartupKind::Persist, i.e. app restart) is different:
+    // Agent panes participate in live cross-window Content moves through the
+    // ContentId reattach path. Persistence (BuildStartupKind::Persist, i.e.
+    // app restart) is different and needs an explicit exclusion:
     // an agent pane's command line is session-specific (it points at the
     // previous run's wta-master named pipe and an owner-tab-id that no longer
     // exist), and after a restart there is no live master / helper / conpty
@@ -3426,15 +3424,11 @@ void Pane::SetAgentChipVisible(bool value)
 }
 
 // The connection's session GUID for terminal panes. Returns the empty
-// guid for non-terminal panes (e.g. branch nodes, agent panes, snippets).
+// guid for non-terminal panes (e.g. branch nodes and snippets).
 // Used by Tab to match a protocol-supplied pane id to a Pane.
 winrt::guid Pane::GetSessionId() const
 {
-    // Mirror `_getSessionIdFromPane` in TerminalPage.Protocol.cpp:
-    // walk content → control → connection and read the SessionId. Using
-    // GetContent() (instead of `_content` directly) keeps the non-leaf
-    // case to a clean nullptr without needing an explicit leaf check.
-    if (const auto termContent = GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+    if (const auto termContent = _getTerminalContent())
     {
         if (const auto control = termContent.GetTermControl())
         {
