@@ -505,12 +505,19 @@ impl SessionsOriginArg {
 #[derive(Subcommand, Debug)]
 pub(crate) enum HooksAction {
     /// (Re-)install the wt-agent-hooks bridge. Installs for all supported
-    /// CLIs by default, or a single CLI with `--cli`. With `--json` returns
-    /// a structured per-CLI outcome report.
+    /// CLIs by default, or a single CLI with `--cli`. `--only-missing` skips
+    /// CLIs that are already current and upgrades the ones that are behind.
+    /// With `--json` returns a structured per-CLI outcome report.
     Install {
         /// Which CLI to install for. Default: `all`.
         #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
         cli: HooksCliFilter,
+        /// Skip CLIs whose hook bridge is already complete and current. A
+        /// complete but out-of-date bridge is upgraded rather than
+        /// re-installed, because a second `install` no-ops; missing, partial,
+        /// disabled and stale-path bridges are installed as usual.
+        #[arg(long)]
+        only_missing: bool,
     },
     /// Print per-CLI install state. Returns JSON with `--json`,
     /// or a human-readable table by default.

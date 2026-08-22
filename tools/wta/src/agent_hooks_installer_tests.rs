@@ -2135,6 +2135,155 @@ fn gemini_extensions_list_json_parser_reports_the_installed_version() {
     assert_eq!(parsed.version.map(|v| v.to_string()), Some("0.1.5".into()));
 }
 
+// ---- decide_install_action (`hooks install --only-missing`) ----------
+
+fn installed_status(name: &'static str) -> CliStatus {
+    CliStatus {
+        name,
+        binary_on_path: true,
+        binary_path: None,
+        marketplace_registered: true,
+        marketplace_path: None,
+        marketplace_path_valid: true,
+        plugin_installed: true,
+        plugin_enabled: true,
+        installed_version: Some("0.1.6".into()),
+        bundle_version: Some("0.1.6".into()),
+        detection_fallback: None,
+    }
+}
+
+/// A complete bridge at the bundled version has nothing left to do. Installed
+/// being *newer* counts too — that is a dev worktree pointed at a fresher
+/// bundle, and "upgrading" it would be a downgrade.
+#[test]
+fn install_action_skips_a_complete_current_bridge() {
+    assert_eq!(
+        decide_install_action(&installed_status("copilot")),
+        InstallAction::Skip
+    );
+    assert_eq!(
+        decide_install_action(&CliStatus {
+            installed_version: Some("0.2.0".into()),
+            ..installed_status("copilot")
+        }),
+        InstallAction::Skip
+    );
+}
+
+/// The case this three-way split exists for: the bridge is complete, so
+/// `install` would answer "already installed" and change nothing. Only the
+/// per-CLI upgrade flow can move it to the bundled version.
+#[test]
+fn install_action_upgrades_a_complete_but_outdated_bridge() {
+    assert_eq!(
+        decide_install_action(&CliStatus {
+            installed_version: Some("0.1.5".into()),
+            ..installed_status("copilot")
+        }),
+        InstallAction::Upgrade
+    );
+}
+
+/// An unreadable version on either side is not proof of staleness. `install`
+/// would no-op against a complete bridge, and master startup re-checks it
+/// with a richer probe than `CliStatus` carries, so skipping is both honest
+/// and cheap.
+#[test]
+fn install_action_skips_when_a_version_is_unreadable() {
+    for status in [
+        CliStatus {
+            installed_version: None,
+            ..installed_status("copilot")
+        },
+        CliStatus {
+            bundle_version: None,
+            ..installed_status("copilot")
+        },
+        CliStatus {
+            installed_version: Some("1.2".into()),
+            ..installed_status("copilot")
+        },
+    ] {
+        assert_eq!(decide_install_action(&status), InstallAction::Skip, "{status:?}");
+    }
+}
+
+/// Every partial state must stay eligible for a real install. Each of these
+/// reads as "something is installed" to a casual check, which is why they are
+/// listed out rather than folded into one assertion.
+#[test]
+fn install_action_installs_any_partial_bridge() {
+    let partials = [
+        CliStatus {
+            marketplace_registered: false,
+            ..installed_status("copilot")
+        },
+        CliStatus {
+            marketplace_path_valid: false,
+            ..installed_status("copilot")
+        },
+        CliStatus {
+            plugin_installed: false,
+            ..installed_status("copilot")
+        },
+        CliStatus {
+            plugin_enabled: false,
+            ..installed_status("copilot")
+        },
+    ];
+    for status in partials {
+        assert_eq!(
+            decide_install_action(&status),
+            InstallAction::Install,
+            "{status:?} must stay installable"
+        );
+    }
+}
+
+/// A partial bridge that is also out of date must still be installed, not
+/// upgraded: the upgrade flow refuses a disabled or unregistered plugin, so
+/// routing it there would leave it broken.
+#[test]
+fn install_action_prefers_install_over_upgrade_for_a_broken_outdated_bridge() {
+    assert_eq!(
+        decide_install_action(&CliStatus {
+            plugin_enabled: false,
+            installed_version: Some("0.1.5".into()),
+            ..installed_status("copilot")
+        }),
+        InstallAction::Install
+    );
+}
+
+/// A CLI that isn't on PATH can't be skipped as "already done" — the install
+/// path has its own reason for passing on it, and conflating the two would
+/// hide a CLI that vanished from PATH after its hooks were installed.
+#[test]
+fn install_action_installs_when_the_cli_is_not_on_path() {
+    assert_eq!(
+        decide_install_action(&CliStatus {
+            binary_on_path: false,
+            ..installed_status("copilot")
+        }),
+        InstallAction::Install
+    );
+}
+
+/// The fs fallback is a guess about another tool's private on-disk layout.
+/// It is good enough to report a state; it is not good enough to decline the
+/// work the user explicitly asked for.
+#[test]
+fn install_action_installs_when_the_verdict_came_from_the_fs_fallback() {
+    assert_eq!(
+        decide_install_action(&CliStatus {
+            detection_fallback: Some("fs"),
+            ..installed_status("copilot")
+        }),
+        InstallAction::Install
+    );
+}
+
 // ---- run_plugin_cli idempotency (#17) -------------------------------
 
 #[test]
