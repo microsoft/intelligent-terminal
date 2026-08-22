@@ -208,5 +208,8 @@ namespace TerminalApp
         // fresh agent CLI session under the same stable master pipe.
         void OnRestartAgentStackRequested(String eventJson);
 
+        // Inbound completion for a destructive agent-session retirement:
+        // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
+        void OnAgentSessionsRetired(String eventJson);
     }
 }

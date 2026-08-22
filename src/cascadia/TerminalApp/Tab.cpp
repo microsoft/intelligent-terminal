@@ -5,7 +5,6 @@
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
 #include "AgentPaneContent.h"
-#include "AgentPaneDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -576,57 +575,6 @@ namespace winrt::TerminalApp::implementation
     std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind) const
     {
         ASSERT_UI_THREAD();
-
-        // Cross-window agent-pane drag stash (Content kind only).
-        // BuildStartupKind::Content is used when serializing for a
-        // cross-window move (see TerminalPage::_MoveTab → _MoveContent).
-        // Persist is for app restart (no live source-window peer) and
-        // MovePane is intra-window (same Tab, no StableId change), so
-        // neither needs the stash.
-        //
-        // For every leaf pane whose content is an AgentPaneContent, we
-        // record (live ContentId → this tab's StableId) so the target
-        // window's _MakeTerminalPane can recognize it as an agent pane
-        // and rewrap + emit `tab_renamed` (handled by part 3).
-        if (kind == BuildStartupKind::Content && _rootPane)
-        {
-            const auto& myStableId = _stableId;
-            const auto sourceProfileGuid = _agentSourceProfileGuid;
-            _rootPane->WalkTree([&myStableId, &sourceProfileGuid](const auto& p) {
-                if (!p->_IsLeaf())
-                {
-                    return false;
-                }
-                const auto& content = p->GetContent();
-                if (!content)
-                {
-                    return false;
-                }
-                if (!content.try_as<winrt::TerminalApp::AgentPaneContent>())
-                {
-                    return false;
-                }
-                // AgentPaneContent.GetNewTerminalArgs(Content) forwards
-                // to the inner TerminalPaneContent which fills ContentId
-                // from the underlying TermControl.
-                const auto newArgs = content.GetNewTerminalArgs(BuildStartupKind::Content);
-                const auto& termArgs = newArgs.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
-                if (!termArgs)
-                {
-                    return false;
-                }
-                const auto cid = termArgs.ContentId();
-                if (cid == 0)
-                {
-                    return false;
-                }
-                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                    cid,
-                    myStableId,
-                    sourceProfileGuid);
-                return false;
-            });
-        }
 
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.

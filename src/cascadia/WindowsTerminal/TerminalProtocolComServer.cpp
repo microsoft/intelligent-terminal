@@ -1100,6 +1100,9 @@ try
         // wta-master process via SharedWta.
         _dispatchRestartAgentStackToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentSessionsRetired:
+        _dispatchAgentSessionsRetiredToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::Broadcast:
     {
         Json::StreamWriterBuilder wb;
@@ -1294,11 +1297,55 @@ void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hs
     {
         return;
     }
-    // Fan out to every window so each page tears down its own agent panes.
-    // The actual `SharedWta::Restart()` call inside each page-side handler
-    // takes the shared lock and is safe to invoke multiple times — only the
-    // first one in flight does work; the others observe `_process` invalid
-    // (or already-respawned by the winning thread) and no-op.
+    Json::Value event;
+    if (!ProtocolParsing::ParseJson(winrt::to_string(eventJson), event))
+    {
+        return;
+    }
+    static std::atomic<uint64_t> nextRequestId{ 0 };
+    const auto requestId =
+        std::to_string(GetCurrentProcessId()) + "-restart-" +
+        std::to_string(++nextRequestId);
+    ProtocolParsing::EnsureRequestId(event, requestId);
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const auto stampedEvent = winrt::to_hstring(Json::writeString(writer, event));
+
+    // Stamp once before fan-out so every page joins the same retirement
+    // operation, even when one window handles the dispatch much later.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, stampedEvent]() {
+                try
+                {
+                    page.OnRestartAgentStackRequested(stampedEvent);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentSessionsRetiredToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
     for (const auto& host : s_emperor->GetWindows())
     {
         auto page = _getPage(host.get());
@@ -1316,11 +1363,10 @@ void TerminalProtocolComServer::_dispatchRestartAgentStackToPage(const winrt::hs
             [page, eventJson]() {
                 try
                 {
-                    page.OnRestartAgentStackRequested(eventJson);
+                    page.OnAgentSessionsRetired(eventJson);
                 }
                 catch (...)
                 {
-                    // Swallow: page may have been torn down during dispatch.
                 }
             });
     }
