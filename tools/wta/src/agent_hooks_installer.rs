@@ -702,82 +702,114 @@ pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
 /// entirely.
 ///
 /// Exists because [`CliScope`] can only say "all" or "one", and
-/// `wta hooks install --only-missing` needs to name an arbitrary subset: the
-/// CLIs that [`is_up_to_date`] could not vouch for. Per-CLI failures are
-/// recorded and the loop continues — one CLI's broken install must not hide
-/// the others.
+/// `wta hooks install --only-missing` needs to name an arbitrary subset.
+/// Every named CLI gets the first-run install flow; callers that also want
+/// out-of-date bridges upgraded build a plan with [`decide_install_action`]
+/// and hand it to [`apply_install_plan`] instead.
 pub fn ensure_installed_for(clis: &[CliKind]) -> Vec<InstallFailure> {
-    let Some(home) = home_dir() else {
-        tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
-        return Vec::new();
-    };
-    let mut failures = Vec::new();
-    let mut record = |cli: CliKind, outcome: InstallOutcome| {
-        if let InstallOutcome::Failed(reason) = outcome {
-            failures.push(InstallFailure {
-                cli: cli.name(),
-                reason,
-            });
-        }
-    };
-    if clis.contains(&CliKind::Claude) {
-        record(CliKind::Claude, install_for_claude(&home));
-    }
-    if clis.contains(&CliKind::Copilot) {
-        record(CliKind::Copilot, install_for_copilot(&home));
-    }
-    if clis.contains(&CliKind::Gemini) {
-        record(CliKind::Gemini, install_for_gemini(&home));
-    }
-    if clis.contains(&CliKind::Codex) {
-        record(CliKind::Codex, install_for_codex(&home));
-    }
-    if clis.contains(&CliKind::OpenCode) {
-        record(CliKind::OpenCode, install_for_opencode(&home));
-    }
-    failures
+    let plan: Vec<(CliKind, InstallAction)> = CliKind::ALL
+        .iter()
+        .copied()
+        .filter(|kind| clis.contains(kind))
+        .map(|kind| (kind, InstallAction::Install))
+        .collect();
+    apply_install_plan(&plan)
 }
 
-/// True when re-running the install commands for this CLI would change
-/// nothing: the CLI is on PATH, every piece of the bridge is registered,
-/// path-valid, installed and enabled, and the version it reports is at least
-/// the one this wta bundles.
+/// What an install pass should do for one CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallAction {
+    /// The bridge is complete and not known to be behind the bundle. Nothing
+    /// to do.
+    Skip,
+    /// Nothing usable is registered — or what is registered is partial,
+    /// disabled, or points at a path that no longer exists. Run the first-run
+    /// install flow.
+    Install,
+    /// The bridge is complete but older than the bundle. Run the per-CLI
+    /// upgrade flow, **not** the install flow: every supported CLI answers a
+    /// second `plugin install` with "already installed" and changes nothing,
+    /// so installing here would report a success that never happened.
+    Upgrade,
+}
+
+/// Decide what an install pass should do for one CLI, from its status row.
 ///
-/// Backs `wta hooks install --only-missing`, which the Settings "Install
-/// hooks" button uses so an already-current machine doesn't pay two Node
-/// spawns per CLI to rewrite plugin directories byte-for-byte — a rewrite
-/// that can outright fail when a running agent CLI holds one of those
-/// directories open.
+/// Pure — no IO, no spawns. Splits the three cases the Settings "Install
+/// hooks" button has to tell apart:
 ///
-/// Deliberately strict; every looser state stays eligible for a re-install,
-/// because those are exactly the states the button exists to repair:
+///   * incomplete in any way (not on PATH, marketplace missing or pointing at
+///     a pruned path, plugin missing or disabled, or a verdict that came from
+///     filesystem heuristics rather than the CLI itself) → [`InstallAction::Install`];
+///   * complete but a release behind the bundle → [`InstallAction::Upgrade`],
+///     because `install` cannot upgrade — that needs `plugin update` /
+///     `extensions update` / a Codex reinstall;
+///   * complete and not provably behind → [`InstallAction::Skip`].
 ///
-///   * partial install, stale marketplace path, or disabled plugin — the
-///     boolean flags below already disagree with "installed";
-///   * `detection_fallback` set — the verdict came from filesystem
-///     heuristics about another tool's private layout, which is a good
-///     enough signal to *report* but not to decline work the user asked for;
-///   * either version unknown or the installed one older than the bundle —
-///     we can't prove the on-disk copy is current, so we don't assume it.
-pub fn is_up_to_date(status: &CliStatus) -> bool {
-    if !(status.binary_on_path
+/// An unreadable version on either side lands in `Skip`: we can't prove the
+/// bridge is stale, running `install` against it would no-op anyway, and
+/// [`upgrade_installed_hooks`] re-checks it at master startup with a richer
+/// probe than [`CliStatus`] carries.
+pub fn decide_install_action(status: &CliStatus) -> InstallAction {
+    let complete = status.binary_on_path
         && status.marketplace_registered
         && status.marketplace_path_valid
         && status.plugin_installed
-        && status.plugin_enabled)
-    {
-        return false;
-    }
-    if status.detection_fallback.is_some() {
-        return false;
+        && status.plugin_enabled
+        && status.detection_fallback.is_none();
+    if !complete {
+        return InstallAction::Install;
     }
     let parse = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<Version>().ok());
     match (
         parse(&status.installed_version),
         parse(&status.bundle_version),
     ) {
-        (Some(installed), Some(bundled)) => installed >= bundled,
-        _ => false,
+        (Some(installed), Some(bundled)) if installed < bundled => InstallAction::Upgrade,
+        _ => InstallAction::Skip,
+    }
+}
+
+/// Execute a per-CLI plan of [`InstallAction`]s.
+///
+/// Per-CLI failures are recorded and the loop continues — one CLI's broken
+/// install must not hide the others. `Skip` entries are accepted and ignored
+/// so callers may pass a full plan or a pre-filtered one.
+pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailure> {
+    let Some(home) = home_dir() else {
+        tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
+        return Vec::new();
+    };
+    let mut failures = Vec::new();
+    for (cli, action) in plan.iter().copied() {
+        let failure = match action {
+            InstallAction::Skip => None,
+            InstallAction::Install => match install_one(cli, &home) {
+                InstallOutcome::Failed(reason) => Some(reason),
+                InstallOutcome::Installed | InstallOutcome::Skipped => None,
+            },
+            InstallAction::Upgrade => {
+                upgrade_one_cli(cli, &home, read_bundled_version(cli)).err()
+            }
+        };
+        if let Some(reason) = failure {
+            failures.push(InstallFailure {
+                cli: cli.name(),
+                reason,
+            });
+        }
+    }
+    failures
+}
+
+/// Per-CLI dispatch for the first-run install flow.
+fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
+    match cli {
+        CliKind::Copilot => install_for_copilot(home),
+        CliKind::Claude => install_for_claude(home),
+        CliKind::Gemini => install_for_gemini(home),
+        CliKind::Codex => install_for_codex(home),
+        CliKind::OpenCode => install_for_opencode(home),
     }
 }
 
@@ -4288,7 +4320,7 @@ pub fn upgrade_installed_hooks() {
         }
 
         // Cache miss (or first ever run): do the full per-CLI check.
-        let completed = upgrade_one_cli(cli, &home, bundle_version);
+        let completed = upgrade_one_cli(cli, &home, bundle_version).is_ok();
 
         // Cache completed checks, including intentional skips. Failed
         // OpenCode file copies must retry on the next startup.
@@ -4355,7 +4387,15 @@ fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
 }
 
 /// Per-CLI upgrade entry: read installed state, decide, dispatch.
-fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
+///
+/// `Err` carries a user-facing reason so `wta hooks install` can name what
+/// went wrong per CLI; `upgrade_installed_hooks` only needs the pass/fail bit
+/// because the individual upgrade helpers already log their own errors.
+fn upgrade_one_cli(
+    cli: CliKind,
+    home: &Path,
+    bundle_version: Option<Version>,
+) -> Result<(), String> {
     let probe = probe_installed(cli, home);
     let installed = match probe {
         Ok(installed) => installed,
@@ -4366,7 +4406,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
                 err = %error,
                 "failed to detect installed hook version; leaving cache unchanged for retry",
             );
-            return false;
+            return Err(format!("failed to detect the installed hook version: {error}"));
         }
     };
 
@@ -4387,7 +4427,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         "upgrade decision",
     );
 
-    match action {
+    let succeeded = match action {
         UpgradeAction::Skip(_) => true,
         UpgradeAction::UpdatePlugin => match cli {
             CliKind::Copilot => upgrade_copilot(home),
@@ -4434,6 +4474,17 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
         UpgradeAction::OpenCodeCopy => install_for_opencode(home).installed(),
+    };
+    if succeeded {
+        Ok(())
+    } else {
+        // The helper that failed has already logged the concrete command and
+        // stderr; threading that string back through five `bool`-returning
+        // upgrade paths would be a bigger change than the report is worth.
+        Err(format!(
+            "{} hook upgrade failed; see wta-install-hooks.log",
+            cli.name()
+        ))
     }
 }
 

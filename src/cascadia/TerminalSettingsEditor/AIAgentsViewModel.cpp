@@ -1328,13 +1328,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _installingAgentHooks = true;
         _agentHooksInstallSummary = RS_(L"AIAgents_HooksInstallingSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        // `--only-missing` leaves CLIs that already carry the bundled hook
-        // version alone instead of re-running their install commands. Those
-        // reinstalls change nothing on disk, cost two Node spawns per CLI, and
-        // fail outright when a running agent CLI holds its plugin directory
-        // open — so on an already-current machine the button used to be slow
-        // and could report a failure for work that never needed doing.
-        // Anything less than fully-installed-and-current is still repaired.
+        // `--only-missing` builds a per-CLI plan from a status pre-pass:
+        // complete-and-current CLIs are left alone, a complete but
+        // out-of-date bridge is upgraded, and anything missing, partial,
+        // disabled or pointing at a stale path is installed.
+        //
+        // The distinction matters. Re-running `plugin install` on a complete
+        // bridge changes nothing — every CLI answers "already installed" —
+        // costs two Node spawns per CLI, and fails outright when a running
+        // agent CLI holds its plugin directory open, so the button used to be
+        // slow and could report a failure for work that never needed doing.
+        // Routing an out-of-date bridge there would be worse still: it would
+        // no-op and then report success. Upgrading needs `plugin update` /
+        // `extensions update` / a Codex reinstall, which is what wta runs.
         _RunHooksWtaAsync(L"hooks install --only-missing");
     }
 
