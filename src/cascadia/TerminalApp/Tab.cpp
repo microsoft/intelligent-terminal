@@ -577,14 +577,28 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
+        // Give initial ids (0 for the child created with this tab,
+        // 1 for the child after the first split.
+        auto state = _rootPane->BuildStartupActions(0, 1, kind);
+
         // Content serialization is a live cross-window move. Preserve the
         // helper and record enough identity for the destination to restore
         // AgentPaneContent and rekey the existing WTA session.
         if (kind == BuildStartupKind::Content && _rootPane)
         {
+            uint64_t firstPaneContentId = 0;
+            if (state.firstPane)
+            {
+                const auto firstPaneArgs = state.firstPane->GetTerminalArgsForPane(BuildStartupKind::Content).try_as<NewTerminalArgs>();
+                if (firstPaneArgs)
+                {
+                    firstPaneContentId = firstPaneArgs.ContentId();
+                }
+            }
+
             const auto& stableId = _stableId;
             const auto sourceProfileGuid = _agentSourceProfileGuid;
-            _rootPane->WalkTree([&stableId, &sourceProfileGuid](const auto& pane) {
+            _rootPane->WalkTree([&stableId, &sourceProfileGuid, firstPaneContentId](const auto& pane) {
                 if (!pane->_IsLeaf())
                 {
                     return false;
@@ -599,15 +613,25 @@ namespace winrt::TerminalApp::implementation
 
                 const auto args = content.GetNewTerminalArgs(BuildStartupKind::Content);
                 const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
-                if (!terminalArgs || terminalArgs.ContentId() == 0)
+                if (!terminalArgs)
                 {
                     return false;
                 }
 
+                const auto contentId = terminalArgs.ContentId();
+                if (contentId == 0)
+                {
+                    return false;
+                }
+
+                const auto attachDisposition = contentId == firstPaneContentId ?
+                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab :
+                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
                 winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                    terminalArgs.ContentId(),
+                    contentId,
                     stableId,
-                    sourceProfileGuid);
+                    sourceProfileGuid,
+                    attachDisposition);
                 if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
                 {
                     impl->PrepareForCrossWindowTransfer();
@@ -615,10 +639,6 @@ namespace winrt::TerminalApp::implementation
                 return false;
             });
         }
-
-        // Give initial ids (0 for the child created with this tab,
-        // 1 for the child after the first split.
-        auto state = _rootPane->BuildStartupActions(0, 1, kind);
 
         {
             ActionAndArgs newTabAction{};

@@ -18,15 +18,23 @@ namespace winrt::TerminalApp::implementation
     // wrapper identity and old tab StableId needed to rekey WTA routing.
     struct AgentPaneDragStash
     {
+        enum class AttachDisposition
+        {
+            FirstPaneOfNewTab,
+            ExistingTabSplit,
+        };
+
         struct Entry
         {
             std::wstring originalTabId;
             std::optional<winrt::guid> sourceProfileGuid;
+            AttachDisposition attachDisposition;
         };
 
         static void Stash(uint64_t contentId,
                           const winrt::hstring& originalTabId,
-                          const std::optional<winrt::guid>& sourceProfileGuid) noexcept
+                          const std::optional<winrt::guid>& sourceProfileGuid,
+                          AttachDisposition attachDisposition) noexcept
         {
             if (contentId == 0)
             {
@@ -37,12 +45,14 @@ namespace winrt::TerminalApp::implementation
             _Map()[contentId] = Entry{
                 std::wstring{ originalTabId },
                 sourceProfileGuid,
+                attachDisposition,
             };
         }
 
         static bool Take(uint64_t contentId,
                          winrt::hstring& outOriginalTabId,
-                         std::optional<winrt::guid>& outSourceProfileGuid) noexcept
+                         std::optional<winrt::guid>& outSourceProfileGuid,
+                         AttachDisposition& outAttachDisposition) noexcept
         {
             if (contentId == 0)
             {
@@ -59,6 +69,7 @@ namespace winrt::TerminalApp::implementation
 
             outOriginalTabId = winrt::hstring{ it->second.originalTabId };
             outSourceProfileGuid = it->second.sourceProfileGuid;
+            outAttachDisposition = it->second.attachDisposition;
             map.erase(it);
             return true;
         }

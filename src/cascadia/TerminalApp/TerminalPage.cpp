@@ -8685,19 +8685,30 @@ namespace winrt::TerminalApp::implementation
             const uint64_t contentId = newTerminalArgs.ContentId();
             winrt::hstring oldTabId;
             std::optional<winrt::guid> sourceProfileGuid;
+            auto attachDisposition = winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
             if (winrt::TerminalApp::implementation::AgentPaneDragStash::Take(
                     contentId,
                     oldTabId,
-                    sourceProfileGuid))
+                    sourceProfileGuid,
+                    attachDisposition))
             {
+                const bool firstPaneOfNewTab = attachDisposition == winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab;
+                winrt::com_ptr<Tab> focusedTab;
+
                 // A deferred pre-warm can race the serialized SplitPane action.
                 // Retire only that destination-local helper before installing
-                // the live helper carried by the ContentId.
-                if (const auto focusedTab = _GetFocusedTabImpl();
-                    focusedTab && focusedTab->FindAgentPane())
+                // the live helper carried by the ContentId. When this content
+                // becomes the first pane of a brand-new tab, there is no
+                // destination tab yet, so `_GetFocusedTabImpl()` still refers
+                // to an unrelated tab and must not be used here.
+                if (!firstPaneOfNewTab)
                 {
-                    _NotifyAgentTabReset(focusedTab->StableId());
-                    _TeardownAgentPane(focusedTab);
+                    focusedTab = _GetFocusedTabImpl();
+                    if (focusedTab && focusedTab->FindAgentPane())
+                    {
+                        _NotifyAgentTabReset(focusedTab->StableId());
+                        _TeardownAgentPane(focusedTab);
+                    }
                 }
 
                 if (auto wrapped = _WrapInAgentPaneContent(resultPane))
@@ -8715,34 +8726,33 @@ namespace winrt::TerminalApp::implementation
                     {
                         agentContent.SetAgentPanePosition(_settings.GlobalSettings().AgentPanePosition());
                         _WireAgentPaneEvents(agentContent, winrt::com_ptr<Tab>{ nullptr });
-                    }
-
-                    if (const auto focusedTab = _GetFocusedTabImpl())
-                    {
-                        if (sourceProfileGuid)
+                        if (focusedTab)
                         {
-                            focusedTab->AgentSourceProfileGuid(*sourceProfileGuid);
-                        }
+                            if (sourceProfileGuid)
+                            {
+                                focusedTab->AgentSourceProfileGuid(*sourceProfileGuid);
+                            }
 
-                        const auto newTabId = focusedTab->StableId();
-                        if (!oldTabId.empty() && !newTabId.empty() && oldTabId != newTabId)
-                        {
-                            Json::Value params;
-                            params["old_tab_id"] = winrt::to_string(oldTabId);
-                            params["new_tab_id"] = winrt::to_string(newTabId);
-                            params["window_id"] = std::to_string(_WindowProperties.WindowId());
-                            _agentPaneLog(
-                                std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
-                                winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
-                            _RaiseProtocolEvent("tab_renamed", params);
+                            const auto newTabId = focusedTab->StableId();
+                            if (!oldTabId.empty() && !newTabId.empty() && oldTabId != newTabId)
+                            {
+                                Json::Value params;
+                                params["old_tab_id"] = winrt::to_string(oldTabId);
+                                params["new_tab_id"] = winrt::to_string(newTabId);
+                                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                                _agentPaneLog(
+                                    std::string{ "_MakeTerminalPane: emitting tab_renamed old=" } +
+                                    winrt::to_string(oldTabId) + " new=" + winrt::to_string(newTabId));
+                                _RaiseProtocolEvent("tab_renamed", params);
+                            }
                         }
-                    }
-                    else if (const auto agentContent = wrapped->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
-                    {
                         if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent))
                         {
-                            impl->SetPendingRenameFromTabId(oldTabId);
-                            impl->SetPendingAgentSourceProfileGuid(sourceProfileGuid);
+                            if (!focusedTab)
+                            {
+                                impl->SetPendingRenameFromTabId(oldTabId);
+                                impl->SetPendingAgentSourceProfileGuid(sourceProfileGuid);
+                            }
                         }
                     }
 
