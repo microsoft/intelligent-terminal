@@ -121,7 +121,7 @@ impl App {
                     unreachable!();
                 };
                 tab.turn = TurnState::Streaming { prompt };
-                tab.reveal_chars = 0;
+                tab.reveal_graphemes = 0;
                 if kind == ChunkKind::Message {
                     tab.append_agent_chunk(text);
                     true
@@ -389,7 +389,7 @@ impl App {
                 self.turn_clear_agent_activity(session_id);
                 let tab = self.session_tab_mut(session_id);
                 tab.messages.clear();
-                tab.reveal_chars = 0;
+                tab.reveal_graphemes = 0;
                 tab.turn = TurnState::Idle;
                 return;
             }
@@ -702,9 +702,7 @@ impl App {
         } else {
             // AgentMessageEnd already committed this turn while the card was
             // visible, so only annotate that existing history entry.
-            if let Some(last) = tab.completed_turns.last_mut() {
-                last.trailing_marker = Some(marker);
-            }
+            tab.set_last_completed_turn_trailing_marker(marker);
             TurnOutcome::Empty
         };
         tab.turn = TurnState::Surfaced {
@@ -826,9 +824,7 @@ impl App {
             });
             tab.scroll_to_bottom();
         } else if annotate_card {
-            if let Some(last) = tab.completed_turns.last_mut() {
-                last.trailing_marker = Some(canceled_marker);
-            }
+            tab.set_last_completed_turn_trailing_marker(canceled_marker);
         }
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;

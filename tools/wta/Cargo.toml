@@ -22,7 +22,9 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 notify = "6"
 futures = "0.3"
 unicode-width = "0.2"
+unicode-segmentation = "1"
 textwrap = "0.16"
+tui-markdown = { path = "vendor/tui-markdown", default-features = false }
 serde = { version = "1", features = ["derive"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

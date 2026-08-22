@@ -37,6 +37,18 @@ fn cli_parses_global_model_follow_scope() {
 }
 
 #[test]
+fn cli_agent_markdown_defaults_on_and_can_be_disabled_for_helpers() {
+    let default = helper_config(Cli::try_parse_from(["wta"]).expect("defaults must parse"));
+    assert!(default.render_agent_markdown);
+
+    let disabled = helper_config(
+        Cli::try_parse_from(["wta", "--no-agent-markdown"])
+            .expect("Markdown disable flag must parse"),
+    );
+    assert!(!disabled.render_agent_markdown);
+}
+
+#[test]
 fn cli_parses_per_tab_wsl_agent_source() {
     let cli = Cli::try_parse_from([
         "wta",

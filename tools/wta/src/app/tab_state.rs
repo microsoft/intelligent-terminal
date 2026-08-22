@@ -1,6 +1,10 @@
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
@@ -9,6 +13,37 @@ use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
+
+static NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+static NEXT_STREAMING_SOURCE_GENERATION: AtomicU64 = AtomicU64::new(1);
+const MAX_COMPLETED_TURN_LAYOUT_CHANGES: usize = 2048;
+
+pub(crate) struct CompletedTurnLayoutChanges {
+    pub namespace: u64,
+    pub generation: u64,
+    pub len: usize,
+    pub dirty_indices: Option<Vec<usize>>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_streaming_grapheme_fallback_scan_count() {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn streaming_grapheme_fallback_scan_count() -> usize {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_streaming_grapheme_fallback_scan() {
+    STREAMING_GRAPHEME_FALLBACK_SCAN_COUNT.with(|count| count.set(count.get() + 1));
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoticeKind {
@@ -400,6 +435,12 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    pub(crate) completed_turn_layout_namespace: u64,
+    pub(crate) completed_turn_layout_ids: Vec<u64>,
+    pub(crate) completed_turn_layout_revisions: Vec<u64>,
+    pub(crate) next_completed_turn_layout_id: u64,
+    pub(crate) completed_turn_layout_generation: u64,
+    pub(crate) completed_turn_layout_changes: VecDeque<(u64, usize)>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -434,11 +475,15 @@ pub struct TabSession {
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
     pub activity_frame: usize,
-    /// Typewriter reveal cursor for the final assistant-text item in the
-    /// active transcript. Advanced toward its full length by `RevealTick`
+    /// Typewriter reveal cursor, in extended grapheme clusters, for the final
+    /// assistant-text item in the active transcript. Advanced toward its full length by `RevealTick`
     /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
     /// made irrelevant on finalize (the committed message renders in full).
-    pub reveal_chars: usize,
+    pub reveal_graphemes: usize,
+    pub(crate) streaming_source_generation: u64,
+    pub(crate) streaming_source_revision: u64,
+    pub(crate) streaming_indexed_bytes: usize,
+    pub(crate) streaming_grapheme_ends: Vec<usize>,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
@@ -516,6 +561,242 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    fn clear_streaming_source_index(&mut self) {
+        self.streaming_source_revision = 0;
+        self.streaming_indexed_bytes = 0;
+        self.streaming_grapheme_ends.clear();
+    }
+
+    fn start_streaming_source_index(&mut self, text: &str) {
+        self.streaming_source_generation =
+            NEXT_STREAMING_SOURCE_GENERATION.fetch_add(1, Ordering::Relaxed);
+        self.streaming_source_revision = 1;
+        self.streaming_indexed_bytes = text.len();
+        self.streaming_grapheme_ends = text
+            .grapheme_indices(true)
+            .map(|(start, grapheme)| start + grapheme.len())
+            .collect();
+    }
+
+    pub(crate) fn streaming_source_generation(&self) -> u64 {
+        self.streaming_source_generation
+    }
+
+    pub(crate) fn streaming_source_revision(&self) -> u64 {
+        self.streaming_source_revision
+    }
+
+    pub(crate) fn streaming_grapheme_count(&self) -> Option<usize> {
+        let text = self.streaming_agent_text()?;
+        if self.streaming_indexed_bytes == text.len() {
+            Some(self.streaming_grapheme_ends.len())
+        } else {
+            #[cfg(test)]
+            record_streaming_grapheme_fallback_scan();
+            Some(text.graphemes(true).count())
+        }
+    }
+
+    pub(crate) fn streaming_prefix_byte_end(&self, grapheme_count: usize) -> Option<usize> {
+        let text = self.streaming_agent_text()?;
+        if grapheme_count == 0 {
+            return Some(0);
+        }
+        if self.streaming_indexed_bytes == text.len() {
+            return Some(
+                self.streaming_grapheme_ends
+                    .get(grapheme_count - 1)
+                    .copied()
+                    .unwrap_or(text.len()),
+            );
+        }
+        #[cfg(test)]
+        record_streaming_grapheme_fallback_scan();
+        Some(
+            text.grapheme_indices(true)
+                .nth(grapheme_count - 1)
+                .map(|(start, grapheme)| start + grapheme.len())
+                .unwrap_or(text.len()),
+        )
+    }
+
+    fn record_completed_turn_layout_change(&mut self, index: usize) {
+        if self.completed_turn_layout_generation == u64::MAX {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+            self.completed_turn_layout_generation = 1;
+            self.completed_turn_layout_changes.clear();
+        } else {
+            self.completed_turn_layout_generation += 1;
+        }
+        self.completed_turn_layout_changes
+            .push_back((self.completed_turn_layout_generation, index));
+        while self.completed_turn_layout_changes.len() > MAX_COMPLETED_TURN_LAYOUT_CHANGES {
+            self.completed_turn_layout_changes.pop_front();
+        }
+    }
+
+    fn sync_completed_turn_layout_metadata(&mut self) {
+        if self.completed_turn_layout_namespace == 0 {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let len = self.completed_turns.len();
+        if self.completed_turn_layout_ids.len() > len {
+            self.completed_turn_layout_namespace =
+                NEXT_COMPLETED_TURN_LAYOUT_NAMESPACE.fetch_add(1, Ordering::Relaxed);
+            self.completed_turn_layout_generation = 0;
+            self.completed_turn_layout_changes.clear();
+        }
+        self.completed_turn_layout_ids.truncate(len);
+        self.completed_turn_layout_revisions.truncate(len);
+        while self.completed_turn_layout_ids.len() < len {
+            let index = self.completed_turn_layout_ids.len();
+            self.next_completed_turn_layout_id =
+                self.next_completed_turn_layout_id.wrapping_add(1).max(1);
+            self.completed_turn_layout_ids
+                .push(self.next_completed_turn_layout_id);
+            self.completed_turn_layout_revisions.push(0);
+            self.record_completed_turn_layout_change(index);
+        }
+    }
+
+    pub(crate) fn completed_turn_layout_metadata(&mut self) -> (u64, Vec<(u64, u64)>) {
+        self.sync_completed_turn_layout_metadata();
+
+        (
+            self.completed_turn_layout_namespace,
+            self.completed_turn_layout_ids
+                .iter()
+                .copied()
+                .zip(self.completed_turn_layout_revisions.iter().copied())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn completed_turn_layout_changes_since(
+        &mut self,
+        previous: Option<(u64, u64)>,
+    ) -> CompletedTurnLayoutChanges {
+        self.sync_completed_turn_layout_metadata();
+        let namespace = self.completed_turn_layout_namespace;
+        let generation = self.completed_turn_layout_generation;
+        let len = self.completed_turns.len();
+        let Some((previous_namespace, previous_generation)) = previous else {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        };
+        if previous_namespace != namespace {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        }
+        if previous_generation == generation {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: Some(Vec::new()),
+            };
+        }
+
+        let Some(first_retained_generation) = self
+            .completed_turn_layout_changes
+            .front()
+            .map(|(generation, _)| *generation)
+        else {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        };
+        if previous_generation.saturating_add(1) < first_retained_generation {
+            return CompletedTurnLayoutChanges {
+                namespace,
+                generation,
+                len,
+                dirty_indices: None,
+            };
+        }
+
+        let mut dirty_indices = self
+            .completed_turn_layout_changes
+            .iter()
+            .filter(|(change_generation, _)| *change_generation > previous_generation)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        dirty_indices.sort_unstable();
+        dirty_indices.dedup();
+        CompletedTurnLayoutChanges {
+            namespace,
+            generation,
+            len,
+            dirty_indices: Some(dirty_indices),
+        }
+    }
+
+    pub(crate) fn completed_turn_layout_identity(&mut self) -> (u64, u64) {
+        self.sync_completed_turn_layout_metadata();
+        (
+            self.completed_turn_layout_namespace,
+            self.completed_turn_layout_generation,
+        )
+    }
+
+    pub(crate) fn completed_turn_layout_item(&self, index: usize) -> Option<(u64, u64)> {
+        Some((
+            *self.completed_turn_layout_ids.get(index)?,
+            *self.completed_turn_layout_revisions.get(index)?,
+        ))
+    }
+
+    pub(crate) fn mark_completed_turn_layout_dirty(&mut self, index: usize) {
+        self.sync_completed_turn_layout_metadata();
+        if let Some(revision) = self.completed_turn_layout_revisions.get_mut(index) {
+            *revision = revision.wrapping_add(1);
+            self.record_completed_turn_layout_change(index);
+        }
+    }
+
+    pub fn clear_completed_turns(&mut self) {
+        self.completed_turns.clear();
+        self.completed_turn_layout_namespace = 0;
+        self.completed_turn_layout_ids.clear();
+        self.completed_turn_layout_revisions.clear();
+        self.completed_turn_layout_generation = 0;
+        self.completed_turn_layout_changes.clear();
+    }
+
+    pub fn set_last_completed_turn_trailing_marker(&mut self, marker: String) -> bool {
+        let Some(index) = self.completed_turns.len().checked_sub(1) else {
+            return false;
+        };
+        self.completed_turns[index].trailing_marker = Some(marker);
+        self.mark_completed_turn_layout_dirty(index);
+        true
+    }
+
+    pub fn set_completed_turn_expanded(&mut self, index: usize, expanded: bool) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        if turn.expanded != expanded {
+            turn.expanded = expanded;
+            self.mark_completed_turn_layout_dirty(index);
+        }
+        true
+    }
+
     pub(crate) fn invalidate_pending_paste(&mut self) {
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
@@ -530,7 +811,9 @@ impl TabSession {
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
             && self.user_input.is_empty()
-            && self.streaming_agent_text().is_none_or(|text| text.trim().is_empty())
+            && self
+                .streaming_agent_text()
+                .is_none_or(|text| text.trim().is_empty())
             && !self.messages.iter().any(|message| {
                 matches!(
                     message,
@@ -549,7 +832,7 @@ impl TabSession {
 
     pub fn input_can_receive_nav_focus(&self) -> bool {
         (self.turn.recommendations().is_none()
-                || self.recommendation_focus == RecommendationFocus::Input)
+            || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && self.user_input.is_empty()
             && !self.paste_pending
@@ -594,6 +877,7 @@ impl TabSession {
         self.activity_frame = 0;
         self.replay_agent_buffer.clear();
         self.replay_user_buffer.clear();
+        self.clear_streaming_source_index();
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -618,11 +902,48 @@ impl TabSession {
     }
 
     pub fn append_agent_chunk(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         match self.messages.last_mut() {
-            Some(ChatMessage::Agent(current)) => current.push_str(text),
+            Some(ChatMessage::Agent(current)) => {
+                let index_matches_source = self.streaming_indexed_bytes == current.len()
+                    && self
+                        .streaming_grapheme_ends
+                        .last()
+                        .is_none_or(|end| *end == current.len());
+                let rescan_start = index_matches_source
+                    .then(|| {
+                        self.streaming_grapheme_ends
+                            .len()
+                            .checked_sub(2)
+                            .and_then(|index| self.streaming_grapheme_ends.get(index).copied())
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
+                current.push_str(text);
+                if index_matches_source {
+                    self.streaming_grapheme_ends
+                        .retain(|end| *end <= rescan_start);
+                    self.streaming_source_revision =
+                        self.streaming_source_revision.wrapping_add(1).max(1);
+                } else {
+                    self.streaming_grapheme_ends.clear();
+                    self.streaming_source_generation =
+                        NEXT_STREAMING_SOURCE_GENERATION.fetch_add(1, Ordering::Relaxed);
+                    self.streaming_source_revision = 1;
+                }
+                self.streaming_grapheme_ends.extend(
+                    current[rescan_start..]
+                        .grapheme_indices(true)
+                        .map(|(start, grapheme)| rescan_start + start + grapheme.len()),
+                );
+                self.streaming_indexed_bytes = current.len();
+            }
             _ => {
                 self.messages.push(ChatMessage::Agent(text.to_string()));
-                self.reveal_chars = 0;
+                self.reveal_graphemes = 0;
+                self.start_streaming_source_index(text);
             }
         }
     }
@@ -655,6 +976,7 @@ impl TabSession {
     }
 
     pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
+        self.clear_streaming_source_index();
         std::mem::take(&mut self.messages)
             .into_iter()
             .filter(|message| !matches!(message, ChatMessage::User(_)))
@@ -665,6 +987,7 @@ impl TabSession {
         if self.messages.is_empty() {
             return;
         }
+        self.clear_streaming_source_index();
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
         let mut current: Option<(String, Vec<ChatMessage>)> = None;
@@ -746,11 +1069,10 @@ impl TabSession {
     }
 
     pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
-        let Some(turn) = self.completed_turns.get_mut(index) else {
+        let Some(expanded) = self.completed_turns.get(index).map(|turn| turn.expanded) else {
             return false;
         };
-        turn.expanded = !turn.expanded;
-        true
+        self.set_completed_turn_expanded(index, !expanded)
     }
 
     pub fn toggle_selected_completed_turn(&mut self) {

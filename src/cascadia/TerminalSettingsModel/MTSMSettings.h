@@ -84,6 +84,7 @@ Author(s):
     X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", false)                                                                                                                                      \
+    X(bool, RenderAgentMarkdown, "renderAgentMarkdown", true)                                                                                                                                           \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \

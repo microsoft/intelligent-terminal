@@ -1,0 +1,11 @@
+---
+source: tui-markdown/src/renderer/code.rs
+expression: unhiglighted_code
+---
+Text::from_iter([
+    Line::from("```rust").white().on_black(),
+    Line::from("fn main() {").white().on_black(),
+    Line::from("    println!("Hello, unhighlighted code!");").white().on_black(),
+    Line::from("}").white().on_black(),
+    Line::from("```").white().on_black(),
+])
