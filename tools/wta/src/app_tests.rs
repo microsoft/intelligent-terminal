@@ -3193,6 +3193,111 @@ fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() 
 }
 
 #[test]
+fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+    let first = match restart_rx
+        .try_recv()
+        .expect("target A should retire the current transport")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    app.handle_event(AppEvent::AgentReconnectReady(first));
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(app.pending_acp_start);
+
+    app.handle_event(agent_rebind_event("owner-tab", 2, "codex"));
+
+    assert!(
+        !app.pending_acp_start,
+        "accepting target B must invalidate target A's queued ACP startup"
+    );
+    assert!(app.agent_reconnect_disconnect_pending);
+    assert!(!app.agent_reconnect_preflight_pending);
+    assert_eq!(
+        app.pending_agent_reconnect
+            .as_ref()
+            .map(|request| (request.agent_id.as_str(), request.generation)),
+        Some(("codex", 2))
+    );
+    let second = match restart_rx
+        .try_recv()
+        .expect("target B must retire target A before its own preflight")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(!app.pending_acp_start);
+    assert_eq!(
+        app.pending_agent_reconnect
+            .as_ref()
+            .map(|request| (request.agent_id.as_str(), request.generation)),
+        Some(("codex", 2)),
+        "a stale target A completion must not consume target B"
+    );
+
+    app.handle_event(AppEvent::AgentReconnectReady(second));
+    assert!(!app.agent_reconnect_disconnect_pending);
+    assert!(app.agent_reconnect_preflight_pending);
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-2".into(),
+        generation: 2,
+        result: PreflightResult {
+            agent_id: "codex".into(),
+            display_name: "Codex".into(),
+            cli_status: CheckStatus::Failed("Not found on PATH".into()),
+            cli_path: None,
+            auth_status: CheckStatus::Skipped,
+            install_hint: "Install Codex".into(),
+            install_url: String::new(),
+            auth_hint: String::new(),
+        },
+    });
+
+    assert_eq!(app.current_agent_id, "codex");
+    assert_eq!(app.mode, AppMode::Setup);
+    assert_eq!(
+        app.setup.as_ref().map(|setup| &setup.reason),
+        Some(&SetupReason::AgentMissing)
+    );
+    assert!(app.preflight_setup_active);
+    assert!(!app.pending_acp_start);
+    assert!(!app.agent_reconnect_preflight_pending);
+    assert!(app.pending_agent_reconnect.is_none());
+}
+
+#[test]
 fn settings_model_rebind_preserves_custom_provider_selection() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());

@@ -3534,6 +3534,7 @@ impl App {
     }
 
     fn reset_agent_scoped_state(&mut self) {
+        self.pending_acp_start = false;
         self.pending_agent_selection = None;
         self.suppress_next_failed_client_error = false;
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
