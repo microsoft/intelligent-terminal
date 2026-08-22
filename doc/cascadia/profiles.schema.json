@@ -2469,6 +2469,14 @@
           "description": "When set to true, URLs will be detected by the Terminal. This will cause URLs to underline on hover and be clickable by pressing Ctrl.",
           "type": "boolean"
         },
+        "filePathEditor": {
+          "default": "default",
+          "description": "Controls whether clickable file paths open with the system default application or the command configured in the EDITOR environment variable.",
+          "enum": [
+            "default",
+            "environment"
+          ]
+        },
         "experimental.enableColorSelection": {
           "default": false,
           "description": "When set to true, adds preset \"Color Selection\" actions (keybindings) to allow colorizing selected text via keystroke, similar to the legacy conhost EnableColorSelection feature (such as alt+6 to color the selection red).",

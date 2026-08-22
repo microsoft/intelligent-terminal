@@ -30,6 +30,10 @@ namespace ControlUnitTests
         TEST_METHOD(TestAdjustAcrylic);
 
         TEST_METHOD(TestFreeAfterClose);
+        TEST_METHOD(TestHoverPathWorkerCoalescing);
+        TEST_METHOD(TestHoverPathWorkerBoundedPending);
+        TEST_METHOD(TestHoverPathWorkerControlLifetime);
+        TEST_METHOD(TestHoverPathRefreshAfterOutputInvalidation);
 
         TEST_METHOD(TestFontInitializedInCtor);
 
@@ -465,6 +469,419 @@ namespace ControlUnitTests
             VERIFY_ARE_EQUAL(expectedEnd, end);
         }
     }
+
+    void ControlCoreTests::TestHoverPathWorkerCoalescing()
+    {
+        auto& worker = Control::implementation::HoverPathWorker::Instance();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+
+        struct State
+        {
+            std::mutex mutex;
+            std::condition_variable condition;
+            bool firstStarted = false;
+            bool releaseFirst = false;
+        };
+        const auto state = std::make_shared<State>();
+        std::vector<uint64_t> completed;
+
+        worker._setResolverForTests(
+            [state](const auto& request, auto&) -> std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult> {
+                if (request.requestId == 1)
+                {
+                    std::unique_lock lock{ state->mutex };
+                    state->firstStarted = true;
+                    state->condition.notify_all();
+                    state->condition.wait(lock, [&]() { return state->releaseFirst; });
+                }
+                return ::Microsoft::Terminal::Core::Terminal::HoverPathResult{
+                    .candidateIndex = 0,
+                    .uri = std::to_wstring(request.requestId),
+                };
+            });
+        auto restoreResolver = wil::scope_exit([&]() {
+            {
+                const std::lock_guard guard{ state->mutex };
+                state->releaseFirst = true;
+            }
+            state->condition.notify_all();
+            worker._waitForIdleForTests(std::chrono::seconds{ 2 });
+            worker._resetResolverForTests();
+        });
+
+        std::mutex completionMutex;
+        std::condition_variable completionCondition;
+        const auto completion = [&](auto, auto, auto request, auto result) {
+            VERIFY_IS_TRUE(result.has_value());
+            const std::lock_guard guard{ completionMutex };
+            completed.emplace_back(request.requestId);
+            completionCondition.notify_all();
+        };
+
+        const auto firstTarget = worker.CreateTarget();
+        const auto secondTarget = worker.CreateTarget();
+        worker.Submit(firstTarget,
+                      ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 1 },
+                      completion);
+        {
+            std::unique_lock lock{ state->mutex };
+            VERIFY_IS_TRUE(state->condition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return state->firstStarted; }));
+        }
+
+        worker.Submit(firstTarget,
+                      ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 2 },
+                      completion);
+        worker.Submit(firstTarget,
+                      ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 3 },
+                      completion);
+        worker.Submit(secondTarget,
+                      ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 4 },
+                      completion);
+        {
+            const std::lock_guard guard{ state->mutex };
+            state->releaseFirst = true;
+        }
+        state->condition.notify_all();
+
+        {
+            std::unique_lock lock{ completionMutex };
+            VERIFY_IS_TRUE(completionCondition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return completed.size() == 2; }));
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, completed[0],
+                             L"The in-flight stale generation and superseded pending request are discarded.");
+            VERIFY_ARE_EQUAL(uint64_t{ 4 }, completed[1],
+                             L"Distinct targets retain FIFO fairness.");
+        }
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, worker._maxActiveProbeCountForTests(),
+                         L"The process-wide resolver runs at most one filesystem probe at a time.");
+    }
+
+    void ControlCoreTests::TestHoverPathWorkerBoundedPending()
+    {
+        auto& worker = Control::implementation::HoverPathWorker::Instance();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+
+        struct State
+        {
+            std::mutex mutex;
+            std::condition_variable condition;
+            bool firstStarted = false;
+            bool releaseFirst = false;
+        };
+        const auto state = std::make_shared<State>();
+        worker._setResolverForTests(
+            [state](const auto& request, auto&) -> std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult> {
+                if (request.requestId == 1)
+                {
+                    std::unique_lock lock{ state->mutex };
+                    state->firstStarted = true;
+                    state->condition.notify_all();
+                    state->condition.wait(lock, [&]() { return state->releaseFirst; });
+                }
+                return ::Microsoft::Terminal::Core::Terminal::HoverPathResult{
+                    .candidateIndex = 0,
+                    .uri = std::to_wstring(request.requestId),
+                };
+            });
+        auto restoreResolver = wil::scope_exit([&]() {
+            {
+                const std::lock_guard guard{ state->mutex };
+                state->releaseFirst = true;
+            }
+            state->condition.notify_all();
+            worker._waitForIdleForTests(std::chrono::seconds{ 2 });
+            worker._resetResolverForTests();
+        });
+
+        std::atomic<size_t> resolved{ 0 };
+        std::atomic<size_t> rejected{ 0 };
+        const auto completion = [&](auto, auto, auto, auto result) {
+            (result ? resolved : rejected).fetch_add(1, std::memory_order_relaxed);
+        };
+
+        std::vector<Control::implementation::HoverPathWorker::TargetPtr> targets;
+        targets.reserve(Control::implementation::HoverPathWorker::MaxPendingTargets + 2);
+        targets.emplace_back(worker.CreateTarget());
+        worker.Submit(targets.back(),
+                      ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 1 },
+                      completion);
+        {
+            std::unique_lock lock{ state->mutex };
+            VERIFY_IS_TRUE(state->condition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return state->firstStarted; }));
+        }
+
+        for (size_t index = 0; index <= Control::implementation::HoverPathWorker::MaxPendingTargets; ++index)
+        {
+            targets.emplace_back(worker.CreateTarget());
+            worker.Submit(targets.back(),
+                          ::Microsoft::Terminal::Core::Terminal::HoverPathRequest{ .requestId = 100 + index },
+                          completion);
+        }
+
+        VERIFY_ARE_EQUAL(Control::implementation::HoverPathWorker::MaxPendingTargets,
+                         worker._pendingCountForTests(),
+                         L"Pending work is hard-bounded to one entry for at most 64 targets.");
+        VERIFY_ARE_EQUAL(size_t{ 1 }, rejected.load(std::memory_order_relaxed),
+                         L"Overflow rejects the newest target without evicting admitted targets.");
+
+        {
+            const std::lock_guard guard{ state->mutex };
+            state->releaseFirst = true;
+        }
+        state->condition.notify_all();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+        VERIFY_ARE_EQUAL(Control::implementation::HoverPathWorker::MaxPendingTargets + 1,
+                         resolved.load(std::memory_order_relaxed));
+        VERIFY_ARE_EQUAL(size_t{ 1 }, worker._maxActiveProbeCountForTests());
+    }
+
+    void ControlCoreTests::TestHoverPathWorkerControlLifetime()
+    {
+        auto& worker = Control::implementation::HoverPathWorker::Instance();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+        const auto pool = worker._pool;
+        const auto work = worker._work;
+        VERIFY_IS_NOT_NULL(pool);
+        VERIFY_IS_NOT_NULL(work);
+
+        struct State
+        {
+            std::mutex mutex;
+            std::condition_variable condition;
+            size_t started = 0;
+            bool release = false;
+        };
+        const auto state = std::make_shared<State>();
+        worker._setResolverForTests(
+            [state](const auto&, auto&) -> std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult> {
+                std::unique_lock lock{ state->mutex };
+                ++state->started;
+                state->condition.notify_all();
+                state->condition.wait(lock, [&]() { return state->release; });
+                return std::nullopt;
+            });
+        auto restoreResolver = wil::scope_exit([&]() {
+            {
+                const std::lock_guard guard{ state->mutex };
+                state->release = true;
+            }
+            state->condition.notify_all();
+            worker._waitForIdleForTests(std::chrono::seconds{ 2 });
+            worker._resetResolverForTests();
+        });
+
+        std::weak_ptr<Control::implementation::HoverPathWorker::Target> firstTarget;
+        {
+            auto [settings, connection] = _createSettingsAndConnection();
+            auto core = createCore(*settings, *connection);
+            core->_hoverPathRequestId = 1;
+            core->_hoverPathPendingOrActive.store(true, std::memory_order_relaxed);
+            core->_queueHoverPathRequest({ .requestId = 1 }, 0);
+            firstTarget = core->_hoverPathTarget;
+
+            {
+                std::unique_lock lock{ state->mutex };
+                VERIFY_IS_TRUE(state->condition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return state->started == 1; }));
+            }
+
+            const auto destroyStarted = std::chrono::steady_clock::now();
+            core = nullptr;
+            VERIFY_IS_TRUE(std::chrono::steady_clock::now() - destroyStarted < std::chrono::seconds{ 1 },
+                           L"Closing a control never waits for its blocked filesystem probe.");
+        }
+        VERIFY_IS_TRUE(firstTarget.expired(),
+                       L"The shared worker retains only a weak identity for an in-flight control.");
+
+        for (uint64_t requestId = 2; requestId < 18; ++requestId)
+        {
+            auto [settings, connection] = _createSettingsAndConnection();
+            auto core = createCore(*settings, *connection);
+            core->_hoverPathRequestId = requestId;
+            core->_hoverPathPendingOrActive.store(true, std::memory_order_relaxed);
+            core->_queueHoverPathRequest({ .requestId = requestId }, 0);
+            std::weak_ptr<Control::implementation::HoverPathWorker::Target> target = core->_hoverPathTarget;
+            core = nullptr;
+
+            VERIFY_IS_TRUE(target.expired());
+            VERIFY_ARE_EQUAL(pool, worker._pool);
+            VERIFY_ARE_EQUAL(work, worker._work);
+            VERIFY_ARE_EQUAL(size_t{ 0 }, worker._pendingCountForTests(),
+                             L"Destroyed controls remove their bounded pending entry.");
+        }
+
+        {
+            const std::lock_guard guard{ state->mutex };
+            state->release = true;
+        }
+        state->condition.notify_all();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+        {
+            const std::lock_guard guard{ state->mutex };
+            VERIFY_ARE_EQUAL(size_t{ 1 }, state->started,
+                             L"Repeated control creation reuses the one blocked process-wide service.");
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, worker._maxActiveProbeCountForTests());
+    }
+
+    void ControlCoreTests::TestHoverPathRefreshAfterOutputInvalidation()
+    {
+        static std::atomic<uint64_t> counter{ 0 };
+        const auto scratchRoot = std::filesystem::current_path() /
+                                 fmt::format(FMT_COMPILE(L"ControlHoverPaths-{}-{}-{}"),
+                                             ::GetCurrentProcessId(),
+                                             ::GetTickCount64(),
+                                             counter.fetch_add(1, std::memory_order_relaxed));
+        std::filesystem::create_directories(scratchRoot);
+        const auto filePath = scratchRoot / L"README";
+        {
+            std::ofstream file{ filePath };
+            file << "test";
+        }
+        auto cleanupScratch = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(scratchRoot, error);
+        });
+
+        auto expectedUri = filePath.lexically_normal().native();
+        std::replace(expectedUri.begin(), expectedUri.end(), L'\\', L'/');
+        expectedUri.insert(0, L"file:///");
+
+        auto& worker = Control::implementation::HoverPathWorker::Instance();
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+        struct State
+        {
+            std::mutex mutex;
+            std::condition_variable condition;
+            size_t calls = 0;
+            bool firstStarted = false;
+            bool releaseFirst = false;
+            std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathRequest> firstRequest;
+        };
+        const auto state = std::make_shared<State>();
+        worker._setResolverForTests(
+            [state](const auto& request, auto& cache) -> std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult> {
+                {
+                    std::unique_lock lock{ state->mutex };
+                    ++state->calls;
+                    if (state->calls == 1)
+                    {
+                        state->firstRequest = request;
+                        state->firstStarted = true;
+                        state->condition.notify_all();
+                        state->condition.wait(lock, [&]() { return state->releaseFirst; });
+                        return ::Microsoft::Terminal::Core::Terminal::HoverPathResult{
+                            .candidateIndex = 0,
+                            .uri = L"file:///stale-pre-output",
+                        };
+                    }
+                }
+                return ::Microsoft::Terminal::Core::Terminal::ResolveHoverPathRequest(request, &cache);
+            });
+        auto restoreResolver = wil::scope_exit([&]() {
+            {
+                const std::lock_guard guard{ state->mutex };
+                state->releaseFirst = true;
+            }
+            state->condition.notify_all();
+            worker._waitForIdleForTests(std::chrono::seconds{ 2 });
+            worker._resetResolverForTests();
+        });
+
+        auto [settings, connection] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *connection);
+        _standardInit(core);
+        {
+            const auto lock = core->_terminal->LockForWriting();
+            core->_terminal->SetWorkingDirectory(scratchRoot.native());
+        }
+        connection->WriteInput(winrt_wstring_to_array_view(L"README"));
+
+        std::mutex appliedMutex;
+        std::condition_variable appliedCondition;
+        std::vector<std::wstring> appliedUris;
+        core->HoveredHyperlinkChanged([&](auto&&, auto&&) {
+            const auto uri = std::wstring{ core->HoveredUriText() };
+            if (!uri.empty())
+            {
+                const std::lock_guard guard{ appliedMutex };
+                appliedUris.emplace_back(uri);
+                appliedCondition.notify_all();
+            }
+        });
+
+        const til::point hoveredCell{ 2, 0 };
+        core->SetHoveredCell(hoveredCell.to_core_point());
+        {
+            std::unique_lock lock{ state->mutex };
+            VERIFY_IS_TRUE(state->condition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return state->firstStarted; }));
+        }
+
+        const auto preOutputRequestId = core->_hoverPathRequestId;
+        const auto preOutputMutationGeneration = core->_hoverPathMutationGeneration.load(std::memory_order_acquire);
+        const auto outputMutationGeneration = core->_hoverPathMutationGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+        std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathRequest> staleRequest;
+        {
+            const std::lock_guard guard{ state->mutex };
+            staleRequest = state->firstRequest;
+        }
+        VERIFY_IS_TRUE(staleRequest.has_value());
+        core->_completeHoverPathRequest(*staleRequest,
+                                        ::Microsoft::Terminal::Core::Terminal::HoverPathResult{
+                                            .candidateIndex = 0,
+                                            .uri = L"file:///stale-pre-output",
+                                        },
+                                        preOutputMutationGeneration);
+        VERIFY_IS_TRUE(core->HoveredUriText().empty(),
+                       L"An output generation change rejects a result before queued UI invalidation runs.");
+
+        core->_hoverPathHandledMutationGeneration = outputMutationGeneration;
+        core->_invalidateHoverPathRequests();
+        VERIFY_IS_TRUE(core->_lastHoveredCell.has_value());
+        VERIFY_ARE_EQUAL(hoveredCell, *core->_lastHoveredCell,
+                         L"Output invalidation preserves the physical hovered cell.");
+        VERIFY_IS_TRUE(core->_hoverPathRequestId > preOutputRequestId);
+        VERIFY_IS_TRUE(core->HoveredUriText().empty());
+
+        core->RefreshHoveredCell();
+        VERIFY_IS_TRUE(core->_lastHoveredCell.has_value());
+        VERIFY_ARE_EQUAL(hoveredCell, *core->_lastHoveredCell);
+
+        {
+            const std::lock_guard guard{ state->mutex };
+            state->releaseFirst = true;
+        }
+        state->condition.notify_all();
+
+        {
+            std::unique_lock lock{ appliedMutex };
+            VERIFY_IS_TRUE(appliedCondition.wait_for(lock, std::chrono::seconds{ 2 }, [&]() { return !appliedUris.empty(); }));
+        }
+        VERIFY_IS_TRUE(worker._waitForIdleForTests(std::chrono::seconds{ 2 }));
+
+        {
+            const std::lock_guard guard{ state->mutex };
+            VERIFY_ARE_EQUAL(size_t{ 2 }, state->calls,
+                             L"Output-idle refresh requeues the unchanged hovered cell.");
+        }
+        {
+            const std::lock_guard guard{ appliedMutex };
+            VERIFY_ARE_EQUAL(size_t{ 1 }, appliedUris.size(),
+                             L"The pre-output stale result is never applied.");
+            VERIFY_ARE_EQUAL(expectedUri, appliedUris.front());
+        }
+        VERIFY_ARE_EQUAL(expectedUri, std::wstring{ core->HoveredUriText() },
+                         L"The resolved hover link reappears without pointer movement.");
+
+        const auto clickInfo = core->GetHyperlinkInfo(hoveredCell.to_core_point());
+        VERIFY_ARE_EQUAL(expectedUri, clickInfo.uri,
+                         L"Click-time lookup revalidates and activates the refreshed bare path.");
+        VERIFY_IS_TRUE(clickInfo.isAutoDetectedFilePath);
+
+        core->ClearHoveredCell();
+        VERIFY_IS_FALSE(core->_lastHoveredCell.has_value(),
+                        L"Pointer exit still clears the physical hovered cell.");
+    }
+
     void ControlCoreTests::TestSelectOutputSimple()
     {
         auto [settings, conn] = _createSettingsAndConnection();

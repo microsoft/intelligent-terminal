@@ -219,6 +219,8 @@ void Terminal::SetTaskbarProgress(const ::Microsoft::Console::VirtualTerminal::D
 void Terminal::SetWorkingDirectory(std::wstring_view uri)
 {
     _assertLocked();
+    ++_pathContextGeneration;
+    _hoverPathLink.reset();
 
     static bool logged = false;
     if (!logged)
@@ -247,6 +249,8 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
 void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)
 {
     _assertLocked();
+    ++_pathContextGeneration;
+    _hoverPathLink.reset();
 
     // Telemetry is logged once per process. `logged` is function-static
     // (shared across all Terminal instances, which hold *different* locks),
@@ -265,6 +269,14 @@ void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shell
 
     _shellName = shellName;
     _shellVersion = shellVersion;
+    if (!_mainBuffer)
+    {
+        return;
+    }
+
+    auto& buffer = _activeBuffer();
+    const auto id = buffer.GetShellTypeId(shellName);
+    buffer.GetMutableRowByOffset(buffer.GetCursor().GetPosition().y).SetShellTypeId(id);
 }
 
 void Terminal::PlayMidiNote(const int noteNumber, const int velocity, const std::chrono::microseconds duration)
@@ -305,11 +317,10 @@ void Terminal::UseAlternateScreenBuffer(const TextAttribute& attrs)
         tgtCursorPos.y -= _mutableViewport.Top();
         tgtCursor.SetPosition(tgtCursorPos);
     }
-    if (!_workingDirectory.empty())
-    {
-        const auto id = _altBuffer->GetWorkingDirectoryId(_workingDirectory);
-        _altBuffer->GetMutableRowByOffset(_altBuffer->GetCursor().GetPosition().y).SetWorkingDirectoryId(id);
-    }
+    const auto workingDirectoryId = _altBuffer->GetWorkingDirectoryId(_workingDirectory);
+    _altBuffer->GetMutableRowByOffset(0).SetWorkingDirectoryId(workingDirectoryId);
+    const auto shellTypeId = _altBuffer->GetShellTypeId(_shellName);
+    _altBuffer->GetMutableRowByOffset(0).SetShellTypeId(shellTypeId);
 
     // update all the hyperlinks on the screen
     _updateUrlDetection();
@@ -367,11 +378,10 @@ void Terminal::UseMainScreenBuffer()
         tgtCursorPos.y += _mutableViewport.Top();
         mainCursor.SetPosition(tgtCursorPos);
     }
-    if (!_workingDirectory.empty())
-    {
-        const auto id = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
-        _mainBuffer->GetMutableRowByOffset(_mainBuffer->GetCursor().GetPosition().y).SetWorkingDirectoryId(id);
-    }
+    const auto workingDirectoryId = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
+    _mainBuffer->GetMutableRowByOffset(_mainBuffer->GetCursor().GetPosition().y).SetWorkingDirectoryId(workingDirectoryId);
+    const auto shellTypeId = _mainBuffer->GetShellTypeId(_shellName);
+    _mainBuffer->GetMutableRowByOffset(_mainBuffer->GetCursor().GetPosition().y).SetShellTypeId(shellTypeId);
 
     // update all the hyperlinks on the screen
     _updateUrlDetection();

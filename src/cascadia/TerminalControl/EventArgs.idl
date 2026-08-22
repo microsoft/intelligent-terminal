@@ -78,6 +78,8 @@ namespace Microsoft.Terminal.Control
     {
         OpenHyperlinkEventArgs(String uri);
         String Uri { get; };
+        OpenHyperlinkEventArgs(String uri, Boolean isAutoDetectedFilePath);
+        Boolean IsAutoDetectedFilePath { get; };
     }
 
     enum NoticeLevel

@@ -3,6 +3,7 @@
 
 #include "pch.h"
 
+#include "../TerminalApp/FilePathEditorHelpers.h"
 #include "../TerminalApp/TerminalPage.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
@@ -72,6 +73,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestIterableColorSchemeCommands);
 
         TEST_METHOD(TestElevateArg);
+        TEST_METHOD(TestFilePathEditorHelpers);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -121,6 +123,67 @@ namespace TerminalAppLocalTests
             }
         }
     };
+
+    void SettingsTests::TestFilePathEditorHelpers()
+    {
+        using namespace winrt::TerminalApp::implementation::FilePathEditorHelpers;
+
+        const auto fileTarget = ParseFileUriTarget(L"file:///C:/src/main.cpp#L12:3", true);
+        VERIFY_IS_TRUE(fileTarget.has_value());
+        VERIFY_ARE_EQUAL(fileTarget->uri, L"file:///C:/src/main.cpp");
+        VERIFY_ARE_EQUAL(fileTarget->line.value_or(0), 12u);
+        VERIFY_ARE_EQUAL(fileTarget->column.value_or(0), 3u);
+        VERIFY_IS_FALSE(ParseFileUriTarget(L"file:///C:/src/main.cpp#L0", true).has_value());
+
+        const auto explicitFileTarget = ParseFileUriTarget(L"file:///C:/src/main.cpp#L12:3", false);
+        VERIFY_IS_TRUE(explicitFileTarget.has_value());
+        VERIFY_ARE_EQUAL(explicitFileTarget->uri,
+                         L"file:///C:/src/main.cpp#L12:3",
+                         L"Explicit hyperlink fragments retain their URI meaning.");
+        VERIFY_IS_FALSE(explicitFileTarget->line.has_value());
+
+        const auto webTarget = ParseFileUriTarget(L"https://example.test/source#L12", true);
+        VERIFY_IS_TRUE(webTarget.has_value());
+        VERIFY_ARE_EQUAL(webTarget->uri, L"https://example.test/source#L12", L"Non-file URI fragments are preserved.");
+        VERIFY_IS_FALSE(webTarget->line.has_value());
+
+        const std::vector<std::wstring> configured{ L"--wait" };
+        const auto codeArguments = BuildEditorArguments(L"Code.exe", configured, LR"(C:\src\main.cpp)", 12, 3);
+        VERIFY_ARE_EQUAL(codeArguments.size(), 3u);
+        VERIFY_ARE_EQUAL(codeArguments[0], L"--wait");
+        VERIFY_ARE_EQUAL(codeArguments[1], L"--goto");
+        VERIFY_ARE_EQUAL(codeArguments[2], LR"(C:\src\main.cpp:12:3)");
+
+        const auto codeShimArguments = BuildEditorArguments(LR"(C:\Apps\Microsoft VS Code\bin\code.cmd)", configured, LR"(C:\src\main.cpp)", 12, 3);
+        VERIFY_ARE_EQUAL(EditorBasename(LR"(C:\Apps\Microsoft VS Code\bin\code.cmd)"), L"code");
+        VERIFY_ARE_EQUAL(codeShimArguments.size(), 3u);
+        VERIFY_ARE_EQUAL(codeShimArguments[0], L"--wait");
+        VERIFY_ARE_EQUAL(codeShimArguments[1], L"--goto");
+        VERIFY_ARE_EQUAL(codeShimArguments[2], LR"(C:\src\main.cpp:12:3)");
+
+        const auto codeShimCandidates = EditorShimExecutableCandidates(LR"(C:\Apps\Microsoft VS Code\bin\code.cmd)");
+        VERIFY_IS_TRUE(std::ranges::find(codeShimCandidates, std::filesystem::path{ LR"(C:\Apps\Microsoft VS Code\Code.exe)" }) != codeShimCandidates.end());
+        const auto cursorShimCandidates = EditorShimExecutableCandidates(LR"(C:\Apps\Cursor\resources\app\bin\cursor.cmd)");
+        VERIFY_IS_TRUE(std::ranges::find(cursorShimCandidates, std::filesystem::path{ LR"(C:\Apps\Cursor\Cursor.exe)" }) != cursorShimCandidates.end());
+        VERIFY_IS_TRUE(EditorShimExecutableCandidates(LR"(C:\Tools\custom-editor.cmd)").empty(),
+                       L"Unknown command scripts are not eligible for shell-free execution.");
+
+        const auto vimArguments = BuildEditorArguments(L"nvim.exe", {}, LR"(C:\src\main.cpp)", 12, 3);
+        VERIFY_ARE_EQUAL(vimArguments.size(), 2u);
+        VERIFY_ARE_EQUAL(vimArguments[0], L"+12");
+        VERIFY_ARE_EQUAL(vimArguments[1], LR"(C:\src\main.cpp)");
+
+        const auto jetBrainsArguments = BuildEditorArguments(L"idea64.exe", {}, LR"(C:\src\main.cpp)", 12, 3);
+        VERIFY_ARE_EQUAL(jetBrainsArguments.size(), 3u);
+        VERIFY_ARE_EQUAL(jetBrainsArguments[0], L"--line");
+        VERIFY_ARE_EQUAL(jetBrainsArguments[1], L"12");
+        VERIFY_ARE_EQUAL(jetBrainsArguments[2], LR"(C:\src\main.cpp)");
+
+        const auto unknownArguments = BuildEditorArguments(L"custom-editor.exe", configured, LR"(C:\src\main.cpp)", 12, 3);
+        VERIFY_ARE_EQUAL(unknownArguments.size(), 2u);
+        VERIFY_ARE_EQUAL(unknownArguments[0], L"--wait");
+        VERIFY_ARE_EQUAL(unknownArguments[1], LR"(C:\src\main.cpp)", L"Unknown editors receive only the path after user-supplied arguments.");
+    }
 
     void SettingsTests::TestIterateCommands()
     {

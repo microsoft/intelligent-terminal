@@ -29,6 +29,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ValidateManyWarnings);
         TEST_METHOD(LayerGlobalProperties);
         TEST_METHOD(TabLayoutSetting);
+        TEST_METHOD(FilePathEditorSetting);
         TEST_METHOD(ValidateProfileOrdering);
         TEST_METHOD(ValidateHideProfiles);
         TEST_METHOD(TestReorderWithNullGuids);
@@ -408,6 +409,28 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(TabLayout::Vertical, settings->GlobalSettings().TabLayout());
             VERIFY_ARE_EQUAL(320, settings->GlobalSettings().TabLayoutVerticalWidth());
         }
+    }
+
+    void DeserializationTests::FilePathEditorSetting()
+    {
+        const auto globals = winrt::make_self<implementation::GlobalAppSettings>();
+        VERIFY_ARE_EQUAL(FilePathEditor::SystemDefault, globals->FilePathEditor(), L"The system default application is the default file path editor.");
+
+        globals->FilePathEditor(FilePathEditor::Environment);
+        auto json = globals->ToJson();
+        VERIFY_ARE_EQUAL(std::string{ "environment" }, json["filePathEditor"].asString());
+
+        globals->FilePathEditor(FilePathEditor::SystemDefault);
+        json = globals->ToJson();
+        VERIFY_ARE_EQUAL(std::string{ "default" }, json["filePathEditor"].asString());
+
+        static constexpr std::string_view inboxSettings{ R"({})" };
+        static constexpr std::string_view userSettings{ R"({
+            "filePathEditor": "environment",
+            "profiles": [ { "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}" } ]
+        })" };
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(userSettings, inboxSettings);
+        VERIFY_ARE_EQUAL(FilePathEditor::Environment, settings->GlobalSettings().FilePathEditor());
     }
 
     void DeserializationTests::ValidateProfileOrdering()

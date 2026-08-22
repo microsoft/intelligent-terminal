@@ -106,12 +106,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
     public:
         OpenHyperlinkEventArgs(hstring uri) :
-            _uri(uri) {}
+            OpenHyperlinkEventArgs{ std::move(uri), false } {}
+
+        OpenHyperlinkEventArgs(hstring uri, const bool isAutoDetectedFilePath) :
+            _uri(std::move(uri)),
+            _isAutoDetectedFilePath(isAutoDetectedFilePath) {}
 
         hstring Uri() { return _uri; };
+        bool IsAutoDetectedFilePath() const noexcept { return _isAutoDetectedFilePath; };
 
     private:
         hstring _uri;
+        bool _isAutoDetectedFilePath = false;
     };
 
     struct NoticeEventArgs : public NoticeEventArgsT<NoticeEventArgs>

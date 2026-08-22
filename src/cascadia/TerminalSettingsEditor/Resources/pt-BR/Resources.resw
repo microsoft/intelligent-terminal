@@ -3032,4 +3032,20 @@
     <value>{} | {} | Compatível com OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="Globals_FilePathEditor.Header" xml:space="preserve">
+    <value>Abrir caminhos de arquivo com</value>
+    <comment>Header for a dropdown that selects how clickable file paths are opened.</comment>
+  </data>
+  <data name="Globals_FilePathEditor.HelpText" xml:space="preserve">
+    <value>Escolha se os caminhos de arquivo clicáveis serão abertos com o aplicativo padrão do sistema ou com o comando configurado em $EDITOR.</value>
+    <comment>{Locked="$EDITOR"} Help text for the file path editor dropdown.</comment>
+  </data>
+  <data name="Globals_FilePathEditorDefault.Content" xml:space="preserve">
+    <value>Padrão do sistema</value>
+    <comment>Option that opens clickable file paths with the system-associated application.</comment>
+  </data>
+  <data name="Globals_FilePathEditorEnvironment.Content" xml:space="preserve">
+    <value>Variável de ambiente $EDITOR</value>
+    <comment>{Locked="$EDITOR"} Option that opens clickable file paths with the command from the environment variable.</comment>
+  </data>
 </root>

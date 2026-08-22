@@ -110,6 +110,7 @@
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="FilePathEditorHelpers.h" />
     <ClInclude Include="AgentPaneDragStash.h" />
     <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="Tab.h">

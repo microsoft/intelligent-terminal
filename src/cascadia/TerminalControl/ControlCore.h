@@ -24,6 +24,11 @@
 #include "../../cascadia/TerminalCore/Terminal.hpp"
 #include "../../renderer/inc/FontInfoDesired.hpp"
 
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <unordered_map>
+
 namespace Microsoft::Console::Render::Atlas
 {
     class AtlasEngine;
@@ -75,6 +80,84 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
         return CompletedTurnAction::None;
     }
+
+    // Process-wide resolver service. One private-pool thread services FIFO
+    // targets, each target retains only its latest request, and pending work is
+    // capped at MaxPendingTargets plus one in-flight probe.
+    class HoverPathWorker final
+    {
+    public:
+        using Request = ::Microsoft::Terminal::Core::Terminal::HoverPathRequest;
+        using Result = ::Microsoft::Terminal::Core::Terminal::HoverPathResult;
+        using Cache = ::Microsoft::Terminal::Core::Terminal::HoverPathCache;
+        using Resolver = std::function<std::optional<Result>(const Request&, Cache&)>;
+
+        class Target final
+        {
+        private:
+            explicit Target(uint64_t id) noexcept :
+                _id{ id }
+            {
+            }
+
+            const uint64_t _id;
+            std::atomic<uint64_t> _generation{ 0 };
+
+            friend HoverPathWorker;
+        };
+
+        using TargetPtr = std::shared_ptr<Target>;
+        using Completion = std::function<void(std::weak_ptr<Target>, uint64_t, Request, std::optional<Result>)>;
+
+        static constexpr size_t MaxPendingTargets = 64;
+
+        static HoverPathWorker& Instance();
+        TargetPtr CreateTarget();
+        void Submit(const TargetPtr& target, Request request, Completion completion);
+        void CancelPending(const TargetPtr& target, uint64_t generation) noexcept;
+
+    private:
+        struct WorkItem
+        {
+            std::weak_ptr<Target> target;
+            uint64_t generation;
+            Request request;
+            Completion completion;
+        };
+
+        HoverPathWorker();
+        ~HoverPathWorker() = default;
+
+        HoverPathWorker(const HoverPathWorker&) = delete;
+        HoverPathWorker& operator=(const HoverPathWorker&) = delete;
+
+        static void CALLBACK _workCallback(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK) noexcept;
+        static Resolver _defaultResolver();
+        void _run() noexcept;
+        void _completeIfCurrent(WorkItem& work, std::optional<Result> result) noexcept;
+
+        void _setResolverForTests(Resolver resolver);
+        void _resetResolverForTests();
+        bool _waitForIdleForTests(std::chrono::milliseconds timeout);
+        size_t _pendingCountForTests();
+        size_t _maxActiveProbeCountForTests();
+
+        PTP_POOL _pool = nullptr;
+        TP_CALLBACK_ENVIRON _callbackEnvironment{};
+        PTP_WORK _work = nullptr;
+        Resolver _resolver;
+        Cache _cache;
+        std::mutex _mutex;
+        std::condition_variable _idleCondition;
+        std::deque<uint64_t> _pendingOrder;
+        std::unordered_map<uint64_t, WorkItem> _pending;
+        std::atomic<uint64_t> _nextTargetId{ 1 };
+        bool _scheduled = false;
+        size_t _activeProbeCount = 0;
+        size_t _maxActiveProbeCount = 0;
+
+        friend class ::ControlUnitTests::ControlCoreTests;
+    };
 
     struct SelectionColor : SelectionColorT<SelectionColor>
     {
@@ -166,6 +249,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void ClearHoveredCell();
         void RefreshHoveredCell();
         winrt::hstring GetHyperlink(const Core::Point position) const;
+        ::Microsoft::Terminal::Core::HyperlinkInfo GetHyperlinkInfo(const Core::Point position) const;
         winrt::hstring HoveredUriText() const;
         Windows::Foundation::IReference<Core::Point> HoveredCell() const;
 
@@ -379,6 +463,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void _connectionStateChangedHandler(const TerminalConnection::ITerminalConnection&, const Windows::Foundation::IInspectable&);
         void _updateHoveredCell(const std::optional<til::point> terminalPosition);
         void _refreshHoveredCell();
+        void _queueHoverPathRequest(::Microsoft::Terminal::Core::Terminal::HoverPathRequest request,
+                                    uint64_t mutationGeneration);
+        void _completeHoverPathRequest(const ::Microsoft::Terminal::Core::Terminal::HoverPathRequest& request,
+                                       const std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult>& result,
+                                       uint64_t mutationGeneration);
+        void _invalidateHoverPathRequests();
         void _setOpacity(const float opacity, const bool focused = true);
 
         bool _isBackgroundTransparent();
@@ -447,6 +537,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         std::optional<wchar_t> _leadingSurrogate;
         std::optional<til::point> _lastHoveredCell;
         uint16_t _lastHoveredId{ 0 };
+        uint64_t _hoverPathRequestId = 0;
+        uint64_t _hoverPathHandledMutationGeneration = 0;
+        std::atomic<uint64_t> _hoverPathMutationGeneration{ 0 };
+        std::atomic<bool> _hoverPathPendingOrActive{ false };
+        HoverPathWorker::TargetPtr _hoverPathTarget;
         std::atomic<bool> _initializedTerminal{ false };
         bool _isReadOnly{ false };
         bool _closing{ false };

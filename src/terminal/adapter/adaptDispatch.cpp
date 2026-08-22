@@ -2428,6 +2428,9 @@ bool AdaptDispatch::_DoLineFeed(const Page& page, const bool withReturn, const b
     auto& cursor = page.Cursor();
     const auto currentPosition = cursor.GetPosition();
     auto newPosition = currentPosition;
+    const auto& currentRow = textBuffer.GetRowByOffset(currentPosition.y);
+    const auto workingDirectoryId = currentRow.GetWorkingDirectoryId();
+    const auto shellTypeId = currentRow.GetShellTypeId();
 
     // If the line was forced to wrap, set the wrap status.
     // When explicitly moving down a row, clear the wrap status.
@@ -2502,6 +2505,18 @@ bool AdaptDispatch::_DoLineFeed(const Page& page, const bool withReturn, const b
     }
 
     cursor.SetPosition(newPosition);
+    if (workingDirectoryId != 0 || shellTypeId != 0)
+    {
+        auto& newRow = textBuffer.GetMutableRowByOffset(newPosition.y);
+        if (newRow.GetWorkingDirectoryId() == 0)
+        {
+            newRow.SetWorkingDirectoryId(workingDirectoryId);
+        }
+        if (newRow.GetShellTypeId() == 0)
+        {
+            newRow.SetShellTypeId(shellTypeId);
+        }
+    }
     return viewportMoved;
 }
 

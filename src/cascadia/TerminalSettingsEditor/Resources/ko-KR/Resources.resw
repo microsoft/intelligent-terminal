@@ -3049,4 +3049,20 @@
     <value>{} | {} | OpenAI 호환</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="Globals_FilePathEditor.Header" xml:space="preserve">
+    <value>파일 경로를 여는 방법</value>
+    <comment>Header for a dropdown that selects how clickable file paths are opened.</comment>
+  </data>
+  <data name="Globals_FilePathEditor.HelpText" xml:space="preserve">
+    <value>클릭 가능한 파일 경로를 시스템 기본 앱으로 열지, $EDITOR에 구성된 명령으로 열지 선택합니다.</value>
+    <comment>{Locked="$EDITOR"} Help text for the file path editor dropdown.</comment>
+  </data>
+  <data name="Globals_FilePathEditorDefault.Content" xml:space="preserve">
+    <value>시스템 기본값</value>
+    <comment>Option that opens clickable file paths with the system-associated application.</comment>
+  </data>
+  <data name="Globals_FilePathEditorEnvironment.Content" xml:space="preserve">
+    <value>$EDITOR 환경 변수</value>
+    <comment>{Locked="$EDITOR"} Option that opens clickable file paths with the command from the environment variable.</comment>
+  </data>
 </root>

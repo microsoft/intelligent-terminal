@@ -112,6 +112,16 @@
                               Style="{StaticResource ToggleSwitchInExpanderStyle}" />
             </local:SettingContainer>
 
+            <!--  File Path Editor  -->
+            <local:SettingContainer x:Name="FilePathEditor"
+                                    x:Uid="Globals_FilePathEditor">
+                <ComboBox AutomationProperties.AccessibilityView="Content"
+                          ItemTemplate="{StaticResource EnumComboBoxTemplate}"
+                          ItemsSource="{x:Bind ViewModel.FilePathEditorList, Mode=OneWay}"
+                          SelectedItem="{x:Bind ViewModel.CurrentFilePathEditor, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
+            </local:SettingContainer>
+
             <!--  Search Web Default Query URL  -->
             <local:SettingContainer x:Name="SearchWebDefaultQueryUrl"
                                     x:Uid="Globals_SearchWebDefaultQueryUrl"

@@ -235,6 +235,7 @@ void ROW::Reset(const TextAttribute& attr) noexcept
     _wrapForced = false;
     _doubleBytePadded = false;
     _workingDirectoryId = 0;
+    _shellTypeId = 0;
     _promptData = std::nullopt;
     _init();
 }
@@ -359,6 +360,7 @@ void ROW::CopyFrom(const ROW& source)
     _lineRendition = source._lineRendition;
     _wrapForced = source._wrapForced;
     _workingDirectoryId = source._workingDirectoryId;
+    _shellTypeId = source._shellTypeId;
 
     RowCopyTextFromState state{
         .source = source,
@@ -1264,6 +1266,16 @@ uint32_t ROW::GetWorkingDirectoryId() const noexcept
 void ROW::SetWorkingDirectoryId(const uint32_t id) noexcept
 {
     _workingDirectoryId = id;
+}
+
+uint32_t ROW::GetShellTypeId() const noexcept
+{
+    return _shellTypeId;
+}
+
+void ROW::SetShellTypeId(const uint32_t id) noexcept
+{
+    _shellTypeId = id;
 }
 
 void ROW::StartPrompt() noexcept

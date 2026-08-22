@@ -30,6 +30,7 @@
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
+#include "FilePathEditorHelpers.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
 #include "ScratchpadContent.h"
@@ -7988,7 +7989,7 @@ namespace winrt::TerminalApp::implementation
     }
     CATCH_LOG();
 
-    static std::optional<std::wstring> _DirectoryPathFromFileUri(const winrt::hstring& uri)
+    static std::optional<std::wstring> _PathFromFileUri(const winrt::hstring& uri)
     {
         std::wstring path{ uri };
         auto pathLength = gsl::narrow<DWORD>(path.size());
@@ -7998,13 +7999,24 @@ namespace winrt::TerminalApp::implementation
         }
 
         path.resize(pathLength);
-        const auto attributes = GetFileAttributesW(path.c_str());
+        return path;
+    }
+
+    static std::optional<std::wstring> _DirectoryPathFromFileUri(const winrt::hstring& uri)
+    {
+        const auto path = _PathFromFileUri(uri);
+        if (!path)
+        {
+            return std::nullopt;
+        }
+
+        const auto attributes = GetFileAttributesW(path->c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES || WI_IsFlagClear(attributes, FILE_ATTRIBUTE_DIRECTORY))
         {
             return std::nullopt;
         }
 
-        return path;
+        return *path;
     }
 
     static bool _OpenDirectoryInExplorer(const std::wstring_view path)
@@ -8018,22 +8030,297 @@ namespace winrt::TerminalApp::implementation
         const auto explorer = std::filesystem::path{ windowsDirectory } / L"explorer.exe";
         const auto parameters = fmt::format(LR"("{}")", path);
         const auto result = ShellExecuteW(nullptr, L"open", explorer.c_str(), parameters.c_str(), nullptr, SW_SHOWNORMAL);
-        return reinterpret_cast<INT_PTR>(result) > 32;
+        const auto resultCode = reinterpret_cast<INT_PTR>(result);
+        if (resultCode > 32)
+        {
+            return true;
+        }
+
+        SetLastError(resultCode > 0 ? gsl::narrow<DWORD>(resultCode) : ERROR_GEN_FAILURE);
+        return false;
+    }
+
+    static std::optional<std::wstring> _ReadEnvironmentVariable(const std::wstring_view name)
+    {
+        const std::wstring variableName{ name };
+        const auto required = GetEnvironmentVariableW(variableName.c_str(), nullptr, 0);
+        if (required == 0)
+        {
+            return std::nullopt;
+        }
+
+        std::wstring value(required, L'\0');
+        const auto length = GetEnvironmentVariableW(variableName.c_str(), value.data(), gsl::narrow<DWORD>(value.size()));
+        if (length == 0 || length >= value.size())
+        {
+            return std::nullopt;
+        }
+        value.resize(length);
+        return value;
+    }
+
+    static std::optional<std::wstring> _ExpandEnvironmentVariables(const std::wstring_view value)
+    {
+        const std::wstring input{ value };
+        const auto required = ExpandEnvironmentStringsW(input.c_str(), nullptr, 0);
+        if (required == 0)
+        {
+            return std::nullopt;
+        }
+
+        std::wstring expanded(required, L'\0');
+        const auto length = ExpandEnvironmentStringsW(input.c_str(), expanded.data(), gsl::narrow<DWORD>(expanded.size()));
+        if (length == 0 || length > expanded.size())
+        {
+            return std::nullopt;
+        }
+        expanded.resize(length - 1);
+        return expanded;
+    }
+
+    static std::wstring _LowercaseAscii(std::wstring value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](const auto ch) {
+            return static_cast<wchar_t>(ch >= L'A' && ch <= L'Z' ? ch + (L'a' - L'A') : ch);
+        });
+        return value;
+    }
+
+    static std::vector<std::wstring> _EditorPathExtensions()
+    {
+        std::vector<std::wstring> extensions;
+        if (const auto pathExtensions = _ReadEnvironmentVariable(L"PATHEXT"))
+        {
+            for (size_t begin = 0; begin <= pathExtensions->size();)
+            {
+                const auto end = pathExtensions->find(L';', begin);
+                auto extension = pathExtensions->substr(begin, end - begin);
+                while (!extension.empty() && std::iswspace(extension.front()))
+                {
+                    extension.erase(extension.begin());
+                }
+                while (!extension.empty() && std::iswspace(extension.back()))
+                {
+                    extension.pop_back();
+                }
+                if (!extension.empty())
+                {
+                    if (extension.front() != L'.')
+                    {
+                        extension.insert(extension.begin(), L'.');
+                    }
+                    extension = _LowercaseAscii(std::move(extension));
+                    if (std::ranges::find(extensions, extension) == extensions.end())
+                    {
+                        extensions.emplace_back(std::move(extension));
+                    }
+                }
+                if (end == std::wstring::npos)
+                {
+                    break;
+                }
+                begin = end + 1;
+            }
+        }
+        if (extensions.empty())
+        {
+            extensions = { L".com", L".exe", L".bat", L".cmd" };
+        }
+        return extensions;
+    }
+
+    static bool _IsFile(const std::filesystem::path& path)
+    {
+        const auto attributes = GetFileAttributesW(path.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && WI_IsFlagClear(attributes, FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    static std::optional<std::wstring> _ResolveEditorCandidate(const std::filesystem::path& candidate)
+    {
+        const auto extension = _LowercaseAscii(candidate.extension().native());
+        if (extension == L".exe" || extension == L".com")
+        {
+            return candidate.native();
+        }
+        if (extension != L".cmd" && extension != L".bat")
+        {
+            SetLastError(ERROR_NOT_SUPPORTED);
+            return std::nullopt;
+        }
+
+        const auto executableCandidates = FilePathEditorHelpers::EditorShimExecutableCandidates(candidate);
+        if (executableCandidates.empty())
+        {
+            SetLastError(ERROR_NOT_SUPPORTED);
+            return std::nullopt;
+        }
+        for (const auto& executableCandidate : executableCandidates)
+        {
+            if (_IsFile(executableCandidate))
+            {
+                return executableCandidate.native();
+            }
+        }
+
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return std::nullopt;
+    }
+
+    static std::optional<std::wstring> _ResolveEditorExecutable(const std::wstring_view executable)
+    {
+        if (executable.empty())
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return std::nullopt;
+        }
+
+        const std::filesystem::path requested{ executable };
+        const auto extensions = requested.has_extension() ?
+                                    std::vector<std::wstring>{ L"" } :
+                                    _EditorPathExtensions();
+        if (requested.has_parent_path() || requested.has_root_path())
+        {
+            for (const auto& extension : extensions)
+            {
+                auto candidate = requested;
+                candidate += extension;
+
+                std::wstring fullPath(32768, L'\0');
+                const auto length = GetFullPathNameW(candidate.c_str(), gsl::narrow<DWORD>(fullPath.size()), fullPath.data(), nullptr);
+                if (length == 0 || length >= fullPath.size())
+                {
+                    continue;
+                }
+                fullPath.resize(length);
+
+                const std::filesystem::path resolved{ std::move(fullPath) };
+                if (_IsFile(resolved))
+                {
+                    return _ResolveEditorCandidate(resolved);
+                }
+            }
+
+            SetLastError(ERROR_FILE_NOT_FOUND);
+            return std::nullopt;
+        }
+
+        const auto searchPath = _ReadEnvironmentVariable(L"PATH");
+        if (!searchPath)
+        {
+            SetLastError(ERROR_ENVVAR_NOT_FOUND);
+            return std::nullopt;
+        }
+
+        for (const auto& extension : extensions)
+        {
+            std::wstring resolved(32768, L'\0');
+            const auto length = SearchPathW(searchPath->c_str(),
+                                            requested.c_str(),
+                                            extension.empty() ? nullptr : extension.c_str(),
+                                            gsl::narrow<DWORD>(resolved.size()),
+                                            resolved.data(),
+                                            nullptr);
+            if (length == 0 || length >= resolved.size())
+            {
+                continue;
+            }
+            resolved.resize(length);
+
+            const std::filesystem::path candidate{ std::move(resolved) };
+            if (_IsFile(candidate))
+            {
+                return _ResolveEditorCandidate(candidate);
+            }
+        }
+
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return std::nullopt;
+    }
+
+    static bool _OpenFileInEnvironmentEditor(const std::wstring_view path,
+                                             const std::optional<uint32_t> line,
+                                             const std::optional<uint32_t> column)
+    {
+        const auto editor = _ReadEnvironmentVariable(L"EDITOR");
+        if (!editor || editor->empty())
+        {
+            SetLastError(ERROR_ENVVAR_NOT_FOUND);
+            return false;
+        }
+
+        const auto expanded = _ExpandEnvironmentVariables(*editor);
+        if (!expanded || expanded->empty())
+        {
+            SetLastError(ERROR_BAD_ENVIRONMENT);
+            return false;
+        }
+
+        int argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(expanded->c_str(), &argc) };
+        if (!argv || argc <= 0 || std::wstring_view{ argv[0] }.empty())
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return false;
+        }
+
+        const auto executable = _ResolveEditorExecutable(argv[0]);
+        if (!executable)
+        {
+            return false;
+        }
+
+        std::vector<std::wstring> configuredArguments;
+        configuredArguments.reserve(gsl::narrow<size_t>(argc - 1));
+        for (int index = 1; index < argc; ++index)
+        {
+            configuredArguments.emplace_back(argv[index]);
+        }
+        const auto arguments = FilePathEditorHelpers::BuildEditorArguments(*executable, configuredArguments, path, line, column);
+
+        std::wstring commandline;
+        QuoteAndEscapeCommandlineArg(*executable, commandline);
+        for (const auto& argument : arguments)
+        {
+            commandline.push_back(L' ');
+            QuoteAndEscapeCommandlineArg(argument, commandline);
+        }
+
+        STARTUPINFOW startupInfo{};
+        startupInfo.cb = sizeof(startupInfo);
+        wil::unique_process_information processInfo;
+        return CreateProcessW(executable->c_str(),
+                              commandline.data(),
+                              nullptr,
+                              nullptr,
+                              FALSE,
+                              0,
+                              nullptr,
+                              nullptr,
+                              &startupInfo,
+                              &processInfo);
     }
 
     safe_void_coroutine TerminalPage::_OpenHyperlinkHandler(const IInspectable /*sender*/, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs)
     {
         try
         {
-            auto uriString{ eventArgs.Uri() };
+            const auto isAutoDetectedFilePath = eventArgs.IsAutoDetectedFilePath();
+            const auto fileTarget = FilePathEditorHelpers::ParseFileUriTarget(eventArgs.Uri(), isAutoDetectedFilePath);
+            THROW_HR_IF(E_INVALIDARG, !fileTarget);
+            winrt::hstring uriString{ fileTarget->uri };
             auto parsed = winrt::Windows::Foundation::Uri(uriString);
             if (_IsUriSupported(parsed))
             {
                 if (parsed.SchemeName() == L"file")
                 {
-                    if (const auto directory = _DirectoryPathFromFileUri(uriString);
-                        directory && _OpenDirectoryInExplorer(*directory))
+                    if (const auto directory = _DirectoryPathFromFileUri(uriString))
                     {
+                        if (!_OpenDirectoryInExplorer(*directory))
+                        {
+                            const auto hr = HRESULT_FROM_WIN32(GetLastError());
+                            LOG_HR(hr);
+                            _ShowCouldNotOpenDialog(winrt::hresult_error{ hr }.message(), uriString);
+                        }
                         co_return;
                     }
                 }
@@ -8060,6 +8347,25 @@ namespace winrt::TerminalApp::implementation
 
                 if (shouldLaunch)
                 {
+                    if (isAutoDetectedFilePath &&
+                        parsed.SchemeName() == L"file" &&
+                        _settings &&
+                        _settings.GlobalSettings().FilePathEditor() == Microsoft::Terminal::Settings::Model::FilePathEditor::Environment)
+                    {
+                        const auto path = _PathFromFileUri(uriString);
+                        if (!path)
+                        {
+                            _ShowCouldNotOpenDialog(RS_(L"InvalidUriText"), uriString);
+                        }
+                        else if (!_OpenFileInEnvironmentEditor(*path, fileTarget->line, fileTarget->column))
+                        {
+                            const auto error = GetLastError();
+                            const auto hr = HRESULT_FROM_WIN32(error);
+                            LOG_HR(hr);
+                            _ShowCouldNotOpenDialog(winrt::hresult_error{ hr }.message(), uriString);
+                        }
+                        co_return;
+                    }
                     ShellExecuteW(nullptr, L"open", uriString.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                 }
             }

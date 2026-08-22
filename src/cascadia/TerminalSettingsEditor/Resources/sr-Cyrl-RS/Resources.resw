@@ -3047,4 +3047,20 @@
     <value>{} | {} | Компатибилно са OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="Globals_FilePathEditor.Header" xml:space="preserve">
+    <value>Отварање путања датотека помоћу</value>
+    <comment>Header for a dropdown that selects how clickable file paths are opened.</comment>
+  </data>
+  <data name="Globals_FilePathEditor.HelpText" xml:space="preserve">
+    <value>Одаберите да ли се путање датотека на које може да се кликне отварају подразумеваном системском апликацијом или командом подешеном у $EDITOR.</value>
+    <comment>{Locked="$EDITOR"} Help text for the file path editor dropdown.</comment>
+  </data>
+  <data name="Globals_FilePathEditorDefault.Content" xml:space="preserve">
+    <value>Подразумевано системско</value>
+    <comment>Option that opens clickable file paths with the system-associated application.</comment>
+  </data>
+  <data name="Globals_FilePathEditorEnvironment.Content" xml:space="preserve">
+    <value>Променљива окружења $EDITOR</value>
+    <comment>{Locked="$EDITOR"} Option that opens clickable file paths with the command from the environment variable.</comment>
+  </data>
 </root>

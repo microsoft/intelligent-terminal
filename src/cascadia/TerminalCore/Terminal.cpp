@@ -52,11 +52,10 @@ void Terminal::Create(til::size viewportSize, til::CoordType scrollbackLines, Re
     const TextAttribute attr{};
     const UINT cursorSize = 12;
     _mainBuffer = std::make_unique<TextBuffer>(bufferSize, attr, cursorSize, true, &renderer);
-    if (!_workingDirectory.empty())
-    {
-        const auto id = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
-        _mainBuffer->GetMutableRowByOffset(0).SetWorkingDirectoryId(id);
-    }
+    const auto workingDirectoryId = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
+    _mainBuffer->GetMutableRowByOffset(0).SetWorkingDirectoryId(workingDirectoryId);
+    const auto shellTypeId = _mainBuffer->GetShellTypeId(_shellName);
+    _mainBuffer->GetMutableRowByOffset(0).SetShellTypeId(shellTypeId);
 
     auto dispatch = std::make_unique<AdaptDispatch>(*this, &renderer, _renderSettings, _terminalInput);
     auto engine = std::make_unique<OutputStateMachineEngine>(std::move(dispatch));
@@ -261,6 +260,16 @@ void Terminal::UpdateColorScheme(const ICoreScheme& scheme)
 void Terminal::SetHighContrastMode(bool hc) noexcept
 {
     _highContrastMode = hc;
+}
+
+void Terminal::SetPathTranslationStyle(const PathTranslationStyle style) noexcept
+{
+    if (_pathTranslationStyle != style)
+    {
+        _pathTranslationStyle = style;
+        ++_pathContextGeneration;
+        _hoverPathLink.reset();
+    }
 }
 
 void Terminal::SetCursorStyle(const DispatchTypes::CursorStyle cursorStyle)
@@ -537,16 +546,89 @@ bool Terminal::ShouldSendAlternateScroll(const unsigned int uiButton,
     return _getTerminalInput().ShouldSendAlternateScroll(uiButton, ::base::saturated_cast<short>(delta));
 }
 
+namespace
+{
+    struct HoverTextSlice
+    {
+        til::CoordType row = 0;
+        til::CoordType columnBegin = 0;
+        til::CoordType columnEnd = 0;
+        size_t textBegin = 0;
+        size_t textEnd = 0;
+        size_t rowCharBegin = 0;
+    };
+
+    til::CoordType _hoverTextEnd(const ROW& row) noexcept
+    {
+        return row.WasWrapForced() ? row.GetReadableColumnCount() : row.MeasureRight();
+    }
+
+    bool _isHoverPathHardBoundary(const wchar_t ch) noexcept
+    {
+        return ch < L' ' ||
+               ch == L'\x7f' ||
+               ch == L'"' ||
+               ch == L'\'' ||
+               ch == L'`' ||
+               ch == L'<' ||
+               ch == L'>' ||
+               ch == L'|' ||
+               ch == L'?' ||
+               ch == L'*' ||
+               ch == L',' ||
+               ch == L';';
+    }
+
+    til::point _hoverTextOffsetToPoint(const TextBuffer& buffer,
+                                       const std::vector<HoverTextSlice>& slices,
+                                       const size_t offset) noexcept
+    {
+        for (size_t index = 0; index < slices.size(); ++index)
+        {
+            const auto& slice = slices[index];
+            if (offset < slice.textEnd || (offset == slice.textEnd && index + 1 == slices.size()))
+            {
+                if (offset == slice.textEnd)
+                {
+                    return { slice.columnEnd, slice.row };
+                }
+
+                const auto& row = buffer.GetRowByOffset(slice.row);
+                const auto rowOffset = slice.rowCharBegin + offset - slice.textBegin;
+                return { row.GetLeadingColumnAtCharOffset(gsl::narrow<ptrdiff_t>(rowOffset)), slice.row };
+            }
+        }
+        return {};
+    }
+
+    void _appendHoverPathCacheKeyPart(std::wstring& key, const std::wstring_view part)
+    {
+        key.append(std::to_wstring(part.size()));
+        key.push_back(L':');
+        key.append(part);
+    }
+}
+
 // Method Description:
 // - Given a coord, get the URI at that location
 // Arguments:
 // - The position relative to the viewport
 std::wstring Terminal::GetHyperlinkAtViewportPosition(const til::point viewportPos)
 {
-    return GetHyperlinkAtBufferPosition(_ConvertToBufferCell(viewportPos, false));
+    return GetHyperlinkInfoAtViewportPosition(viewportPos).uri;
 }
 
 std::wstring Terminal::GetHyperlinkAtBufferPosition(const til::point bufferPos)
+{
+    return GetHyperlinkInfoAtBufferPosition(bufferPos).uri;
+}
+
+HyperlinkInfo Terminal::GetHyperlinkInfoAtViewportPosition(const til::point viewportPos)
+{
+    return GetHyperlinkInfoAtBufferPosition(_ConvertToBufferCell(viewportPos, false));
+}
+
+HyperlinkInfo Terminal::GetHyperlinkInfoAtBufferPosition(const til::point bufferPos)
 {
     const auto& buffer = _activeBuffer();
 
@@ -554,7 +636,9 @@ std::wstring Terminal::GetHyperlinkAtBufferPosition(const til::point bufferPos)
     const auto attr = buffer.GetCellDataAt(bufferPos)->TextAttr();
     if (attr.IsHyperlink())
     {
-        return buffer.GetHyperlinkUriFromId(attr.GetHyperlinkId());
+        return HyperlinkInfo{
+            .uri = buffer.GetHyperlinkUriFromId(attr.GetHyperlinkId()),
+        };
     }
 
     // Case 2: buffer position may point to an auto-detected hyperlink
@@ -566,9 +650,23 @@ std::wstring Terminal::GetHyperlinkAtBufferPosition(const til::point bufferPos)
             const auto text = buffer.GetPlainText(result.start, result.stop);
             if (const auto match = _resolveClickableMatch(result.value, text, result.start.y, ClickResolveMode::Activate))
             {
-                return match->target;
+                return HyperlinkInfo{
+                    .uri = std::move(match->target),
+                    .isAutoDetectedFilePath = match->action == ClickAction::OpenFile,
+                };
             }
         }
+        return {};
+    }
+
+    // Case 3: the position may point to a hover-only file path. The URI stored
+    // here is detection-only; activation obtains a snapshot and revalidates it.
+    if (_hoverPathContains(bufferPos))
+    {
+        return HyperlinkInfo{
+            .uri = _hoverPathLink->uri,
+            .isAutoDetectedFilePath = true,
+        };
     }
     return {};
 }
@@ -608,7 +706,665 @@ std::optional<PointTree::interval> Terminal::GetHyperlinkIntervalFromViewportPos
             return interval;
         }
     }
+
+    if (_hoverPathContains(bufferPos))
+    {
+        PointTree::interval interval{
+            _hoverPathLink->candidate.interval.start,
+            _hoverPathLink->candidate.interval.end,
+            0,
+        };
+        interval.start.y -= visStart;
+        interval.stop.y -= visStart;
+        return interval;
+    }
     return std::nullopt;
+}
+
+Terminal::HoverPathCache::LookupResult Terminal::HoverPathCache::Lookup(const std::wstring_view key,
+                                                                        const std::chrono::steady_clock::time_point now)
+{
+    if (const auto entry = _entries.find(key); entry != _entries.end())
+    {
+        if (entry->second.expiresAt > now)
+        {
+            entry->second.generation = ++_generation;
+            return {
+                .found = true,
+                .uri = entry->second.uri,
+            };
+        }
+        _entries.erase(entry);
+    }
+    return {};
+}
+
+void Terminal::HoverPathCache::Store(std::wstring key,
+                                     std::wstring uri,
+                                     const std::chrono::steady_clock::time_point now)
+{
+    static constexpr size_t maxEntries = 512;
+    static constexpr auto positiveLifetime = std::chrono::seconds{ 5 };
+    static constexpr auto negativeLifetime = std::chrono::seconds{ 1 };
+
+    if (!_entries.contains(key) && _entries.size() >= maxEntries)
+    {
+        const auto oldest = std::ranges::min_element(_entries, {}, [](const auto& entry) {
+            return entry.second.generation;
+        });
+        _entries.erase(oldest);
+    }
+
+    const auto lifetime = uri.empty() ? negativeLifetime : positiveLifetime;
+    _entries.insert_or_assign(std::move(key),
+                              Entry{
+                                  .uri = std::move(uri),
+                                  .expiresAt = now + lifetime,
+                                  .generation = ++_generation,
+                              });
+}
+
+size_t Terminal::HoverPathCache::Size() const noexcept
+{
+    return _entries.size();
+}
+
+std::optional<Terminal::HoverPathRequest> Terminal::CreateHoverPathRequest(const til::point viewportPos,
+                                                                           const uint64_t requestId) const
+{
+    _assertLocked();
+
+    if (!_detectURLs)
+    {
+        return std::nullopt;
+    }
+
+    const auto& buffer = _activeBuffer();
+    const auto bufferPosition = _ConvertToBufferCell(viewportPos, false);
+    const auto bufferSize = buffer.GetSize();
+    if (!bufferSize.IsInBounds(bufferPosition))
+    {
+        return std::nullopt;
+    }
+
+    const auto& hoveredRow = buffer.GetRowByOffset(bufferPosition.y);
+    const auto hoveredTextEnd = _hoverTextEnd(hoveredRow);
+    if (bufferPosition.x >= hoveredTextEnd)
+    {
+        return std::nullopt;
+    }
+
+    const auto hoveredColumnBegin = hoveredRow.AdjustToGlyphStart(bufferPosition.x);
+    const auto hoveredColumnEnd = std::min(hoveredTextEnd, hoveredRow.NavigateToNext(hoveredColumnBegin));
+    const auto hoveredCellCount = gsl::narrow<size_t>(hoveredColumnEnd - hoveredColumnBegin);
+    if (hoveredCellCount == 0 || hoveredCellCount > HoverPathMaxScanCells)
+    {
+        return std::nullopt;
+    }
+
+    const auto remainingCells = HoverPathMaxScanCells - hoveredCellCount;
+    auto cellsBefore = remainingCells / 2;
+    auto cellsAfter = remainingCells - cellsBefore;
+
+    std::vector<std::tuple<til::CoordType, til::CoordType, til::CoordType>> rowSlices;
+    rowSlices.reserve(64);
+
+    auto currentBegin = std::max<til::CoordType>(0, hoveredColumnBegin - gsl::narrow<til::CoordType>(cellsBefore));
+    currentBegin = hoveredRow.AdjustToGlyphStart(currentBegin);
+    if (gsl::narrow<size_t>(hoveredColumnBegin - currentBegin) > cellsBefore)
+    {
+        currentBegin = hoveredRow.NavigateToNext(currentBegin);
+    }
+
+    auto currentEnd = std::min<til::CoordType>(hoveredTextEnd,
+                                               hoveredColumnEnd + gsl::narrow<til::CoordType>(cellsAfter));
+    if (currentEnd < hoveredTextEnd)
+    {
+        currentEnd = hoveredRow.AdjustToGlyphStart(currentEnd);
+        currentEnd = std::max(currentEnd, hoveredColumnEnd);
+    }
+
+    cellsBefore -= std::min(cellsBefore, gsl::narrow<size_t>(hoveredColumnBegin - currentBegin));
+    cellsAfter -= std::min(cellsAfter, gsl::narrow<size_t>(currentEnd - hoveredColumnEnd));
+    rowSlices.emplace_back(bufferPosition.y, currentBegin, currentEnd);
+
+    for (auto rowIndex = bufferPosition.y; cellsBefore != 0 && rowIndex > 0;)
+    {
+        const auto previousRowIndex = rowIndex - 1;
+        const auto& previousRow = buffer.GetRowByOffset(previousRowIndex);
+        if (!previousRow.WasWrapForced())
+        {
+            break;
+        }
+
+        const auto end = _hoverTextEnd(previousRow);
+        const auto take = std::min(cellsBefore, gsl::narrow<size_t>(end));
+        auto begin = end - gsl::narrow<til::CoordType>(take);
+        begin = previousRow.AdjustToGlyphStart(begin);
+        if (gsl::narrow<size_t>(end - begin) > cellsBefore)
+        {
+            begin = previousRow.NavigateToNext(begin);
+        }
+
+        const auto count = gsl::narrow<size_t>(end - begin);
+        if (count == 0)
+        {
+            break;
+        }
+        rowSlices.emplace_back(previousRowIndex, begin, end);
+        cellsBefore -= count;
+        rowIndex = previousRowIndex;
+    }
+    std::reverse(rowSlices.begin() + 1, rowSlices.end());
+    std::rotate(rowSlices.begin(), rowSlices.begin() + 1, rowSlices.end());
+
+    for (auto rowIndex = bufferPosition.y; cellsAfter != 0 && rowIndex + 1 < bufferSize.BottomExclusive(); ++rowIndex)
+    {
+        const auto& row = buffer.GetRowByOffset(rowIndex);
+        if (!row.WasWrapForced())
+        {
+            break;
+        }
+
+        const auto nextRowIndex = rowIndex + 1;
+        const auto& nextRow = buffer.GetRowByOffset(nextRowIndex);
+        const auto end = _hoverTextEnd(nextRow);
+        const auto take = std::min(cellsAfter, gsl::narrow<size_t>(end));
+        auto sliceEnd = gsl::narrow<til::CoordType>(take);
+        if (sliceEnd < end)
+        {
+            sliceEnd = nextRow.AdjustToGlyphStart(sliceEnd);
+        }
+        if (sliceEnd == 0)
+        {
+            break;
+        }
+
+        rowSlices.emplace_back(nextRowIndex, 0, sliceEnd);
+        cellsAfter -= gsl::narrow<size_t>(sliceEnd);
+    }
+
+    std::vector<HoverTextSlice> slices;
+    slices.reserve(rowSlices.size());
+    size_t totalChars = 0;
+    size_t scannedCellCount = 0;
+    size_t hoveredTextBegin = 0;
+    size_t hoveredTextEndOffset = 0;
+
+    for (const auto& [rowIndex, columnBegin, columnEnd] : rowSlices)
+    {
+        const auto& row = buffer.GetRowByOffset(rowIndex);
+        const auto rowCharBegin = row.GetCharOffset(columnBegin);
+        const auto text = row.GetText(columnBegin, columnEnd);
+        const auto textBegin = totalChars;
+        totalChars += text.size();
+        scannedCellCount += gsl::narrow<size_t>(columnEnd - columnBegin);
+
+        slices.emplace_back(HoverTextSlice{
+            .row = rowIndex,
+            .columnBegin = columnBegin,
+            .columnEnd = columnEnd,
+            .textBegin = textBegin,
+            .textEnd = totalChars,
+            .rowCharBegin = rowCharBegin,
+        });
+
+        if (rowIndex == bufferPosition.y)
+        {
+            hoveredTextBegin = textBegin + row.GetCharOffset(hoveredColumnBegin) - rowCharBegin;
+            hoveredTextEndOffset = textBegin + row.GetCharOffset(hoveredColumnEnd) - rowCharBegin;
+        }
+    }
+
+    if (hoveredTextEndOffset <= hoveredTextBegin ||
+        hoveredTextEndOffset - hoveredTextBegin > HoverPathMaxScanCells)
+    {
+        return std::nullopt;
+    }
+
+    const auto remainingChars = HoverPathMaxScanCells - (hoveredTextEndOffset - hoveredTextBegin);
+    const auto charsBefore = remainingChars / 2;
+    const auto charsAfter = remainingChars - charsBefore;
+    const auto textWindowBegin = hoveredTextBegin > charsBefore ? hoveredTextBegin - charsBefore : 0;
+    const auto textWindowEnd = std::min(totalChars, hoveredTextEndOffset + charsAfter);
+
+    std::wstring text;
+    text.reserve(textWindowEnd - textWindowBegin);
+    std::vector<HoverTextSlice> boundedSlices;
+    boundedSlices.reserve(slices.size());
+    size_t boundedHoveredBegin = 0;
+    size_t boundedHoveredEnd = 0;
+
+    for (const auto& slice : slices)
+    {
+        const auto intersectionBegin = std::max(slice.textBegin, textWindowBegin);
+        const auto intersectionEnd = std::min(slice.textEnd, textWindowEnd);
+        if (intersectionBegin >= intersectionEnd)
+        {
+            continue;
+        }
+
+        const auto& row = buffer.GetRowByOffset(slice.row);
+        const auto localCharBegin = slice.rowCharBegin + intersectionBegin - slice.textBegin;
+        const auto localCharEnd = slice.rowCharBegin + intersectionEnd - slice.textBegin;
+        auto columnBegin = row.GetLeadingColumnAtCharOffset(gsl::narrow<ptrdiff_t>(localCharBegin));
+        auto columnEnd = row.GetLeadingColumnAtCharOffset(gsl::narrow<ptrdiff_t>(localCharEnd));
+        if (row.GetCharOffset(columnEnd) < localCharEnd)
+        {
+            columnEnd = row.NavigateToNext(columnEnd);
+        }
+        columnBegin = std::max(columnBegin, slice.columnBegin);
+        columnEnd = std::min(columnEnd, slice.columnEnd);
+        if (columnBegin >= columnEnd)
+        {
+            continue;
+        }
+
+        const auto boundedTextBegin = text.size();
+        const auto rowCharBegin = row.GetCharOffset(columnBegin);
+        const auto rowText = row.GetText(columnBegin, columnEnd);
+        text.append(rowText);
+        boundedSlices.emplace_back(HoverTextSlice{
+            .row = slice.row,
+            .columnBegin = columnBegin,
+            .columnEnd = columnEnd,
+            .textBegin = boundedTextBegin,
+            .textEnd = text.size(),
+            .rowCharBegin = rowCharBegin,
+        });
+
+        if (slice.row == bufferPosition.y)
+        {
+            boundedHoveredBegin = boundedTextBegin + row.GetCharOffset(hoveredColumnBegin) - rowCharBegin;
+            boundedHoveredEnd = boundedTextBegin + row.GetCharOffset(hoveredColumnEnd) - rowCharBegin;
+        }
+    }
+
+    if (text.empty() ||
+        text.size() > HoverPathMaxScanCells ||
+        boundedHoveredEnd <= boundedHoveredBegin ||
+        boundedHoveredEnd > text.size())
+    {
+        return std::nullopt;
+    }
+
+    std::vector<uint8_t> allowed(text.size(), 1);
+    for (size_t index = 0; index < text.size();)
+    {
+        if (_isHoverPathHardBoundary(text[index]))
+        {
+            allowed[index++] = 0;
+            continue;
+        }
+
+        if (iswspace(text[index]))
+        {
+            auto end = index + 1;
+            while (end < text.size() && iswspace(text[end]))
+            {
+                ++end;
+            }
+            if (end - index != 1 || text[index] != L' ')
+            {
+                std::fill(allowed.begin() + index, allowed.begin() + end, uint8_t{ 0 });
+            }
+            index = end;
+            continue;
+        }
+        ++index;
+    }
+
+    if (std::ranges::any_of(allowed.begin() + boundedHoveredBegin,
+                            allowed.begin() + boundedHoveredEnd,
+                            [](const auto value) { return value == 0; }))
+    {
+        return std::nullopt;
+    }
+
+    auto segmentBegin = boundedHoveredBegin;
+    while (segmentBegin > 0 && allowed[segmentBegin - 1] != 0)
+    {
+        --segmentBegin;
+    }
+    auto segmentEnd = boundedHoveredEnd;
+    while (segmentEnd < allowed.size() && allowed[segmentEnd] != 0)
+    {
+        ++segmentEnd;
+    }
+    while (segmentBegin < segmentEnd && text[segmentBegin] == L' ')
+    {
+        ++segmentBegin;
+    }
+    while (segmentEnd > segmentBegin && text[segmentEnd - 1] == L' ')
+    {
+        --segmentEnd;
+    }
+    if (boundedHoveredBegin < segmentBegin || boundedHoveredEnd > segmentEnd)
+    {
+        return std::nullopt;
+    }
+
+    std::vector<size_t> starts{ segmentBegin };
+    std::vector<size_t> ends{ segmentEnd };
+    for (auto index = segmentBegin; index < segmentEnd; ++index)
+    {
+        const auto ch = text[index];
+        if (ch == L' ' || ch == L'/' || ch == L'\\')
+        {
+            if (index > segmentBegin)
+            {
+                ends.emplace_back(index);
+            }
+            if (index + 1 < segmentEnd)
+            {
+                starts.emplace_back(index + 1);
+            }
+        }
+    }
+
+    std::erase_if(starts, [&](const auto offset) {
+        return offset > boundedHoveredBegin;
+    });
+    std::erase_if(ends, [&](const auto offset) {
+        return offset < boundedHoveredEnd;
+    });
+    std::ranges::sort(starts);
+    std::ranges::sort(ends);
+
+    static constexpr size_t maxOptionsPerSide = 8;
+    if (starts.size() > maxOptionsPerSide)
+    {
+        std::vector<size_t> boundedStarts;
+        boundedStarts.reserve(maxOptionsPerSide);
+        boundedStarts.emplace_back(starts.front());
+        boundedStarts.insert(boundedStarts.end(), starts.end() - (maxOptionsPerSide - 1), starts.end());
+        starts = std::move(boundedStarts);
+    }
+    if (ends.size() > maxOptionsPerSide)
+    {
+        const auto finalEnd = ends.back();
+        ends.resize(maxOptionsPerSide - 1);
+        ends.emplace_back(finalEnd);
+    }
+
+    std::vector<std::pair<size_t, size_t>> ranges;
+    ranges.reserve(std::min(HoverPathMaxCandidates, starts.size() * ends.size()));
+    for (const auto start : starts)
+    {
+        for (const auto end : ends)
+        {
+            if (start <= boundedHoveredBegin && end >= boundedHoveredEnd && start < end)
+            {
+                ranges.emplace_back(start, end);
+            }
+        }
+    }
+    std::ranges::sort(ranges, [](const auto& lhs, const auto& rhs) {
+        const auto lhsLength = lhs.second - lhs.first;
+        const auto rhsLength = rhs.second - rhs.first;
+        return lhsLength != rhsLength ? lhsLength > rhsLength : lhs.first < rhs.first;
+    });
+    ranges.erase(std::unique(ranges.begin(), ranges.end()), ranges.end());
+    if (ranges.size() > HoverPathMaxCandidates)
+    {
+        ranges.resize(HoverPathMaxCandidates);
+    }
+
+    if (ranges.empty())
+    {
+        return std::nullopt;
+    }
+
+    const auto scanRowBegin = boundedSlices.front().row;
+    const auto scanRowEnd = boundedSlices.back().row;
+    static constexpr size_t maxContextRows = HoverPathMaxScanCells;
+    const auto [initialWorkingDirectory, workingDirectoryRows] = _getWorkingDirectoryForRowBounded(scanRowBegin, maxContextRows);
+    const auto [initialShellType, shellTypeRows] = _getShellTypeForRowBounded(scanRowBegin, maxContextRows);
+
+    std::vector<std::wstring_view> workingDirectories;
+    std::vector<std::wstring_view> shellTypes;
+    workingDirectories.reserve(gsl::narrow<size_t>(scanRowEnd - scanRowBegin + 1));
+    shellTypes.reserve(gsl::narrow<size_t>(scanRowEnd - scanRowBegin + 1));
+    auto workingDirectory = initialWorkingDirectory;
+    auto shellType = initialShellType;
+    for (auto rowIndex = scanRowBegin; rowIndex <= scanRowEnd; ++rowIndex)
+    {
+        const auto& row = buffer.GetRowByOffset(rowIndex);
+        if (const auto id = row.GetWorkingDirectoryId())
+        {
+            workingDirectory = buffer.GetWorkingDirectoryFromId(id);
+        }
+        if (const auto id = row.GetShellTypeId())
+        {
+            shellType = buffer.GetShellTypeFromId(id);
+        }
+        workingDirectories.emplace_back(workingDirectory);
+        shellTypes.emplace_back(shellType);
+    }
+
+    HoverPathRequest request{
+        .requestId = requestId,
+        .viewportPosition = viewportPos,
+        .bufferPosition = bufferPosition,
+        .translationStyle = _pathTranslationStyle,
+        .bufferMutationId = buffer.GetLastMutationId(),
+        .pathContextGeneration = _pathContextGeneration,
+        .visibleStart = _VisibleStartIndex(),
+        .scannedCellCount = scannedCellCount,
+        .scannedRowCount = boundedSlices.size(),
+        .contextRowCount = std::max(workingDirectoryRows, shellTypeRows),
+    };
+    request.candidates.reserve(ranges.size());
+
+    for (const auto [start, end] : ranges)
+    {
+        const auto intervalStart = _hoverTextOffsetToPoint(buffer, boundedSlices, start);
+        const auto intervalEnd = _hoverTextOffsetToPoint(buffer, boundedSlices, end);
+        if (!(intervalStart <= bufferPosition && bufferPosition < intervalEnd))
+        {
+            continue;
+        }
+
+        const auto contextIndex = gsl::narrow<size_t>(intervalStart.y - scanRowBegin);
+        request.candidates.emplace_back(HoverPathCandidate{
+            .text = text.substr(start, end - start),
+            .interval = { intervalStart, intervalEnd },
+            .workingDirectory = std::wstring{ til::at(workingDirectories, contextIndex) },
+            .shellType = std::wstring{ til::at(shellTypes, contextIndex) },
+        });
+    }
+
+    if (request.candidates.empty())
+    {
+        return std::nullopt;
+    }
+    return request;
+}
+
+std::optional<Terminal::HoverPathResult> Terminal::ResolveHoverPathRequest(const HoverPathRequest& request,
+                                                                           HoverPathCache* const cache,
+                                                                           const std::chrono::steady_clock::time_point now) noexcept
+try
+{
+    for (size_t index = 0; index < request.candidates.size(); ++index)
+    {
+        const auto& candidate = request.candidates[index];
+        const auto location = _parseFileLocation(candidate.text);
+        if (!location)
+        {
+            continue;
+        }
+
+        const auto resolvedPath = _resolveFilePath(location->path,
+                                                   candidate.workingDirectory,
+                                                   candidate.shellType,
+                                                   request.translationStyle);
+        if (!resolvedPath)
+        {
+            continue;
+        }
+
+        std::wstring cacheKey;
+        if (cache)
+        {
+            _appendHoverPathCacheKeyPart(cacheKey, resolvedPath->path.native());
+            _appendHoverPathCacheKeyPart(cacheKey, candidate.workingDirectory);
+            _appendHoverPathCacheKeyPart(cacheKey, candidate.shellType);
+            cacheKey.append(std::to_wstring(static_cast<int>(request.translationStyle)));
+            cacheKey.push_back(L':');
+            cacheKey.push_back(resolvedPath->trustedWslProvider ? L'1' : L'0');
+            cacheKey.push_back(L':');
+            cacheKey.append(location->line ? std::to_wstring(*location->line) : std::wstring{});
+            cacheKey.push_back(L':');
+            cacheKey.append(location->column ? std::to_wstring(*location->column) : std::wstring{});
+
+            const auto cached = cache->Lookup(cacheKey, now);
+            if (cached.found)
+            {
+                if (!cached.uri.empty())
+                {
+                    return HoverPathResult{
+                        .candidateIndex = index,
+                        .uri = cached.uri,
+                    };
+                }
+                continue;
+            }
+        }
+
+        auto uri = _createFilePathUri(*resolvedPath, !location->line.has_value());
+        if (!uri.empty() && location->line)
+        {
+            uri.append(L"#L");
+            uri.append(std::to_wstring(*location->line));
+            if (location->column)
+            {
+                uri.push_back(L':');
+                uri.append(std::to_wstring(*location->column));
+            }
+        }
+
+        if (cache)
+        {
+            cache->Store(std::move(cacheKey), uri, now);
+        }
+        if (!uri.empty())
+        {
+            return HoverPathResult{
+                .candidateIndex = index,
+                .uri = std::move(uri),
+            };
+        }
+    }
+    return std::nullopt;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return std::nullopt;
+}
+
+bool Terminal::ApplyHoverPathResult(const HoverPathRequest& request, const HoverPathResult& result)
+{
+    _assertLocked();
+
+    const auto& buffer = _activeBuffer();
+    if (!_detectURLs ||
+        result.uri.empty() ||
+        result.candidateIndex >= request.candidates.size() ||
+        buffer.GetLastMutationId() != request.bufferMutationId ||
+        _pathContextGeneration != request.pathContextGeneration ||
+        _pathTranslationStyle != request.translationStyle ||
+        _VisibleStartIndex() != request.visibleStart ||
+        _ConvertToBufferCell(request.viewportPosition, false) != request.bufferPosition)
+    {
+        return false;
+    }
+
+    const auto& candidate = request.candidates[result.candidateIndex];
+    if (!(candidate.interval.start <= request.bufferPosition &&
+          request.bufferPosition < candidate.interval.end))
+    {
+        return false;
+    }
+
+    const auto attr = buffer.GetCellDataAt(request.bufferPosition)->TextAttr();
+    if (attr.IsHyperlink() ||
+        !_patternIntervalTree.findOverlapping({ request.bufferPosition.x + 1, request.bufferPosition.y }, request.bufferPosition).empty())
+    {
+        return false;
+    }
+
+    _hoverPathLink = HoverPathLink{
+        .requestId = request.requestId,
+        .candidate = candidate,
+        .uri = result.uri,
+        .bufferMutationId = request.bufferMutationId,
+        .pathContextGeneration = request.pathContextGeneration,
+        .visibleStart = request.visibleStart,
+    };
+    return true;
+}
+
+bool Terminal::ClearHoverPath() noexcept
+{
+    if (_hoverPathLink)
+    {
+        _hoverPathLink.reset();
+        return true;
+    }
+    return false;
+}
+
+bool Terminal::_isHoverPathLinkCurrent() const noexcept
+{
+    return _hoverPathLink.has_value() &&
+           _detectURLs &&
+           _activeBuffer().GetLastMutationId() == _hoverPathLink->bufferMutationId &&
+           _pathContextGeneration == _hoverPathLink->pathContextGeneration &&
+           _VisibleStartIndex() == _hoverPathLink->visibleStart;
+}
+
+bool Terminal::_hoverPathContains(const til::point bufferPos) const noexcept
+{
+    return _isHoverPathLinkCurrent() &&
+           _hoverPathLink->candidate.interval.start <= bufferPos &&
+           bufferPos < _hoverPathLink->candidate.interval.end;
+}
+
+std::optional<Terminal::HoverPathRequest> Terminal::GetHoverPathActivationRequestAtViewportPosition(const til::point viewportPos) const
+{
+    return GetHoverPathActivationRequestAtBufferPosition(_ConvertToBufferCell(viewportPos, false));
+}
+
+std::optional<Terminal::HoverPathRequest> Terminal::GetHoverPathActivationRequestAtBufferPosition(const til::point bufferPos) const
+{
+    _assertLocked();
+
+    if (!_hoverPathContains(bufferPos))
+    {
+        return std::nullopt;
+    }
+
+    const auto& buffer = _activeBuffer();
+    const auto attr = buffer.GetCellDataAt(bufferPos)->TextAttr();
+    if (attr.IsHyperlink() ||
+        !_patternIntervalTree.findOverlapping({ bufferPos.x + 1, bufferPos.y }, bufferPos).empty())
+    {
+        return std::nullopt;
+    }
+
+    HoverPathRequest request{
+        .requestId = _hoverPathLink->requestId,
+        .viewportPosition = { bufferPos.x, bufferPos.y - _VisibleStartIndex() },
+        .bufferPosition = bufferPos,
+        .translationStyle = _pathTranslationStyle,
+        .bufferMutationId = buffer.GetLastMutationId(),
+        .pathContextGeneration = _pathContextGeneration,
+        .visibleStart = _VisibleStartIndex(),
+    };
+    request.candidates.emplace_back(_hoverPathLink->candidate);
+    return request;
 }
 
 // Method Description:
@@ -1443,6 +2199,7 @@ PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
     UErrorCode status = U_ZERO_ERROR;
     PointTree::interval_vector intervals;
     const auto workingDirectories = _getWorkingDirectoriesForRows(beg, end);
+    const auto shellTypes = _getShellTypesForRows(beg, end);
 
     for (const auto& matcher : _getClickableMatchers())
     {
@@ -1456,8 +2213,10 @@ PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
                 // PointTree uses half-open ranges and buffer-absolute coordinates.
                 const auto range = ICU::BufferRangeFromMatch(&text, re.get());
                 const auto matchedText = _activeBuffer().GetPlainText(range.start, range.end);
-                const auto workingDirectory = til::at(workingDirectories, gsl::narrow<size_t>(range.start.y - beg));
-                if (!_resolveClickableMatch(matcher.id, matchedText, range.start.y, ClickResolveMode::Detect, workingDirectory))
+                const auto rowIndex = gsl::narrow<size_t>(range.start.y - beg);
+                const auto workingDirectory = til::at(workingDirectories, rowIndex);
+                const auto shellType = til::at(shellTypes, rowIndex);
+                if (!_resolveClickableMatch(matcher.id, matchedText, range.start.y, ClickResolveMode::Detect, workingDirectory, shellType))
                 {
                     continue;
                 }
@@ -1488,6 +2247,31 @@ std::span<const ClickableMatcher> Terminal::_getClickableMatchers() noexcept
         },
         ClickableMatcher{
             .id = 1,
+            .pattern = LR"((?<=File ")[^"<>\r\n]+", line [1-9][0-9]*)",
+            .action = ClickAction::OpenFile,
+        },
+        ClickableMatcher{
+            .id = 2,
+            .pattern = LR"((?<=")(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^"<>\r\n]+?|/(?:[\p{L}\p{N}_@+#.,~%=-]+/)*[\p{L}\p{N}_@+#.,~%=-]+|[^"<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?::[1-9][0-9]*(?::[1-9][0-9]*)?|:[1-9][0-9]*-[1-9][0-9]*|\([1-9][0-9]*,[1-9][0-9]*\)|\[[1-9][0-9]*,[1-9][0-9]*\]|#L[1-9][0-9]*(?::[1-9][0-9]*)?)(?="))",
+            .action = ClickAction::OpenFile,
+        },
+        ClickableMatcher{
+            .id = 3,
+            .pattern = LR"((?<=')(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^'<>\r\n]+?|/(?:[\p{L}\p{N}_@+#.,~%=-]+/)*[\p{L}\p{N}_@+#.,~%=-]+|[^'<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?::[1-9][0-9]*(?::[1-9][0-9]*)?|:[1-9][0-9]*-[1-9][0-9]*|\([1-9][0-9]*,[1-9][0-9]*\)|\[[1-9][0-9]*,[1-9][0-9]*\]|#L[1-9][0-9]*(?::[1-9][0-9]*)?)(?='))",
+            .action = ClickAction::OpenFile,
+        },
+        ClickableMatcher{
+            .id = 4,
+            .pattern = LR"((?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^<>"|?*\s,;:)\]}]+?|/(?:[\p{L}\p{N}_@+#.,~%=-]+/)*[\p{L}\p{N}_@+#.,~%=-]+|(?<![/:])(?:[\p{L}\p{N}_@+#.-]+[\\/])*(?:[\p{L}\p{N}_@+#-]+(?:\.[A-Za-z][A-Za-z0-9]{0,15})+|\.[A-Za-z][A-Za-z0-9_.-]{0,31}))(?::[1-9][0-9]*(?::[1-9][0-9]*)?|:[1-9][0-9]*-[1-9][0-9]*|\([1-9][0-9]*,[1-9][0-9]*\)|\[[1-9][0-9]*,[1-9][0-9]*\]|#L[1-9][0-9]*(?::[1-9][0-9]*)?)(?=$|[\s,;)\]}]))",
+            .action = ClickAction::OpenFile,
+        },
+        ClickableMatcher{
+            .id = 5,
+            .pattern = LR"((?<![/:])/(?:[\p{L}\p{N}_@+#.,~%=-]+/)*[\p{L}\p{N}_@+#.,~%=-]+(?=$|[\s,;:)\]}]))",
+            .action = ClickAction::OpenFile,
+        },
+        ClickableMatcher{
+            .id = 6,
             .pattern = LR"((?:(?<=")(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^"<>\r\n]+|[^"<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?=")|(?<=')(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^'<>\r\n]+|[^'<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?=')|(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^<>"|?*\s,;:)\]}]+(?=$|[\s,;:)\]}])|(?<![/:])(?:[\p{L}\p{N}_@+.-]+[\\/])*(?:[\p{L}\p{N}_@+-]+(?:\.[A-Za-z][A-Za-z0-9]{0,15})+|\.[A-Za-z][A-Za-z0-9_.-]{0,31})(?=$|[\s,;:)\]}])))",
             .action = ClickAction::OpenFile,
         },
@@ -1499,7 +2283,8 @@ std::optional<ClickableMatch> Terminal::_resolveClickableMatch(const size_t matc
                                                                const std::wstring_view text,
                                                                const til::CoordType row,
                                                                const ClickResolveMode mode,
-                                                               const std::optional<std::wstring_view> workingDirectory) const
+                                                               const std::optional<std::wstring_view> workingDirectory,
+                                                               const std::optional<std::wstring_view> shellType) const
 {
     const auto matchers = _getClickableMatchers();
     const auto matcher = std::ranges::find(matchers, matcherId, &ClickableMatcher::id);
@@ -1516,12 +2301,31 @@ std::optional<ClickableMatch> Terminal::_resolveClickableMatch(const size_t matc
         break;
     case ClickAction::OpenFile:
     {
+        const auto location = _parseFileLocation(text);
+        if (!location)
+        {
+            return std::nullopt;
+        }
         const auto effectiveWorkingDirectory = workingDirectory.has_value() ?
                                                    *workingDirectory :
                                                    _getWorkingDirectoryForRow(row);
-        target = _getFilePathUri(text,
+        const auto effectiveShellType = shellType.has_value() ?
+                                            *shellType :
+                                            _getShellTypeForRow(row);
+        target = _getFilePathUri(location->path,
                                  effectiveWorkingDirectory,
+                                 effectiveShellType,
                                  mode == ClickResolveMode::Detect);
+        if (!target.empty() && location->line)
+        {
+            target.append(L"#L");
+            target.append(std::to_wstring(*location->line));
+            if (location->column)
+            {
+                target.push_back(L':');
+                target.append(std::to_wstring(*location->column));
+            }
+        }
         break;
     }
     }
@@ -1538,39 +2342,421 @@ std::optional<ClickableMatch> Terminal::_resolveClickableMatch(const size_t matc
     };
 }
 
-std::wstring Terminal::_getFilePathUri(const std::wstring_view path,
-                                       const std::wstring_view workingDirectory,
-                                       const bool useCachedResult) const
+static bool _tryParsePositiveInteger(const std::wstring_view text, uint32_t& value) noexcept
 {
+    if (text.empty())
+    {
+        return false;
+    }
+
+    uint32_t result = 0;
+    for (const auto ch : text)
+    {
+        if (ch < L'0' || ch > L'9')
+        {
+            return false;
+        }
+        const auto digit = static_cast<uint32_t>(ch - L'0');
+        if (result > (std::numeric_limits<uint32_t>::max() - digit) / 10)
+        {
+            return false;
+        }
+        result = result * 10 + digit;
+    }
+    if (result == 0)
+    {
+        return false;
+    }
+    value = result;
+    return true;
+}
+
+std::optional<Terminal::FileLocation> Terminal::_parseFileLocation(const std::wstring_view text) noexcept
+{
+    if (text.empty())
+    {
+        return std::nullopt;
+    }
+
+    constexpr std::wstring_view tracebackSeparator{ L"\", line " };
+    if (const auto separator = text.rfind(tracebackSeparator); separator != std::wstring_view::npos)
+    {
+        uint32_t line = 0;
+        if (separator == 0 ||
+            !_tryParsePositiveInteger(text.substr(separator + tracebackSeparator.size()), line))
+        {
+            return std::nullopt;
+        }
+        return FileLocation{ text.substr(0, separator), line, std::nullopt };
+    }
+
+    if (text.back() == L')' || text.back() == L']')
+    {
+        const auto opening = text.back() == L')' ? L'(' : L'[';
+        const auto separator = text.rfind(opening);
+        if (separator != std::wstring_view::npos)
+        {
+            const auto location = text.substr(separator + 1, text.size() - separator - 2);
+            const auto comma = location.find(L',');
+            uint32_t line = 0;
+            uint32_t column = 0;
+            if (separator == 0 ||
+                comma == std::wstring_view::npos ||
+                location.find(L',', comma + 1) != std::wstring_view::npos ||
+                !_tryParsePositiveInteger(location.substr(0, comma), line) ||
+                !_tryParsePositiveInteger(location.substr(comma + 1), column))
+            {
+                return std::nullopt;
+            }
+            return FileLocation{ text.substr(0, separator), line, column };
+        }
+    }
+
+    if (const auto separator = text.rfind(L"#L"); separator != std::wstring_view::npos)
+    {
+        const auto location = text.substr(separator + 2);
+        const auto colon = location.find(L':');
+        uint32_t line = 0;
+        std::optional<uint32_t> column;
+        if (separator == 0)
+        {
+            return std::nullopt;
+        }
+        if (colon == std::wstring_view::npos)
+        {
+            if (!_tryParsePositiveInteger(location, line))
+            {
+                return std::nullopt;
+            }
+        }
+        else
+        {
+            uint32_t parsedColumn = 0;
+            if (!_tryParsePositiveInteger(location.substr(0, colon), line) ||
+                !_tryParsePositiveInteger(location.substr(colon + 1), parsedColumn))
+            {
+                return std::nullopt;
+            }
+            column = parsedColumn;
+        }
+        return FileLocation{ text.substr(0, separator), line, column };
+    }
+
+    if (const auto separator = text.rfind(L':'); separator != std::wstring_view::npos && separator + 1 < text.size())
+    {
+        const auto suffix = text.substr(separator + 1);
+        if (suffix.front() >= L'0' && suffix.front() <= L'9')
+        {
+            if (const auto dash = suffix.find(L'-'); dash != std::wstring_view::npos)
+            {
+                uint32_t firstLine = 0;
+                uint32_t lastLine = 0;
+                if (separator == 0 ||
+                    suffix.find(L'-', dash + 1) != std::wstring_view::npos ||
+                    !_tryParsePositiveInteger(suffix.substr(0, dash), firstLine) ||
+                    !_tryParsePositiveInteger(suffix.substr(dash + 1), lastLine) ||
+                    lastLine < firstLine)
+                {
+                    return std::nullopt;
+                }
+                return FileLocation{ text.substr(0, separator), firstLine, std::nullopt };
+            }
+
+            uint32_t finalNumber = 0;
+            if (!_tryParsePositiveInteger(suffix, finalNumber))
+            {
+                return std::nullopt;
+            }
+            if (const auto previousSeparator = text.rfind(L':', separator - 1);
+                previousSeparator != std::wstring_view::npos)
+            {
+                uint32_t line = 0;
+                if (_tryParsePositiveInteger(text.substr(previousSeparator + 1, separator - previousSeparator - 1), line))
+                {
+                    if (previousSeparator == 0)
+                    {
+                        return std::nullopt;
+                    }
+                    return FileLocation{ text.substr(0, previousSeparator), line, finalNumber };
+                }
+            }
+
+            if (separator == 0)
+            {
+                return std::nullopt;
+            }
+            return FileLocation{ text.substr(0, separator), finalNumber, std::nullopt };
+        }
+    }
+
+    return FileLocation{ text, std::nullopt, std::nullopt };
+}
+
+static bool _isAsciiLetter(const wchar_t ch) noexcept
+{
+    return (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
+}
+
+static bool _isWindowsDriveAbsolute(const std::wstring_view path) noexcept
+{
+    return path.size() >= 3 && _isAsciiLetter(path[0]) && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
+}
+
+static bool _isSafeWslDistroName(const std::wstring_view name) noexcept
+{
+    if (name.empty() || name.size() > 256)
+    {
+        return false;
+    }
+    return std::ranges::all_of(name, [](const auto ch) {
+        return _isAsciiLetter(ch) ||
+               (ch >= L'0' && ch <= L'9') ||
+               ch == L'.' || ch == L'-' || ch == L'_' || ch == L'+';
+    });
+}
+
+static std::wstring_view _wslDistroFromShell(const std::wstring_view shellType) noexcept
+{
+    constexpr std::wstring_view prefix{ L"wsl:" };
+    if (til::starts_with(shellType, prefix))
+    {
+        const auto distro = shellType.substr(prefix.size());
+        if (_isSafeWslDistroName(distro))
+        {
+            return distro;
+        }
+    }
+    return {};
+}
+
+static bool _startsWithCaseInsensitive(const std::wstring_view text, const std::wstring_view prefix) noexcept
+{
+    return text.size() >= prefix.size() &&
+           _wcsnicmp(text.data(), prefix.data(), prefix.size()) == 0;
+}
+
+static std::optional<std::wstring> _wslUncToPosix(const std::wstring_view path, const std::wstring_view distro)
+{
+    for (const auto provider : { std::wstring_view{ LR"(\\wsl$\)" }, std::wstring_view{ LR"(\\wsl.localhost\)" } })
+    {
+        std::wstring prefix{ provider };
+        prefix.append(distro);
+        if (_startsWithCaseInsensitive(path, prefix) &&
+            (path.size() == prefix.size() || path[prefix.size()] == L'\\' || path[prefix.size()] == L'/'))
+        {
+            std::wstring result{ L"/" };
+            if (path.size() > prefix.size())
+            {
+                result.append(path.substr(prefix.size() + 1));
+                std::replace(result.begin(), result.end(), L'\\', L'/');
+            }
+            return result;
+        }
+    }
+    return std::nullopt;
+}
+
+static std::optional<std::wstring> _normalizePosixAbsolute(const std::wstring_view path)
+{
+    if (path.empty() || path.front() != L'/' || (path.size() >= 2 && path[1] == L'/'))
+    {
+        return std::nullopt;
+    }
+
+    std::vector<std::wstring_view> components;
+    for (size_t offset = 1; offset <= path.size();)
+    {
+        const auto separator = path.find(L'/', offset);
+        const auto end = separator == std::wstring_view::npos ? path.size() : separator;
+        const auto component = path.substr(offset, end - offset);
+        if (!component.empty() && component != L".")
+        {
+            if (component == L"..")
+            {
+                if (!components.empty())
+                {
+                    components.pop_back();
+                }
+            }
+            else if (component.find(L'\\') != std::wstring_view::npos)
+            {
+                return std::nullopt;
+            }
+            else
+            {
+                components.emplace_back(component);
+            }
+        }
+        if (separator == std::wstring_view::npos)
+        {
+            break;
+        }
+        offset = separator + 1;
+    }
+
+    std::wstring result{ L"/" };
+    for (size_t index = 0; index < components.size(); ++index)
+    {
+        if (index != 0)
+        {
+            result.push_back(L'/');
+        }
+        result.append(components[index]);
+    }
+    return result;
+}
+
+static std::optional<std::filesystem::path> _mapPosixDrivePath(const std::wstring_view path, const std::wstring_view prefix)
+{
+    if (!til::starts_with(path, prefix) || path.size() <= prefix.size())
+    {
+        return std::nullopt;
+    }
+
+    const auto drive = path[prefix.size()];
+    const auto driveEnd = prefix.size() + 1;
+    if (!_isAsciiLetter(drive) ||
+        (path.size() > driveEnd && path[driveEnd] != L'/'))
+    {
+        return std::nullopt;
+    }
+
+    std::wstring native{
+        static_cast<wchar_t>(drive >= L'a' && drive <= L'z' ? drive - (L'a' - L'A') : drive),
+        L':',
+        L'\\',
+    };
+    if (path.size() > driveEnd)
+    {
+        native.append(path.substr(driveEnd + 1));
+        std::replace(native.begin() + 3, native.end(), L'/', L'\\');
+    }
+    return std::filesystem::path{ native };
+}
+
+static std::filesystem::path _makeWslUncPath(const std::wstring_view distro, const std::wstring_view path)
+{
+    std::wstring native{ LR"(\\wsl$\)" };
+    native.append(distro);
+    if (path.size() > 1)
+    {
+        native.push_back(L'\\');
+        native.append(path.substr(1));
+        std::replace(native.begin(), native.end(), L'/', L'\\');
+    }
+    return std::filesystem::path{ native };
+}
+
+std::optional<Terminal::ResolvedFilePath> Terminal::_resolveFilePath(const std::wstring_view path,
+                                                                     const std::wstring_view workingDirectory,
+                                                                     const std::wstring_view shellType) const
+{
+    return _resolveFilePath(path, workingDirectory, shellType, _pathTranslationStyle);
+}
+
+std::optional<Terminal::ResolvedFilePath> Terminal::_resolveFilePath(const std::wstring_view path,
+                                                                     const std::wstring_view workingDirectory,
+                                                                     const std::wstring_view shellType,
+                                                                     const PathTranslationStyle translationStyle)
+{
+    if (path.empty())
+    {
+        return std::nullopt;
+    }
+
+    const auto distro = _wslDistroFromShell(shellType);
+    std::optional<std::wstring> posixWorkingDirectory;
+    if (!workingDirectory.empty())
+    {
+        if (workingDirectory.front() == L'/')
+        {
+            posixWorkingDirectory = _normalizePosixAbsolute(workingDirectory);
+        }
+        else if (!distro.empty())
+        {
+            posixWorkingDirectory = _wslUncToPosix(workingDirectory, distro);
+        }
+    }
+
+    std::optional<std::wstring> posixPath;
+    if (path.front() == L'/' && (path.size() == 1 || path[1] != L'/'))
+    {
+        posixPath = _normalizePosixAbsolute(path);
+    }
+    else if (!_isWindowsDriveAbsolute(path) &&
+             !til::starts_with(path, LR"(\\)") &&
+             !til::starts_with(path, LR"(//)") &&
+             posixWorkingDirectory)
+    {
+        std::wstring combined{ *posixWorkingDirectory };
+        if (combined.back() != L'/')
+        {
+            combined.push_back(L'/');
+        }
+        combined.append(path);
+        posixPath = _normalizePosixAbsolute(combined);
+    }
+
+    if (posixPath)
+    {
+        if (!distro.empty())
+        {
+            if (const auto drivePath = _mapPosixDrivePath(*posixPath, L"/mnt/"))
+            {
+                return ResolvedFilePath{ *drivePath, false };
+            }
+            return ResolvedFilePath{ _makeWslUncPath(distro, *posixPath), true };
+        }
+
+        switch (translationStyle)
+        {
+        case PathTranslationStyle::WSL:
+            if (const auto drivePath = _mapPosixDrivePath(*posixPath, L"/mnt/"))
+            {
+                return ResolvedFilePath{ *drivePath, false };
+            }
+            break;
+        case PathTranslationStyle::Cygwin:
+            if (const auto drivePath = _mapPosixDrivePath(*posixPath, L"/cygdrive/"))
+            {
+                return ResolvedFilePath{ *drivePath, false };
+            }
+            break;
+        case PathTranslationStyle::MSYS2:
+            if (const auto drivePath = _mapPosixDrivePath(*posixPath, L"/"))
+            {
+                return ResolvedFilePath{ *drivePath, false };
+            }
+            break;
+        case PathTranslationStyle::MinGW:
+            // MinGW's existing profile semantics use C:/path, not /c/path.
+            break;
+        case PathTranslationStyle::None:
+            break;
+        }
+        return std::nullopt;
+    }
+
     std::filesystem::path resolved{ path };
     if (resolved.is_relative())
     {
-        if (workingDirectory.empty())
+        if (workingDirectory.empty() || posixWorkingDirectory)
         {
-            return {};
+            return std::nullopt;
         }
         resolved = std::filesystem::path{ workingDirectory } / resolved;
     }
-    resolved = resolved.lexically_normal();
+    return ResolvedFilePath{ resolved.lexically_normal(), false };
+}
 
+std::wstring Terminal::_createFilePathUri(const ResolvedFilePath& resolvedPath, const bool allowDirectory)
+{
+    const auto& resolved = resolvedPath.path;
     const auto nativePath = resolved.native();
-    const auto now = std::chrono::steady_clock::now();
-    if (useCachedResult)
-    {
-        if (const auto cached = _filePathCache.find(nativePath); cached != _filePathCache.end())
-        {
-            if (cached->second.expiresAt > now)
-            {
-                cached->second.generation = ++_filePathCacheGeneration;
-                return cached->second.uri;
-            }
-            _filePathCache.erase(cached);
-        }
-    }
-
     std::wstring uri;
-    auto valid = !til::starts_with(nativePath, LR"(\\)");
-    if (valid && resolved.has_root_name())
+    const auto isUnc = til::starts_with(nativePath, LR"(\\)");
+    auto valid = !isUnc || resolvedPath.trustedWslProvider;
+    if (valid && resolved.has_root_name() && !resolvedPath.trustedWslProvider)
     {
         const auto root = resolved.root_path().native();
         if (GetDriveTypeW(root.c_str()) == DRIVE_REMOTE)
@@ -1597,6 +2783,14 @@ std::wstring Terminal::_getFilePathUri(const std::wstring_view path,
 
     if (valid)
     {
+        const auto attributes = GetFileAttributesW(resolved.c_str());
+        valid = attributes != INVALID_FILE_ATTRIBUTES &&
+                WI_IsFlagClear(attributes, FILE_ATTRIBUTE_REPARSE_POINT) &&
+                (allowDirectory || WI_IsFlagClear(attributes, FILE_ATTRIBUTE_DIRECTORY));
+    }
+
+    if (valid)
+    {
         uri.resize(INTERNET_MAX_URL_LENGTH);
         auto uriLength = gsl::narrow<DWORD>(uri.size());
         if (SUCCEEDED(UrlCreateFromPathW(resolved.c_str(), uri.data(), &uriLength, 0)))
@@ -1608,6 +2802,35 @@ std::wstring Terminal::_getFilePathUri(const std::wstring_view path,
             uri.clear();
         }
     }
+    return uri;
+}
+
+std::wstring Terminal::_getFilePathUri(const std::wstring_view path,
+                                       const std::wstring_view workingDirectory,
+                                       const std::wstring_view shellType,
+                                       const bool useCachedResult) const
+{
+    const auto resolvedPath = _resolveFilePath(path, workingDirectory, shellType);
+    if (!resolvedPath)
+    {
+        return {};
+    }
+    const auto nativePath = resolvedPath->path.native();
+    const auto now = std::chrono::steady_clock::now();
+    if (useCachedResult)
+    {
+        if (const auto cached = _filePathCache.find(nativePath); cached != _filePathCache.end())
+        {
+            if (cached->second.expiresAt > now)
+            {
+                cached->second.generation = ++_filePathCacheGeneration;
+                return cached->second.uri;
+            }
+            _filePathCache.erase(cached);
+        }
+    }
+
+    auto uri = _createFilePathUri(*resolvedPath, true);
 
     static constexpr size_t maxCacheEntries = 512;
     static constexpr auto positiveCacheLifetime = std::chrono::seconds{ 5 };
@@ -1642,6 +2865,22 @@ std::wstring_view Terminal::_getWorkingDirectoryForRow(til::CoordType row) const
     return {};
 }
 
+std::pair<std::wstring_view, size_t> Terminal::_getWorkingDirectoryForRowBounded(til::CoordType row,
+                                                                                 const size_t maxRows) const noexcept
+{
+    const auto& buffer = _activeBuffer();
+    size_t rows = 0;
+    for (; row >= 0 && rows < maxRows; --row, ++rows)
+    {
+        const auto id = buffer.GetRowByOffset(row).GetWorkingDirectoryId();
+        if (id != 0)
+        {
+            return { buffer.GetWorkingDirectoryFromId(id), rows + 1 };
+        }
+    }
+    return { {}, rows };
+}
+
 std::vector<std::wstring_view> Terminal::_getWorkingDirectoriesForRows(const til::CoordType beg, const til::CoordType end) const
 {
     std::vector<std::wstring_view> result;
@@ -1656,6 +2895,54 @@ std::vector<std::wstring_view> Terminal::_getWorkingDirectoriesForRows(const til
             workingDirectory = buffer.GetWorkingDirectoryFromId(id);
         }
         result.emplace_back(workingDirectory);
+    }
+    return result;
+}
+
+std::wstring_view Terminal::_getShellTypeForRow(til::CoordType row) const noexcept
+{
+    const auto& buffer = _activeBuffer();
+    for (; row >= 0; --row)
+    {
+        const auto id = buffer.GetRowByOffset(row).GetShellTypeId();
+        if (id != 0)
+        {
+            return buffer.GetShellTypeFromId(id);
+        }
+    }
+    return {};
+}
+
+std::pair<std::wstring_view, size_t> Terminal::_getShellTypeForRowBounded(til::CoordType row,
+                                                                          const size_t maxRows) const noexcept
+{
+    const auto& buffer = _activeBuffer();
+    size_t rows = 0;
+    for (; row >= 0 && rows < maxRows; --row, ++rows)
+    {
+        const auto id = buffer.GetRowByOffset(row).GetShellTypeId();
+        if (id != 0)
+        {
+            return { buffer.GetShellTypeFromId(id), rows + 1 };
+        }
+    }
+    return { {}, rows };
+}
+
+std::vector<std::wstring_view> Terminal::_getShellTypesForRows(const til::CoordType beg, const til::CoordType end) const
+{
+    std::vector<std::wstring_view> result;
+    result.reserve(gsl::narrow<size_t>(end - beg + 1));
+
+    const auto& buffer = _activeBuffer();
+    auto shellType = _getShellTypeForRow(beg);
+    for (auto row = beg; row <= end; ++row)
+    {
+        if (const auto id = buffer.GetRowByOffset(row).GetShellTypeId())
+        {
+            shellType = buffer.GetShellTypeFromId(id);
+        }
+        result.emplace_back(shellType);
     }
     return result;
 }

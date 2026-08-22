@@ -21,6 +21,7 @@
 #include <til/winrt.h>
 
 #include <chrono>
+#include <filesystem>
 #include <map>
 
 inline constexpr size_t TaskbarMinProgress{ 10 };
@@ -98,6 +99,7 @@ public:
     void UpdateAppearance(const winrt::Microsoft::Terminal::Core::ICoreAppearance& appearance);
     void UpdateColorScheme(const winrt::Microsoft::Terminal::Core::ICoreScheme& scheme);
     void SetHighContrastMode(bool hc) noexcept;
+    void SetPathTranslationStyle(PathTranslationStyle style) noexcept;
     void SetFontInfo(const FontInfo& fontInfo);
     void SetCursorStyle(const ::Microsoft::Console::VirtualTerminal::DispatchTypes::CursorStyle cursorStyle);
     void SetOptionalFeatures(winrt::Microsoft::Terminal::Core::ICoreSettings settings);
@@ -198,8 +200,76 @@ public:
 
     std::wstring GetHyperlinkAtViewportPosition(const til::point viewportPos);
     std::wstring GetHyperlinkAtBufferPosition(const til::point bufferPos);
+    Microsoft::Terminal::Core::HyperlinkInfo GetHyperlinkInfoAtViewportPosition(const til::point viewportPos);
+    Microsoft::Terminal::Core::HyperlinkInfo GetHyperlinkInfoAtBufferPosition(const til::point bufferPos);
     uint16_t GetHyperlinkIdAtViewportPosition(const til::point viewportPos);
     std::optional<interval_tree::IntervalTree<til::point, size_t>::interval> GetHyperlinkIntervalFromViewportPosition(const til::point viewportPos);
+
+    static constexpr size_t HoverPathMaxScanCells = 4096;
+    static constexpr size_t HoverPathMaxCandidates = 64;
+
+    struct HoverPathCandidate
+    {
+        std::wstring text;
+        til::point_span interval;
+        std::wstring workingDirectory;
+        std::wstring shellType;
+    };
+
+    struct HoverPathRequest
+    {
+        uint64_t requestId = 0;
+        til::point viewportPosition;
+        til::point bufferPosition;
+        PathTranslationStyle translationStyle = PathTranslationStyle::None;
+        uint64_t bufferMutationId = 0;
+        uint64_t pathContextGeneration = 0;
+        int visibleStart = 0;
+        size_t scannedCellCount = 0;
+        size_t scannedRowCount = 0;
+        size_t contextRowCount = 0;
+        std::vector<HoverPathCandidate> candidates;
+    };
+
+    struct HoverPathResult
+    {
+        size_t candidateIndex = 0;
+        std::wstring uri;
+    };
+
+    class HoverPathCache
+    {
+    public:
+        struct LookupResult
+        {
+            bool found = false;
+            std::wstring uri;
+        };
+
+        LookupResult Lookup(std::wstring_view key, std::chrono::steady_clock::time_point now);
+        void Store(std::wstring key, std::wstring uri, std::chrono::steady_clock::time_point now);
+        size_t Size() const noexcept;
+
+    private:
+        struct Entry
+        {
+            std::wstring uri;
+            std::chrono::steady_clock::time_point expiresAt;
+            size_t generation = 0;
+        };
+
+        std::map<std::wstring, Entry, std::less<>> _entries;
+        size_t _generation = 0;
+    };
+
+    std::optional<HoverPathRequest> CreateHoverPathRequest(til::point viewportPos, uint64_t requestId) const;
+    static std::optional<HoverPathResult> ResolveHoverPathRequest(const HoverPathRequest& request,
+                                                                  HoverPathCache* cache = nullptr,
+                                                                  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) noexcept;
+    bool ApplyHoverPathResult(const HoverPathRequest& request, const HoverPathResult& result);
+    bool ClearHoverPath() noexcept;
+    std::optional<HoverPathRequest> GetHoverPathActivationRequestAtViewportPosition(til::point viewportPos) const;
+    std::optional<HoverPathRequest> GetHoverPathActivationRequestAtBufferPosition(til::point bufferPos) const;
 #pragma endregion
 
 #pragma region IRenderData
@@ -392,6 +462,8 @@ private:
     std::wstring _workingDirectory;
     std::wstring _shellName;
     std::wstring _shellVersion;
+    PathTranslationStyle _pathTranslationStyle = PathTranslationStyle::None;
+    uint64_t _pathContextGeneration = 0;
     bool _highContrastMode = false;
 
     // This default fake font value is only used to check if the font is a raster font.
@@ -453,6 +525,16 @@ private:
     };
     mutable std::map<std::wstring, FilePathCacheEntry> _filePathCache;
     mutable size_t _filePathCacheGeneration = 0;
+    struct HoverPathLink
+    {
+        uint64_t requestId = 0;
+        HoverPathCandidate candidate;
+        std::wstring uri;
+        uint64_t bufferMutationId = 0;
+        uint64_t pathContextGeneration = 0;
+        int visibleStart = 0;
+    };
+    std::optional<HoverPathLink> _hoverPathLink;
 
     void _clearPatternTree();
     void _InvalidatePatternTree();
@@ -492,10 +574,31 @@ private:
     void _updateUrlDetection();
     interval_tree::IntervalTree<til::point, size_t> _getPatterns(til::CoordType beg, til::CoordType end) const;
     static std::span<const ClickableMatcher> _getClickableMatchers() noexcept;
-    std::optional<ClickableMatch> _resolveClickableMatch(size_t matcherId, std::wstring_view text, til::CoordType row, ClickResolveMode mode = ClickResolveMode::Detect, std::optional<std::wstring_view> workingDirectory = std::nullopt) const;
-    std::wstring _getFilePathUri(std::wstring_view path, std::wstring_view workingDirectory, bool useCachedResult) const;
+    struct FileLocation
+    {
+        std::wstring_view path;
+        std::optional<uint32_t> line;
+        std::optional<uint32_t> column;
+    };
+    struct ResolvedFilePath
+    {
+        std::filesystem::path path;
+        bool trustedWslProvider = false;
+    };
+    static std::optional<FileLocation> _parseFileLocation(std::wstring_view text) noexcept;
+    std::optional<ClickableMatch> _resolveClickableMatch(size_t matcherId, std::wstring_view text, til::CoordType row, ClickResolveMode mode = ClickResolveMode::Detect, std::optional<std::wstring_view> workingDirectory = std::nullopt, std::optional<std::wstring_view> shellType = std::nullopt) const;
+    std::optional<ResolvedFilePath> _resolveFilePath(std::wstring_view path, std::wstring_view workingDirectory, std::wstring_view shellType) const;
+    static std::optional<ResolvedFilePath> _resolveFilePath(std::wstring_view path, std::wstring_view workingDirectory, std::wstring_view shellType, PathTranslationStyle translationStyle);
+    static std::wstring _createFilePathUri(const ResolvedFilePath& resolvedPath, bool allowDirectory);
+    std::wstring _getFilePathUri(std::wstring_view path, std::wstring_view workingDirectory, std::wstring_view shellType, bool useCachedResult) const;
     std::wstring_view _getWorkingDirectoryForRow(til::CoordType row) const noexcept;
     std::vector<std::wstring_view> _getWorkingDirectoriesForRows(til::CoordType beg, til::CoordType end) const;
+    std::wstring_view _getShellTypeForRow(til::CoordType row) const noexcept;
+    std::vector<std::wstring_view> _getShellTypesForRows(til::CoordType beg, til::CoordType end) const;
+    std::pair<std::wstring_view, size_t> _getWorkingDirectoryForRowBounded(til::CoordType row, size_t maxRows) const noexcept;
+    std::pair<std::wstring_view, size_t> _getShellTypeForRowBounded(til::CoordType row, size_t maxRows) const noexcept;
+    bool _isHoverPathLinkCurrent() const noexcept;
+    bool _hoverPathContains(til::point bufferPos) const noexcept;
 
 #pragma region TextSelection
     // These methods are defined in TerminalSelection.cpp

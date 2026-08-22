@@ -872,6 +872,14 @@ JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Control::DefaultInputScope)
     };
 };
 
+JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::FilePathEditor)
+{
+    JSON_MAPPINGS(2) = {
+        pair_type{ "default", ValueType::SystemDefault },
+        pair_type{ "environment", ValueType::Environment },
+    };
+};
+
 JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Control::PathTranslationStyle)
 {
     static constexpr std::array<pair_type, 5> mappings = {

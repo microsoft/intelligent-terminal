@@ -51,5 +51,8 @@ namespace Microsoft.Terminal.Settings.Model
         static Windows.Foundation.Collections.IMap<String, Microsoft.Terminal.Settings.Model.MonitorBehavior> MonitorBehavior { get; };
         static Windows.Foundation.Collections.IMap<String, Microsoft.Terminal.Control.ClearBufferType> ClearBufferType { get; };
         static Windows.Foundation.Collections.IMap<String, Microsoft.Terminal.Settings.Model.SelectOutputDirection> SelectOutputDirection { get; };
+
+        // Appended to preserve the ABI ordering of existing properties.
+        static Windows.Foundation.Collections.IMap<String, Microsoft.Terminal.Settings.Model.FilePathEditor> FilePathEditor { get; };
     }
 }

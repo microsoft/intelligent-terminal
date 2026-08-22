@@ -731,6 +731,7 @@ void TextBuffer::IncrementCircularBuffer(const TextAttribute& fillAttributes)
     _PruneHyperlinks();
 
     const auto evictedWorkingDirectoryId = GetRowByOffset(0).GetWorkingDirectoryId();
+    const auto evictedShellTypeId = GetRowByOffset(0).GetShellTypeId();
 
     // Second, clean out the old "first row" as it will become the "last row" of the buffer after the circle is performed.
     GetMutableRowByOffset(0).Reset(fillAttributes);
@@ -750,6 +751,10 @@ void TextBuffer::IncrementCircularBuffer(const TextAttribute& fillAttributes)
     if (firstRow.GetWorkingDirectoryId() == 0)
     {
         firstRow.SetWorkingDirectoryId(evictedWorkingDirectoryId);
+    }
+    if (firstRow.GetShellTypeId() == 0)
+    {
+        firstRow.SetShellTypeId(evictedShellTypeId);
     }
 }
 
@@ -2863,6 +2868,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
             if (oldX == 0)
             {
                 newRow.SetWorkingDirectoryId(oldRow.GetWorkingDirectoryId());
+                newRow.SetShellTypeId(oldRow.GetShellTypeId());
             }
 
             RowCopyTextFromState state{
@@ -2944,6 +2950,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
         newAttr = oldRow.Attributes();
         newAttr.resize_trailing_extent(newWidthU16);
         newRow.SetWorkingDirectoryId(oldRow.GetWorkingDirectoryId());
+        newRow.SetShellTypeId(oldRow.GetShellTypeId());
     }
 
     // Since we didn't use IncrementCircularBuffer() we need to compute the proper
@@ -2962,6 +2969,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
     newBuffer.CopyProperties(oldBuffer);
     newBuffer.CopyHyperlinkMaps(oldBuffer);
     newBuffer.CopyWorkingDirectoryMaps(oldBuffer);
+    newBuffer.CopyShellTypeMaps(oldBuffer);
 
     assert(newCursorPos.x >= 0 && newCursorPos.x < newWidth);
     assert(newCursorPos.y >= 0 && newCursorPos.y < newHeight);
@@ -3141,6 +3149,76 @@ void TextBuffer::_PruneWorkingDirectories()
         if (!idsInUse.contains(gsl::narrow<uint32_t>(index + 1)))
         {
             _workingDirectories[index].reset();
+        }
+    }
+}
+
+uint32_t TextBuffer::GetShellTypeId(const std::wstring_view shellType)
+{
+    static constexpr size_t maxShellTypes = 4096;
+
+    for (size_t index = 0; index < _shellTypes.size(); ++index)
+    {
+        if (_shellTypes[index] == shellType)
+        {
+            return gsl::narrow<uint32_t>(index + 1);
+        }
+    }
+
+    if (_shellTypes.size() >= maxShellTypes)
+    {
+        _PruneShellTypes();
+        for (size_t index = 0; index < _shellTypes.size(); ++index)
+        {
+            if (!_shellTypes[index].has_value())
+            {
+                _shellTypes[index] = shellType;
+                return gsl::narrow<uint32_t>(index + 1);
+            }
+        }
+        return 0;
+    }
+
+    _shellTypes.emplace_back(shellType);
+    return gsl::narrow<uint32_t>(_shellTypes.size());
+}
+
+std::wstring_view TextBuffer::GetShellTypeFromId(const uint32_t id) const noexcept
+{
+    const auto index = static_cast<size_t>(id - 1);
+    if (id != 0 && index < _shellTypes.size())
+    {
+        const auto& shellType = _shellTypes[index];
+        if (shellType.has_value())
+        {
+            return *shellType;
+        }
+    }
+    return {};
+}
+
+void TextBuffer::CopyShellTypeMaps(const TextBuffer& other)
+{
+    _shellTypes = other._shellTypes;
+}
+
+void TextBuffer::_PruneShellTypes()
+{
+    std::unordered_set<uint32_t> idsInUse;
+    const auto height = GetSize().Height();
+    for (til::CoordType row = 0; row < height; ++row)
+    {
+        if (const auto id = GetRowByOffset(row).GetShellTypeId())
+        {
+            idsInUse.emplace(id);
+        }
+    }
+
+    for (size_t index = 0; index < _shellTypes.size(); ++index)
+    {
+        if (!idsInUse.contains(gsl::narrow<uint32_t>(index + 1)))
+        {
+            _shellTypes[index].reset();
         }
     }
 }

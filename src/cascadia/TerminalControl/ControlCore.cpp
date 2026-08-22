@@ -31,6 +31,263 @@ using namespace winrt::Windows::ApplicationModel::DataTransfer;
 
 namespace winrt::Microsoft::Terminal::Control::implementation
 {
+    HoverPathWorker& HoverPathWorker::Instance()
+    {
+        // This service intentionally has process lifetime. Destroying a private
+        // thread pool from a DLL static destructor could wait for a blocked
+        // filesystem probe under the loader lock. The OS safely reclaims the
+        // pool at process exit, and the one-thread maximum prevents per-control
+        // worker accumulation.
+        static auto* const instance = new HoverPathWorker;
+        return *instance;
+    }
+
+    HoverPathWorker::Resolver HoverPathWorker::_defaultResolver()
+    {
+        return [](const auto& request, auto& cache) {
+            return ::Microsoft::Terminal::Core::Terminal::ResolveHoverPathRequest(request, &cache);
+        };
+    }
+
+    HoverPathWorker::HoverPathWorker() :
+        _resolver{ _defaultResolver() }
+    {
+        _pool = CreateThreadpool(nullptr);
+        THROW_LAST_ERROR_IF_NULL(_pool);
+        SetThreadpoolThreadMaximum(_pool, 1);
+
+        InitializeThreadpoolEnvironment(&_callbackEnvironment);
+        SetThreadpoolCallbackPool(&_callbackEnvironment, _pool);
+        _work = CreateThreadpoolWork(_workCallback, this, &_callbackEnvironment);
+        if (!_work)
+        {
+            const auto error = GetLastError();
+            DestroyThreadpoolEnvironment(&_callbackEnvironment);
+            CloseThreadpool(_pool);
+            _pool = nullptr;
+            THROW_WIN32(error);
+        }
+    }
+
+    HoverPathWorker::TargetPtr HoverPathWorker::CreateTarget()
+    {
+        const auto id = _nextTargetId.fetch_add(1, std::memory_order_relaxed);
+        return TargetPtr{ new Target{ id } };
+    }
+
+    void HoverPathWorker::Submit(const TargetPtr& target, Request request, Completion completion)
+    {
+        if (!target)
+        {
+            return;
+        }
+
+        const auto generation = request.requestId;
+        target->_generation.store(generation, std::memory_order_release);
+
+        WorkItem item{
+            .target = target,
+            .generation = generation,
+            .request = std::move(request),
+            .completion = std::move(completion),
+        };
+
+        std::optional<WorkItem> rejected;
+        bool submitWork = false;
+        {
+            const std::lock_guard guard{ _mutex };
+            if (const auto existing = _pending.find(target->_id); existing != _pending.end())
+            {
+                // Keep the target's FIFO position while retaining only its latest request.
+                existing->second = std::move(item);
+            }
+            else if (_pending.size() >= MaxPendingTargets)
+            {
+                // Preserve fairness for admitted targets. With more than 64 hovered
+                // controls, reject the newest target instead of evicting an older one.
+                rejected.emplace(std::move(item));
+            }
+            else
+            {
+                _pendingOrder.emplace_back(target->_id);
+                _pending.emplace(target->_id, std::move(item));
+            }
+
+            if (!rejected && !_scheduled)
+            {
+                _scheduled = true;
+                submitWork = true;
+            }
+        }
+
+        if (rejected)
+        {
+            _completeIfCurrent(*rejected, std::nullopt);
+        }
+        else if (submitWork)
+        {
+            SubmitThreadpoolWork(_work);
+        }
+    }
+
+    void HoverPathWorker::CancelPending(const TargetPtr& target, const uint64_t generation) noexcept
+    {
+        if (!target)
+        {
+            return;
+        }
+
+        target->_generation.store(generation, std::memory_order_release);
+        const std::lock_guard guard{ _mutex };
+        if (_pending.erase(target->_id) != 0)
+        {
+            std::erase(_pendingOrder, target->_id);
+        }
+    }
+
+    void CALLBACK HoverPathWorker::_workCallback(PTP_CALLBACK_INSTANCE, void* context, PTP_WORK) noexcept
+    {
+        static_cast<HoverPathWorker*>(context)->_run();
+    }
+
+    void HoverPathWorker::_run() noexcept
+    {
+        LOG_IF_FAILED(SetThreadDescription(GetCurrentThread(), L"Terminal hover path resolver"));
+        bool apartmentInitialized = false;
+        try
+        {
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+            apartmentInitialized = true;
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+        const auto uninitializeApartment = wil::scope_exit([&]() noexcept {
+            if (apartmentInitialized)
+            {
+                winrt::uninit_apartment();
+            }
+        });
+
+        for (;;)
+        {
+            std::optional<WorkItem> work;
+            Resolver resolver;
+            {
+                const std::lock_guard guard{ _mutex };
+                while (!_pendingOrder.empty())
+                {
+                    const auto id = _pendingOrder.front();
+                    _pendingOrder.pop_front();
+                    if (const auto pending = _pending.find(id); pending != _pending.end())
+                    {
+                        work.emplace(std::move(pending->second));
+                        _pending.erase(pending);
+                        break;
+                    }
+                }
+
+                if (!work)
+                {
+                    _scheduled = false;
+                    _idleCondition.notify_all();
+                    return;
+                }
+                resolver = _resolver;
+            }
+
+            // Never retain a strong target reference across filesystem I/O.
+            // Control teardown can therefore expire the target immediately.
+            {
+                const auto target = work->target.lock();
+                if (!target ||
+                    target->_generation.load(std::memory_order_acquire) != work->generation)
+                {
+                    continue;
+                }
+            }
+
+            {
+                const std::lock_guard guard{ _mutex };
+                ++_activeProbeCount;
+                _maxActiveProbeCount = std::max(_maxActiveProbeCount, _activeProbeCount);
+            }
+            std::optional<Result> result;
+            try
+            {
+                result = resolver(work->request, _cache);
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+
+            {
+                const std::lock_guard guard{ _mutex };
+                --_activeProbeCount;
+            }
+
+            _completeIfCurrent(*work, std::move(result));
+        }
+    }
+
+    void HoverPathWorker::_completeIfCurrent(WorkItem& work, std::optional<Result> result) noexcept
+    {
+        const auto target = work.target.lock();
+        if (!target ||
+            target->_generation.load(std::memory_order_acquire) != work.generation)
+        {
+            return;
+        }
+
+        try
+        {
+            work.completion(work.target,
+                            work.generation,
+                            std::move(work.request),
+                            std::move(result));
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+    }
+
+    void HoverPathWorker::_setResolverForTests(Resolver resolver)
+    {
+        const std::lock_guard guard{ _mutex };
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, _scheduled || !_pending.empty() || _activeProbeCount != 0);
+        _resolver = std::move(resolver);
+        _cache = {};
+        _maxActiveProbeCount = 0;
+    }
+
+    void HoverPathWorker::_resetResolverForTests()
+    {
+        _setResolverForTests(_defaultResolver());
+    }
+
+    bool HoverPathWorker::_waitForIdleForTests(const std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock{ _mutex };
+        return _idleCondition.wait_for(lock, timeout, [&]() {
+            return !_scheduled && _pending.empty() && _activeProbeCount == 0;
+        });
+    }
+
+    size_t HoverPathWorker::_pendingCountForTests()
+    {
+        const std::lock_guard guard{ _mutex };
+        return _pending.size();
+    }
+
+    size_t HoverPathWorker::_maxActiveProbeCountForTests()
+    {
+        const std::lock_guard guard{ _mutex };
+        return _maxActiveProbeCount;
+    }
+
     static winrt::Microsoft::Terminal::Core::OptionalColor OptionalFromColor(const til::color& c) noexcept
     {
         Core::OptionalColor result;
@@ -51,6 +308,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         default:
             return GA::Automatic;
         }
+    }
+
+    static ::Microsoft::Terminal::Core::PathTranslationStyle _toCorePathTranslationStyle(const Control::PathTranslationStyle style) noexcept
+    {
+        using CoreStyle = ::Microsoft::Terminal::Core::PathTranslationStyle;
+        static_assert(static_cast<int>(Control::PathTranslationStyle::None) == static_cast<int>(CoreStyle::None));
+        static_assert(static_cast<int>(Control::PathTranslationStyle::WSL) == static_cast<int>(CoreStyle::WSL));
+        static_assert(static_cast<int>(Control::PathTranslationStyle::Cygwin) == static_cast<int>(CoreStyle::Cygwin));
+        static_assert(static_cast<int>(Control::PathTranslationStyle::MSYS2) == static_cast<int>(CoreStyle::MSYS2));
+        static_assert(static_cast<int>(Control::PathTranslationStyle::MinGW) == static_cast<int>(CoreStyle::MinGW));
+        return static_cast<CoreStyle>(style);
     }
 
     TextColor SelectionColor::AsTextColor() const noexcept
@@ -109,6 +377,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         });
 
         // GH#8969: pre-seed working directory to prevent potential races
+        _terminal->SetPathTranslationStyle(_toCorePathTranslationStyle(_settings.PathTranslationStyle()));
         _terminal->SetWorkingDirectory(_settings.StartingDirectory());
 
         _terminal->SetCopyToClipboardCallback([this](wil::zwstring_view wstr) {
@@ -284,6 +553,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::Detach()
     {
+        ClearHoveredCell();
+        _hoverPathTarget.reset();
+
         // Disable the renderer, so that it doesn't try to start any new frames
         // for our engines while we're not attached to anything.
         _renderer->TriggerTeardown();
@@ -366,6 +638,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void ControlCore::HardResetWithoutErase()
     {
+        if (_hoverPathPendingOrActive.load(std::memory_order_relaxed))
+        {
+            _invalidateHoverPathRequests();
+        }
         const auto lock = _terminal->LockForWriting();
         _terminal->HardResetWithoutErase();
     }
@@ -622,18 +898,42 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             else if (vkey == VK_RETURN && mods.IsCtrlPressed() && !mods.IsAltPressed() && !mods.IsShiftPressed())
             {
                 // Ctrl + Enter --> Open URL
-                if (const auto uri = _terminal->GetHyperlinkAtBufferPosition(_terminal->GetSelectionAnchor()); !uri.empty())
+                const auto anchor = _terminal->GetSelectionAnchor();
+                auto hoverPathRequest = _terminal->GetHoverPathActivationRequestAtBufferPosition(anchor);
+                auto hyperlink = hoverPathRequest ?
+                                     HyperlinkInfo{} :
+                                     _terminal->GetHyperlinkInfoAtBufferPosition(anchor);
+                const auto selectedText = hyperlink.uri.empty() && !hoverPathRequest ?
+                                              _terminal->GetTextBuffer().GetPlainText(anchor, _terminal->GetSelectionEnd()) :
+                                              std::wstring{};
+                lock.unlock();
+
+                if (hoverPathRequest)
                 {
-                    lock.unlock();
-                    if (ParseCompletedTurnActionHyperlink(uri) == CompletedTurnAction::None)
+                    if (const auto result = ::Microsoft::Terminal::Core::Terminal::ResolveHoverPathRequest(*hoverPathRequest))
                     {
-                        OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ uri }));
+                        hyperlink = HyperlinkInfo{
+                            .uri = result->uri,
+                            .isAutoDetectedFilePath = true,
+                        };
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                }
+
+                if (!hyperlink.uri.empty())
+                {
+                    if (ParseCompletedTurnActionHyperlink(hyperlink.uri) == CompletedTurnAction::None)
+                    {
+                        OpenHyperlink.raise(*this,
+                                            winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ hyperlink.uri },
+                                                                                hyperlink.isAutoDetectedFilePath));
                     }
                 }
                 else
                 {
-                    const auto selectedText = _terminal->GetTextBuffer().GetPlainText(_terminal->GetSelectionAnchor(), _terminal->GetSelectionEnd());
-                    lock.unlock();
                     OpenHyperlink.raise(*this, winrt::make<OpenHyperlinkEventArgs>(winrt::hstring{ selectedText }));
                 }
                 return true;
@@ -868,30 +1168,202 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
     }
 
-    void ControlCore::_updateHoveredCell(const std::optional<til::point> terminalPosition)
+    void ControlCore::_queueHoverPathRequest(::Microsoft::Terminal::Core::Terminal::HoverPathRequest request,
+                                             const uint64_t mutationGeneration)
     {
-        if (terminalPosition == _lastHoveredCell)
+        auto& worker = HoverPathWorker::Instance();
+        if (!_hoverPathTarget)
+        {
+            _hoverPathTarget = worker.CreateTarget();
+        }
+
+        const auto weakThis = get_weak();
+        const auto dispatcher = _dispatcher;
+        worker.Submit(
+            _hoverPathTarget,
+            std::move(request),
+            [weakThis, dispatcher, mutationGeneration](auto weakTarget, const auto generation, auto completedRequest, auto result) mutable {
+                const auto target = weakTarget.lock();
+                if (!target)
+                {
+                    return;
+                }
+
+                dispatcher.TryEnqueue(DispatcherQueuePriority::Normal,
+                                      [weakThis,
+                                       weakTarget = std::move(weakTarget),
+                                       generation,
+                                       mutationGeneration,
+                                       completedRequest = std::move(completedRequest),
+                                       result = std::move(result)]() mutable {
+                                          const auto target = weakTarget.lock();
+                                          if (!target)
+                                          {
+                                              return;
+                                          }
+
+                                          if (const auto self = weakThis.get();
+                                              self &&
+                                              !self->_IsClosing() &&
+                                              self->_hoverPathTarget == target &&
+                                              self->_hoverPathRequestId == generation &&
+                                              self->_hoverPathMutationGeneration.load(std::memory_order_acquire) == mutationGeneration)
+                                          {
+                                              self->_completeHoverPathRequest(completedRequest, result, mutationGeneration);
+                                          }
+                                      });
+            });
+    }
+
+    void ControlCore::_completeHoverPathRequest(const ::Microsoft::Terminal::Core::Terminal::HoverPathRequest& request,
+                                                const std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathResult>& result,
+                                                const uint64_t mutationGeneration)
+    {
+        if (request.requestId != _hoverPathRequestId ||
+            mutationGeneration != _hoverPathMutationGeneration.load(std::memory_order_acquire) ||
+            !_lastHoveredCell ||
+            request.viewportPosition != *_lastHoveredCell ||
+            !result)
+        {
+            if (request.requestId == _hoverPathRequestId)
+            {
+                _hoverPathPendingOrActive.store(false, std::memory_order_relaxed);
+            }
+            return;
+        }
+
+        bool applied = false;
+        bool changed = false;
+        uint16_t newId = 0;
+        decltype(_terminal->GetHyperlinkIntervalFromViewportPosition({})) newInterval;
+        {
+            const auto lock = _terminal->LockForWriting();
+            if (request.requestId == _hoverPathRequestId &&
+                mutationGeneration == _hoverPathMutationGeneration.load(std::memory_order_acquire) &&
+                _lastHoveredCell &&
+                request.viewportPosition == *_lastHoveredCell)
+            {
+                applied = _terminal->ApplyHoverPathResult(request, *result);
+                newId = _terminal->GetHyperlinkIdAtViewportPosition(request.viewportPosition);
+                newInterval = _terminal->GetHyperlinkIntervalFromViewportPosition(request.viewportPosition);
+                changed = applied ||
+                          newId != _lastHoveredId ||
+                          newInterval != _lastHoveredInterval;
+                if (changed)
+                {
+                    _lastHoveredId = newId;
+                    _lastHoveredInterval = newInterval;
+                    _renderer->UpdateHyperlinkHoveredId(newId);
+                    _renderer->UpdateLastHoveredInterval(newInterval);
+                    _renderer->TriggerRedrawAll();
+                }
+            }
+        }
+
+        _hoverPathPendingOrActive.store(applied, std::memory_order_relaxed);
+        if (changed)
+        {
+            HoveredHyperlinkChanged.raise(*this, nullptr);
+        }
+    }
+
+    void ControlCore::_invalidateHoverPathRequests()
+    {
+        if (_IsClosing())
         {
             return;
         }
 
-        // GH#9618 - lock while we're reading from the terminal, and if we need
-        // to update something, then lock again to write the terminal.
+        ++_hoverPathRequestId;
+        if (_hoverPathTarget)
+        {
+            HoverPathWorker::Instance().CancelPending(_hoverPathTarget, _hoverPathRequestId);
+        }
+        const auto wasPendingOrActive = _hoverPathPendingOrActive.exchange(false, std::memory_order_relaxed);
 
+        uint16_t newId = 0;
+        decltype(_terminal->GetHyperlinkIntervalFromViewportPosition({})) newInterval;
+        bool cleared = false;
+        bool changed = false;
+        {
+            const auto lock = _terminal->LockForWriting();
+            cleared = _terminal->ClearHoverPath();
+            if (_lastHoveredCell)
+            {
+                newId = _terminal->GetHyperlinkIdAtViewportPosition(*_lastHoveredCell);
+                newInterval = _terminal->GetHyperlinkIntervalFromViewportPosition(*_lastHoveredCell);
+            }
+
+            changed = cleared ||
+                      newId != _lastHoveredId ||
+                      newInterval != _lastHoveredInterval;
+            if (changed)
+            {
+                _lastHoveredId = newId;
+                _lastHoveredInterval = newInterval;
+                _renderer->UpdateHyperlinkHoveredId(newId);
+                _renderer->UpdateLastHoveredInterval(newInterval);
+                _renderer->TriggerRedrawAll();
+            }
+        }
+
+        if (changed || wasPendingOrActive)
+        {
+            HoveredHyperlinkChanged.raise(*this, nullptr);
+        }
+    }
+
+    void ControlCore::_updateHoveredCell(const std::optional<til::point> terminalPosition)
+    {
+        if (_IsClosing() || terminalPosition == _lastHoveredCell)
+        {
+            return;
+        }
+
+        bool retainHoverPath = false;
+        if (terminalPosition)
+        {
+            const auto lock = _terminal->LockForReading();
+            retainHoverPath = _terminal->GetHoverPathActivationRequestAtViewportPosition(*terminalPosition).has_value();
+        }
+
+        _hoverPathHandledMutationGeneration = _hoverPathMutationGeneration.load(std::memory_order_relaxed);
+        ++_hoverPathRequestId;
+        if (_hoverPathTarget)
+        {
+            HoverPathWorker::Instance().CancelPending(_hoverPathTarget, _hoverPathRequestId);
+        }
+        _hoverPathPendingOrActive.store(retainHoverPath, std::memory_order_relaxed);
         _lastHoveredCell = terminalPosition;
+
+        bool clearedHoverPath = false;
+        if (!retainHoverPath)
+        {
+            const auto lock = _terminal->LockForWriting();
+            clearedHoverPath = _terminal->ClearHoverPath();
+        }
+
         uint16_t newId{ 0u };
         // we can't use auto here because we're pre-declaring newInterval.
         decltype(_terminal->GetHyperlinkIntervalFromViewportPosition({})) newInterval{ std::nullopt };
+        std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathRequest> hoverPathRequest;
+        uint64_t hoverPathMutationGeneration = 0;
         if (terminalPosition.has_value())
         {
             const auto lock = _terminal->LockForReading();
             newId = _terminal->GetHyperlinkIdAtViewportPosition(*terminalPosition);
             newInterval = _terminal->GetHyperlinkIntervalFromViewportPosition(*terminalPosition);
+            if (newId == 0 && !newInterval)
+            {
+                hoverPathMutationGeneration = _hoverPathMutationGeneration.load(std::memory_order_acquire);
+                hoverPathRequest = _terminal->CreateHoverPathRequest(*terminalPosition, _hoverPathRequestId);
+            }
         }
 
         // If the hyperlink ID changed or the interval changed, trigger a redraw all
         // (so this will happen both when we move onto a link and when we move off a link)
-        if (newId != _lastHoveredId ||
+        if (clearedHoverPath ||
+            newId != _lastHoveredId ||
             (newInterval != _lastHoveredInterval))
         {
             // Introduce scope for lock - we don't want to raise the
@@ -910,12 +1382,45 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
             HoveredHyperlinkChanged.raise(*this, nullptr);
         }
+
+        if (hoverPathRequest)
+        {
+            _hoverPathPendingOrActive.store(true, std::memory_order_relaxed);
+            _queueHoverPathRequest(std::move(*hoverPathRequest), hoverPathMutationGeneration);
+        }
     }
 
     winrt::hstring ControlCore::GetHyperlink(const Core::Point pos) const
     {
         const auto lock = _terminal->LockForReading();
         return winrt::hstring{ _terminal->GetHyperlinkAtViewportPosition(til::point{ pos }) };
+    }
+
+    HyperlinkInfo ControlCore::GetHyperlinkInfo(const Core::Point pos) const
+    {
+        std::optional<::Microsoft::Terminal::Core::Terminal::HoverPathRequest> hoverPathRequest;
+        HyperlinkInfo hyperlink;
+        {
+            const auto lock = _terminal->LockForReading();
+            const til::point position{ pos };
+            hoverPathRequest = _terminal->GetHoverPathActivationRequestAtViewportPosition(position);
+            if (!hoverPathRequest)
+            {
+                hyperlink = _terminal->GetHyperlinkInfoAtViewportPosition(position);
+            }
+        }
+
+        if (hoverPathRequest)
+        {
+            if (const auto result = ::Microsoft::Terminal::Core::Terminal::ResolveHoverPathRequest(*hoverPathRequest))
+            {
+                return HyperlinkInfo{
+                    .uri = result->uri,
+                    .isAutoDetectedFilePath = true,
+                };
+            }
+        }
+        return hyperlink;
     }
 
     winrt::hstring ControlCore::HoveredUriText() const
@@ -940,6 +1445,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - INVARIANT: This method can only be called if the caller DOES NOT HAVE writing lock on the terminal.
     void ControlCore::UpdateSettings(const IControlSettings& settings, const IControlAppearance& newAppearance)
     {
+        if (_hoverPathPendingOrActive.load(std::memory_order_relaxed))
+        {
+            _invalidateHoverPathRequests();
+        }
+
         _settings = settings;
         _hasUnfocusedAppearance = static_cast<bool>(newAppearance);
         _unfocusedAppearance = _hasUnfocusedAppearance ? newAppearance : settings;
@@ -959,6 +1469,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         const auto sizeChanged = _setFontSizeUnderLock(_settings.FontSize() + _accumulatedFontSizeDelta);
 
         // Update the terminal core with its new Core settings
+        _terminal->SetPathTranslationStyle(_toCorePathTranslationStyle(_settings.PathTranslationStyle()));
         _terminal->UpdateSettings(_settings);
 
         if (!_initializedTerminal.load(std::memory_order_relaxed))
@@ -1305,6 +1816,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         if (_panelWidth == width && _panelHeight == height && !scaleChanged)
         {
             return;
+        }
+
+        if (_hoverPathPendingOrActive.load(std::memory_order_relaxed))
+        {
+            _invalidateHoverPathRequests();
         }
 
         _panelWidth = width;
@@ -1879,6 +2395,21 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         if (!_IsClosing())
         {
+            ++_hoverPathRequestId;
+            if (_hoverPathTarget)
+            {
+                HoverPathWorker::Instance().CancelPending(_hoverPathTarget, _hoverPathRequestId);
+                _hoverPathTarget.reset();
+            }
+            _hoverPathPendingOrActive.store(false, std::memory_order_relaxed);
+            {
+                const auto lock = _terminal->LockForWriting();
+                _terminal->ClearHoverPath();
+            }
+            _lastHoveredCell.reset();
+            _lastHoveredInterval.reset();
+            _lastHoveredId = 0;
+
             _closing = true;
 
             // Ensure Close() doesn't hang, waiting for MidiAudio to finish playing an hour long song.
@@ -2303,12 +2834,23 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             // Collect VT sequences while the lock is held, raise events after releasing.
             std::vector<winrt::hstring> vtSequences;
+            bool hoverPathInvalidated = false;
+            uint64_t hoverPathMutationGeneration = 0;
             {
                 const auto lock = _terminal->LockForWriting();
+                if (_hoverPathPendingOrActive.load(std::memory_order_relaxed))
+                {
+                    hoverPathMutationGeneration = _hoverPathMutationGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+                }
                 _terminal->SetVtSequenceCallback([&vtSequences](std::wstring_view seq) {
                     vtSequences.emplace_back(seq);
                 });
                 _terminal->Write(winrt_array_to_wstring_view(str));
+                hoverPathInvalidated = _terminal->ClearHoverPath();
+                if (hoverPathInvalidated && hoverPathMutationGeneration == 0)
+                {
+                    hoverPathMutationGeneration = _hoverPathMutationGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+                }
                 _terminal->SetVtSequenceCallback([this](std::wstring_view seq) {
                     // Restore the original callback for non-output-handler callers.
                     VtSequenceReceived.raise(*this, winrt::hstring{ seq });
@@ -2319,6 +2861,20 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             for (const auto& seq : vtSequences)
             {
                 VtSequenceReceived.raise(*this, seq);
+            }
+
+            if (hoverPathMutationGeneration != 0)
+            {
+                _dispatcher.TryEnqueue(DispatcherQueuePriority::Normal, [weakThis = get_weak(), generation = hoverPathMutationGeneration]() {
+                    if (const auto self = weakThis.get(); self && !self->_IsClosing())
+                    {
+                        if (generation > self->_hoverPathHandledMutationGeneration)
+                        {
+                            self->_hoverPathHandledMutationGeneration = generation;
+                            self->_invalidateHoverPathRequests();
+                        }
+                    }
+                });
             }
 
             if (!_pendingResponses.empty())
@@ -2369,6 +2925,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - <none>
     void ControlCore::ClearBuffer(Control::ClearBufferType clearType)
     {
+        if (_hoverPathPendingOrActive.load(std::memory_order_relaxed))
+        {
+            _invalidateHoverPathRequests();
+        }
+
         {
             const auto lock = _terminal->LockForWriting();
             // In absolute buffer coordinates, including the scrollback (= Y is offset by the scrollback height).

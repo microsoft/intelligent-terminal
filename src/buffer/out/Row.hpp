@@ -182,6 +182,8 @@ public:
     void SetScrollbarData(std::optional<ScrollbarData> data) noexcept;
     uint32_t GetWorkingDirectoryId() const noexcept;
     void SetWorkingDirectoryId(uint32_t id) noexcept;
+    uint32_t GetShellTypeId() const noexcept;
+    void SetShellTypeId(uint32_t id) noexcept;
     void StartPrompt() noexcept;
     void EndOutput(std::optional<unsigned int> error) noexcept;
 
@@ -316,6 +318,7 @@ private:
     // Occurs when the user runs out of text to support a double byte character and we're forced to the next line
     bool _doubleBytePadded = false;
     uint32_t _workingDirectoryId = 0;
+    uint32_t _shellTypeId = 0;
 
     std::optional<ScrollbarData> _promptData = std::nullopt;
 

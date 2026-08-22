@@ -21,6 +21,15 @@ namespace Microsoft::Terminal::Core
         Activate,
     };
 
+    enum class PathTranslationStyle
+    {
+        None = 0,
+        WSL,
+        Cygwin,
+        MSYS2,
+        MinGW,
+    };
+
     struct ClickableMatcher
     {
         size_t id;
@@ -33,5 +42,11 @@ namespace Microsoft::Terminal::Core
         size_t matcherId;
         ClickAction action;
         std::wstring target;
+    };
+
+    struct HyperlinkInfo
+    {
+        std::wstring uri;
+        bool isAutoDetectedFilePath = false;
     };
 }

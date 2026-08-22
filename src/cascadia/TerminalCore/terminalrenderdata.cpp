@@ -86,6 +86,13 @@ std::vector<size_t> Terminal::GetPatternId(const til::point viewportPos) const
     const auto intervals = _patternIntervalTree.findOverlapping({ bufferPos.x + 1, bufferPos.y }, bufferPos);
     if (intervals.size() == 0)
     {
+        // Hover-only paths intentionally stay out of the persistent pattern tree,
+        // but the renderer uses a non-empty pattern ID set to segment and underline
+        // the currently hovered interval.
+        if (_hoverPathContains(bufferPos))
+        {
+            return { std::numeric_limits<size_t>::max() };
+        }
         return {};
     }
     else

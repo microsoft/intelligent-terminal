@@ -34,5 +34,9 @@ namespace Microsoft.Terminal.Settings.Editor
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, WarnAboutLargePaste);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Microsoft.Terminal.Control.WarnAboutMultiLinePaste, WarnAboutMultiLinePaste);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, EnableColorSelection);
+
+        // Appended to preserve the ABI ordering of existing properties.
+        IInspectable CurrentFilePathEditor;
+        Windows.Foundation.Collections.IObservableVector<EnumEntry> FilePathEditorList { get; };
     }
 }

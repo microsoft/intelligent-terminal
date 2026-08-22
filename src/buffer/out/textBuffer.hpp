@@ -196,6 +196,9 @@ public:
     uint32_t GetWorkingDirectoryId(std::wstring_view workingDirectory);
     std::wstring_view GetWorkingDirectoryFromId(uint32_t id) const noexcept;
     void CopyWorkingDirectoryMaps(const TextBuffer& other);
+    uint32_t GetShellTypeId(std::wstring_view shellType);
+    std::wstring_view GetShellTypeFromId(uint32_t id) const noexcept;
+    void CopyShellTypeMaps(const TextBuffer& other);
 
     std::wstring GetPlainText(til::point start, til::point end) const;
 
@@ -334,6 +337,7 @@ private:
     til::point _GetDelimiterClassRunEnd(til::point pos, const std::wstring_view wordDelimiters, const bool accessibilityMode = false) const;
     void _PruneHyperlinks();
     void _PruneWorkingDirectories();
+    void _PruneShellTypes();
 
     std::wstring _commandForRow(const til::CoordType rowOffset, const til::CoordType bottomInclusive, const bool clipAtCursor = false) const;
     MarkExtents _scrollMarkExtentForRow(const til::CoordType rowOffset, const til::CoordType bottomInclusive) const;
@@ -351,6 +355,7 @@ private:
     std::unordered_map<std::wstring, uint16_t> _hyperlinkCustomIdMap;
     uint16_t _currentHyperlinkId = 1;
     std::vector<std::optional<std::wstring>> _workingDirectories;
+    std::vector<std::optional<std::wstring>> _shellTypes;
 
     // This block describes the state of the underlying virtual memory buffer that holds all ROWs, text and attributes.
     // Initially memory is only allocated with MEM_RESERVE to reduce the private working set of conhost.
