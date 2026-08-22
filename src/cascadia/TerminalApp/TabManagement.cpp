@@ -810,6 +810,11 @@ namespace winrt::TerminalApp::implementation
         {
             _stashed.draggedTab = nullptr;
         }
+        if (_stashed.draggedPaneTab && *_stashed.draggedPaneTab == tab)
+        {
+            _stashed.draggedPane = nullptr;
+            _stashed.draggedPaneTab = nullptr;
+        }
 
         _tabs.RemoveAt(tabIndex);
         _tabItems().RemoveAt(tabIndex);

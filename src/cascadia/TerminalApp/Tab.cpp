@@ -848,22 +848,39 @@ namespace winrt::TerminalApp::implementation
     // - The removed pane, if the remove succeeded.
     std::shared_ptr<Pane> Tab::DetachPane()
     {
+        return DetachPane(_activePane);
+    }
+
+    // Method Description:
+    // - Removes a specific leaf pane from this tab. If that was the only
+    //   remaining pane, then the entire tab is closed as well.
+    // Arguments:
+    // - pane: the pane to remove.
+    // Return Value:
+    // - The removed pane, if the remove succeeded.
+    std::shared_ptr<Pane> Tab::DetachPane(const std::shared_ptr<Pane>& pane)
+    {
         ASSERT_UI_THREAD();
+
+        if (!pane || !pane->_IsLeaf())
+        {
+            return nullptr;
+        }
 
         // if we only have one pane, or the focused pane is the root, remove it
         // entirely and close this tab
-        if (_rootPane == _activePane)
+        if (_rootPane == pane)
         {
             return DetachRoot();
         }
 
-        // Attempt to remove the active pane from the tree
-        if (const auto pane = _rootPane->DetachPane(_activePane))
+        // Attempt to remove the requested pane from the tree
+        if (const auto detached = _rootPane->DetachPane(pane))
         {
             // Just make sure that the remaining pane is marked active
             _UpdateActivePane(_rootPane->GetActivePane());
 
-            return pane;
+            return detached;
         }
 
         return nullptr;

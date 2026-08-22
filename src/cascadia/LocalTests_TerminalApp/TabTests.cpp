@@ -11,6 +11,7 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
+#include "../TerminalApp/ScratchpadContent.h"
 #include "CppWinrtTailored.h"
 
 using namespace Microsoft::Console;
@@ -83,6 +84,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(MoveFocusFromZoomedPane);
         TEST_METHOD(CloseZoomedPane);
 
+        TEST_METHOD(DetachNonActivePane);
         TEST_METHOD(SwapPanes);
 
         TEST_METHOD(NextMRUTab);
@@ -835,6 +837,36 @@ namespace TerminalAppLocalTests
             auto firstTab = page->_GetTabImpl(page->_tabs.GetAt(0));
             VERIFY_ARE_EQUAL(1, firstTab->GetLeafPaneCount());
             VERIFY_IS_FALSE(firstTab->IsZoomed());
+        });
+        VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::DetachNonActivePane()
+    {
+        const auto result = RunOnUIThread([]() {
+            const auto activeContent = winrt::make<winrt::TerminalApp::implementation::ScratchpadContent>();
+            const auto otherContent = winrt::make<winrt::TerminalApp::implementation::ScratchpadContent>();
+            const auto activePane = std::make_shared<winrt::TerminalApp::implementation::Pane>(activeContent, true);
+            const auto nonActivePane = std::make_shared<winrt::TerminalApp::implementation::Pane>(otherContent);
+            const auto activeContentId = activePane->ContentId();
+            const auto root = std::make_shared<winrt::TerminalApp::implementation::Pane>(
+                activePane,
+                nonActivePane,
+                winrt::TerminalApp::implementation::SplitState::Vertical,
+                0.5f);
+            const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(root);
+            tab->Initialize();
+
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+
+            const auto detached = tab->DetachPane(nonActivePane);
+            VERIFY_ARE_EQUAL(nonActivePane, detached);
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(activeContentId, tab->_activePane->ContentId());
+
+            tab->AttachPane(detached);
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(detached, tab->_rootPane->FindPaneByContentId(*detached->ContentId()));
         });
         VERIFY_SUCCEEDED(result);
     }

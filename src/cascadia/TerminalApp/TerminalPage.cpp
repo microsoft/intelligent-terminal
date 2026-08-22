@@ -70,6 +70,9 @@ using namespace std::chrono_literals;
 
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
+static const winrt::hstring paneDragKindProperty{ L"terminalDragKind" };
+static const winrt::hstring paneDragKindValue{ L"pane" };
+static constexpr double paneDragThreshold = 4.0;
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
@@ -441,6 +444,7 @@ namespace winrt::TerminalApp::implementation
         _HookupKeyBindings(_settings.ActionMap());
 
         _tabContent = this->TabContent();
+        _paneDragOverlay = this->PaneDragOverlay();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = _tabRow.TabStrip();
@@ -590,6 +594,13 @@ namespace winrt::TerminalApp::implementation
             }
         });
         _newTabButton.Drop({ get_weak(), &TerminalPage::_NewTerminalByDrop });
+        _paneDragOverlay.PointerPressed({ get_weak(), &TerminalPage::_PaneDragPointerPressed });
+        _paneDragOverlay.PointerMoved({ get_weak(), &TerminalPage::_PaneDragPointerMoved });
+        _paneDragOverlay.PointerReleased({ get_weak(), &TerminalPage::_PaneDragPointerReleased });
+        _paneDragOverlay.PointerCanceled({ get_weak(), &TerminalPage::_PaneDragPointerReleased });
+        _paneDragOverlay.DragStarting({ get_weak(), &TerminalPage::_PaneDragStarting });
+        _tabContent.DragOver({ get_weak(), &TerminalPage::_PaneDragOver });
+        _tabContent.Drop({ get_weak(), &TerminalPage::_PaneDrop });
         _tabView.SelectionChanged({ this, &TerminalPage::_OnTabSelectionChanged });
         _tabView.TabCloseRequested({ this, &TerminalPage::_OnTabCloseRequested });
         _tabView.TabItemsChanged({ this, &TerminalPage::_OnTabItemsChanged });
@@ -6154,6 +6165,8 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down)
     {
+        _UpdatePaneDragOverlay(vkey, down);
+
         const auto modifiers = _GetPressedModifierKeys();
         if (vkey == VK_SPACE && modifiers.IsAltPressed() && down)
         {
@@ -10893,6 +10906,383 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_UpdatePaneDragOverlay(const uint32_t vkey, const bool down)
+    {
+        if (!_paneDragOverlay)
+        {
+            return;
+        }
+
+        if (vkey == VK_ESCAPE && down && _paneDragInProgress)
+        {
+            _paneDragCancelled = true;
+        }
+
+        const auto modifiers = _GetPressedModifierKeys();
+        auto altPressed = modifiers.IsAltPressed();
+        auto shiftPressed = modifiers.IsShiftPressed();
+        auto ctrlPressed = modifiers.IsCtrlPressed();
+        auto winPressed = modifiers.IsWinPressed();
+
+        // The direct key event is authoritative. CoreWindow key state can lag
+        // the key-down event that completes the Alt+Shift chord.
+        switch (vkey)
+        {
+        case VK_MENU:
+        case VK_LMENU:
+        case VK_RMENU:
+            altPressed = down;
+            break;
+        case VK_SHIFT:
+        case VK_LSHIFT:
+        case VK_RSHIFT:
+            shiftPressed = down;
+            break;
+        case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+            ctrlPressed = down;
+            break;
+        case VK_LWIN:
+        case VK_RWIN:
+            winPressed = down;
+            break;
+        }
+
+        const auto enabled = altPressed && shiftPressed && !ctrlPressed && !winPressed && !_paneDragInProgress;
+        _paneDragOverlay.IsHitTestVisible(enabled);
+
+        if (!enabled && _paneDragPending)
+        {
+            _ClearPaneDrag();
+        }
+    }
+
+    void TerminalPage::_PaneDragPointerPressed(const IInspectable& /*sender*/,
+                                               const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (_paneDragInProgress)
+        {
+            return;
+        }
+
+        const auto point = e.GetCurrentPoint(_paneDragOverlay);
+        const auto properties = point.Properties();
+        if (!properties.IsLeftButtonPressed() ||
+            properties.IsRightButtonPressed() ||
+            properties.IsMiddleButtonPressed())
+        {
+            return;
+        }
+
+        const auto tab = _GetFocusedTabImpl();
+        const auto pane = _GetPaneAtPoint(tab, point.Position());
+        if (!tab || !pane || pane->IsAgentPane() || tab->IsZoomed())
+        {
+            return;
+        }
+
+        if (!_paneDragOverlay.CapturePointer(e.Pointer()))
+        {
+            return;
+        }
+
+        _stashed.draggedTab = nullptr;
+        _stashed.draggedPaneTab = tab;
+        _stashed.draggedPane = pane;
+        _paneDragPointerId = point.PointerId();
+        _paneDragStartPoint = point.Position();
+        _paneDragPending = true;
+        _paneDragCancelled = false;
+
+        const auto inverseScale = 1.0f / static_cast<float>(_paneDragOverlay.XamlRoot().RasterizationScale());
+        POINT cursorPos;
+        GetCursorPos(&cursorPos);
+        ScreenToClient(*_hostingHwnd, &cursorPos);
+        _stashed.dragOffset.X = cursorPos.x * inverseScale;
+        _stashed.dragOffset.Y = cursorPos.y * inverseScale;
+
+        e.Handled(true);
+    }
+
+    void TerminalPage::_PaneDragPointerMoved(const IInspectable& /*sender*/,
+                                             const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (!_paneDragPending || _paneDragInProgress)
+        {
+            return;
+        }
+
+        const auto point = e.GetCurrentPoint(_paneDragOverlay);
+        if (point.PointerId() != _paneDragPointerId || !e.Pointer().IsInContact())
+        {
+            return;
+        }
+
+        const auto position = point.Position();
+        if (std::abs(position.X - _paneDragStartPoint.X) < paneDragThreshold &&
+            std::abs(position.Y - _paneDragStartPoint.Y) < paneDragThreshold)
+        {
+            return;
+        }
+
+        _paneDragOverlay.ReleasePointerCapture(e.Pointer());
+        _paneDragPending = false;
+        _StartPaneDrag(point);
+        e.Handled(true);
+    }
+
+    void TerminalPage::_PaneDragPointerReleased(const IInspectable& /*sender*/,
+                                                const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (_paneDragPending)
+        {
+            _paneDragOverlay.ReleasePointerCapture(e.Pointer());
+            _ClearPaneDrag();
+        }
+        e.Handled(true);
+    }
+
+    void TerminalPage::_PaneDragStarting(const WUX::UIElement& /*sender*/,
+                                         const WUX::DragStartingEventArgs& e)
+    {
+        if (!_stashed.draggedPane || !_stashed.draggedPaneTab)
+        {
+            e.Cancel(true);
+            return;
+        }
+
+        const auto properties = e.Data().Properties();
+        properties.Insert(paneDragKindProperty, winrt::box_value(paneDragKindValue));
+        properties.Insert(L"windowId", winrt::box_value(_WindowProperties.WindowId()));
+        properties.Insert(L"pid", winrt::box_value<uint32_t>(GetCurrentProcessId()));
+        e.Data().RequestedOperation(DataPackageOperation::Move);
+    }
+
+    safe_void_coroutine TerminalPage::_StartPaneDrag(const winrt::Windows::UI::Input::PointerPoint& pointerPoint)
+    {
+        _paneDragInProgress = true;
+        _paneDragOverlay.IsHitTestVisible(false);
+
+        const auto weak = get_weak();
+        const auto result = co_await _paneDragOverlay.StartDragAsync(pointerPoint);
+        const auto strong = weak.get();
+        if (!strong)
+        {
+            co_return;
+        }
+
+        if (result == DataPackageOperation::None &&
+            !strong->_paneDragCancelled &&
+            strong->_stashed.draggedPane &&
+            strong->_stashed.draggedPaneTab)
+        {
+            const auto pointerPosition = CoreWindow::GetForCurrentThread().PointerPosition();
+            const winrt::Windows::Foundation::Point adjusted{
+                pointerPosition.X - strong->_stashed.dragOffset.X,
+                pointerPosition.Y - strong->_stashed.dragOffset.Y,
+            };
+            strong->_sendDraggedPaneToWindow(L"-1", 0, adjusted);
+        }
+
+        strong->_ClearPaneDrag();
+        strong->_UpdatePaneDragOverlay(0, true);
+    }
+
+    std::shared_ptr<Pane> TerminalPage::_GetPaneAtPoint(const winrt::com_ptr<Tab>& tab,
+                                                       const winrt::Windows::Foundation::Point& point) const
+    {
+        if (!tab || !_tabContent)
+        {
+            return nullptr;
+        }
+
+        std::shared_ptr<Pane> result;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (!pane->GetContent() || pane->IsHidden())
+            {
+                return false;
+            }
+
+            try
+            {
+                const auto element = pane->GetRootElement();
+                const auto origin = element.TransformToVisual(_tabContent).TransformPoint({ 0, 0 });
+                if (point.X >= origin.X &&
+                    point.Y >= origin.Y &&
+                    point.X < origin.X + element.ActualWidth() &&
+                    point.Y < origin.Y + element.ActualHeight())
+                {
+                    result = pane;
+                    return true;
+                }
+            }
+            CATCH_LOG();
+            return false;
+        });
+        return result;
+    }
+
+    void TerminalPage::_PaneDragOver(const IInspectable& /*sender*/, const WUX::DragEventArgs& e)
+    {
+        const auto& properties = e.DataView().Properties();
+        if (winrt::unbox_value_or<winrt::hstring>(properties.TryLookup(paneDragKindProperty), {}) == paneDragKindValue &&
+            winrt::unbox_value_or<uint32_t>(properties.TryLookup(L"pid"), 0) == GetCurrentProcessId())
+        {
+            e.AcceptedOperation(DataPackageOperation::Move);
+        }
+    }
+
+    void TerminalPage::_PaneDrop(const IInspectable& /*sender*/, const WUX::DragEventArgs& e)
+    {
+        const auto& properties = e.DataView().Properties();
+        if (winrt::unbox_value_or<winrt::hstring>(properties.TryLookup(paneDragKindProperty), {}) != paneDragKindValue ||
+            winrt::unbox_value_or<uint32_t>(properties.TryLookup(L"pid"), 0) != GetCurrentProcessId())
+        {
+            return;
+        }
+
+        const auto targetTab = _GetFocusedTabImpl();
+        const auto targetPane = _GetPaneAtPoint(targetTab, e.GetPosition(_tabContent));
+        if (!targetTab || !targetPane || targetPane->IsAgentPane() || targetTab->IsZoomed())
+        {
+            return;
+        }
+
+        e.AcceptedOperation(DataPackageOperation::Move);
+        const auto sourceWindow = winrt::unbox_value_or<uint64_t>(properties.TryLookup(L"windowId"), 0);
+        if (sourceWindow == _WindowProperties.WindowId())
+        {
+            _MoveDraggedPaneToTab(targetTab, targetPane);
+            return;
+        }
+
+        if (!_FocusPaneDropTarget(targetTab, targetPane))
+        {
+            return;
+        }
+        RequestReceiveContent.raise(*this,
+                                    *winrt::make_self<RequestReceiveContentArgs>(
+                                        sourceWindow,
+                                        _WindowProperties.WindowId(),
+                                        targetTab->TabViewIndex()));
+    }
+
+    std::optional<uint32_t> TerminalPage::_GetTabIndexAtDropPoint(const WUX::DragEventArgs& e) const
+    {
+        const auto count = _tabItems().Size();
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const auto container = _isVerticalLayout
+                                       ? _tabStrip.ContainerFromIndex(i)
+                                       : _tabView.ContainerFromIndex(i);
+            if (const auto element = container.try_as<WUX::FrameworkElement>())
+            {
+                const auto point = e.GetPosition(element);
+                if (point.X >= 0 &&
+                    point.Y >= 0 &&
+                    point.X < element.ActualWidth() &&
+                    point.Y < element.ActualHeight())
+                {
+                    return i;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool TerminalPage::_FocusPaneDropTarget(const winrt::com_ptr<Tab>& tab,
+                                            const std::shared_ptr<Pane>& preferredPane)
+    {
+        if (!tab || tab->IsZoomed())
+        {
+            return false;
+        }
+
+        auto target = preferredPane;
+        if (!target || target->IsAgentPane() || target->IsHidden())
+        {
+            target = nullptr;
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (pane->GetContent() && !pane->IsAgentPane() && !pane->IsHidden())
+                {
+                    target = pane;
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (!target)
+        {
+            return false;
+        }
+        if (const auto id = target->Id())
+        {
+            return tab->FocusPane(*id);
+        }
+        return false;
+    }
+
+    bool TerminalPage::_MoveDraggedPaneToTab(const winrt::com_ptr<Tab>& targetTab,
+                                             const std::shared_ptr<Pane>& targetPane)
+    {
+        const auto sourceTab = _stashed.draggedPaneTab;
+        const auto sourcePane = _stashed.draggedPane;
+        if (!sourceTab || !sourcePane || !targetTab ||
+            sourcePane->IsAgentPane() ||
+            sourceTab->IsZoomed() ||
+            targetTab->IsZoomed())
+        {
+            return false;
+        }
+
+        if (sourceTab == targetTab)
+        {
+            if (!targetPane || targetPane->IsAgentPane())
+            {
+                return false;
+            }
+            const auto swapped = sourceTab->GetRootPane()->SwapPanes(sourcePane, targetPane);
+            _ClearPaneDrag();
+            return swapped || sourcePane == targetPane;
+        }
+
+        if (!_FocusPaneDropTarget(targetTab, targetPane))
+        {
+            return false;
+        }
+
+        const auto detached = sourceTab->DetachPane(sourcePane);
+        if (!detached)
+        {
+            return false;
+        }
+
+        targetTab->AttachPane(detached);
+        if (const auto id = detached->Id())
+        {
+            targetTab->FocusPane(*id);
+        }
+        _SetFocusedTab(*targetTab);
+        _ClearPaneDrag();
+        return true;
+    }
+
+    void TerminalPage::_ClearPaneDrag()
+    {
+        if (_paneDragOverlay)
+        {
+            _paneDragOverlay.ReleasePointerCaptures();
+        }
+        _paneDragPending = false;
+        _paneDragInProgress = false;
+        _paneDragCancelled = false;
+        _paneDragPointerId = 0;
+        _stashed.draggedPane = nullptr;
+        _stashed.draggedPaneTab = nullptr;
+    }
+
     void TerminalPage::_onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView&,
                                           const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e)
     {
@@ -10922,6 +11312,7 @@ namespace winrt::TerminalApp::implementation
         {
             // First: stash the tab we started dragging.
             // We're going to be asked for this.
+            _ClearPaneDrag();
             _stashed.draggedTab = tabImpl;
 
             // Stash the offset from where we started the drag to the
@@ -11006,6 +11397,42 @@ namespace winrt::TerminalApp::implementation
         }
         const uint64_t src{ winrt::unbox_value<uint64_t>(windowIdObj) };
 
+        const auto dragKind = winrt::unbox_value_or<winrt::hstring>(
+            e.DataView().Properties().TryLookup(paneDragKindProperty),
+            {});
+        if (dragKind == paneDragKindValue)
+        {
+            const auto targetIndex = _GetTabIndexAtDropPoint(e);
+            if (!targetIndex || *targetIndex >= _tabs.Size())
+            {
+                return;
+            }
+
+            const auto targetTab = _GetTabImpl(_tabs.GetAt(*targetIndex));
+            if (src == _WindowProperties.WindowId())
+            {
+                if (_MoveDraggedPaneToTab(targetTab))
+                {
+                    e.AcceptedOperation(DataPackageOperation::Move);
+                }
+            }
+            else
+            {
+                if (!_FocusPaneDropTarget(targetTab))
+                {
+                    return;
+                }
+                e.AcceptedOperation(DataPackageOperation::Move);
+                RequestReceiveContent.raise(
+                    *this,
+                    *winrt::make_self<RequestReceiveContentArgs>(
+                        src,
+                        _WindowProperties.WindowId(),
+                        *targetIndex));
+            }
+            return;
+        }
+
         // Figure out where in the tab strip we're dropping this tab. Add that
         // index to the request. This is largely taken from the WinUI sample
         // app.
@@ -11058,6 +11485,14 @@ namespace winrt::TerminalApp::implementation
         // validate that we're the source window of the tab in this request
         if (args.SourceWindow() != _WindowProperties.WindowId())
         {
+            return;
+        }
+        if (_stashed.draggedPane && _stashed.draggedPaneTab)
+        {
+            _sendDraggedPaneToWindow(
+                winrt::to_hstring(args.TargetWindow()),
+                args.TabIndex(),
+                std::nullopt);
             return;
         }
         if (!_stashed.draggedTab)
@@ -11123,6 +11558,24 @@ namespace winrt::TerminalApp::implementation
         // movingAway=true so an agent pane in this tab survives the drag —
         // the target window will rebind it via `tab_renamed`.
         _RemoveTab(*_stashed.draggedTab, /*movingAway*/ true);
+    }
+
+    void TerminalPage::_sendDraggedPaneToWindow(const winrt::hstring& windowId,
+                                                const uint32_t tabIndex,
+                                                std::optional<winrt::Windows::Foundation::Point> dragPoint)
+    {
+        const auto sourceTab = _stashed.draggedPaneTab;
+        const auto sourcePane = _stashed.draggedPane;
+        if (!sourceTab || !sourcePane || sourcePane->IsAgentPane() || sourceTab->IsZoomed())
+        {
+            return;
+        }
+
+        auto startupActions = sourcePane->BuildStartupActions(0, 1, BuildStartupKind::MovePane);
+        _DetachPaneFromWindow(sourcePane);
+        _MoveContent(std::move(startupActions.args), windowId, tabIndex, dragPoint);
+        sourceTab->DetachPane(sourcePane);
+        _ClearPaneDrag();
     }
 
     /// <summary>

@@ -327,6 +327,7 @@ namespace winrt::TerminalApp::implementation
         double _railSplitterStartWidth{ 0.0 };
         Windows::Foundation::Point _railSplitterStartPointer{};
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
+        Windows::UI::Xaml::Controls::Border _paneDragOverlay{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
         Windows::UI::Xaml::Controls::Button _workspaceDropdown{ nullptr };
@@ -606,8 +607,16 @@ namespace winrt::TerminalApp::implementation
         struct StashedDragData
         {
             winrt::com_ptr<winrt::TerminalApp::implementation::Tab> draggedTab{ nullptr };
+            winrt::com_ptr<winrt::TerminalApp::implementation::Tab> draggedPaneTab{ nullptr };
+            std::shared_ptr<Pane> draggedPane{ nullptr };
             winrt::Windows::Foundation::Point dragOffset{ 0, 0 };
         } _stashed;
+
+        bool _paneDragPending{ false };
+        bool _paneDragInProgress{ false };
+        bool _paneDragCancelled{ false };
+        uint32_t _paneDragPointerId{ 0 };
+        winrt::Windows::Foundation::Point _paneDragStartPoint{ 0, 0 };
 
         safe_void_coroutine _NewTerminalByDrop(const Windows::Foundation::IInspectable&, winrt::Windows::UI::Xaml::DragEventArgs e);
 
@@ -936,6 +945,20 @@ namespace winrt::TerminalApp::implementation
         void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
         void _OnTabDroppedOutsideCore();
 
+        void _UpdatePaneDragOverlay(uint32_t vkey, bool down);
+        void _PaneDragPointerPressed(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _PaneDragPointerMoved(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _PaneDragPointerReleased(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void _PaneDragStarting(const winrt::Windows::UI::Xaml::UIElement& sender, const winrt::Windows::UI::Xaml::DragStartingEventArgs& e);
+        safe_void_coroutine _StartPaneDrag(const winrt::Windows::UI::Input::PointerPoint& pointerPoint);
+        void _PaneDragOver(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
+        void _PaneDrop(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::DragEventArgs& e);
+        std::shared_ptr<Pane> _GetPaneAtPoint(const winrt::com_ptr<Tab>& tab, const winrt::Windows::Foundation::Point& point) const;
+        std::optional<uint32_t> _GetTabIndexAtDropPoint(const winrt::Windows::UI::Xaml::DragEventArgs& e) const;
+        bool _FocusPaneDropTarget(const winrt::com_ptr<Tab>& tab, const std::shared_ptr<Pane>& preferredPane = nullptr);
+        bool _MoveDraggedPaneToTab(const winrt::com_ptr<Tab>& targetTab, const std::shared_ptr<Pane>& targetPane = nullptr);
+        void _ClearPaneDrag();
+
         void _DetachPaneFromWindow(std::shared_ptr<Pane> pane);
         void _DetachTabFromWindow(const winrt::com_ptr<Tab>& tabImpl);
         void _MoveContent(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>&& actions,
@@ -943,6 +966,7 @@ namespace winrt::TerminalApp::implementation
                           const uint32_t tabIndex,
                           const std::optional<winrt::Windows::Foundation::Point>& dragPoint = std::nullopt);
         void _sendDraggedTabToWindow(const winrt::hstring& windowId, const uint32_t tabIndex, std::optional<winrt::Windows::Foundation::Point> dragPoint);
+        void _sendDraggedPaneToWindow(const winrt::hstring& windowId, const uint32_t tabIndex, std::optional<winrt::Windows::Foundation::Point> dragPoint);
 
         void _PopulateContextMenu(const Microsoft::Terminal::Control::TermControl& control, const Microsoft::UI::Xaml::Controls::CommandBarFlyout& sender, const bool withSelection);
         void _PopulateQuickFixMenu(const Microsoft::Terminal::Control::TermControl& control, const Windows::UI::Xaml::Controls::MenuFlyout& sender);
