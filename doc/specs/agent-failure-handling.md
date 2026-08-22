@@ -226,10 +226,14 @@ failure boundary.
 
 ### 5.4 Agent-side session release on disconnect → closes §6 / F8
 
-When a helper disconnects, master currently drops only its local routing entry,
-leaking the session inside the agent CLI. Add: on helper-pipe EOF, master sends
-`session/cancel` (and, where supported, a release) for that helper's sessions
-before dropping them.
+When a helper disconnects, master treats the helper as terminal and fences new
+session transactions for it. While holding the helper's replacement gate,
+master sends bounded `session/cancel` and, where supported, `session/close` for
+each owned ACP session. It then retires the local route, registry entry,
+session-scoped MCP capability, and pending state even if provider-side cleanup
+is unsupported, fails, or times out. Provider history remains available only
+for an explicit user-initiated `session/load`; disconnect never preserves an
+orphan for automatic resume.
 
 ## 6. Phasing
 
@@ -241,7 +245,7 @@ before dropping them.
 | **2** | Prompt inactivity watchdog | §6 hung-agent | low — reuses cancel path |
 | **3** | Helper exits on master EOF; no reconnect state | §5 helper cleanup | low — terminal failure semantics |
 | **4** | Remove C++ dead-pane re-warm and automatic session load | §5 / F2 / F5 | low — deletes recovery races |
-| **5** | Master `session/cancel`/`session/close` on disconnect | §6 / F8 leak | low |
+| **5** ✅ | Master bounded `session/cancel`/`session/close` plus local retirement on disconnect | §6 / F8 leak | low |
 
 Phase 1 stands alone and is worth landing first: it removes the only fragile
 classification in the codebase and is the substrate every later phase keys off.
