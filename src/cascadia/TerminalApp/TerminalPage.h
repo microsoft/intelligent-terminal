@@ -495,18 +495,17 @@ namespace winrt::TerminalApp::implementation
         std::optional<std::string> _pendingAgentRebuildRequestId;
         uint64_t _agentSettingsRebindGeneration{ 0 };
         static std::string _AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot);
-        // Hot-updatable runtime agent config. When any of these change we
+        // Hot-updatable non-binding agent config. When any of these change we
         // push a single consolidated `agent_config_changed` event to the
-        // running wta-helper(s) so they update in place — no agent-pane
-        // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (ACP model, autofix gate,
-        // delegate agent/model, credential-free model catalogs).
+        // running wta-helper(s) so they update in place. ACP model binding
+        // changes are reconciled separately so unready helpers can be
+        // recreated before the settings snapshot advances. This remains the
+        // unified dispatch point for the autofix gate, delegate agent/model,
+        // and credential-free model catalogs.
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
-            std::wstring acpAgent;
-            std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
             std::wstring customModelSelection;
@@ -581,7 +580,8 @@ namespace winrt::TerminalApp::implementation
             bool canHostPane,
             bool masterConfigurationChanged) noexcept;
         static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
-            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
+            bool helperEventReady) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
@@ -592,6 +592,14 @@ namespace winrt::TerminalApp::implementation
             bool globalAgentChanged,
             bool cloudModelChanged,
             bool customModelLaunchChanged) noexcept;
+        static bool _IsAgentPaneModelHotUpdateTarget(
+            const std::optional<AgentPaneSettingsBinding>& binding,
+            std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
+            bool helperEventReady) noexcept;
+        static bool _ShouldRecreateAgentPaneForModelHotUpdate(
+            const std::optional<AgentPaneSettingsBinding>& binding,
+            std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
+            bool helperEventReady) noexcept;
         static Json::Value _BuildAgentPaneSettingsRebindPayload(
             const AgentPaneSettingsBinding& binding);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);

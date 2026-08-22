@@ -206,6 +206,7 @@ namespace winrt::TerminalApp::implementation
                                              const winrt::hstring& state,
                                              const winrt::hstring& backend)
     {
+        _helperEventReady = true;
         const bool nameChanged = _agentName != name;
         _agentName = name;
         _agentVersion = version;

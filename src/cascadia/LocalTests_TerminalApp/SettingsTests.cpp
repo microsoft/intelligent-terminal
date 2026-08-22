@@ -76,6 +76,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneSettingsRebindClassification);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
+        TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1731,22 +1732,31 @@ namespace TerminalAppLocalTests
 
         VERIFY_ARE_EQUAL(
             Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected));
+            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected, false));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting, false));
         VERIFY_ARE_EQUAL(
             Disposition::Rebind,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting));
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connected, false));
         VERIFY_ARE_EQUAL(
             Disposition::Rebind,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connected));
+            Page::_ClassifyAgentPaneSettingsRebind(State::Connected, true));
         VERIFY_ARE_EQUAL(
             Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Closing));
+            Page::_ClassifyAgentPaneSettingsRebind(State::Closing, true));
         VERIFY_ARE_EQUAL(
             Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Closed));
+            Page::_ClassifyAgentPaneSettingsRebind(State::Closed, true));
         VERIFY_ARE_EQUAL(
             Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Failed));
+            Page::_ClassifyAgentPaneSettingsRebind(State::Failed, true));
 
         const auto visibleActive = Page::_GetAgentPaneRecreationOptions(false, true);
         VERIFY_IS_FALSE(visibleActive.autoStash);
@@ -1914,11 +1924,11 @@ namespace TerminalAppLocalTests
             L"",
         });
 
-        auto unlaunchableCustomOverride = customOverride;
-        unlaunchableCustomOverride.agentCustomCommandOverride.clear();
+        auto nonLaunchableCustomOverride = customOverride;
+        nonLaunchableCustomOverride.agentCustomCommandOverride.clear();
         cases.push_back({
-            L"unlaunchable custom binding is excluded",
-            unlaunchableCustomOverride,
+            L"non-launchable custom binding is excluded",
+            nonLaunchableCustomOverride,
             false,
             false,
             true,
@@ -2029,5 +2039,48 @@ namespace TerminalAppLocalTests
                     payload["custom_model_selection"].asString());
             }
         }
+    }
+
+    void SettingsTests::TestAgentPaneModelHotUpdateRouting()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Request = Page::AgentPaneSettingsBindingRequest;
+
+        const auto globalFollower = Page::_ResolveAgentPaneSettingsBinding(Request{
+            .globalAgentId = L"copilot",
+            .globalModel = L"gpt-5.6",
+            .globalAgentCliPath = L"copilot --acp --stdio --model gpt-5.6",
+        });
+        const auto perTabModelOverride = Page::_ResolveAgentPaneSettingsBinding(Request{
+            .hasAgentOverride = true,
+            .agentIdOverride = L"copilot",
+            .agentModelOverride = L"gpt-5.5",
+            .agentSourceOverride = L"host",
+        });
+        const auto nonLaunchableGlobalFollower = Page::_ResolveAgentPaneSettingsBinding(Request{
+            .globalAgentId = L"copilot",
+            .globalModel = L"gpt-5.6",
+        });
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+
+        VERIFY_IS_TRUE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Connected, false));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Connected, false));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::Failed, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::Failed, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, State::NotConnected, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, State::NotConnected, true));
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(globalFollower, std::nullopt, true));
+        VERIFY_IS_TRUE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(globalFollower, std::nullopt, true));
+
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(std::nullopt, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(std::nullopt, State::Connected, false));
+
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(perTabModelOverride, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(perTabModelOverride, State::Connected, false));
+
+        VERIFY_IS_FALSE(Page::_IsAgentPaneModelHotUpdateTarget(nonLaunchableGlobalFollower, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_ShouldRecreateAgentPaneForModelHotUpdate(nonLaunchableGlobalFollower, State::Connected, false));
     }
 }
