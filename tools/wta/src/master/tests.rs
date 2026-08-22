@@ -2078,6 +2078,8 @@ async fn master_reset_tab_session_resolves_owner_and_physically_retires_session(
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "sibling-close-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -2262,6 +2264,8 @@ async fn retirement_event_physically_closes_once_and_replays_completion() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-live-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -2850,6 +2854,8 @@ async fn scope_all_retires_ownerless_helper_live_route_directly() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "ownerless-live-route-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -2967,6 +2973,8 @@ async fn scope_all_captured_helper_disconnect_still_closes_once() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "captured-disconnect-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3053,6 +3061,8 @@ async fn scope_all_retirement_captures_orphan_after_route_drop_before_connected_
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "disconnect-ordering-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3150,6 +3160,8 @@ async fn retirement_completed_after_route_drop_cannot_republish_orphan() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "disconnect-retirement-race-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3285,6 +3297,8 @@ async fn disconnect_orphan_publication_skips_tab_closed_session() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "disconnect-ordinary-close-race-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3385,6 +3399,8 @@ async fn disconnect_orphan_publication_skips_rebound_session() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "disconnect-rebind-race-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3484,6 +3500,8 @@ async fn unexpected_disconnect_still_publishes_orphan() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "unexpected-disconnect-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3663,6 +3681,8 @@ async fn orphan_retirement_blocked_cancel_uses_total_budget() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "blocked-orphan-cancel-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3768,6 +3788,8 @@ async fn scope_all_physically_closes_ownerless_orphaned_session() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "ownerless-orphan-physical-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -3852,6 +3874,8 @@ async fn scope_all_preserves_ownerless_orphan_claimed_by_replacement_route() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "ownerless-orphan-rebound-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4171,6 +4195,8 @@ async fn scope_all_waits_for_ownerless_pending_transaction_cleanup() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "ownerless-pending-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4277,6 +4303,8 @@ async fn scope_all_unsupported_retirement_reports_failed_owner_tab() {
                 cli_source: Some(crate::agent_sessions::CliSource::Gemini),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-unsupported-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4350,6 +4378,8 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-all-agent-a".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4360,6 +4390,8 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 cli_source: Some(crate::agent_sessions::CliSource::Gemini),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-all-agent-b".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4485,6 +4517,8 @@ async fn retirement_uses_one_deadline_for_close_wait_and_forced_cleanup() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-single-deadline-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4587,6 +4621,8 @@ async fn retirement_lifecycle_gate_wait_does_not_renew_close_budget() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-gate-deadline-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -4659,6 +4695,8 @@ async fn retirement_waits_for_and_retires_late_session_new() {
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-pending-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
@@ -5017,6 +5055,8 @@ async fn active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconne
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "retirement-drag-race-agent".to_string(),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
