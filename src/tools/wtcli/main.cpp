@@ -18,13 +18,15 @@
 
 #include <wil/resource.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <fcntl.h>
+#include <io.h>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -828,9 +830,41 @@ int wmain(int argc, wchar_t** argv)
     // ── publish ──
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
+    bool publishFromStdin = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
-    publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
+    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
+    auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishJsonOption->excludes(publishStdinOption);
+    publishCmd->require_option(1, 1);
     publishCmd->callback([&]() {
+        if (publishFromStdin)
+        {
+            if (_setmode(_fileno(stdin), _O_BINARY) == -1)
+            {
+                fprintf(stderr, "[wtcli] publish: failed to configure stdin for binary input.\n");
+                exitCode = 1;
+                return;
+            }
+            std::string input;
+            std::array<char, 8192> buffer;
+            while (std::cin.read(buffer.data(), buffer.size()) || std::cin.gcount() > 0)
+            {
+                input.append(buffer.data(), static_cast<size_t>(std::cin.gcount()));
+            }
+            if (!std::cin.eof())
+            {
+                fprintf(stderr, "[wtcli] publish: failed to read JSON from stdin.\n");
+                exitCode = 1;
+                return;
+            }
+            publishJson = std::move(input);
+        }
+        if (publishJson.empty())
+        {
+            fprintf(stderr, "[wtcli] publish: JSON input must not be empty.\n");
+            exitCode = 1;
+            return;
+        }
         auto server = connect();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
