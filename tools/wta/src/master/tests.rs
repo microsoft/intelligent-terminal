@@ -317,6 +317,10 @@ fn fresh_host_byok_startup_uses_clean_probe_only_when_needed() {
     );
 }
 
+
+
+
+
 #[tokio::test(flavor = "current_thread")]
 async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper() {
     tokio::task::LocalSet::new()
@@ -558,16 +562,139 @@ fn agent_pool_key_includes_authoritative_identity() {
 }
 
 #[test]
-fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
-    // Native agent (gemini) takes --model on the command line.
+fn model_is_folded_in_only_for_launch_time_agents() {
+    // Gemini does not implement live ACP model switching, so its model is part
+    // of the process identity.
     let (cmd, _) = resolve(None, Some("gemini"), Some("gemini-2.5-pro"));
     assert_eq!(cmd, "gemini --acp --model gemini-2.5-pro");
 
-    // Adapter agent (claude via npx) ignores the model here — it's
-    // applied later via setSessionModel — so the command is stable.
+    // Live-switching native and adapter agents keep a stable command so new
+    // tabs can join the existing warm process after a global model update.
+    let (cmd, _) = resolve(None, Some("copilot"), Some("gpt-5.5"));
+    assert_eq!(cmd, "copilot --acp --stdio");
+
     let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
     assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp@0.65.0");
     assert_eq!(id.as_deref(), Some("claude"));
+}
+
+#[test]
+fn custom_model_generation_changes_only_when_launch_configuration_changes() {
+    let selection = "custom:provider:model-a";
+    let config = crate::custom_model_provider::Config {
+        base_url: "https://example.test/v1".to_string(),
+        model: "model-a".to_string(),
+        credential_id: Some("credential-a".to_string()),
+        api_key_required: true,
+        credential_resource: "test",
+    };
+    let mut generations = HashMap::new();
+
+    assert_eq!(
+        update_custom_model_generation(&mut generations, selection, config.clone()).unwrap(),
+        1
+    );
+    assert_eq!(
+        update_custom_model_generation(&mut generations, selection, config.clone()).unwrap(),
+        1,
+        "an unchanged provider must reuse its process generation"
+    );
+
+    let changed = crate::custom_model_provider::Config {
+        credential_id: Some("credential-b".to_string()),
+        ..config
+    };
+    assert_eq!(
+        update_custom_model_generation(&mut generations, selection, changed).unwrap(),
+        2,
+        "a credential-reference change must select a fresh process generation"
+    );
+}
+
+#[test]
+fn provider_binding_isolated_pool_keys_do_not_expose_configuration() {
+    let source = crate::agent_source::AgentSource::Host;
+    let command = "copilot --acp --stdio";
+    let custom = ProviderBinding::Custom {
+        selection_id: "custom:provider:model-a".to_string(),
+        generation: 7,
+        config: crate::custom_model_provider::Config {
+            base_url: "https://secret-endpoint.test/v1".to_string(),
+            model: "model-a".to_string(),
+            credential_id: Some("secret-credential-reference".to_string()),
+            api_key_required: true,
+            credential_resource: "test",
+        },
+    };
+
+    let native_key =
+        agent_cmd_key_with_provider(command, Some("copilot"), &source, &ProviderBinding::Native);
+    let custom_key = agent_cmd_key_with_provider(command, Some("copilot"), &source, &custom);
+
+    assert!(native_key.starts_with("warm:"));
+    assert!(custom_key.starts_with("model:"));
+    assert_ne!(native_key, custom_key);
+    assert!(custom_key.contains("custom:provider:model-a@7"));
+    assert!(!custom_key.contains("secret-endpoint"));
+    assert!(!custom_key.contains("secret-credential"));
+    assert!(
+        agent_cmd_key(
+            "custom-agent --model pinned",
+            Some("custom:local"),
+            &source
+        )
+        .starts_with("warm:"),
+        "trusted custom commands are not transient model generations"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper_a = HelperId(601);
+            let helper_b = HelperId(602);
+            let key = "model:test-agent".to_string();
+            let agent = Arc::new(AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
+                conn: client_connection_to_model_agent(
+                    false,
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                ),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: key.clone(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
+                bound_helpers: Mutex::new(HashSet::new()),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
+            });
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state.agents.lock().await.insert(key.clone(), cell);
+
+            assert!(bind_helper_to_agent(&state, &agent, helper_a).await);
+            assert!(bind_helper_to_agent(&state, &agent, helper_b).await);
+            agent.bound_helpers.lock().await.remove(&helper_a);
+            retire_unbound_model_agent(&state, &agent).await;
+            assert!(
+                state.agents.lock().await.contains_key(&key),
+                "one remaining helper must keep the model generation alive"
+            );
+
+            agent.bound_helpers.lock().await.remove(&helper_b);
+            retire_unbound_model_agent(&state, &agent).await;
+            assert!(
+                !state.agents.lock().await.contains_key(&key),
+                "the final helper disconnect must retire the model generation"
+            );
+        })
+        .await;
 }
 
 #[test]
@@ -788,6 +915,7 @@ fn make_state_with_retirement_pending_timeout(
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
+        custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
         allowed_agent_ids: None,
@@ -3242,10 +3370,6 @@ async fn scope_all_retirement_captures_orphan_after_route_drop_before_connected_
         })
         .await;
 }
-
-
-
-
 
 #[tokio::test(flavor = "current_thread")]
 async fn orphan_retirement_blocked_lifecycle_gate_uses_total_budget() {
@@ -8660,6 +8784,7 @@ fn session_focus_params_for(
 struct MockWtChannel {
     calls: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
     fail_with: Option<String>,
+    response: serde_json::Value,
 }
 
 impl MockWtChannel {
@@ -8667,12 +8792,21 @@ impl MockWtChannel {
         Self {
             calls: std::sync::Mutex::new(Vec::new()),
             fail_with: None,
+            response: serde_json::json!({ "ok": true }),
+        }
+    }
+    fn responding(response: serde_json::Value) -> Self {
+        Self {
+            calls: std::sync::Mutex::new(Vec::new()),
+            fail_with: None,
+            response,
         }
     }
     fn failing(message: &str) -> Self {
         Self {
             calls: std::sync::Mutex::new(Vec::new()),
             fail_with: Some(message.to_string()),
+            response: serde_json::Value::Null,
         }
     }
     fn calls(&self) -> Vec<(String, serde_json::Value)> {
@@ -8693,7 +8827,7 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
             .push((method.to_string(), params));
         match &self.fail_with {
             Some(msg) => Err(anyhow::anyhow!("{msg}")),
-            None => Ok(serde_json::json!({ "ok": true })),
+            None => Ok(self.response.clone()),
         }
     }
     fn is_available(&self) -> bool {
@@ -8713,6 +8847,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
+        custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
         allowed_agent_ids: None,
@@ -8740,6 +8875,62 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         orphaned_sessions: Mutex::new(HashMap::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
+}
+
+#[tokio::test]
+async fn custom_provider_binding_is_resolved_from_terminal_settings() {
+    let mock = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "customModelProviders": [{
+            "id": "provider",
+            "baseUrl": "https://example.test/v1",
+            "apiContract": "openai-compatible",
+            "apiKeyCredential": "credential-reference",
+            "apiKeyRequired": true,
+            "models": [{ "id": "model-a" }]
+        }]
+    })));
+    let state = make_state_with_wt(mock.clone());
+
+    let native = resolve_provider_binding(
+        &state,
+        Some("copilot"),
+        &crate::agent_source::AgentSource::Host,
+        Some("default"),
+    )
+    .await
+    .expect("the explicit native provider should resolve without settings");
+    assert!(matches!(native, ProviderBinding::Native));
+    assert!(
+        mock.calls().is_empty(),
+        "native provider selection must not read the custom provider catalog"
+    );
+
+    let binding = resolve_provider_binding(
+        &state,
+        Some("copilot"),
+        &crate::agent_source::AgentSource::Host,
+        Some("custom:provider:model-a"),
+    )
+    .await
+    .expect("the master should resolve a configured custom provider");
+
+    match binding {
+        ProviderBinding::Custom {
+            selection_id,
+            generation,
+            config,
+        } => {
+            assert_eq!(selection_id, "custom:provider:model-a");
+            assert_eq!(generation, 1);
+            assert_eq!(config.base_url, "https://example.test/v1");
+            assert_eq!(config.credential_id.as_deref(), Some("credential-reference"));
+        }
+        _ => panic!("expected a custom provider binding"),
+    }
+    assert_eq!(
+        mock.calls(),
+        vec![("get_settings".to_string(), serde_json::Value::Null)]
+    );
 }
 
 fn focus_params_for(

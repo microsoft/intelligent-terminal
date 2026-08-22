@@ -708,6 +708,7 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = config.acp_model.clone();
+                let custom_model_selection = config.custom_model_selection.clone();
                 let cloud_models_for_client = cloud_models.clone();
                 // Pass per-tab agent identity through the initialize handshake.
                 let agent_id = config.agent_id.clone();
@@ -720,6 +721,7 @@ async fn run_acp_app(
                     match protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        custom_model_selection,
                         cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
@@ -881,6 +883,7 @@ async fn run_acp_app(
                 agent_cmd.clone(),
                 config.agent_id.clone(),
                 config.acp_model.clone(),
+                config.custom_model_selection.clone(),
                 agent_source.clone(),
                 agent_source_cwd.clone(),
                 config.owner_tab_id.clone(),

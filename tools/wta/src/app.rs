@@ -13,6 +13,7 @@ struct DeferredAcpParams {
     agent_cmd: String,
     agent_id: Option<String>,
     acp_model: Option<String>,
+    custom_model_selection: Option<String>,
     agent_source: crate::agent_source::AgentSource,
     source_cwd: Option<String>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
@@ -1422,6 +1423,7 @@ impl App {
         agent_cmd: String,
         agent_id: Option<String>,
         acp_model: Option<String>,
+        custom_model_selection: Option<String>,
         agent_source: crate::agent_source::AgentSource,
         source_cwd: Option<String>,
         owner_tab_id: Option<String>,
@@ -1432,6 +1434,7 @@ impl App {
             agent_cmd,
             agent_id,
             acp_model,
+            custom_model_selection,
             agent_source,
             source_cwd,
             prompt_rx: None,
@@ -1525,6 +1528,7 @@ impl App {
                 params.master_ext_rx.take(),
             ) {
                 let acp_model = params.acp_model.clone();
+                let custom_model_selection = params.custom_model_selection.clone();
                 let agent_source = params.agent_source.clone();
                 let source_cwd = params.source_cwd.clone();
                 let event_tx = tx.clone();
@@ -1571,6 +1575,7 @@ impl App {
                         match crate::protocol::acp::client::run_acp_client_over_pipe(
                             pipe_name,
                             acp_model,
+                            custom_model_selection,
                             cloud_models,
                             agent_id_opt,
                             agent_source,
@@ -1964,6 +1969,9 @@ impl App {
         }
 
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        if let Some(params) = self.deferred_acp.as_mut() {
+            params.acp_model.clone_from(&self.acp_model);
+        }
         self.send_acp_model_update();
         self.publish_agent_status();
         true
@@ -3480,6 +3488,9 @@ impl App {
             params.agent_cmd.clone_from(&new_cmd);
             params.agent_id = Some(request.agent_id.clone());
             params.acp_model.clone_from(&request.acp_model);
+            params
+                .custom_model_selection
+                .clone_from(&request.custom_model_selection);
             params.agent_source = request.agent_source.clone();
             if matches!(request.agent_source, crate::agent_source::AgentSource::Host) {
                 params.source_cwd = None;
@@ -3490,6 +3501,8 @@ impl App {
         self.current_agent_source = request.agent_source.clone();
         self.delegate_base_agent_cmd = new_cmd;
         self.acp_model.clone_from(&request.acp_model);
+        self.custom_model_selection
+            .clone_from(&request.custom_model_selection);
         self.reset_agent_scoped_state();
     }
 

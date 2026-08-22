@@ -136,6 +136,7 @@ pub struct AgentReconnectRequest {
     pub generation: u64,
     pub agent_id: String,
     pub acp_model: Option<String>,
+    pub custom_model_selection: Option<String>,
     pub agent_source: crate::agent_source::AgentSource,
 }
 
@@ -2382,6 +2383,7 @@ async fn handle_load_failure(
 pub async fn run_acp_client_over_pipe(
     pipe_name: String,
     acp_model_override: Option<String>,
+    custom_model_selection: Option<String>,
     supplied_cloud_models: Vec<AcpModelInfo>,
     // Per-tab agent identity. Forwarded to the multi-agent master in the
     // `initialize` handshake's `_meta.wta.agent_id` so master selects and
@@ -2708,6 +2710,12 @@ pub async fn run_acp_client_over_pipe(
                 // silent (master applies its own `--agent` default).
                 agent_id: usage_family_id.clone(),
                 model: acp_model_override.clone().filter(|s| !s.trim().is_empty()),
+                provider_binding: Some(
+                    custom_model_selection
+                        .clone()
+                        .filter(|selection| !selection.trim().is_empty())
+                        .unwrap_or_else(|| "default".to_string()),
+                ),
                 agent_source: Some(agent_source.kind().to_string()),
                 wsl_distro: agent_source.distro().map(str::to_string),
                 cloud_models: if supplied_cloud_models.is_empty() {

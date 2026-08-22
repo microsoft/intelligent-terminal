@@ -84,6 +84,14 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         return GetByokMode(agentId) != ByokMode::Unsupported;
     }
 
+    inline constexpr bool SupportsLiveModelSwitch(const std::wstring_view agentId) noexcept
+    {
+        // Gemini accepts --model at process launch but its ACP server does not
+        // implement either model-switch request. Rebind its helper connection
+        // so the master can select a CLI launched with the new model.
+        return agentId != L"gemini";
+    }
+
     // Return only agents whose IDs are permitted by GPO policy.
     // When AllowedAgents is not configured, returns all agents.
     // Consumers should always use these instead of iterating the raw arrays.

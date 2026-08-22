@@ -471,6 +471,22 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
+    // ── get-settings ──
+    auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    getSettingsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value settings;
+        const auto hr = CallJson([&](BSTR* j) { return server->GetSettings(j); }, settings);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(settings);
+    });
+
     // ── active-pane ──
     auto* activePaneCmd = app.add_subcommand("active-pane", "Show the currently active pane");
     activePaneCmd->callback([&]() {

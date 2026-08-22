@@ -62,7 +62,8 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{
-    spawn_agent_process_for_source, AgentStderrLog, ChildEnvironmentPolicy,
+    spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
+    SharedProviderSelection,
 };
 
 pub(crate) mod config;
@@ -78,6 +79,47 @@ pub(crate) struct HelperId(u64);
 type AgentCmdKey = String;
 type AgentInstanceId = uuid::Uuid;
 type AgentCell = Arc<tokio::sync::OnceCell<Arc<AgentCli>>>;
+
+struct CustomModelGeneration {
+    config: crate::custom_model_provider::Config,
+    generation: u64,
+}
+
+enum ProviderBinding {
+    LegacyEnvironment,
+    Native,
+    Custom {
+        selection_id: String,
+        generation: u64,
+        config: crate::custom_model_provider::Config,
+    },
+}
+
+impl ProviderBinding {
+    fn pool_key(&self) -> String {
+        match self {
+            Self::LegacyEnvironment => "legacy".to_string(),
+            Self::Native => "native".to_string(),
+            Self::Custom {
+                selection_id,
+                generation,
+                ..
+            } => format!("{selection_id}@{generation}"),
+        }
+    }
+
+    fn spawn_selection(&self) -> SharedProviderSelection<'_> {
+        match self {
+            Self::LegacyEnvironment => SharedProviderSelection::Inherit,
+            Self::Native => SharedProviderSelection::Disabled,
+            Self::Custom { config, .. } => SharedProviderSelection::Custom(config),
+        }
+    }
+
+    fn is_model_scoped(&self) -> bool {
+        matches!(self, Self::Custom { .. })
+    }
+}
 
 #[derive(Clone)]
 enum RetirementOperationState {
@@ -304,6 +346,10 @@ struct MasterStateInner {
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
+    /// Master-only BYOK configurations keyed by the credential-free selection
+    /// ID. A changed endpoint/model/credential reference advances the
+    /// generation and therefore gets a new agent-pool entry.
+    custom_model_generations: Mutex<HashMap<String, CustomModelGeneration>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -1294,7 +1340,25 @@ fn agent_cmd_key(
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
 ) -> AgentCmdKey {
-    format!("{:?}", (source, agent_id, command))
+    agent_cmd_key_with_provider(command, agent_id, source, &ProviderBinding::Native)
+}
+
+fn agent_cmd_key_with_provider(
+    command: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
+) -> AgentCmdKey {
+    let lifecycle =
+        if requested_model_is_explicit(command, agent_id) || provider_binding.is_model_scoped() {
+            "model:"
+        } else {
+            "warm:"
+        };
+    format!(
+        "{lifecycle}{:?}",
+        (source, agent_id, command, provider_binding.pool_key())
+    )
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -2623,12 +2687,30 @@ impl HelperHandler {
                 }
                 Vec::new()
             };
+        let provider_binding = resolve_provider_binding(
+            &self.state,
+            agent_id.as_deref(),
+            &agent_source,
+            wta_meta.provider_binding.as_deref(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                target: "master",
+                op = "initialize",
+                helper_id = ?self.helper_id,
+                agent_id = ?agent_id,
+                "failed to resolve custom model binding: {error:#}"
+            );
+            acp::Error::internal_error().data(serde_json::json!(error.root_cause().to_string()))
+        })?;
 
         let agent = get_or_spawn_agent(
             &self.state,
             &agent_cmd,
             agent_id.as_deref(),
             &agent_source,
+            provider_binding,
             supplied_cloud_models,
         )
         .await
@@ -2652,7 +2734,11 @@ impl HelperHandler {
             .agent
             .get()
             .expect("helper agent binding is set before initialize response");
-        agent.bound_helpers.lock().await.insert(self.helper_id);
+        if !bind_helper_to_agent(&self.state, agent, self.helper_id).await {
+            return Err(acp::Error::internal_error().data(serde_json::json!(
+                "agent CLI exited while the helper was binding"
+            )));
+        }
         let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
@@ -4152,6 +4238,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
+        custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
         allowed_agent_ids,
@@ -4443,7 +4530,9 @@ fn resolve_agent_selection(
 
         if known && allowed {
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
-            let cmd = crate::agent_registry::build_acp_command(id, model);
+            let launch_model =
+                model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
+            let cmd = crate::agent_registry::build_acp_command(id, launch_model);
             let source =
                 crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
             return (cmd, Some(id.to_string()), source);
@@ -4468,6 +4557,101 @@ fn resolve_agent_selection(
     )
 }
 
+async fn resolve_provider_binding(
+    state: &MasterStateInner,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    requested_binding: Option<&str>,
+) -> Result<ProviderBinding> {
+    let Some(requested_binding) = requested_binding.map(str::trim).filter(|value| !value.is_empty())
+    else {
+        return Ok(ProviderBinding::LegacyEnvironment);
+    };
+    if !matches!(source, crate::agent_source::AgentSource::Host)
+        || requested_binding.eq_ignore_ascii_case("default")
+    {
+        return Ok(ProviderBinding::Native);
+    }
+
+    let agent_id = agent_id.context("custom model binding requires a known agent")?;
+    if crate::agent_registry::lookup_profile_by_id(agent_id).byok_mode
+        == crate::agent_registry::ByokMode::Unsupported
+    {
+        tracing::warn!(
+            target: "master",
+            agent_id,
+            "ignoring custom model binding for an agent without BYOK support"
+        );
+        return Ok(ProviderBinding::Native);
+    }
+
+    let wt = state
+        .wt
+        .as_ref()
+        .context("Terminal settings are unavailable for custom model resolution")?;
+    let settings = wt
+        .request("get_settings", serde_json::Value::Null)
+        .await
+        .context("failed to read Terminal settings for custom model resolution")?;
+    let config = crate::custom_model_provider::Config::from_settings(&settings, requested_binding)?;
+
+    let mut generations = state.custom_model_generations.lock().await;
+    let generation = update_custom_model_generation(
+        &mut generations,
+        requested_binding,
+        config.clone(),
+    )?;
+
+    Ok(ProviderBinding::Custom {
+        selection_id: requested_binding.to_string(),
+        generation,
+        config,
+    })
+}
+
+fn update_custom_model_generation(
+    generations: &mut HashMap<String, CustomModelGeneration>,
+    selection_id: &str,
+    config: crate::custom_model_provider::Config,
+) -> Result<u64> {
+    let generation = match generations.get_mut(selection_id) {
+        Some(current) if current.config == config => current.generation,
+        Some(current) => {
+            current.generation = current
+                .generation
+                .checked_add(1)
+                .context("custom model provider generation exhausted")?;
+            current.config = config.clone();
+            current.generation
+        }
+        None => {
+            generations.insert(
+                selection_id.to_string(),
+                CustomModelGeneration {
+                    config,
+                    generation: 1,
+                },
+            );
+            1
+        }
+    };
+    Ok(generation)
+}
+
+fn requested_model_is_explicit(agent_cmd: &str, agent_id: Option<&str>) -> bool {
+    let resolved_agent_id =
+        agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    if !crate::agent_registry::is_known_id(resolved_agent_id)
+        || crate::agent_registry::supports_live_model_switch(resolved_agent_id)
+    {
+        return false;
+    }
+    let profile = crate::agent_registry::lookup_profile_by_id(resolved_agent_id);
+    let tokens = crate::coordinator::split_windows_commandline(agent_cmd);
+    let args: Vec<&str> = tokens.iter().skip(1).map(String::as_str).collect();
+    crate::agent_registry::extract_model_from_args(&args, profile).is_some()
+}
+
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
 /// first use and reusing it thereafter. Two helpers racing the same
 /// new agent serialize on the per-key `OnceCell`; helpers for different
@@ -4478,9 +4662,10 @@ async fn get_or_spawn_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    provider_binding: ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
-    let key = agent_cmd_key(agent_cmd, agent_id, source);
+    let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -4503,6 +4688,7 @@ async fn get_or_spawn_agent(
                 agent_cmd,
                 agent_id,
                 source,
+                &provider_binding,
                 supplied_cloud_models,
             )
             .await
@@ -4567,18 +4753,20 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
         .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
-    let mut spawn_result = spawn_agent_process_for_source(
+    let mut spawn_result = spawn_agent_process_for_source_with_provider(
         agent_cmd,
         None,
         agent_id,
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
+        provider_binding.spawn_selection(),
     )
     .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -5169,6 +5357,9 @@ async fn serve_helper(
     }
 
     let cleanup = cleanup_disconnected_helper(&handler).await;
+    if let Some(agent) = handler.agent.get() {
+        retire_unbound_model_agent(&state, agent).await;
+    }
 
     tracing::info!(
         target: "master",
@@ -5180,6 +5371,50 @@ async fn serve_helper(
     );
 
     result
+}
+
+async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentCli>) {
+    if !agent.cmd_key.starts_with("model:") {
+        return;
+    }
+
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        let matches_instance = agents
+            .get(&agent.cmd_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|current| Arc::ptr_eq(current, agent));
+        if !matches_instance || !agent.bound_helpers.lock().await.is_empty() {
+            false
+        } else {
+            agents.remove(&agent.cmd_key).is_some()
+        }
+    };
+    if removed {
+        tracing::info!(
+            target: "master",
+            agent = %agent.cmd_key,
+            "retiring unbound model-specific agent CLI"
+        );
+        agent.conn.shutdown();
+    }
+}
+
+async fn bind_helper_to_agent(
+    state: &MasterStateInner,
+    agent: &Arc<AgentCli>,
+    helper_id: HelperId,
+) -> bool {
+    let agents = state.agents.lock().await;
+    let matches_instance = agents
+        .get(&agent.cmd_key)
+        .and_then(|cell| cell.get())
+        .is_some_and(|current| Arc::ptr_eq(current, agent));
+    if !matches_instance {
+        return false;
+    }
+    agent.bound_helpers.lock().await.insert(helper_id);
+    true
 }
 
 struct DisconnectedHelperCleanup {

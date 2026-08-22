@@ -302,6 +302,12 @@ pub fn is_known_id(id: &str) -> bool {
     KNOWN_AGENTS.iter().any(|p| p.id == id)
 }
 
+/// Whether a running ACP session can accept model changes without replacing
+/// its agent process. Gemini currently accepts `--model` only at launch.
+pub fn supports_live_model_switch(id: &str) -> bool {
+    !id.eq_ignore_ascii_case(GEMINI_AGENT_ID)
+}
+
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
 /// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
 /// `"codex"`, `"gemini"`, `"opencode"` — or `"unknown"` if nothing matches.
@@ -552,6 +558,17 @@ mod tests {
                 lookup_profile_by_id(agent).byok_mode,
                 ByokMode::Unsupported,
                 "{agent} must not receive shared BYOK configuration"
+            );
+        }
+    }
+
+    #[test]
+    fn live_model_switch_capability_matches_agent_transport() {
+        assert!(!supports_live_model_switch("gemini"));
+        for agent in ["copilot", "claude", "codex", "opencode"] {
+            assert!(
+                supports_live_model_switch(agent),
+                "{agent} should keep its live ACP session when the model changes"
             );
         }
     }

@@ -1738,22 +1738,49 @@ namespace winrt::TerminalApp::implementation
             });
         };
 
-        // The Settings picker clears acpModel when acpAgent changes because
-        // native model IDs are agent-specific. Treat that reset as one binding
-        // replacement; a simultaneous change to another non-empty model keeps
-        // the existing destructive model path. Custom commands, provider launch
-        // environment, and profile backends also remain destructive.
-        if (previous.acpAgent != current.acpAgent &&
-            isBuiltinAgent(previous.acpAgent) &&
-            isBuiltinAgent(current.acpAgent) &&
-            previous.acpCustomCommand == current.acpCustomCommand &&
-            (previous.acpModel == current.acpModel || current.acpModel.empty()) &&
-            previous.customModelLaunch == current.customModelLaunch &&
-            previous.profileBackends == current.profileBackends)
+        const bool profileBackendsChanged =
+            previous.profileBackends != current.profileBackends;
+        const bool agentChanged =
+            previous.acpAgent != current.acpAgent;
+        const bool modelBindingChanged =
+            previous.acpModel != current.acpModel ||
+            previous.customModelLaunch != current.customModelLaunch;
+
+        // A trusted custom command can only enter the master through its own
+        // argv, and a profile backend change can move execution between Host
+        // and WSL. Those boundaries still require pane reconstruction.
+        if (previous.acpCustomCommand != current.acpCustomCommand ||
+            profileBackendsChanged ||
+            !isBuiltinAgent(previous.acpAgent) ||
+            !isBuiltinAgent(current.acpAgent))
+        {
+            return AgentSettingsChangeKind::Rebuild;
+        }
+
+        // Built-in agent changes and model changes that require launch-time
+        // configuration replace only the helper's ACP binding. This preserves
+        // Pane/TermControl/ConPTY/helper and the shared master.
+        if (agentChanged)
         {
             return AgentSettingsChangeKind::AgentRebind;
         }
 
+        if (modelBindingChanged)
+        {
+            const bool nativeModelChange =
+                !previous.customModelLaunch &&
+                !current.customModelLaunch;
+            if (nativeModelChange &&
+                !current.acpModel.empty() &&
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsLiveModelSwitch(current.acpAgent))
+            {
+                return AgentSettingsChangeKind::ModelHotUpdate;
+            }
+            return AgentSettingsChangeKind::AgentRebind;
+        }
+
+        // Keep this fallback conservative if another launch-affecting field is
+        // added to the snapshot without an explicit policy above.
         return AgentSettingsChangeKind::Rebuild;
     }
 
@@ -1777,6 +1804,8 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
         return AgentRuntimeConfigSnapshot{
+            std::wstring{ globals.AcpAgent() },
+            customModelLaunch ? std::wstring{} : std::wstring{ globals.AcpModel() },
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
@@ -1786,13 +1815,13 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
-    // protocol event channel. Agent identity/model changes are reconciled
-    // separately by _RebuildAgentStack. A single consolidated
-    // `agent_config_changed` event carries only the fields that changed:
+    // protocol event channel. A single consolidated `agent_config_changed`
+    // event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - acp_model + target_agent_id : a scoped live ACP model update
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
-    //     credential-free picker metadata and its restart-required selection.
+    //     credential-free picker metadata and its selected entry.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -1815,16 +1844,33 @@ namespace winrt::TerminalApp::implementation
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
+        const bool acpModelChanged =
+            last.acpAgent == current.acpAgent &&
+            last.customModelSelection.empty() &&
+            current.customModelSelection.empty() &&
+            last.acpModel != current.acpModel &&
+            !current.acpModel.empty() &&
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsLiveModelSwitch(current.acpAgent);
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged && !acpModelChanged)
         {
+            // Agent identity is not itself a hot-update field, but it scopes
+            // the next model update. Advance the baseline even when the
+            // identity change is handled by the rebind path below.
+            _lastAgentRuntimeConfig = current;
             return;
         }
 
         Json::Value params{ Json::objectValue };
+        params["window_id"] = std::to_string(_WindowProperties.WindowId());
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (acpModelChanged)
+        {
+            params["acp_model"] = winrt::to_string(current.acpModel);
+            params["target_agent_id"] = winrt::to_string(current.acpAgent);
         }
         if (delegateChanged)
         {
@@ -3424,6 +3470,12 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("_RebuildAgentStack: no change, skip rebuild");
             return;
         }
+        if (changeKind == AgentSettingsChangeKind::ModelHotUpdate)
+        {
+            _lastAgentSettings = current;
+            _agentPaneLog("_RebuildAgentStack: native model changed, preserving live ACP sessions");
+            return;
+        }
 
         const bool rebindAgentInPlace = changeKind == AgentSettingsChangeKind::AgentRebind;
         // Custom commands are trusted only when supplied on the master's own
@@ -3440,8 +3492,9 @@ namespace winrt::TerminalApp::implementation
             _lastAgentSettings.acpModel != current.acpModel;
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
-            (!rebindAgentInPlace &&
-             (cloudModelChanged || customModelLaunchChanged));
+            (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged));
+        const bool globalModelBindingChanged =
+            cloudModelChanged || customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand;
@@ -3515,7 +3568,7 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog(
             rebindAgentInPlace ?
-                "_RebuildAgentStack: built-in agent changed, rebinding existing helpers" :
+                "_RebuildAgentStack: agent/model binding changed, rebinding existing helpers" :
                 "_RebuildAgentStack: agent settings changed, rebuilding");
 
         // Rebuild only tabs whose effective agent identity changed. A custom
@@ -3556,11 +3609,12 @@ namespace winrt::TerminalApp::implementation
                             currentProfile == current.profileBackends.end() ||
                             currentProfile->second.empty();
                         affected = profileBackendChanged ||
-                                   (globalAgentChanged && followsGlobalAgent);
+                                   ((globalAgentChanged || globalModelBindingChanged) &&
+                                    followsGlobalAgent);
                     }
                     else
                     {
-                        affected = globalAgentChanged;
+                        affected = globalAgentChanged || globalModelBindingChanged;
                     }
                 }
 
@@ -3592,7 +3646,9 @@ namespace winrt::TerminalApp::implementation
             tabIdsThatHadAgentPane,
             masterConfigurationChanged ?
                 "settings_master_configuration_changed" :
-                (rebindAgentInPlace ? "settings_agent_rebind" : "settings_agent_changed"),
+                (rebindAgentInPlace ?
+                     (globalModelBindingChanged ? "settings_model_rebind" : "settings_agent_rebind") :
+                     "settings_agent_changed"),
             masterConfigurationChanged ? std::move(requestId) : std::string{},
             [weakThis = get_weak(),
              current,
@@ -3618,6 +3674,10 @@ namespace winrt::TerminalApp::implementation
                                 params["agent_id"] = winrt::to_string(current.acpAgent);
                                 params["agent_source"] = "host";
                                 params["acp_model"] = winrt::to_string(current.acpModel);
+                                params["custom_model_selection"] =
+                                    current.customModelLaunch ?
+                                        winrt::to_string(winrt::hstring{ current.customModelLaunch->selectionId }) :
+                                        std::string{};
                                 strongThis->_RaiseProtocolEvent("rebind_agent", params);
                             }
                         }
@@ -9206,10 +9266,9 @@ namespace winrt::TerminalApp::implementation
         // Reposition existing agent panes if the position setting changed.
         _RepositionAgentPanes();
 
-        // If any of the agent-identity settings (agent / model / custom
-        // command for either ACP or delegate) changed, tear down and
-        // recreate the affected layers so the new values take effect
-        // without a terminal restart.
+        // Reconcile agent/model identity changes. Supported model changes stay
+        // on the live ACP session, launch-time model changes rebind the same
+        // helper, and only trusted command/backend boundaries rebuild panes.
         auto requestId = std::exchange(_settingsReloadRequestId, {});
         if (!requestId.empty())
         {

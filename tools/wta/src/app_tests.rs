@@ -3003,6 +3003,7 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
         "copilot --acp".into(),
         Some("copilot".into()),
         Some("old-model".into()),
+        None,
         crate::agent_source::AgentSource::Host,
         None,
         Some("owner-tab".into()),
@@ -3104,6 +3105,62 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
 }
 
 #[test]
+fn settings_model_rebind_preserves_custom_provider_selection() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": "model-rebind",
+            "generation": 1,
+            "window_id": "window-1",
+            "tab_id": "owner-tab",
+            "agent_id": "copilot",
+            "agent_source": "host",
+            "acp_model": "",
+            "custom_model_selection": "custom:provider:model-a"
+        }),
+    });
+
+    let request = match restart_rx
+        .try_recv()
+        .expect("custom model selection should trigger a controlled reconnect")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(
+        request.custom_model_selection.as_deref(),
+        Some("custom:provider:model-a")
+    );
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.custom_model_selection.as_deref()),
+        Some("custom:provider:model-a")
+    );
+}
+
+#[test]
 fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());
@@ -3115,6 +3172,7 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
         "master-pipe".into(),
         "copilot --acp".into(),
         Some("copilot".into()),
+        None,
         None,
         crate::agent_source::AgentSource::Host,
         None,
@@ -3188,9 +3246,22 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
     use crate::protocol::acp::client::MasterExtRequest;
 
     let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.window_id = Some("window-1".into());
     app.current_agent_id = "gemini".into();
     app.follows_global_acp_model = true;
     app.current_tab_mut().session_id = Some("gemini-session".into());
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        None,
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
 
     app.handle_event(AppEvent::WtEvent {
         method: "agent_config_changed".into(),
@@ -3227,11 +3298,35 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
         pane_id: String::new(),
         tab_id: None,
         params: serde_json::json!({
+            "window_id": "window-2",
+            "acp_model": "wrong-window-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(
+        app.acp_model.is_none(),
+        "another window's settings event must be ignored"
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "window_id": "window-1",
             "acp_model": "copilot-only-model",
             "target_agent_id": "copilot"
         }),
     });
     assert_eq!(app.acp_model.as_deref(), Some("copilot-only-model"));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.acp_model.as_deref()),
+        Some("copilot-only-model"),
+        "a later transport reconnect must retain the hot-updated model"
+    );
     match master_rx
         .try_recv()
         .expect("matching global-following helper should receive the model")

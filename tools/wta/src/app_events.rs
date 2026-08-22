@@ -14,6 +14,7 @@ struct AgentReconnectWire {
     generation: u64,
     agent_id: String,
     acp_model: Option<String>,
+    custom_model_selection: Option<String>,
     agent_source: String,
 }
 
@@ -1739,6 +1740,7 @@ impl App {
                         generation: wire.generation,
                         agent_id: wire.agent_id,
                         acp_model: wire.acp_model,
+                        custom_model_selection: wire.custom_model_selection,
                         agent_source: crate::agent_source::AgentSource::from_wire(
                             Some(&wire.agent_source),
                             None,
@@ -1775,6 +1777,15 @@ impl App {
                         .acp_model
                         .take()
                         .filter(|model| !model.trim().is_empty());
+                    request.custom_model_selection = request
+                        .custom_model_selection
+                        .take()
+                        .filter(|selection| !selection.trim().is_empty());
+                    if crate::agent_registry::lookup_profile_by_id(&request.agent_id).byok_mode
+                        == crate::agent_registry::ByokMode::Unsupported
+                    {
+                        request.custom_model_selection = None;
+                    }
                     self.last_agent_rebind_window_id = Some(request.window_id.clone());
                     self.last_agent_rebind_generation = request.generation;
                     self.prepare_agent_reconnect(&request);
@@ -1807,8 +1818,19 @@ impl App {
                     // dispatch: each field is optional and only present when
                     // it actually changed, so we apply exactly what's set
                     // — all in place, with NO agent-pane teardown/restart.
-                    // (Agent *identity* changes go through a master respawn
-                    // on the C++ side, not this event.)
+                    // Agent identity and launch-time model changes use the
+                    // separate same-helper rebind event.
+                    let target_window = params
+                        .get("window_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let owner_window = self.window_id.as_deref().unwrap_or("");
+                    if !target_window.is_empty()
+                        && !owner_window.is_empty()
+                        && target_window != owner_window
+                    {
+                        return;
+                    }
                     let target_tab = params
                         .get("tab_id")
                         .and_then(|value| value.as_str())
@@ -2804,6 +2826,7 @@ impl App {
                             agent_cmd: new_cmd,
                             agent_id: Some(agent_id),
                             acp_model: None,
+                            custom_model_selection: self.custom_model_selection.clone(),
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
                             prompt_rx: None, // try_start_acp will create fresh channels

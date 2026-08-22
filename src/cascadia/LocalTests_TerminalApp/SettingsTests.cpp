@@ -72,6 +72,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestIterableColorSchemeCommands);
 
         TEST_METHOD(TestElevateArg);
+        TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
 
         TEST_CLASS_SETUP(ClassSetup)
@@ -1620,12 +1621,91 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void SettingsTests::TestAgentSettingsChangeClassification()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using ChangeKind = Page::AgentSettingsChangeKind;
+
+        const Page::AgentSettingsSnapshot native{
+            L"copilot", L"", L"gpt-5.4", std::nullopt, {}
+        };
+        VERIFY_ARE_EQUAL(ChangeKind::None, Page::_ClassifyAgentSettingsChange(native, native));
+
+        auto nativeHotUpdate = native;
+        nativeHotUpdate.acpModel = L"gpt-5.5";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::ModelHotUpdate,
+            Page::_ClassifyAgentSettingsChange(native, nativeHotUpdate));
+
+        auto nativeReset = native;
+        nativeReset.acpModel.clear();
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(native, nativeReset));
+
+        auto builtInAgentChange = native;
+        builtInAgentChange.acpAgent = L"codex";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(native, builtInAgentChange));
+
+        auto gemini = native;
+        gemini.acpAgent = L"gemini";
+        auto geminiModelChange = gemini;
+        geminiModelChange.acpModel = L"gemini-2.5-pro";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(gemini, geminiModelChange));
+
+        auto byok = native;
+        byok.acpModel.clear();
+        byok.customModelLaunch =
+            ::Microsoft::Terminal::CustomModels::MakeLaunchConfiguration(
+                L"custom:provider:model-a",
+                L"https://example.invalid/v1",
+                L"model-a",
+                L"credential-a",
+                true);
+        auto changedByok = byok;
+        changedByok.customModelLaunch->modelId = L"model-b";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(byok, changedByok));
+
+        auto changedByokEndpoint = byok;
+        changedByokEndpoint.customModelLaunch->endpoint = L"https://new.example.invalid/v1";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(byok, changedByokEndpoint));
+
+        auto changedByokCredential = byok;
+        changedByokCredential.customModelLaunch->credentialId = L"credential-b";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(byok, changedByokCredential));
+
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(native, byok));
+        VERIFY_ARE_EQUAL(
+            ChangeKind::AgentRebind,
+            Page::_ClassifyAgentSettingsChange(byok, native));
+
+        auto customCommand = native;
+        customCommand.acpAgent = L"custom:local";
+        customCommand.acpCustomCommand = L"agent.exe --acp";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::Rebuild,
+            Page::_ClassifyAgentSettingsChange(native, customCommand));
+    }
+
     void SettingsTests::TestAgentSettingsFocusGate()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
         using ChangeKind = Page::AgentSettingsChangeKind;
 
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::None, false, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::ModelHotUpdate, false, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::AgentRebind, false, false));
         VERIFY_IS_TRUE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, true, false));
