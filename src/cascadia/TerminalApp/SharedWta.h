@@ -261,12 +261,11 @@ namespace winrt::TerminalApp::implementation
         /// `/restart` semantically "give me the same agent CLI but
         /// fresh".
         ///
-        /// Settings changes (acpAgent / acpModel / etc.) need to spawn
-        /// the master with a *different* cmdline. For that case, call
-        /// the overload that takes a fresh `wtaPath` + `extraArgs` —
-        /// it replaces the cached spawn args before respawning, so
-        /// the new master inherits the new per-process settings and
-        /// any subsequent crash-recovery respawn uses the same.
+        /// Settings changes that alter trusted process launch state
+        /// (custom agent commands or provider environment) need to spawn the
+        /// master with a *different* cmdline. For that case, call the overload
+        /// that takes fresh inputs. Runtime changes such as `acpModel` use
+        /// `UpdateCachedConfiguration` after being applied in place.
         ///
         /// No-op if the master isn't running, or if there were no
         /// cached spawn args (no AcquirePane has succeeded this
@@ -276,6 +275,16 @@ namespace winrt::TerminalApp::implementation
         bool Restart(const std::wstring_view wtaPath,
                      std::span<const std::wstring> extraArgs,
                      std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+
+        /// Refresh the configuration replayed by a later `Restart()` without
+        /// disturbing the running master. Runtime settings such as the ACP
+        /// model are applied over the live protocol connection, but the
+        /// cached launch inputs must still follow them so explicit recovery
+        /// cannot restore stale settings.
+        void UpdateCachedConfiguration(
+            const std::wstring_view wtaPath,
+            std::span<const std::wstring> extraArgs,
+            std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         std::string CreateRetirementRequestId();
         details::RetirementRegistration RegisterRetirement(

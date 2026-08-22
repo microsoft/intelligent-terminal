@@ -399,15 +399,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Hot-reload of runtime agent config (autofix gate and delegate
-        // agent/model). When any of these change between settings
+        // Hot-reload of runtime agent config (ACP model, autofix gate, and
+        // delegate agent/model). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
         // event to the running wta-helper(s) so they update in place,
         // WITHOUT tearing down and restarting the agent pane. This is the
         // unified dispatch for every hot-updatable agent setting — adding a
         // new one means adding a field to AgentRuntimeConfigSnapshot, not a
-        // bespoke diff/emit block here. Agent identity and model changes go
-        // through _RebuildAgentStack in _RefreshUIForSettingsReload.
+        // bespoke diff/emit block here. Agent identity and provider launch
+        // changes go through _RebuildAgentStack in
+        // _RefreshUIForSettingsReload.
         _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
@@ -1658,8 +1659,8 @@ namespace winrt::TerminalApp::implementation
 
     // --- Hot-reload of agent/model settings -------------------------------
     //
-    // When any agent-identity setting changes, the single shared wta pane must
-    // be torn down and recreated with the updated flags baked into argv.
+    // When an agent-identity or provider-launch setting changes, affected
+    // panes must be torn down and recreated with the updated trusted inputs.
     // `_RebuildAgentStack` is the single entry point; it is called from
     // SetSettings (settings.json reload + Settings UI writes) and from the
     // bottom-bar selector Click handler.
@@ -1719,14 +1720,15 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
-        // Agent identity and effective model changes rebuild helpers. A profile
-        // backend is part of identity because it changes both the agent id and
-        // the execution source for that profile. Only selected-provider fields
-        // consumed by the master launch environment participate in identity.
-        // The helper-safe full catalog is hot-updated separately.
+        // A profile backend is part of identity because it changes both the
+        // agent id and execution source for that profile. Concrete ACP model
+        // changes are runtime updates. Clearing an existing override remains
+        // destructive because ACP has no portable reset-to-agent-default
+        // operation. Only selected-provider fields consumed by the master
+        // launch environment otherwise participate in identity.
         return a.acpAgent != b.acpAgent ||
                a.acpCustomCommand != b.acpCustomCommand ||
-               a.acpModel != b.acpModel ||
+               (!a.acpModel.empty() && b.acpModel.empty()) ||
                a.customModelLaunch != b.customModelLaunch ||
                a.profileBackends != b.profileBackends;
     }
@@ -1735,7 +1737,14 @@ namespace winrt::TerminalApp::implementation
     {
         const auto& globals = _settings.GlobalSettings();
         const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
+        auto effectiveAcpAgent = std::wstring{ globals.EffectiveAcpAgent() };
+        if (effectiveAcpAgent.empty())
+        {
+            effectiveAcpAgent = std::wstring{ _DetectAgentCli() };
+        }
         return AgentRuntimeConfigSnapshot{
+            std::move(effectiveAcpAgent),
+            customModelLaunch ? std::wstring{} : std::wstring{ globals.AcpModel() },
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
@@ -1745,10 +1754,10 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
-    // protocol event channel. Unlike agent identity/model changes (which
-    // require a master respawn via _RebuildAgentStack), these take effect
-    // without tearing down the agent pane. A single consolidated
+    // protocol event channel. Unlike agent identity/provider launch changes,
+    // these take effect without tearing down the agent pane. A single consolidated
     // `agent_config_changed` event carries only the fields that changed:
+    //   - acp_model + target_agent_id : live session model selection
     //   - autofix_enabled : the auto-suggest gate (was its own event)
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
@@ -1769,6 +1778,32 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto& last = _lastAgentRuntimeConfig;
+        const auto currentLaunch = _CaptureAgentSettingsSnapshot();
+        const bool globalAgentChanged =
+            _lastAgentSettings.acpAgent != currentLaunch.acpAgent ||
+            _lastAgentSettings.acpCustomCommand != currentLaunch.acpCustomCommand;
+        const bool customMasterArgsChanged =
+            (til::starts_with(_lastAgentSettings.acpAgent, L"custom:") ||
+             til::starts_with(currentLaunch.acpAgent, L"custom:")) &&
+            globalAgentChanged;
+        const bool customModelLaunchChanged =
+            _lastAgentSettings.customModelLaunch != currentLaunch.customModelLaunch;
+        const bool globalModelReset =
+            !_lastAgentSettings.acpModel.empty() &&
+            currentLaunch.acpModel.empty();
+        const bool masterRestartRequired =
+            customMasterArgsChanged || customModelLaunchChanged;
+        // If the agent changes in the same settings transaction, the old
+        // helper must not receive the new agent's model. The same applies to
+        // provider launch changes and reset-to-default, which replace the
+        // affected helper. A profile-local backend change does not suppress
+        // updates for unrelated global followers.
+        const bool acpModelChanged =
+            !globalAgentChanged &&
+            !customModelLaunchChanged &&
+            !globalModelReset &&
+            last.acpAgent == current.acpAgent &&
+            last.acpModel != current.acpModel;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
@@ -1776,12 +1811,20 @@ namespace winrt::TerminalApp::implementation
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!acpModelChanged && !autofixChanged && !delegateChanged && !customModelsChanged)
         {
+            // Agent replacement consumes the new runtime values from startup
+            // metadata rather than sending them to the old helper.
+            _lastAgentRuntimeConfig = current;
             return;
         }
 
         Json::Value params{ Json::objectValue };
+        if (acpModelChanged)
+        {
+            params["acp_model"] = winrt::to_string(winrt::hstring{ current.acpModel });
+            params["target_agent_id"] = winrt::to_string(winrt::hstring{ current.acpAgent });
+        }
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
@@ -1800,6 +1843,24 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
         _RaiseProtocolEvent("agent_config_changed", params);
+
+        // Keep `/restart` and crash-recovery inputs aligned with settings that
+        // were applied in place. Do not update this cache while an identity or
+        // provider-launch rebuild is pending: Restart(new args) owns that path.
+        if (!masterRestartRequired)
+        {
+            const auto wtaPath = _DetectWtaPath();
+            if (!wtaPath.empty())
+            {
+                auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+                const auto extraArgs = _BuildSharedWtaExtraArgs();
+                const auto environment = _BuildSharedWtaEnvironment();
+                sharedWta.UpdateCachedConfiguration(
+                    std::wstring_view{ wtaPath },
+                    extraArgs,
+                    environment);
+            }
+        }
 
         _lastAgentRuntimeConfig = current;
     }
@@ -3406,6 +3467,7 @@ namespace winrt::TerminalApp::implementation
 
         if (!_AgentSettingsChanged(_lastAgentSettings, current))
         {
+            _lastAgentSettings = current;
             _agentPaneLog("_RebuildAgentStack: no change, skip rebuild");
             return;
         }
@@ -3420,11 +3482,11 @@ namespace winrt::TerminalApp::implementation
              _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
         const bool customModelLaunchChanged =
             _lastAgentSettings.customModelLaunch != current.customModelLaunch;
-        const bool cloudModelChanged =
-            _lastAgentSettings.acpModel != current.acpModel;
+        const bool globalModelReset =
+            !_lastAgentSettings.acpModel.empty() &&
+            current.acpModel.empty();
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
-            cloudModelChanged ||
             customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
@@ -3535,11 +3597,11 @@ namespace winrt::TerminalApp::implementation
                             currentProfile == current.profileBackends.end() ||
                             currentProfile->second.empty();
                         affected = profileBackendChanged ||
-                                   (globalAgentChanged && followsGlobalAgent);
+                                   ((globalAgentChanged || globalModelReset) && followsGlobalAgent);
                     }
                     else
                     {
-                        affected = globalAgentChanged;
+                        affected = globalAgentChanged || globalModelReset;
                     }
                 }
 
@@ -5990,8 +6052,8 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
             _agentPaneLog("OnAgentSwitchRequested: persisted cloud model selection");
-            _RebuildAgentStack(
-                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
+            _EmitAgentRuntimeConfigIfChanged();
+            _RebuildAgentStack();
             return;
         }
 

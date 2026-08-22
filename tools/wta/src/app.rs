@@ -1952,7 +1952,11 @@ impl App {
             return false;
         }
 
-        self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        let new_model = new_model.filter(|s| !s.trim().is_empty());
+        if self.acp_model == new_model {
+            return true;
+        }
+        self.acp_model = new_model;
         self.send_acp_model_update();
         self.publish_agent_status();
         true

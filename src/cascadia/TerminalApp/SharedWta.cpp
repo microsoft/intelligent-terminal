@@ -705,6 +705,27 @@ namespace winrt::TerminalApp::implementation
         return _RestartLocked(wtaPath, extraArgs, environment);
     }
 
+    void SharedWta::UpdateCachedConfiguration(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        if (wtaPath.empty())
+        {
+            return;
+        }
+
+        std::lock_guard lock{ _mtx };
+        if (_cachedWtaPath.empty())
+        {
+            return;
+        }
+
+        _cachedWtaPath.assign(wtaPath);
+        _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
+        _cachedEnvironment.assign(environment.begin(), environment.end());
+    }
+
     bool SharedWta::_RestartLocked(
         const std::wstring_view wtaPath,
         std::span<const std::wstring> extraArgs,

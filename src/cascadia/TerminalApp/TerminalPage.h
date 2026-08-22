@@ -433,11 +433,13 @@ namespace winrt::TerminalApp::implementation
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
         //
-        // Agent identity changes (global acpAgent/acpCustomCommand, the
-        // effective model selection, or an effective per-profile backend)
-        // rebuild affected helpers. Model changes force a master respawn so
-        // the agent CLI starts with a clean model-provider environment;
-        // unselected provider catalog changes are hot-updated.
+        // Agent identity changes (global acpAgent/acpCustomCommand or an
+        // effective per-profile backend) rebuild affected helpers. Ordinary
+        // ACP model changes are hot-applied to live sessions, except clearing
+        // an override: ACP has no portable reset-to-default request, so that
+        // case rebuilds affected helpers. Selected custom provider launch
+        // changes still restart the master because they alter its trusted
+        // environment.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -461,6 +463,8 @@ namespace winrt::TerminalApp::implementation
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
         {
+            std::wstring acpAgent;
+            std::wstring acpModel;
             std::wstring delegateAgent;
             std::wstring delegateModel;
             std::wstring customModelSelection;
@@ -536,9 +540,10 @@ namespace winrt::TerminalApp::implementation
         // expire after a few seconds.
         details::RestartSuppressionTracker _agentPaneRestartSuppression;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
-        // Compares only agent-CLI *identity* fields — the change that forces
-        // a master respawn. Model/delegate changes are handled by
-        // _EmitAgentRuntimeConfigIfChanged instead.
+        // Compares changes that require helper replacement. Concrete model
+        // selections and delegate changes are handled by
+        // _EmitAgentRuntimeConfigIfChanged instead; clearing a model remains
+        // here because ACP cannot portably reset a live session to its default.
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot

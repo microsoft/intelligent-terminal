@@ -2952,6 +2952,28 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
 }
 
 #[test]
+fn repeated_global_model_hot_update_is_idempotent() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_agent_id = "claude".into();
+    app.follows_global_acp_model = true;
+    app.current_tab_mut().session_id = Some("claude-session".into());
+
+    assert!(app.apply_global_acp_model("claude", Some("claude-opus".into())));
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(MasterExtRequest::SetSessionModel { model, .. }) if model == "claude-opus"
+    ));
+
+    assert!(app.apply_global_acp_model("claude", Some("claude-opus".into())));
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the same multi-window settings update must not be sent twice"
+    );
+}
+
+#[test]
 fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
     let mut app = test_app();
     app.current_agent_id = "copilot".into();
