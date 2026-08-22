@@ -56,7 +56,7 @@ const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{mpsc, watch, Mutex, OnceCell};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -78,7 +78,7 @@ pub(crate) struct HelperId(u64);
 
 type AgentCmdKey = String;
 type AgentInstanceId = uuid::Uuid;
-type AgentCell = Arc<tokio::sync::OnceCell<Arc<AgentCli>>>;
+type AgentCell = Arc<OnceCell<Arc<AgentCli>>>;
 
 struct CustomModelGeneration {
     config: crate::custom_model_provider::Config,
@@ -2113,12 +2113,10 @@ struct HelperHandler {
     /// (+ `model`): the master reconstructs the command from that id and
     /// never executes a command string off the pipe (falling back to the
     /// master default when no / unknown id is declared). Reused by every
-    /// later request on this connection. `OnceLock` because the binding
-    /// can't be known
-    /// until the helper's `initialize` arrives, but the ACP protocol
-    /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
-    /// `resolved_agent()` always finds it populated for those.
-    agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// later request on this connection. The async `OnceCell` serializes
+    /// concurrent `initialize` requests so only the published binding can
+    /// acquire an agent and register this helper.
+    agent: AgentCell,
     state: Arc<MasterStateInner>,
     /// Serializes complete session replacement transactions for this helper.
     /// Shared by every cloned request handler, while unrelated helpers retain
@@ -2589,6 +2587,18 @@ impl HelperHandler {
 }
 
 impl HelperHandler {
+    async fn get_or_initialize_agent<F, Fut>(&self, acquire: F) -> Result<Arc<AgentCli>>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<Arc<AgentCli>>>,
+    {
+        let agent = self
+            .agent
+            .get_or_try_init(|| acquire_and_bind_agent(&self.state, self.helper_id, acquire))
+            .await?;
+        Ok(Arc::clone(agent))
+    }
+
     async fn session_mcp_endpoint_for_session(
         &self,
         agent: &AgentCli,
@@ -2723,36 +2733,30 @@ impl HelperHandler {
             helper_initialize_error(HelperInitializeFailure::ProviderResolution, &error)
         })?;
 
-        let agent = acquire_and_bind_agent(&self.state, self.helper_id, || {
-            get_or_spawn_agent(
-                &self.state,
-                &agent_cmd,
-                agent_id.as_deref(),
-                &agent_source,
-                provider_binding.clone(),
-                supplied_cloud_models.clone(),
-            )
-        })
-        .await
-        .map_err(|e| {
-            let error_chain = format!("{e:#}");
-            tracing::error!(
-                target: "master",
-                op = "initialize",
-                helper_id = ?self.helper_id,
-                agent_cmd = %agent_cmd,
-                error = %error_chain,
-                "failed to spawn/resolve agent CLI for helper"
-            );
-            helper_initialize_error(HelperInitializeFailure::AgentStartup, &e)
-        })?;
-        // `set` is idempotent-by-error; a helper that (incorrectly) sent
-        // initialize twice keeps its first binding, which is fine.
-        let _ = self.agent.set(Arc::clone(&agent));
         let agent = self
-            .agent
-            .get()
-            .expect("helper agent binding is set before initialize response");
+            .get_or_initialize_agent(|| {
+                get_or_spawn_agent(
+                    &self.state,
+                    &agent_cmd,
+                    agent_id.as_deref(),
+                    &agent_source,
+                    provider_binding.clone(),
+                    supplied_cloud_models.clone(),
+                )
+            })
+            .await
+            .map_err(|e| {
+                let error_chain = format!("{e:#}");
+                tracing::error!(
+                    target: "master",
+                    op = "initialize",
+                    helper_id = ?self.helper_id,
+                    agent_cmd = %agent_cmd,
+                    error = %error_chain,
+                    "failed to spawn/resolve agent CLI for helper"
+                );
+                helper_initialize_error(HelperInitializeFailure::AgentStartup, &e)
+            })?;
         let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
@@ -2780,7 +2784,7 @@ impl HelperHandler {
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent, session_mcp_available).await {
+        match initialize_response_for_agent(&agent, session_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -5220,7 +5224,7 @@ async fn serve_helper(
         helper_id,
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
-        agent: Arc::new(OnceLock::new()),
+        agent: Arc::new(OnceCell::new()),
         state: Arc::clone(&state),
         replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
