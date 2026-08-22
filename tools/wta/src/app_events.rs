@@ -7,6 +7,17 @@
 
 use super::*;
 
+#[derive(serde::Deserialize)]
+struct AgentReconnectWire {
+    operation_id: String,
+    window_id: String,
+    generation: u64,
+    agent_id: String,
+    acp_model: Option<String>,
+    custom_model_selection: Option<String>,
+    agent_source: String,
+}
+
 impl App {
     fn completed_turn_hit_at(&self, column: u16, row: u16) -> Option<CompletedTurnHitRegion> {
         let tab = self.current_tab();
@@ -364,6 +375,38 @@ impl App {
                     );
                 }
             }
+            AppEvent::AgentReconnectReady(completed) => {
+                let Some(latest) = self.begin_pending_agent_reconnect_preflight() else {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        operation_id = %completed.operation_id,
+                        generation = completed.generation,
+                        "ignoring reconnect-ready event with no disconnect pending"
+                    );
+                    return;
+                };
+                tracing::info!(
+                    target: "agent_rebind",
+                    completed_operation_id = %completed.operation_id,
+                    completed_generation = completed.generation,
+                    target_operation_id = %latest.operation_id,
+                    target_generation = latest.generation,
+                    target_agent_id = %latest.agent_id,
+                    "old ACP transport retired; preflighting latest target"
+                );
+            }
+            AppEvent::AgentClientFailed => {
+                if let Some(latest) = self.begin_pending_agent_reconnect_preflight() {
+                    self.suppress_next_failed_client_error = true;
+                    tracing::info!(
+                        target: "agent_rebind",
+                        operation_id = %latest.operation_id,
+                        generation = latest.generation,
+                        agent_id = %latest.agent_id,
+                        "outgoing ACP client failed during startup; preflighting latest target"
+                    );
+                }
+            }
             AppEvent::AgentConnected {
                 name,
                 model,
@@ -559,8 +602,7 @@ impl App {
                 let Some(target_tab) = target_tab else {
                     return;
                 };
-                if let Some((_, current_model_id)) =
-                    self.session_model_configs.get_mut(&session_id)
+                if let Some((_, current_model_id)) = self.session_model_configs.get_mut(&session_id)
                 {
                     *current_model_id = Some(model.clone());
                 }
@@ -750,6 +792,11 @@ impl App {
                 failure,
                 message,
             } => {
+                if session_id.is_none()
+                    && std::mem::take(&mut self.suppress_next_failed_client_error)
+                {
+                    return;
+                }
                 // Classification is typed (`AgentFailure`), done once at the
                 // helper boundary where the `acp::Error` code / transport
                 // signal is still available. No substring matching here — the
@@ -769,10 +816,11 @@ impl App {
                     return;
                 }
 
-                let session_survives = matches!(
-                    &failure,
-                    crate::protocol::acp::failure::AgentFailure::Protocol { .. }
-                );
+                let session_survives = session_id.is_some()
+                    && matches!(
+                        &failure,
+                        crate::protocol::acp::failure::AgentFailure::Protocol { .. }
+                    );
 
                 let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
@@ -864,6 +912,9 @@ impl App {
                 tab_id,
                 agent_id,
             } => {
+                if std::mem::take(&mut self.suppress_next_failed_client_error) {
+                    return;
+                }
                 tracing::warn!(
                     target: "auth_recovery",
                     failure_class = failure.class(),
@@ -1327,6 +1378,28 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if self.agent_reconnect_disconnect_pending
+                    || self.agent_reconnect_preflight_pending
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        current_agent = %self.current_agent_id,
+                        "ignoring startup preflight result during agent rebind"
+                    );
+                    return;
+                }
+                if !self.current_agent_id.is_empty()
+                    && !result.agent_id.eq_ignore_ascii_case(&self.current_agent_id)
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        current_agent = %self.current_agent_id,
+                        "ignoring stale preflight result after agent rebind"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "preflight",
                     agent = %result.agent_id,
@@ -1335,44 +1408,44 @@ impl App {
                     "preflight result received"
                 );
                 if !result.all_passed() {
-                    let reason = SetupReason::AgentMissing;
-                    let current_status = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        None
-                    } else {
-                        Some(crate::agent_check::check_agent(&result.agent_id))
-                    };
-                    let options = build_setup_options(&reason, current_status.as_ref());
-                    let title = reason.title().to_string();
-                    let subtitle = if current_status
-                        .as_ref()
-                        .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
-                    {
-                        t!(
-                            "setup.subtitle.copilot_missing",
-                            agent = &result.display_name
-                        )
-                        .into_owned()
-                    } else {
-                        t!("setup.subtitle.agent_missing", agent = &result.display_name)
-                            .into_owned()
-                    };
-                    self.mode = AppMode::Setup;
-                    self.preflight_setup_active = true;
-                    self.setup = Some(SetupState {
-                        reason,
-
-                        preflight: result,
-                        selected_index: 0,
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
-                        options,
-                        title,
-                        subtitle,
+                    self.show_preflight_setup(result);
+                }
+            }
+            AppEvent::AgentReconnectPreflightComplete {
+                operation_id,
+                generation,
+                result,
+            } => {
+                let matches_pending = self.agent_reconnect_preflight_pending
+                    && self.pending_agent_reconnect.as_ref().is_some_and(|pending| {
+                        pending.operation_id == operation_id
+                            && pending.generation == generation
+                            && pending.agent_id.eq_ignore_ascii_case(&result.agent_id)
                     });
+                if !matches_pending {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "ignoring stale target preflight result"
+                    );
+                    return;
+                }
+
+                self.agent_reconnect_preflight_pending = false;
+                self.pending_agent_reconnect = None;
+                if result.all_passed() {
+                    self.pending_acp_start = true;
+                    tracing::info!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "target preflight passed; reconnecting helper"
+                    );
+                } else {
+                    self.show_preflight_setup(result);
                 }
             }
             AppEvent::AgentSourcesDiscovered {
@@ -1639,6 +1712,109 @@ impl App {
                     return;
                 }
 
+                if method == "rebind_agent" {
+                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
+                    if target_tab != self.owner_tab_id.as_deref() {
+                        return;
+                    }
+
+                    let Ok(wire) = serde_json::from_value::<AgentReconnectWire>(params.clone())
+                    else {
+                        tracing::warn!(
+                            target: "agent_rebind",
+                            payload = %params,
+                            "ignoring malformed agent rebind event"
+                        );
+                        return;
+                    };
+                    if !wire
+                        .agent_source
+                        .eq_ignore_ascii_case(crate::agent_source::AgentSource::HOST_KIND)
+                    {
+                        tracing::warn!(
+                            target: "agent_rebind",
+                            source = %wire.agent_source,
+                            "ignoring non-Host agent rebind"
+                        );
+                        return;
+                    }
+                    if wire.window_id.trim().is_empty()
+                        || self.window_id.as_deref().is_some_and(|window_id| {
+                            !window_id.is_empty() && window_id != wire.window_id
+                        })
+                    {
+                        return;
+                    }
+                    let mut request = AgentReconnectRequest {
+                        operation_id: wire.operation_id,
+                        window_id: wire.window_id,
+                        generation: wire.generation,
+                        agent_id: wire.agent_id,
+                        acp_model: wire.acp_model,
+                        custom_model_selection: wire.custom_model_selection,
+                        agent_source: crate::agent_source::AgentSource::from_wire(
+                            Some(&wire.agent_source),
+                            None,
+                        ),
+                    };
+                    if request.operation_id.trim().is_empty()
+                        || (self.last_agent_rebind_window_id.as_deref()
+                            == Some(request.window_id.as_str())
+                            && request.generation <= self.last_agent_rebind_generation)
+                    {
+                        return;
+                    }
+                    if !matches!(request.agent_source, crate::agent_source::AgentSource::Host)
+                        || !crate::agent_registry::is_known_id(&request.agent_id)
+                        || (self.host_agent_allowlist_present
+                            && !self
+                                .allowed_agent_ids
+                                .iter()
+                                .any(|id| id.eq_ignore_ascii_case(&request.agent_id)))
+                    {
+                        tracing::warn!(
+                            target: "agent_rebind",
+                            operation_id = %request.operation_id,
+                            generation = request.generation,
+                            agent_id = %request.agent_id,
+                            source = %request.agent_source,
+                            "ignoring unsupported or policy-blocked agent rebind"
+                        );
+                        return;
+                    }
+
+                    request.agent_id.make_ascii_lowercase();
+                    request.acp_model = request
+                        .acp_model
+                        .take()
+                        .filter(|model| !model.trim().is_empty());
+                    request.custom_model_selection = request
+                        .custom_model_selection
+                        .take()
+                        .filter(|selection| !selection.trim().is_empty());
+                    if crate::agent_registry::lookup_profile_by_id(&request.agent_id).byok_mode
+                        == crate::agent_registry::ByokMode::Unsupported
+                    {
+                        request.custom_model_selection = None;
+                    }
+                    self.last_agent_rebind_window_id = Some(request.window_id.clone());
+                    self.last_agent_rebind_generation = request.generation;
+                    self.prepare_agent_reconnect(&request);
+                    self.pending_agent_reconnect = Some(request.clone());
+
+                    if !self.agent_reconnect_disconnect_pending {
+                        self.agent_reconnect_disconnect_pending = true;
+                        if self
+                            .restart_tx
+                            .send(RestartRequest::RebindAgent(request.clone()))
+                            .is_err()
+                        {
+                            let _ = self.begin_pending_agent_reconnect_preflight();
+                        }
+                    }
+                    return;
+                }
+
                 if method == "agent_paste_text" {
                     self.handle_agent_paste_text(&params);
                     return;
@@ -1651,8 +1827,19 @@ impl App {
                     // dispatch: each field is optional and only present when
                     // it actually changed, so we apply exactly what's set
                     // — all in place, with NO agent-pane teardown/restart.
-                    // (Agent *identity* changes go through a master respawn
-                    // on the C++ side, not this event.)
+                    // Agent identity and launch-time model changes use the
+                    // separate same-helper rebind event.
+                    let target_window = params
+                        .get("window_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let owner_window = self.window_id.as_deref().unwrap_or("");
+                    if !target_window.is_empty()
+                        && !owner_window.is_empty()
+                        && target_window != owner_window
+                    {
+                        return;
+                    }
                     let target_tab = params
                         .get("tab_id")
                         .and_then(|value| value.as_str())
@@ -2646,7 +2833,9 @@ impl App {
                         );
                         self.deferred_acp = Some(DeferredAcpParams {
                             agent_cmd: new_cmd,
+                            agent_id: Some(agent_id),
                             acp_model: None,
+                            custom_model_selection: self.custom_model_selection.clone(),
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
                             prompt_rx: None, // try_start_acp will create fresh channels

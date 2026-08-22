@@ -399,15 +399,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Hot-reload of runtime agent config (autofix gate and delegate
-        // agent/model). When any of these change between settings
+        // Hot-reload of runtime agent config (autofix gate, delegate
+        // agent/model, and model catalogs). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
         // event to the running wta-helper(s) so they update in place,
         // WITHOUT tearing down and restarting the agent pane. This is the
-        // unified dispatch for every hot-updatable agent setting — adding a
-        // new one means adding a field to AgentRuntimeConfigSnapshot, not a
-        // bespoke diff/emit block here. Agent identity and model changes go
-        // through _RebuildAgentStack in _RefreshUIForSettingsReload.
+        // unified dispatch for non-binding runtime settings. Agent identity
+        // and ACP model changes go through _RebuildAgentStack in
+        // _RefreshUIForSettingsReload so unready helpers can be recreated
+        // before the settings snapshot advances.
         _EmitAgentRuntimeConfigIfChanged();
 
         // Make sure to call SetCommands before _RefreshUIForSettingsReload.
@@ -1658,11 +1658,10 @@ namespace winrt::TerminalApp::implementation
 
     // --- Hot-reload of agent/model settings -------------------------------
     //
-    // When any agent-identity setting changes, the single shared wta pane must
-    // be torn down and recreated with the updated flags baked into argv.
-    // `_RebuildAgentStack` is the single entry point; it is called from
-    // SetSettings (settings.json reload + Settings UI writes) and from the
-    // bottom-bar selector Click handler.
+    // `_RebuildAgentStack` reconciles agent-identity settings changed through
+    // settings.json, Settings UI, or the bottom-bar selector. Built-in agent
+    // changes rebind the existing helper; changes to trusted launch arguments
+    // retain the destructive pane/master path.
     TerminalPage::AgentSettingsSnapshot TerminalPage::_CaptureAgentSettingsSnapshot() const
     {
         const auto& globals = _settings.GlobalSettings();
@@ -1717,18 +1716,251 @@ namespace winrt::TerminalApp::implementation
         return Json::writeString(writer, identity);
     }
 
+    TerminalPage::AgentSettingsChangeKind TerminalPage::_ClassifyAgentSettingsChange(
+        const AgentSettingsSnapshot& previous,
+        const AgentSettingsSnapshot& current)
+    {
+        const bool changed =
+            previous.acpAgent != current.acpAgent ||
+            previous.acpCustomCommand != current.acpCustomCommand ||
+            previous.acpModel != current.acpModel ||
+            previous.customModelLaunch != current.customModelLaunch ||
+            previous.profileBackends != current.profileBackends;
+        if (!changed)
+        {
+            return AgentSettingsChangeKind::None;
+        }
+
+        const auto isBuiltinAgent = [](const std::wstring_view id) {
+            const auto agents = ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredAcpAgents();
+            return std::ranges::any_of(agents, [&](const auto& agent) {
+                return agent.id == id;
+            });
+        };
+
+        const bool profileBackendsChanged =
+            previous.profileBackends != current.profileBackends;
+        const bool agentChanged =
+            previous.acpAgent != current.acpAgent;
+        const bool modelBindingChanged =
+            previous.acpModel != current.acpModel ||
+            previous.customModelLaunch != current.customModelLaunch;
+
+        // A trusted custom command can only enter the master through its own
+        // argv, and a profile backend change can move execution between Host
+        // and WSL. Those boundaries still require pane reconstruction.
+        if (previous.acpCustomCommand != current.acpCustomCommand ||
+            profileBackendsChanged ||
+            !isBuiltinAgent(previous.acpAgent) ||
+            !isBuiltinAgent(current.acpAgent))
+        {
+            return AgentSettingsChangeKind::Rebuild;
+        }
+
+        // Built-in agent changes and model changes that require launch-time
+        // configuration replace only the helper's ACP binding. This preserves
+        // Pane/TermControl/ConPTY/helper and the shared master.
+        if (agentChanged)
+        {
+            return AgentSettingsChangeKind::AgentRebind;
+        }
+
+        if (modelBindingChanged)
+        {
+            const bool nativeModelChange =
+                !previous.customModelLaunch &&
+                !current.customModelLaunch;
+            if (nativeModelChange &&
+                !current.acpModel.empty() &&
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsLiveModelSwitch(current.acpAgent))
+            {
+                return AgentSettingsChangeKind::ModelHotUpdate;
+            }
+            return AgentSettingsChangeKind::AgentRebind;
+        }
+
+        // Keep this fallback conservative if another launch-affecting field is
+        // added to the snapshot without an explicit policy above.
+        return AgentSettingsChangeKind::Rebuild;
+    }
+
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
-        // Agent identity and effective model changes rebuild helpers. A profile
-        // backend is part of identity because it changes both the agent id and
-        // the execution source for that profile. Only selected-provider fields
-        // consumed by the master launch environment participate in identity.
-        // The helper-safe full catalog is hot-updated separately.
-        return a.acpAgent != b.acpAgent ||
-               a.acpCustomCommand != b.acpCustomCommand ||
-               a.acpModel != b.acpModel ||
-               a.customModelLaunch != b.customModelLaunch ||
-               a.profileBackends != b.profileBackends;
+        return _ClassifyAgentSettingsChange(a, b) != AgentSettingsChangeKind::None;
+    }
+
+    bool TerminalPage::_ShouldDeferAgentSettingsChange(
+        const AgentSettingsChangeKind changeKind,
+        const bool canHostPane,
+        const bool masterConfigurationChanged) noexcept
+    {
+        return changeKind == AgentSettingsChangeKind::Rebuild &&
+               !canHostPane &&
+               !masterConfigurationChanged;
+    }
+
+    TerminalPage::AgentPaneSettingsRebindDisposition TerminalPage::_ClassifyAgentPaneSettingsRebind(
+        const ConnectionState connectionState,
+        const bool helperEventReady) noexcept
+    {
+        // Only these states can still have a helper subscribed to rebind_agent.
+        // agent_status is published only after that event receiver is
+        // subscribed, so the cached readiness bit closes the startup window
+        // where ConPTY is live but settings events would still be lost.
+        return helperEventReady &&
+                       (connectionState == ConnectionState::Connecting ||
+                        connectionState == ConnectionState::Connected) ?
+                   AgentPaneSettingsRebindDisposition::Rebind :
+                   AgentPaneSettingsRebindDisposition::Recreate;
+    }
+
+    TerminalPage::AgentPaneRecreationOptions TerminalPage::_GetAgentPaneRecreationOptions(
+        const bool wasStashed,
+        const bool isActiveTab) noexcept
+    {
+        return AgentPaneRecreationOptions{
+            .autoStash = wasStashed,
+            .focusPane = !wasStashed && isActiveTab,
+        };
+    }
+
+    TerminalPage::AgentPaneSettingsBinding TerminalPage::_ResolveAgentPaneSettingsBinding(
+        const AgentPaneSettingsBindingRequest& request)
+    {
+        namespace Backend = ::Microsoft::Terminal::Settings::Model;
+        namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        AgentPaneSettingsBinding binding{
+            .agentSource = L"host",
+        };
+        winrt::hstring agentCliPath;
+        bool validSource = true;
+
+        if (request.hasAgentOverride)
+        {
+            binding.agentId = request.agentIdOverride;
+            binding.agentSource = request.agentSourceOverride;
+            binding.agentWslDistro = request.agentWslDistroOverride;
+            binding.acpModel = request.agentModelOverride;
+            agentCliPath = _ResolveAgentCliPathForId(
+                winrt::hstring{ binding.agentId },
+                winrt::hstring{ binding.acpModel },
+                winrt::hstring{ request.agentCustomCommandOverride });
+            validSource =
+                binding.agentSource == L"host" ||
+                (binding.agentSource == L"wsl" && !binding.agentWslDistro.empty());
+        }
+        else if (!request.profileBackend.empty())
+        {
+            if (const auto backend = Backend::AgentPaneBackend::Parse(request.profileBackend))
+            {
+                binding.agentId = backend->agentId;
+                binding.agentSource =
+                    backend->source == Backend::AgentPaneBackendSource::Wsl ? L"wsl" : L"host";
+                binding.agentWslDistro = backend->wslDistro;
+
+                const auto allowedAgents = Registry::FilteredAcpAgents();
+                const auto knownAndAllowed = std::ranges::any_of(allowedAgents, [&](const auto& agent) {
+                    return agent.id == binding.agentId;
+                });
+                if (knownAndAllowed)
+                {
+                    agentCliPath = _ResolveAgentCliPathForId(
+                        winrt::hstring{ binding.agentId },
+                        {},
+                        {});
+                }
+
+                if (backend->source == Backend::AgentPaneBackendSource::Wsl)
+                {
+                    const auto expectedShell = L"wsl:" + backend->wslDistro;
+                    validSource =
+                        !backend->wslDistro.empty() &&
+                        (request.profileActiveShell.empty() ||
+                         request.profileActiveShell == expectedShell);
+                }
+            }
+            else
+            {
+                validSource = false;
+            }
+        }
+        else
+        {
+            binding.agentId =
+                request.globalAgentId.empty() && !request.globalAgentCliPath.empty() ?
+                    request.detectedGlobalAgentId :
+                    request.globalAgentId;
+            binding.acpModel = request.globalModel;
+            binding.followsGlobalAcpModel = true;
+            agentCliPath = winrt::hstring{ request.globalAgentCliPath };
+        }
+
+        binding.launchable = validSource && !agentCliPath.empty();
+        binding.supportsGlobalHostByok =
+            binding.agentSource == L"host" &&
+            Registry::SupportsByok(binding.agentId);
+        if (binding.supportsGlobalHostByok && !request.customModelSelection.empty())
+        {
+            binding.acpModel.clear();
+            binding.customModelSelection = request.customModelSelection;
+        }
+        return binding;
+    }
+
+    bool TerminalPage::_IsAgentPaneSettingsRebindAffected(
+        const AgentPaneSettingsBinding& binding,
+        const bool globalAgentChanged,
+        const bool cloudModelChanged,
+        const bool customModelLaunchChanged) noexcept
+    {
+        return binding.launchable &&
+               (((globalAgentChanged || cloudModelChanged) &&
+                 binding.followsGlobalAcpModel) ||
+                (customModelLaunchChanged &&
+                 binding.supportsGlobalHostByok));
+    }
+
+    bool TerminalPage::_IsAgentPaneModelHotUpdateTarget(
+        const std::optional<AgentPaneSettingsBinding>& binding,
+        const std::optional<ConnectionState> connectionState,
+        const bool helperEventReady,
+        const bool agentConnected) noexcept
+    {
+        return binding &&
+               binding->launchable &&
+               binding->followsGlobalAcpModel &&
+               agentConnected &&
+               connectionState &&
+               _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
+                   AgentPaneSettingsRebindDisposition::Rebind;
+    }
+
+    bool TerminalPage::_ShouldRecreateAgentPaneForModelHotUpdate(
+        const std::optional<AgentPaneSettingsBinding>& binding,
+        const std::optional<ConnectionState> connectionState,
+        const bool helperEventReady,
+        const bool agentConnected) noexcept
+    {
+        return binding &&
+               binding->launchable &&
+               binding->followsGlobalAcpModel &&
+               (!agentConnected ||
+                !connectionState ||
+                _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
+                    AgentPaneSettingsRebindDisposition::Recreate);
+    }
+
+    Json::Value TerminalPage::_BuildAgentPaneSettingsRebindPayload(
+        const AgentPaneSettingsBinding& binding)
+    {
+        Json::Value params{ Json::objectValue };
+        params["agent_id"] = winrt::to_string(winrt::hstring{ binding.agentId });
+        params["agent_source"] = winrt::to_string(winrt::hstring{ binding.agentSource });
+        params["acp_model"] = winrt::to_string(winrt::hstring{ binding.acpModel });
+        params["custom_model_selection"] =
+            winrt::to_string(winrt::hstring{ binding.customModelSelection });
+        return params;
     }
 
     TerminalPage::AgentRuntimeConfigSnapshot TerminalPage::_CaptureAgentRuntimeConfig() const
@@ -1745,14 +1977,12 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
-    // protocol event channel. Unlike agent identity/model changes (which
-    // require a master respawn via _RebuildAgentStack), these take effect
-    // without tearing down the agent pane. A single consolidated
-    // `agent_config_changed` event carries only the fields that changed:
+    // protocol event channel. A single consolidated `agent_config_changed`
+    // event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
-    //     credential-free picker metadata and its restart-required selection.
+    //     credential-free picker metadata and its selected entry.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -1778,10 +2008,12 @@ namespace winrt::TerminalApp::implementation
 
         if (!autofixChanged && !delegateChanged && !customModelsChanged)
         {
+            _lastAgentRuntimeConfig = current;
             return;
         }
 
         Json::Value params{ Json::objectValue };
+        params["window_id"] = std::to_string(_WindowProperties.WindowId());
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
@@ -1977,6 +2209,12 @@ namespace winrt::TerminalApp::implementation
         std::string requestId,
         std::function<void(std::string_view)> continuation)
     {
+        if (!scopeAll && tabIds.empty())
+        {
+            continuation({});
+            return;
+        }
+
         auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
         const auto registration = sharedWta.RegisterRetirement(scopeAll, reason, requestId);
         if (registration.operationId.empty())
@@ -2339,7 +2577,8 @@ namespace winrt::TerminalApp::implementation
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
                                                         std::string_view initialLoadCwd,
-                                                        std::wstring_view initialAuthAgent)
+                                                        std::wstring_view initialAuthAgent,
+                                                        bool focusPane)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -2782,6 +3021,12 @@ namespace winrt::TerminalApp::implementation
             tab->StashAgentPane();
             _UpdateBottomBarState();
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done — helper pre-warmed + stashed");
+            return true;
+        }
+
+        if (!focusPane)
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done without changing pane focus");
             return true;
         }
 
@@ -3349,9 +3594,10 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Called whenever agent-identity settings may have changed. Diffs the
-    // last known snapshot against the current one, tears down + rebuilds
-    // the agent pane, and updates the snapshot.
+    // Called whenever agent-identity settings may have changed. Built-in
+    // global agent changes preserve the Pane/TermControl/ConPTY/helper and
+    // replace only the helper's ACP connection after retiring its old
+    // session. Other launch-identity changes keep the destructive path.
     void TerminalPage::_RebuildAgentStack(std::string requestId)
     {
         const auto current = _CaptureAgentSettingsSnapshot();
@@ -3377,12 +3623,14 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        if (!_AgentSettingsChanged(_lastAgentSettings, current))
+        const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
+        if (changeKind == AgentSettingsChangeKind::None)
         {
             _agentPaneLog("_RebuildAgentStack: no change, skip rebuild");
             return;
         }
-
+        const bool modelHotUpdate = changeKind == AgentSettingsChangeKind::ModelHotUpdate;
+        const bool rebindAgentInPlace = changeKind == AgentSettingsChangeKind::AgentRebind;
         // Custom commands are trusted only when supplied on the master's own
         // argv. Helpers intentionally cannot ask the master to execute an
         // arbitrary command from pipe metadata, so entering/leaving a custom
@@ -3396,9 +3644,11 @@ namespace winrt::TerminalApp::implementation
         const bool cloudModelChanged =
             _lastAgentSettings.acpModel != current.acpModel;
         const bool masterConfigurationChanged =
-            customMasterArgsChanged ||
-            cloudModelChanged ||
-            customModelLaunchChanged;
+            !modelHotUpdate &&
+            (customMasterArgsChanged ||
+             (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged)));
+        const bool globalModelBindingChanged =
+            cloudModelChanged || customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand;
@@ -3446,17 +3696,19 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Defer the rebuild when there's no terminal tab in focus:
-        // TermControls on non-active tabs never raise
-        // SwapChainPanel.LayoutUpdated, so `connection.Start()` never
-        // runs and wta.exe never launches. _FlushPendingAgentRebuild
-        // re-enters once a terminal tab becomes active.
+        // Defer destructive rebuilds when there's no terminal tab in focus:
+        // newly created TermControls on non-active tabs never raise
+        // SwapChainPanel.LayoutUpdated, so `connection.Start()` never runs and
+        // wta.exe never launches. In-place rebinds reuse existing helpers and
+        // must continue while Settings is focused.
+        // _FlushPendingAgentRebuild re-enters once a terminal tab becomes
+        // active.
         // `_lastAgentSettings` stays unchanged so the dirty diff fires
         // again on next entry.
         const auto focusedTab = _GetFocusedTabImpl();
         // Only `==` auto-generates for projected WinRT types — `!=` doesn't.
         const bool canHostPane = focusedTab && !(*focusedTab == _settingsTab);
-        if (!canHostPane && !masterConfigurationChanged)
+        if (_ShouldDeferAgentSettingsChange(changeKind, canHostPane, masterConfigurationChanged))
         {
             _pendingAgentRebuild = true;
             if (!requestId.empty())
@@ -3468,20 +3720,91 @@ namespace winrt::TerminalApp::implementation
 
         _agentRebuilding = true;
 
-        _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
+        if (modelHotUpdate)
+        {
+            _agentPaneLog("_RebuildAgentStack: native model changed, reconciling helper readiness");
+        }
+        else
+        {
+            _agentPaneLog(
+                rebindAgentInPlace ?
+                    "_RebuildAgentStack: agent/model binding changed, rebinding existing helpers" :
+                    "_RebuildAgentStack: agent settings changed, rebuilding");
+        }
 
         // Rebuild only tabs whose effective agent identity changed. A custom
-        // command or selected provider launch change restarts the shared master,
-        // so every local helper is collected even when its tab has a runtime
-        // override. Unselected provider metadata changes stay on the hot path.
+        // command change restarts the shared master, so every local helper is
+        // collected even when its tab has a runtime override. BYOK changes
+        // rebind every launchable Host pane that consumed that bootstrap.
+        AgentPaneSettingsBindingRequest baseBindingRequest;
+        if (rebindAgentInPlace || modelHotUpdate)
+        {
+            const auto& globals = _settings.GlobalSettings();
+            const auto globalAgentCliPath =
+                _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+            baseBindingRequest.globalAgentId = std::wstring{ globals.EffectiveAcpAgent() };
+            baseBindingRequest.globalModel = std::wstring{ globals.AcpModel() };
+            baseBindingRequest.globalAgentCliPath = std::wstring{ globalAgentCliPath };
+            baseBindingRequest.customModelSelection =
+                current.customModelLaunch ?
+                    current.customModelLaunch->selectionId :
+                    std::wstring{};
+            if (baseBindingRequest.globalAgentId.empty() &&
+                !baseBindingRequest.globalAgentCliPath.empty())
+            {
+                baseBindingRequest.detectedGlobalAgentId = std::wstring{ _DetectAgentCli() };
+            }
+        }
+
         bool hadAny = false;
+        bool hasStartedPaneToRebind = false;
+        bool hasModelHotUpdateTarget = false;
         std::vector<winrt::hstring> tabIdsThatHadAgentPane;
+        std::vector<winrt::hstring> tabIdsToRetire;
+        std::vector<std::pair<winrt::hstring, AgentPaneSettingsBinding>> rebindTargets;
+        std::vector<std::pair<winrt::com_ptr<Tab>, AgentPaneRecreationOptions>> panesToRecreate;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
                 bool affected = masterConfigurationChanged;
-                if (!affected && !tabImpl->HasAgentOverride())
+                std::optional<AgentPaneSettingsBinding> rebindBinding;
+                if (rebindAgentInPlace || modelHotUpdate)
+                {
+                    auto bindingRequest = baseBindingRequest;
+                    bindingRequest.hasAgentOverride = tabImpl->HasAgentOverride();
+                    if (bindingRequest.hasAgentOverride)
+                    {
+                        bindingRequest.agentIdOverride = std::wstring{ tabImpl->AgentIdOverride() };
+                        bindingRequest.agentModelOverride = std::wstring{ tabImpl->AgentModelOverride() };
+                        bindingRequest.agentCustomCommandOverride = std::wstring{ tabImpl->AgentCustomCommandOverride() };
+                        bindingRequest.agentSourceOverride = std::wstring{ tabImpl->AgentSourceOverride() };
+                        bindingRequest.agentWslDistroOverride = std::wstring{ tabImpl->AgentWslDistroOverride() };
+                    }
+                    else
+                    {
+                        if (const auto sourceProfile = _ResolveAgentSourceProfile(tabImpl, _settings))
+                        {
+                            tabImpl->AgentSourceProfileGuid(_AgentSourceProfileGuid(sourceProfile, _settings));
+                            bindingRequest.profileBackend = std::wstring{ sourceProfile.AgentPaneBackend() };
+                        }
+                        if (const auto control = tabImpl->GetActiveTerminalControl())
+                        {
+                            bindingRequest.profileActiveShell = std::wstring{ control.ShellName() };
+                        }
+                    }
+
+                    rebindBinding = _ResolveAgentPaneSettingsBinding(bindingRequest);
+                    affected = modelHotUpdate ?
+                                   rebindBinding->launchable && rebindBinding->followsGlobalAcpModel :
+                                   affected ||
+                                       _IsAgentPaneSettingsRebindAffected(
+                                           *rebindBinding,
+                                           globalAgentChanged,
+                                           cloudModelChanged,
+                                           customModelLaunchChanged);
+                }
+                else if (!affected && !tabImpl->HasAgentOverride())
                 {
                     auto sourceProfileGuid = tabImpl->AgentSourceProfileGuid();
                     if (!sourceProfileGuid)
@@ -3508,20 +3831,119 @@ namespace winrt::TerminalApp::implementation
                             currentProfile == current.profileBackends.end() ||
                             currentProfile->second.empty();
                         affected = profileBackendChanged ||
-                                   (globalAgentChanged && followsGlobalAgent);
+                                   ((globalAgentChanged || globalModelBindingChanged) &&
+                                    followsGlobalAgent);
                     }
                     else
                     {
-                        affected = globalAgentChanged;
+                        affected = globalAgentChanged || globalModelBindingChanged;
                     }
                 }
 
                 if (tabImpl->FindAgentPane() && affected)
                 {
                     hadAny = true;
-                    tabIdsThatHadAgentPane.push_back(tabImpl->StableId());
+                    const auto tabId = tabImpl->StableId();
+                    tabIdsThatHadAgentPane.push_back(tabId);
+                    if (rebindAgentInPlace || modelHotUpdate)
+                    {
+                        const auto pane = tabImpl->FindAgentPane();
+                        bool helperEventReady = false;
+                        bool agentConnected = false;
+                        if (const auto content = tabImpl->FindAgentPaneContent())
+                        {
+                            const auto contentImpl =
+                                winrt::get_self<implementation::AgentPaneContent>(content);
+                            helperEventReady = contentImpl->IsHelperEventReady();
+                            agentConnected = contentImpl->IsAgentConnected();
+                        }
+                        std::optional<ConnectionState> connectionState;
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            connectionState = control.ConnectionState();
+                        }
+
+                        if (modelHotUpdate)
+                        {
+                            if (_ShouldRecreateAgentPaneForModelHotUpdate(
+                                    rebindBinding,
+                                    connectionState,
+                                    helperEventReady,
+                                    agentConnected))
+                            {
+                                panesToRecreate.emplace_back(
+                                    tabImpl,
+                                    _GetAgentPaneRecreationOptions(
+                                        tabImpl->HasStashedAgentPane(),
+                                        focusedTab && focusedTab == tabImpl));
+                            }
+                            else if (_IsAgentPaneModelHotUpdateTarget(
+                                         rebindBinding,
+                                         connectionState,
+                                         helperEventReady,
+                                         agentConnected))
+                            {
+                                hasModelHotUpdateTarget = true;
+                            }
+                            continue;
+                        }
+
+                        if (!helperEventReady)
+                        {
+                            panesToRecreate.emplace_back(
+                                tabImpl,
+                                _GetAgentPaneRecreationOptions(
+                                    tabImpl->HasStashedAgentPane(),
+                                    focusedTab && focusedTab == tabImpl));
+                            continue;
+                        }
+
+                        auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
+                        if (connectionState)
+                        {
+                            disposition = _ClassifyAgentPaneSettingsRebind(
+                                *connectionState,
+                                helperEventReady);
+                        }
+                        hasStartedPaneToRebind =
+                            hasStartedPaneToRebind ||
+                            disposition == AgentPaneSettingsRebindDisposition::Rebind;
+                        tabIdsToRetire.push_back(tabId);
+                        rebindTargets.emplace_back(tabId, std::move(*rebindBinding));
+                    }
                 }
             }
+        }
+
+        for (const auto& [tab, recreationOptions] : panesToRecreate)
+        {
+            _agentPaneLog("_RebuildAgentStack: recreating unready agent pane with current settings");
+            _TeardownAgentPane(tab);
+            _AutoCreateHiddenAgentPaneShared(
+                tab,
+                /*intoSessionsView*/ false,
+                recreationOptions.autoStash,
+                {},
+                {},
+                {},
+                recreationOptions.focusPane);
+        }
+
+        if (modelHotUpdate)
+        {
+            if (hasModelHotUpdateTarget)
+            {
+                Json::Value params{ Json::objectValue };
+                params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                params["acp_model"] = winrt::to_string(winrt::hstring{ current.acpModel });
+                params["target_agent_id"] = winrt::to_string(winrt::hstring{ current.acpAgent });
+                _RaiseProtocolEvent("agent_config_changed", params);
+            }
+
+            _lastAgentSettings = current;
+            _agentRebuilding = false;
+            _agentPaneLog("_RebuildAgentStack: native model updated ready helpers and recreated unready panes");
+            return;
         }
 
         if (!hadAny && !masterConfigurationChanged)
@@ -3532,30 +3954,107 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        if (rebindAgentInPlace && rebindTargets.empty())
+        {
+            _lastAgentSettings = current;
+            _agentRebuilding = false;
+            _agentPaneLog("_RebuildAgentStack: recreated all affected unready panes, snapshot only");
+            return;
+        }
+
         if (masterConfigurationChanged && requestId.empty())
         {
             requestId = winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId();
         }
 
+        if (!rebindAgentInPlace)
+        {
+            tabIdsToRetire = tabIdsThatHadAgentPane;
+        }
+        else if (!hasStartedPaneToRebind)
+        {
+            tabIdsToRetire.clear();
+        }
+        const auto rebindGeneration =
+            rebindAgentInPlace ? ++_agentSettingsRebindGeneration : 0;
         _BeginAgentSessionRetirement(
             masterConfigurationChanged,
-            tabIdsThatHadAgentPane,
-            masterConfigurationChanged ? "settings_master_configuration_changed" : "settings_agent_changed",
+            std::move(tabIdsToRetire),
+            masterConfigurationChanged ?
+                "settings_master_configuration_changed" :
+                (rebindAgentInPlace ?
+                     (globalModelBindingChanged ? "settings_model_rebind" : "settings_agent_rebind") :
+                     "settings_agent_changed"),
             masterConfigurationChanged ? std::move(requestId) : std::string{},
             [weakThis = get_weak(),
              current,
              tabIdsThatHadAgentPane,
-             masterConfigurationChanged](const std::string_view operationId) {
+             rebindTargets,
+             masterConfigurationChanged,
+             rebindAgentInPlace,
+             rebindGeneration](const std::string_view operationId) {
                 if (const auto strongThis = weakThis.get())
                 {
                     std::vector<winrt::com_ptr<Tab>> tabsToReopen;
-                    for (const auto& tabId : tabIdsThatHadAgentPane)
+                    const auto activeTab = strongThis->_GetFocusedTabImpl();
+                    if (rebindAgentInPlace)
                     {
-                        if (const auto tab = strongThis->_FindTabByStableId(tabId);
-                            tab && tab->FindAgentPane())
+                        for (const auto& [tabId, binding] : rebindTargets)
                         {
-                            tabsToReopen.push_back(tab);
-                            strongThis->_TeardownAgentPane(tab);
+                            if (const auto tab = strongThis->_FindTabByStableId(tabId);
+                                tab && tab->FindAgentPane())
+                            {
+                                auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
+                                bool helperEventReady = false;
+                                if (const auto content = tab->FindAgentPaneContent())
+                                {
+                                    helperEventReady =
+                                        winrt::get_self<implementation::AgentPaneContent>(content)->IsHelperEventReady();
+                                }
+                                if (const auto control = tab->FindAgentPane()->GetTerminalControl())
+                                {
+                                    disposition = _ClassifyAgentPaneSettingsRebind(
+                                        control.ConnectionState(),
+                                        helperEventReady);
+                                }
+
+                                if (disposition == AgentPaneSettingsRebindDisposition::Recreate)
+                                {
+                                    const auto recreationOptions = _GetAgentPaneRecreationOptions(
+                                        tab->HasStashedAgentPane(),
+                                        activeTab && activeTab == tab);
+                                    _agentPaneLog("_RebuildAgentStack: recreating terminal-state agent pane with current settings");
+                                    strongThis->_TeardownAgentPane(tab);
+                                    strongThis->_AutoCreateHiddenAgentPaneShared(
+                                        tab,
+                                        /*intoSessionsView*/ false,
+                                        recreationOptions.autoStash,
+                                        {},
+                                        {},
+                                        {},
+                                        recreationOptions.focusPane);
+                                    continue;
+                                }
+
+                                auto params = _BuildAgentPaneSettingsRebindPayload(binding);
+                                params["operation_id"] = std::string{ operationId };
+                                params["generation"] = Json::UInt64{ rebindGeneration };
+                                params["window_id"] = std::to_string(strongThis->_WindowProperties.WindowId());
+                                params["tab_id"] = winrt::to_string(tabId);
+                                strongThis->_RaiseProtocolEvent("rebind_agent", params);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (const auto& tabId : tabIdsThatHadAgentPane)
+                        {
+                            if (const auto tab = strongThis->_FindTabByStableId(tabId);
+                                tab && tab->FindAgentPane())
+                            {
+                                tabsToReopen.push_back(tab);
+                                strongThis->_TeardownAgentPane(tab);
+                            }
                         }
                     }
 
@@ -3576,7 +4075,6 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
 
-                    const auto activeTab = strongThis->_GetFocusedTabImpl();
                     if (masterConfigurationChanged)
                     {
                         for (const auto& tab : tabsToReopen)
@@ -3607,7 +4105,7 @@ namespace winrt::TerminalApp::implementation
                     strongThis->_agentRebuilding = false;
                     const auto latest = strongThis->_CaptureAgentSettingsSnapshot();
                     const bool settingsChangedAgain = TerminalPage::_AgentSettingsChanged(current, latest);
-                    if (settingsChangedAgain)
+                    if (settingsChangedAgain && !operationId.empty())
                     {
                         winrt::TerminalApp::implementation::SharedWta::Instance().ExpireRetirement(operationId);
                     }
@@ -5434,6 +5932,10 @@ namespace winrt::TerminalApp::implementation
         const auto update = [&](const winrt::com_ptr<Tab>& tabImpl) {
             if (const auto content = tabImpl->FindAgentPaneContent())
             {
+                // UpdateAgentStatus also caches helper-event readiness. In
+                // helper startup, subscribe_events precedes App construction
+                // and every publish_agent_status call, so the first routed
+                // status proves this pane can receive later settings events.
                 content.UpdateAgentStatus(name, version, model, state, backend);
             }
         };
@@ -9122,7 +9624,6 @@ namespace winrt::TerminalApp::implementation
         ////////////////////////////////////////////////////////////////////////
         // Begin Theme handling
         _updateThemeColors();
-
         _updateAllTabCloseButtons();
 
         // The user may have changed the "show title in titlebar" setting.
@@ -9131,10 +9632,9 @@ namespace winrt::TerminalApp::implementation
         // Reposition existing agent panes if the position setting changed.
         _RepositionAgentPanes();
 
-        // If any of the agent-identity settings (agent / model / custom
-        // command for either ACP or delegate) changed, tear down and
-        // recreate the affected layers so the new values take effect
-        // without a terminal restart.
+        // Reconcile agent/model identity changes. Supported model changes stay
+        // on the live ACP session, launch-time model changes rebind the same
+        // helper, and only trusted command/backend boundaries rebuild panes.
         auto requestId = std::exchange(_settingsReloadRequestId, {});
         if (!requestId.empty())
         {
@@ -9642,7 +10142,6 @@ namespace winrt::TerminalApp::implementation
         {
             _tabView.SelectedItem(_settingsTab.TabViewItem());
         }
-
     }
 
     // Method Description:

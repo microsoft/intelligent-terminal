@@ -11,7 +11,9 @@ use tokio::sync::mpsc;
 
 struct DeferredAcpParams {
     agent_cmd: String,
+    agent_id: Option<String>,
     acp_model: Option<String>,
+    custom_model_selection: Option<String>,
     agent_source: crate::agent_source::AgentSource,
     source_cwd: Option<String>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
@@ -115,8 +117,8 @@ use crate::coordinator::{recommended_choice_index, RecommendationChoice, Recomme
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest, RestartRequest,
+    AgentReconnectRequest, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
+    PromptSubmission, RenameSessionRequest, RestartRequest,
 };
 use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
@@ -292,6 +294,31 @@ pub fn build_setup_options(
     }
     opts.push(SetupOption::ChooseAgentSource);
     opts
+}
+
+pub async fn preflight_agent_in_source(
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+) -> PreflightResult {
+    if agent_id.starts_with("custom:") || !crate::agent_registry::is_known_id(agent_id) {
+        return PreflightResult::passed_for_custom_agent(agent_id);
+    }
+
+    let status = crate::agent_check::check_agent_in_source(agent_id, source).await;
+    PreflightResult {
+        agent_id: agent_id.to_string(),
+        display_name: status.display_name,
+        cli_status: if status.cli_found {
+            CheckStatus::Passed
+        } else {
+            CheckStatus::Failed("Not found on PATH".to_string())
+        },
+        cli_path: status.cli_path,
+        auth_status: CheckStatus::Skipped,
+        install_hint: status.install_hint,
+        install_url: String::new(),
+        auth_hint: status.auth_hint,
+    }
 }
 
 // --- State types ---
@@ -960,6 +987,14 @@ pub struct App {
     pub state: ConnectionState,
     /// The agent ID we're trying to connect to (set at preflight/FRE time).
     pub current_agent_id: String,
+    /// Highest host-issued Settings rebind generation observed by this helper.
+    last_agent_rebind_generation: u64,
+    last_agent_rebind_window_id: Option<String>,
+    /// Latest accepted target while the current ACP transport is unwinding.
+    pending_agent_reconnect: Option<AgentReconnectRequest>,
+    agent_reconnect_disconnect_pending: bool,
+    agent_reconnect_preflight_pending: bool,
+    suppress_next_failed_client_error: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
     /// Agent ids supplied by Windows Terminal after GPO filtering.
@@ -1289,6 +1324,12 @@ impl App {
             deferred_acp: None,
             state: ConnectionState::Connecting(t!("connection.starting").into_owned()),
             current_agent_id: String::new(),
+            last_agent_rebind_generation: 0,
+            last_agent_rebind_window_id: None,
+            pending_agent_reconnect: None,
+            agent_reconnect_disconnect_pending: false,
+            agent_reconnect_preflight_pending: false,
+            suppress_next_failed_client_error: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
             host_agent_allowlist_present: false,
@@ -1407,7 +1448,9 @@ impl App {
         &mut self,
         pipe_name: String,
         agent_cmd: String,
+        agent_id: Option<String>,
         acp_model: Option<String>,
+        custom_model_selection: Option<String>,
         agent_source: crate::agent_source::AgentSource,
         source_cwd: Option<String>,
         owner_tab_id: Option<String>,
@@ -1416,7 +1459,9 @@ impl App {
     ) {
         self.deferred_acp = Some(DeferredAcpParams {
             agent_cmd,
+            agent_id,
             acp_model,
+            custom_model_selection,
             agent_source,
             source_cwd,
             prompt_rx: None,
@@ -1510,6 +1555,7 @@ impl App {
                 params.master_ext_rx.take(),
             ) {
                 let acp_model = params.acp_model.clone();
+                let custom_model_selection = params.custom_model_selection.clone();
                 let agent_source = params.agent_source.clone();
                 let source_cwd = params.source_cwd.clone();
                 let event_tx = tx.clone();
@@ -1517,14 +1563,16 @@ impl App {
                 let wt_connected = params.wt_connected;
                 let pipe_name_opt = params.master_pipe_name.clone();
                 let owner_tab_opt = params.owner_tab_id.clone();
-                // Per-tab agent identity for the multi-agent master: declare
-                // which agent this reconnecting helper wants. Derived from the
-                // configured agent_cmd — the master reconstructs the command
-                // from the id and never executes a string off the pipe.
-                let agent_cmd_opt = Some(params.agent_cmd.clone()).filter(|s| !s.trim().is_empty());
-                let agent_id_opt = agent_cmd_opt
-                    .as_deref()
-                    .map(|c| crate::agent_registry::resolve_agent_id_from_cmd(c).to_string());
+                // Per-tab agent identity for the multi-agent master. Prefer
+                // the canonical host-supplied id; command parsing is retained
+                // for compatibility with older deferred state.
+                let agent_id_opt = params.agent_id.clone().or_else(|| {
+                    Some(params.agent_cmd.as_str())
+                        .filter(|command| !command.trim().is_empty())
+                        .map(|command| {
+                            crate::agent_registry::resolve_agent_id_from_cmd(command).to_string()
+                        })
+                });
 
                 if let Some(pipe_name) = pipe_name_opt {
                     // Pipe-mode reconnect (helper after FRE login).
@@ -1551,9 +1599,10 @@ impl App {
                     let event_tx_for_pipe = event_tx.clone();
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
-                        if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
+                        match crate::protocol::acp::client::run_acp_client_over_pipe(
                             pipe_name,
                             acp_model,
+                            custom_model_selection,
                             cloud_models,
                             agent_id_opt,
                             agent_source,
@@ -1577,56 +1626,67 @@ impl App {
                         )
                         .await
                         {
-                            tracing::error!(
-                                target: "helper",
-                                error = %e,
-                                "run_acp_client_over_pipe failed on reconnect"
-                            );
-                            let failure = crate::protocol::acp::failure::classify_anyhow(
-                                &e,
-                                crate::protocol::acp::failure::HandshakeStage::Initialize,
-                            );
-                            // A post-login reconnect may fail because the old
-                            // shared master is stale/dead after login:
-                            //   * External-auth agent still AuthRequired after
-                            //     authenticate/new_session → the long-lived CLI
-                            //     cached unauthenticated state.
-                            //   * PipeConnect failure → the master died before
-                            //     login (e.g. Copilot was missing during IT
-                            //     install flow), so the saved pipe no longer
-                            //     exists.
-                            // Both need a fresh master rather than another
-                            // sign-in screen.
-                            let is_external = matches!(
-                                crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
-                                    .acp_auth_flow,
-                                crate::agent_registry::AcpAuthFlow::External
-                            );
-                            if should_trigger_post_login_recovery(
-                                post_login_auth,
-                                is_external,
-                                &failure,
-                            ) {
-                                tracing::warn!(
-                                    target: "auth_recovery",
-                                    agent_id = %recovery_agent_id,
-                                    tab_id = ?recovery_tab_id,
-                                    failure_class = failure.class(),
-                                    "post-login reconnect needs fresh master; requesting auth recovery"
+                            Ok(crate::protocol::acp::client::AcpClientExit::RebindAgent(
+                                request,
+                            )) => {
+                                let _ =
+                                    event_tx_for_pipe.send(AppEvent::AgentReconnectReady(request));
+                            }
+                            Ok(crate::protocol::acp::client::AcpClientExit::ChannelsClosed) => {}
+                            Err(e) => {
+                                let _ = event_tx_for_pipe.send(AppEvent::AgentClientFailed);
+                                tracing::error!(
+                                    target: "helper",
+                                    error = %e,
+                                    "run_acp_client_over_pipe failed on reconnect"
                                 );
-                                let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
-                                    failure,
-                                    tab_id: recovery_tab_id.clone(),
-                                    agent_id: recovery_agent_id.clone(),
-                                });
-                            } else {
-                                let _ = event_tx_for_pipe.send(AppEvent::AgentError {
-                                    session_id: None,
-                                    failure,
-                                    message: format!(
-                                        "helper ACP transport failed on reconnect: {e:#}"
-                                    ),
-                                });
+                                let failure = crate::protocol::acp::failure::classify_anyhow(
+                                    &e,
+                                    crate::protocol::acp::failure::HandshakeStage::Initialize,
+                                );
+                                // A post-login reconnect may fail because the old
+                                // shared master is stale/dead after login:
+                                //   * External-auth agent still AuthRequired after
+                                //     authenticate/new_session → the long-lived CLI
+                                //     cached unauthenticated state.
+                                //   * PipeConnect failure → the master died before
+                                //     login (e.g. Copilot was missing during IT
+                                //     install flow), so the saved pipe no longer
+                                //     exists.
+                                // Both need a fresh master rather than another
+                                // sign-in screen.
+                                let is_external = matches!(
+                                    crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
+                                        .acp_auth_flow,
+                                    crate::agent_registry::AcpAuthFlow::External
+                                );
+                                if should_trigger_post_login_recovery(
+                                    post_login_auth,
+                                    is_external,
+                                    &failure,
+                                ) {
+                                    tracing::warn!(
+                                        target: "auth_recovery",
+                                        agent_id = %recovery_agent_id,
+                                        tab_id = ?recovery_tab_id,
+                                        failure_class = failure.class(),
+                                        "post-login reconnect needs fresh master; requesting auth recovery"
+                                    );
+                                    let _ =
+                                        event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
+                                            failure,
+                                            tab_id: recovery_tab_id.clone(),
+                                            agent_id: recovery_agent_id.clone(),
+                                        });
+                                } else {
+                                    let _ = event_tx_for_pipe.send(AppEvent::AgentError {
+                                        session_id: None,
+                                        failure,
+                                        message: format!(
+                                            "helper ACP transport failed on reconnect: {e:#}"
+                                        ),
+                                    });
+                                }
                             }
                         }
                     });
@@ -1883,12 +1943,7 @@ impl App {
     /// this helper owns. No-op on an empty/whitespace model — an empty
     /// override means "agent default", which `set_session_model` can't
     /// express.
-    fn send_session_model(
-        &self,
-        session_id: Option<String>,
-        model: String,
-        pane_override: bool,
-    ) {
+    fn send_session_model(&self, session_id: Option<String>, model: String, pane_override: bool) {
         if model.trim().is_empty() {
             return;
         }
@@ -1941,6 +1996,9 @@ impl App {
         }
 
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
+        if let Some(params) = self.deferred_acp.as_mut() {
+            params.acp_model.clone_from(&self.acp_model);
+        }
         self.send_acp_model_update();
         self.publish_agent_status();
         true
@@ -3443,11 +3501,170 @@ impl App {
                 resolved
             );
             params.agent_cmd = resolved;
+            params.agent_id = Some(agent_id.to_string());
         }
         // Remember the selected agent so we can notify C++ after connection succeeds.
         // We don't notify now because mid-FRE WriteSettingsToDisk triggers
         // _RebuildAgentStack which tears down the in-progress agent pane.
         self.pending_agent_selection = Some(agent_id.to_string());
+    }
+
+    fn prepare_agent_reconnect(&mut self, request: &AgentReconnectRequest) {
+        let new_cmd = self.build_agent_cmd(&request.agent_id);
+        if let Some(ref mut params) = self.deferred_acp {
+            params.agent_cmd.clone_from(&new_cmd);
+            params.agent_id = Some(request.agent_id.clone());
+            params.acp_model.clone_from(&request.acp_model);
+            params
+                .custom_model_selection
+                .clone_from(&request.custom_model_selection);
+            params.agent_source = request.agent_source.clone();
+            if matches!(request.agent_source, crate::agent_source::AgentSource::Host) {
+                params.source_cwd = None;
+            }
+        }
+
+        self.current_agent_id.clone_from(&request.agent_id);
+        self.current_agent_source = request.agent_source.clone();
+        self.delegate_base_agent_cmd = new_cmd;
+        self.acp_model.clone_from(&request.acp_model);
+        self.custom_model_selection
+            .clone_from(&request.custom_model_selection);
+        self.reset_agent_scoped_state();
+    }
+
+    fn reset_agent_scoped_state(&mut self) {
+        self.pending_acp_start = false;
+        self.pending_agent_selection = None;
+        self.suppress_next_failed_client_error = false;
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
+        self.needs_post_login_authenticate = false;
+        self.preflight_setup_active = false;
+        self.agent_reconnect_preflight_pending = false;
+        self.mode = AppMode::Chat;
+        self.auth = None;
+        self.setup = None;
+        self.agent_name.clear();
+        self.agent_model = None;
+        self.agent_version = None;
+        self.available_models.clear();
+        self.model_picker_models.clear();
+        self.current_model_id = None;
+        self.agent_models.clear();
+        self.agent_current_model_id = None;
+        self.agent_supports_load_session = false;
+        self.agent_supports_image = false;
+        self.host_catalog_ready = false;
+        self.cloud_models.clear();
+        self.session_id.clear();
+        self.session_to_tab.clear();
+        self.session_model_configs.clear();
+        self.session_config_options.clear();
+        let active_tab_id = self.active_tab_key().to_string();
+        for tab in self.tab_sessions.values_mut() {
+            tab.clear_chat_history();
+            tab.usage = None;
+            tab.usage_staleness = crate::usage::UsageStaleness::default();
+            tab.completed_turns.clear();
+            tab.session_id = None;
+            tab.loading_session = false;
+            tab.loading_target_session_id = None;
+            tab.model_override = None;
+            tab.model_picker_open = false;
+            tab.model_picker_selected = 0;
+            tab.config_picker = ConfigPickerState::Closed;
+            tab.config_pending_id = None;
+            tab.agent_picker_open = false;
+            tab.agent_picker_selected = 0;
+            tab.pending_terminal_action_proposal = None;
+            tab.active_direct_proposal_id = None;
+            tab.last_emitted_chip_override = None;
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.autofix.pane_id = None;
+            tab.autofix.armed_at = None;
+            tab.autofix.suggested_pane_id = None;
+            tab.autofix.trigger_echo_pane = None;
+            tab.autofix.bar_snapshot = Default::default();
+        }
+        if self.tab_sessions.contains_key(&active_tab_id) {
+            self.emit_autofix_state_cleared(&active_tab_id);
+        }
+        self.proposal_channels.set_agent_transport_available(false);
+        self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
+        self.publish_agent_status();
+    }
+
+    fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
+        if !self.agent_reconnect_disconnect_pending {
+            return None;
+        }
+
+        self.agent_reconnect_disconnect_pending = false;
+        let latest = self.pending_agent_reconnect.clone()?;
+        self.reset_agent_scoped_state();
+        self.agent_reconnect_preflight_pending = true;
+        if let Some(tx) = self.event_tx.clone() {
+            let operation_id = latest.operation_id.clone();
+            let generation = latest.generation;
+            let agent_id = latest.agent_id.clone();
+            let source = latest.agent_source.clone();
+            tokio::task::spawn_local(async move {
+                let result = preflight_agent_in_source(&agent_id, &source).await;
+                let _ = tx.send(AppEvent::AgentReconnectPreflightComplete {
+                    operation_id,
+                    generation,
+                    result,
+                });
+            });
+        }
+        Some(latest)
+    }
+
+    fn show_preflight_setup(&mut self, result: PreflightResult) {
+        let reason = SetupReason::AgentMissing;
+        let current_status = if matches!(
+            self.current_agent_source,
+            crate::agent_source::AgentSource::Wsl { .. }
+        ) {
+            None
+        } else {
+            Some(crate::agent_check::AgentStatus {
+                id: result.agent_id.clone(),
+                display_name: result.display_name.clone(),
+                cli_found: result.cli_status == CheckStatus::Passed,
+                cli_path: result.cli_path.clone(),
+                install_hint: result.install_hint.clone(),
+                auth_hint: result.auth_hint.clone(),
+                auto_installable: result.agent_id.eq_ignore_ascii_case("copilot"),
+            })
+        };
+        let options = build_setup_options(&reason, current_status.as_ref());
+        let title = reason.title().to_string();
+        let subtitle = if current_status
+            .as_ref()
+            .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
+        {
+            t!(
+                "setup.subtitle.copilot_missing",
+                agent = &result.display_name
+            )
+            .into_owned()
+        } else {
+            t!("setup.subtitle.agent_missing", agent = &result.display_name).into_owned()
+        };
+        self.mode = AppMode::Setup;
+        self.preflight_setup_active = true;
+        self.setup = Some(SetupState {
+            reason,
+            preflight: result,
+            selected_index: 0,
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options,
+            title,
+            subtitle,
+        });
     }
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
@@ -3817,7 +4034,7 @@ impl App {
                                 self.pending_acp_start = true;
                             } else {
                                 let new_cmd = self.build_agent_cmd(&agent_id);
-                                let _ = self.restart_tx.send(RestartRequest {
+                                let _ = self.restart_tx.send(RestartRequest::RestartStack {
                                     agent_cmd: Some(new_cmd),
                                 });
                             }
@@ -4079,6 +4296,8 @@ impl App {
             AppEvent::ConnectionStage(_) => "connection_stage",
             AppEvent::CloudModelsAvailable(_) => "cloud_models_available",
             AppEvent::AgentConnected { .. } => "agent_connected",
+            AppEvent::AgentReconnectReady(_) => "agent_reconnect_ready",
+            AppEvent::AgentClientFailed => "agent_client_failed",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
@@ -4123,6 +4342,9 @@ impl App {
             AppEvent::AuthRecoveryTimedOut { .. } => "auth_recovery_timed_out",
             AppEvent::AgentSourcesDiscovered { .. } => "agent_sources_discovered",
             AppEvent::PreflightComplete(_) => "preflight_complete",
+            AppEvent::AgentReconnectPreflightComplete { .. } => {
+                "agent_reconnect_preflight_complete"
+            }
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",
@@ -5168,7 +5390,9 @@ impl App {
             tab.completed_turns.clear();
             tab.session_id = None;
         }
-        let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
+        let _ = self
+            .restart_tx
+            .send(RestartRequest::RestartStack { agent_cmd: None });
         self.publish_agent_status();
     }
 

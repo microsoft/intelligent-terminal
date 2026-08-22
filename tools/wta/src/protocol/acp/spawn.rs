@@ -32,6 +32,17 @@ pub(crate) enum ChildEnvironmentPolicy {
     CleanCloudDiscovery,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum SharedProviderSelection<'a> {
+    /// Backward-compatible behavior for callers that do not declare whether
+    /// they follow Terminal's current provider selection.
+    Inherit,
+    /// The helper authoritatively selected the agent's native provider.
+    Disabled,
+    /// Apply the master-resolved Terminal custom-provider configuration.
+    Custom(&'a crate::custom_model_provider::Config),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StderrPhase {
     Startup,
@@ -226,6 +237,22 @@ pub(crate) fn spawn_agent_process(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
+    spawn_agent_process_with_provider(
+        agent_cmd,
+        cwd,
+        agent_id,
+        environment_policy,
+        SharedProviderSelection::Inherit,
+    )
+}
+
+pub(crate) fn spawn_agent_process_with_provider(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -261,7 +288,13 @@ pub(crate) fn spawn_agent_process(
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
-    configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
+    configure_child_environment(
+        &mut cmd,
+        agent_cmd,
+        agent_id,
+        environment_policy,
+        provider_selection,
+    )?;
     if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
         cmd.arg("--omit=optional");
     }
@@ -413,12 +446,26 @@ fn configure_child_environment(
     agent_cmd: &str,
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
 ) -> Result<Option<crate::agent_registry::ByokMode>> {
     let profile = resolve_spawn_profile(agent_cmd, agent_id);
     let configured_provider = match environment_policy {
-        ChildEnvironmentPolicy::ApplySharedProvider => {
-            crate::custom_model_provider::configure_child(command, profile.byok_mode)
-        }
+        ChildEnvironmentPolicy::ApplySharedProvider => match provider_selection {
+            SharedProviderSelection::Inherit => {
+                crate::custom_model_provider::configure_child(command, profile.byok_mode)
+            }
+            SharedProviderSelection::Disabled => {
+                crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
+                Ok(None)
+            }
+            SharedProviderSelection::Custom(config) => {
+                crate::custom_model_provider::configure_child_with_config(
+                    command,
+                    profile.byok_mode,
+                    config,
+                )
+            }
+        },
         ChildEnvironmentPolicy::CleanCloudDiscovery => {
             crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
             Ok(None)
@@ -465,10 +512,32 @@ pub(crate) fn spawn_agent_process_for_source(
     source: &crate::agent_source::AgentSource,
     environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
+    spawn_agent_process_for_source_with_provider(
+        agent_cmd,
+        cwd,
+        agent_id,
+        source,
+        environment_policy,
+        SharedProviderSelection::Inherit,
+    )
+}
+
+pub(crate) fn spawn_agent_process_for_source_with_provider(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
     match source {
-        crate::agent_source::AgentSource::Host => {
-            spawn_agent_process(agent_cmd, cwd, agent_id, environment_policy)
-        }
+        crate::agent_source::AgentSource::Host => spawn_agent_process_with_provider(
+            agent_cmd,
+            cwd,
+            agent_id,
+            environment_policy,
+            provider_selection,
+        ),
         crate::agent_source::AgentSource::Wsl { distro } => {
             spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
         }
@@ -669,6 +738,7 @@ mod tests {
             "copilot --acp --stdio",
             Some("copilot"),
             ChildEnvironmentPolicy::CleanCloudDiscovery,
+            SharedProviderSelection::Inherit,
         )
         .expect("clean cloud policy should not require shared configuration");
 
@@ -679,6 +749,33 @@ mod tests {
                 configured_env.get(std::ffi::OsStr::new(key)),
                 Some(&None),
                 "cloud policy must scrub {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_provider_selection_scrubs_inherited_byok_environment() {
+        let mut command = tokio::process::Command::new("copilot");
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            command.env(key, "stale-provider-value");
+        }
+
+        let applied = configure_child_environment(
+            &mut command,
+            "copilot --acp --stdio",
+            Some("copilot"),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            SharedProviderSelection::Disabled,
+        )
+        .expect("native provider selection should not require BYOK configuration");
+
+        assert_eq!(applied, None);
+        let configured_env: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&None),
+                "native provider selection must scrub stale {key}"
             );
         }
     }

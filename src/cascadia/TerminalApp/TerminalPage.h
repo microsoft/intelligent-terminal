@@ -429,14 +429,14 @@ namespace winrt::TerminalApp::implementation
                                   const winrt::com_ptr<Tab>& ownerTab);
 
         // Hot-reload of agent/model settings. Snapshot is captured on first
-        // SetSettings and after every rebuild; a diff drives teardown/rebuild
-        // of the agent pane.
+        // SetSettings and after every reconciliation. Built-in global agent
+        // changes rebind the existing helper in place; changes that alter
+        // trusted master launch state keep the destructive rebuild path.
         //
-        // Agent identity changes (global acpAgent/acpCustomCommand, the
-        // effective model selection, or an effective per-profile backend)
-        // rebuild affected helpers. Model changes force a master respawn so
-        // the agent CLI starts with a clean model-provider environment;
-        // unselected provider catalog changes are hot-updated.
+        // Built-in agent and model binding changes rebind affected helpers.
+        // Native models with a live ACP switch path update the current session
+        // directly. Trusted custom commands and profile backend changes retain
+        // the destructive path.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -447,15 +447,61 @@ namespace winrt::TerminalApp::implementation
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
+        enum class AgentSettingsChangeKind
+        {
+            None,
+            ModelHotUpdate,
+            AgentRebind,
+            Rebuild,
+        };
+        enum class AgentPaneSettingsRebindDisposition
+        {
+            Rebind,
+            Recreate,
+        };
+        struct AgentPaneSettingsBindingRequest
+        {
+            bool hasAgentOverride{ false };
+            std::wstring agentIdOverride;
+            std::wstring agentModelOverride;
+            std::wstring agentCustomCommandOverride;
+            std::wstring agentSourceOverride;
+            std::wstring agentWslDistroOverride;
+            std::wstring profileBackend;
+            std::wstring profileActiveShell;
+            std::wstring globalAgentId;
+            std::wstring globalModel;
+            std::wstring globalAgentCliPath;
+            std::wstring detectedGlobalAgentId;
+            std::wstring customModelSelection;
+        };
+        struct AgentPaneSettingsBinding
+        {
+            std::wstring agentId;
+            std::wstring agentSource;
+            std::wstring agentWslDistro;
+            std::wstring acpModel;
+            std::wstring customModelSelection;
+            bool followsGlobalAcpModel{ false };
+            bool launchable{ false };
+            bool supportsGlobalHostByok{ false };
+        };
+        struct AgentPaneRecreationOptions
+        {
+            bool autoStash;
+            bool focusPane;
+        };
         std::string _settingsReloadRequestId;
         std::optional<std::string> _pendingAgentRebuildRequestId;
+        uint64_t _agentSettingsRebindGeneration{ 0 };
         static std::string _AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot);
-        // Hot-updatable runtime agent config. When any of these change we
+        // Hot-updatable non-binding agent config. When any of these change we
         // push a single consolidated `agent_config_changed` event to the
-        // running wta-helper(s) so they update in place — no agent-pane
-        // teardown/restart. This is the unified dispatch point for every
-        // agent setting that can be hot-reloaded (autofix gate, delegate
-        // agent/model, credential-free model catalogs).
+        // running wta-helper(s) so they update in place. ACP model binding
+        // changes are reconciled separately so unready helpers can be
+        // recreated before the settings snapshot advances. This remains the
+        // unified dispatch point for the autofix gate, delegate agent/model,
+        // and credential-free model catalogs.
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
@@ -526,9 +572,38 @@ namespace winrt::TerminalApp::implementation
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
-        // Compares only agent-CLI *identity* fields — the change that forces
-        // a master respawn. Model/delegate changes are handled by
-        // _EmitAgentRuntimeConfigIfChanged instead.
+        static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
+            const AgentSettingsSnapshot& previous,
+            const AgentSettingsSnapshot& current);
+        static bool _ShouldDeferAgentSettingsChange(
+            AgentSettingsChangeKind changeKind,
+            bool canHostPane,
+            bool masterConfigurationChanged) noexcept;
+        static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
+            bool helperEventReady) noexcept;
+        static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
+            bool wasStashed,
+            bool isActiveTab) noexcept;
+        static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
+            const AgentPaneSettingsBindingRequest& request);
+        static bool _IsAgentPaneSettingsRebindAffected(
+            const AgentPaneSettingsBinding& binding,
+            bool globalAgentChanged,
+            bool cloudModelChanged,
+            bool customModelLaunchChanged) noexcept;
+        static bool _IsAgentPaneModelHotUpdateTarget(
+            const std::optional<AgentPaneSettingsBinding>& binding,
+            std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
+            bool helperEventReady,
+            bool agentConnected) noexcept;
+        static bool _ShouldRecreateAgentPaneForModelHotUpdate(
+            const std::optional<AgentPaneSettingsBinding>& binding,
+            std::optional<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> connectionState,
+            bool helperEventReady,
+            bool agentConnected) noexcept;
+        static Json::Value _BuildAgentPaneSettingsRebindPayload(
+            const AgentPaneSettingsBinding& binding);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot
@@ -591,7 +666,8 @@ namespace winrt::TerminalApp::implementation
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
                                               std::string_view initialLoadCwd = {},
-                                              std::wstring_view initialAuthAgent = {});
+                                              std::wstring_view initialAuthAgent = {},
+                                              bool focusPane = true);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

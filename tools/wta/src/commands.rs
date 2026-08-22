@@ -27,14 +27,10 @@ pub enum CommandKind {
     /// * Standalone wta: tears down + respawns the agent CLI in-process;
     ///   tabs lazily get fresh sessions on the next prompt.
     /// * Helper mode: fires a `restart_agent_stack` `SendEvent` to the C++
-    ///   side, which mirrors the path settings reload already takes when
-    ///   `acpAgent` changes: tear down every agent pane (master + helper
-    ///   processes die with them), force `SharedWta::Restart()` to bypass
-    ///   refcount and respawn master on the *same stable pipe name*, and
-    ///   re-toggle the active tab's agent pane. The new helper auto-
-    ///   connects to the new master. Visible UX: agent panes flash closed
-    ///   and reopen with a clean session; nothing requires the user to
-    ///   restart Windows Terminal.
+    ///   side. This explicit recovery command tears down every agent pane,
+    ///   force-restarts the shared master on the same stable pipe name, and
+    ///   recreates the panes with clean sessions. Normal Settings agent/model
+    ///   changes use the non-destructive rebind or live-switch paths instead.
     Restart,
     Sessions,
     /// Pick the ACP agent for this Windows Terminal tab.
@@ -48,8 +44,9 @@ pub enum CommandKind {
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing configured BYOK
-    /// models. Cloud/native models are intentionally omitted; model changes
-    /// are made through Settings because they require an agent restart.
+    /// models. Cloud/native models are intentionally omitted; global model
+    /// changes remain managed through Settings and follow each agent's live
+    /// switch or reconnect capability.
     Model,
     /// Configure the current ACP session using Agent-provided config options.
     Config,

@@ -95,6 +95,10 @@ namespace winrt::TerminalApp::implementation
         // capability exists before connect (cold start) or after a
         // failure/disconnect, so the button must not appear at all.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
+        // True after the first agent_status routed to this pane. The helper
+        // subscribes to WT events before it can publish that status, so this
+        // also proves that settings events can reach the helper.
+        bool IsHelperEventReady() const noexcept { return _helperEventReady; }
         winrt::hstring GetLastErrorPaneId() const noexcept { return _lastErrorPaneId; }
         winrt::hstring GetFixPreview() const noexcept { return _fixPreview; }
         winrt::hstring GetHotkeyHint() const noexcept { return _hotkeyHint; }
@@ -143,6 +147,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
+        bool _helperEventReady{ false };
 
         // When true, the bar replaces the agent/model label with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged

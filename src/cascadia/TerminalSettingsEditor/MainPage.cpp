@@ -24,6 +24,7 @@
 #include "NewTabMenuViewModel.h"
 #include "NewTabMenu.h"
 #include "NavConstants.h"
+#include "..\inc\AgentAvailability.h"
 #include "..\types\inc\utils.hpp"
 #include <..\WinRTUtils\inc\Utils.h>
 
@@ -157,10 +158,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 contentFrame().Navigate(xaml_typename<Editor::Extensions>(), winrt::make<NavigateToPageArgs>(_extensionsVM, *this));
             }
         });
-
         // Make sure to initialize the profiles _after_ we have initialized the color schemes page VM, because we pass
         // that VM into the appearance VMs within the profiles
         _InitializeProfilesList();
+        _ProbeHostAgentAvailabilityAsync();
 
         // Apply icons and tooltips (GH#19688, long names may be truncated) to static nav items
         for (const auto& item : SettingsNav().MenuItems())
@@ -680,6 +681,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 if (!_profileDefaultsVM)
                 {
                     _profileDefaultsVM = _viewModelForProfile(_settingsClone.ProfileDefaults(), _settingsClone, Dispatcher());
+                    _ApplyHostAgentAvailability(_profileDefaultsVM);
                     _profileDefaultsVM.SetupAppearances(_colorSchemesPageVM.AllColorSchemes());
                     _profileDefaultsVM.IsBaseLayer(true);
                 }
@@ -958,6 +960,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             if (!profile.Deleted())
             {
                 auto profileVM = _viewModelForProfile(profile, _settingsClone, Dispatcher());
+                _ApplyHostAgentAvailability(profileVM);
                 profileVM.SetupAppearances(_colorSchemesPageVM.AllColorSchemes());
                 auto navItem = _CreateProfileNavViewItem(profileVM);
                 _menuItemSource.Append(navItem);
@@ -1016,6 +1019,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         const auto newProfile{ profile ? profile : _settingsClone.CreateNewProfile() };
         const auto profileViewModel{ _viewModelForProfile(newProfile, _settingsClone, Dispatcher()) };
+        _ApplyHostAgentAvailability(profileViewModel);
         profileViewModel.SetupAppearances(_colorSchemesPageVM.AllColorSchemes());
         const auto navItem{ _CreateProfileNavViewItem(profileViewModel) };
 
@@ -1085,6 +1089,34 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _profileVMs.Append(profile);
 
         return profileNavItem;
+    }
+
+    void MainPage::_ApplyHostAgentAvailability(const Editor::ProfileViewModel& profile)
+    {
+        winrt::get_self<implementation::ProfileViewModel>(profile)->SetAvailableHostAgents(_availableHostAgents);
+    }
+
+    safe_void_coroutine MainPage::_ProbeHostAgentAvailabilityAsync()
+    {
+        const auto dispatcher = Dispatcher();
+        auto weakThis = get_weak();
+        co_await winrt::resume_background();
+
+        auto availableHostAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
+
+        co_await wil::resume_foreground(dispatcher);
+        if (auto strongThis = weakThis.get())
+        {
+            strongThis->_availableHostAgents = std::move(availableHostAgents);
+            for (const auto& profile : strongThis->_profileVMs)
+            {
+                strongThis->_ApplyHostAgentAvailability(profile);
+            }
+            if (strongThis->_profileDefaultsVM)
+            {
+                strongThis->_ApplyHostAgentAvailability(strongThis->_profileDefaultsVM);
+            }
+        }
     }
 
     void MainPage::_DeleteProfile(const IInspectable /*sender*/, const Editor::DeleteProfileEventArgs& args)

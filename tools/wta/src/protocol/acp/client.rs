@@ -9,7 +9,7 @@ use agent_client_protocol as acp;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
 use tokio::sync::mpsc;
@@ -129,14 +129,51 @@ pub struct NewSessionForTab {
     pub cwd: Option<String>,
 }
 
-/// User-initiated full reconnect of the ACP client. Emitted by the
-/// `/restart` slash command. The ACP client task kills the agent child
-/// process, drops the connection, then respawns the agent and
-/// re-initializes from scratch. If `agent_cmd` is set, the supervisor
-/// switches to a different agent on restart.
-#[derive(Debug, Clone, Default)]
-pub struct RestartRequest {
-    pub agent_cmd: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentReconnectRequest {
+    pub operation_id: String,
+    pub window_id: String,
+    pub generation: u64,
+    pub agent_id: String,
+    pub acp_model: Option<String>,
+    pub custom_model_selection: Option<String>,
+    pub agent_source: crate::agent_source::AgentSource,
+}
+
+/// Control requests that end or replace the helper's current ACP connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestartRequest {
+    /// `/restart` still asks C++ to replace the complete shared stack.
+    RestartStack { agent_cmd: Option<String> },
+    /// Settings agent changes keep the helper process and reconnect it to the
+    /// same master with a fresh immutable per-connection agent binding.
+    RebindAgent(AgentReconnectRequest),
+}
+
+impl Default for RestartRequest {
+    fn default() -> Self {
+        Self::RestartStack { agent_cmd: None }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcpClientExit {
+    ChannelsClosed,
+    RebindAgent(AgentReconnectRequest),
+}
+
+struct ClientTransportGuard {
+    conn: conn::ClientLink,
+    suppress_transport_error: Arc<AtomicBool>,
+}
+
+impl Drop for ClientTransportGuard {
+    fn drop(&mut self) {
+        // Direct setup failures are reported by this task's caller. Close the
+        // separately owned connection task without a second TransportLost.
+        self.suppress_transport_error.store(true, Ordering::Release);
+        self.conn.shutdown();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2346,6 +2383,7 @@ async fn handle_load_failure(
 pub async fn run_acp_client_over_pipe(
     pipe_name: String,
     acp_model_override: Option<String>,
+    custom_model_selection: Option<String>,
     supplied_cloud_models: Vec<AcpModelInfo>,
     // Per-tab agent identity. Forwarded to the multi-agent master in the
     // `initialize` handshake's `_meta.wta.agent_id` so master selects and
@@ -2371,7 +2409,7 @@ pub async fn run_acp_client_over_pipe(
     wt_connected: bool,
     post_login_reconnect: bool,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
-) -> Result<()> {
+) -> Result<AcpClientExit> {
     let startup_probe = StartupProbe::new();
     let usage_family_id = agent_id.as_deref().and_then(|agent_id| {
         let family_id = agent_id.trim().to_ascii_lowercase();
@@ -2591,9 +2629,15 @@ pub async fn run_acp_client_over_pipe(
     let (conn, handle_io) = conn::spawn_client(builder, conn::byte_streams(outgoing, incoming));
     startup_probe.log("ACP client connection created (over pipe)");
 
+    let intentional_shutdown = Arc::new(AtomicBool::new(false));
+    let _transport_guard = ClientTransportGuard {
+        conn: conn.clone(),
+        suppress_transport_error: Arc::clone(&intentional_shutdown),
+    };
+    let io_intentional_shutdown = Arc::clone(&intentional_shutdown);
     let io_probe = startup_probe.clone();
     let io_event_tx = event_tx.clone();
-    tokio::task::spawn_local(async move {
+    let mut io_task = Some(tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started (over pipe)");
         // The I/O loop only ends when the pipe to wta-master is gone. Crucially,
         // a *killed* master resolves this as **Ok(())** (clean EOF on the pipe),
@@ -2611,10 +2655,13 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        // Either way the transport is dead. Terminate the helper instead of
-        // retaining a disconnected pane or attempting to restore its session.
-        let _ = io_event_tx.send(AppEvent::MasterDisconnected);
-    });
+        if !io_intentional_shutdown.load(Ordering::Acquire) {
+            // An unexpected transport loss terminates the helper so Terminal
+            // can recover its pane. A settings rebind closes this transport
+            // intentionally and reconnects in the existing helper process.
+            let _ = io_event_tx.send(AppEvent::MasterDisconnected);
+        }
+    }));
 
     // Initialize — same as the child-process path. We use a 60s timeout
     // here because the first helper to connect to a fresh master may
@@ -2663,6 +2710,12 @@ pub async fn run_acp_client_over_pipe(
                 // silent (master applies its own `--agent` default).
                 agent_id: usage_family_id.clone(),
                 model: acp_model_override.clone().filter(|s| !s.trim().is_empty()),
+                provider_binding: Some(
+                    custom_model_selection
+                        .clone()
+                        .filter(|selection| !selection.trim().is_empty())
+                        .unwrap_or_else(|| "default".to_string()),
+                ),
                 agent_source: Some(agent_source.kind().to_string()),
                 wsl_distro: agent_source.distro().map(str::to_string),
                 cloud_models: if supplied_cloud_models.is_empty() {
@@ -3122,6 +3175,7 @@ pub async fn run_acp_client_over_pipe(
         Arc::new(std::sync::Mutex::new(HashSet::new()));
     let cancel_signals: Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>> =
         Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let mut prompt_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     let conn = Arc::new(conn);
 
@@ -3172,31 +3226,43 @@ pub async fn run_acp_client_over_pipe(
                 dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
-                // Helper can't restart the agent CLI in-process — master owns
-                // its lifetime, and master itself is a singleton owned by
-                // `SharedWta` on the C++ side. Ask the C++ side to do a full
-                // force-restart of the agent stack: tear down every agent
-                // pane, kill master via `SharedWta::Restart()` (bypassing
-                // refcount), respawn master under the same stable pipe name,
-                // and re-toggle the active tab's pane. The new wta-helper
-                // that gets spawned will reconnect to the new master and
-                // the user sees a fresh session.
-                //
-                // Signal travels: helper → `wtcli publish` (see
-                // `wt_protocol_events::send`) → `IProtocolServer::SendEvent`
-                // (route `RestartAgentStack`) →
-                // `TerminalPage::OnRestartAgentStackRequested`.
-                tracing::info!(
-                    target: "helper",
-                    new_agent = ?req.agent_cmd,
-                    "restart requested — asking WT to force-restart the agent stack"
-                );
-                let evt = serde_json::json!({
-                    "type": "event",
-                    "method": "restart_agent_stack",
-                    "params": {},
-                });
-                crate::wt_protocol_events::send(evt.to_string());
+                match req {
+                    RestartRequest::RestartStack { agent_cmd } => {
+                        // Helper can't restart the shared master in-process.
+                        tracing::info!(
+                            target: "helper",
+                            new_agent = ?agent_cmd,
+                            "restart requested — asking WT to force-restart the agent stack"
+                        );
+                        let evt = serde_json::json!({
+                            "type": "event",
+                            "method": "restart_agent_stack",
+                            "params": {},
+                        });
+                        crate::wt_protocol_events::send(evt.to_string());
+                    }
+                    RestartRequest::RebindAgent(request) => {
+                        tracing::info!(
+                            target: "helper",
+                            operation_id = %request.operation_id,
+                            generation = request.generation,
+                            agent_id = %request.agent_id,
+                            "ending helper ACP connection for settings agent rebind"
+                        );
+                        stop_prompt_tasks(
+                            &mut prompt_tasks,
+                            &in_flight_tabs,
+                            &cancel_signals,
+                        )
+                        .await;
+                        intentional_shutdown.store(true, Ordering::Release);
+                        conn.shutdown();
+                        if let Some(task) = io_task.take() {
+                            let _ = task.await;
+                        }
+                        return Ok(AcpClientExit::RebindAgent(request));
+                    }
+                }
             }
             Some(req) = cancel_rx.recv() => {
                 dispatch_cancel(req, &conn, &cancel_signals);
@@ -3243,7 +3309,8 @@ pub async fn run_acp_client_over_pipe(
                 dispatch_rename_session(req, &tab_to_session).await;
             }
             Some(prompt) = prompt_rx.recv() => {
-                dispatch_prompt(
+                prompt_tasks.retain(|task| !task.is_finished());
+                if let Some(task) = dispatch_prompt(
                     prompt,
                     &conn,
                     &tab_to_session,
@@ -3259,14 +3326,17 @@ pub async fn run_acp_client_over_pipe(
                     is_agent_pane,
                     proposal_commands_supported,
                     &proposal_channels,
-                );
+                ) {
+                    prompt_tasks.push(task);
+                }
             }
             else => break,
         }
     }
 
+    stop_prompt_tasks(&mut prompt_tasks, &in_flight_tabs, &cancel_signals).await;
     startup_probe.log("run_acp_client_over_pipe loop ended");
-    Ok(())
+    Ok(AcpClientExit::ChannelsClosed)
 }
 
 /// Spawn a per-prompt task that resolves the tab's ACP session (lazily
@@ -4099,6 +4169,23 @@ fn build_prompt_content(
     content
 }
 
+async fn stop_prompt_tasks(
+    prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
+    in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
+    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+) {
+    let signals = std::mem::take(&mut *cancel_signals.lock().unwrap());
+    for (_, signal) in signals {
+        let _ = signal.send(());
+    }
+    for task in prompt_tasks.drain(..) {
+        task.abort();
+        let _ = task.await;
+    }
+    in_flight_tabs.lock().unwrap().clear();
+    cancel_signals.lock().unwrap().clear();
+}
+
 fn dispatch_prompt(
     prompt: PromptSubmission,
     conn: &conn::ClientLink,
@@ -4115,7 +4202,7 @@ fn dispatch_prompt(
     is_agent_pane: bool,
     proposal_commands_supported: bool,
     proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
-) {
+) -> Option<tokio::task::JoinHandle<()>> {
     let tab_key = prompt
         .pane_context
         .as_ref()
@@ -4128,7 +4215,7 @@ fn dispatch_prompt(
             let _ = event_tx.send(AppEvent::AgentBusy {
                 tab_id: tab_key.clone(),
             });
-            return;
+            return None;
         }
     }
 
@@ -4145,7 +4232,7 @@ fn dispatch_prompt(
     let proposal_channels_task = Arc::clone(proposal_channels);
     let tab_key_task = tab_key.clone();
 
-    tokio::task::spawn_local(dispatch_prompt_body(
+    Some(tokio::task::spawn_local(dispatch_prompt_body(
         prompt,
         conn_task,
         tab_to_session_task,
@@ -4162,7 +4249,7 @@ fn dispatch_prompt(
         is_agent_pane,
         proposal_commands_supported,
         proposal_channels_task,
-    ));
+    )))
 }
 
 /// The per-prompt task body: lazily resolves the tab's ACP session,
@@ -4447,9 +4534,9 @@ mod tests {
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
-        post_login_authenticate_error, session_mcp_tool_from_title, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
-        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        post_login_authenticate_error, session_mcp_tool_from_title, stop_prompt_tasks,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
+        PromptTimingState, PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4457,6 +4544,44 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn stop_prompt_tasks_aborts_pre_prompt_work_and_clears_tracking() {
+        struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::Release);
+            }
+        }
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        tokio::task::LocalSet::new().block_on(&runtime, async {
+            let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let dropped_for_task = Arc::clone(&dropped);
+            let mut tasks = vec![tokio::task::spawn_local(async move {
+                let _flag = DropFlag(dropped_for_task);
+                std::future::pending::<()>().await;
+            })];
+            tokio::task::yield_now().await;
+
+            let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
+            let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
+            let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+                "session-1".to_string(),
+                cancel_tx,
+            )])));
+
+            stop_prompt_tasks(&mut tasks, &in_flight_tabs, &cancel_signals).await;
+
+            assert!(tasks.is_empty());
+            assert!(in_flight_tabs.lock().unwrap().is_empty());
+            assert!(cancel_signals.lock().unwrap().is_empty());
+            assert!(dropped.load(std::sync::atomic::Ordering::Acquire));
+        });
+    }
 
     #[test]
     fn acp_error_detail_prefers_actionable_data() {
