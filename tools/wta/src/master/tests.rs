@@ -278,6 +278,23 @@ fn fresh_host_byok_startup_uses_clean_probe_only_when_needed() {
     use crate::agent_registry::ByokMode;
     use crate::agent_source::AgentSource;
 
+    let custom_binding = ProviderBinding::Custom {
+        selection_id: "custom:provider:model-a".to_string(),
+        generation: 1,
+        config: crate::custom_model_provider::Config {
+            base_url: "https://example.test/v1".to_string(),
+            model: "model-a".to_string(),
+            credential_id: Some("credential-a".to_string()),
+            api_key_required: true,
+            credential_resource: "test",
+        },
+    };
+    assert!(
+        custom_binding.has_active_custom_provider(),
+        "master-resolved Settings BYOK must not depend on legacy process environment"
+    );
+    assert!(!ProviderBinding::Native.has_active_custom_provider());
+
     assert_eq!(
         cloud_catalog_plan(
             &AgentSource::Host,
@@ -315,6 +332,11 @@ fn fresh_host_byok_startup_uses_clean_probe_only_when_needed() {
         CloudCatalogPlan::None,
         "unsupported agents must not trigger a BYOK cloud probe"
     );
+
+    let (catalog, should_probe) =
+        prepare_native_cloud_catalog("copilot", &AgentSource::Host, &custom_binding, Vec::new());
+    assert!(should_probe);
+    assert!(matches!(catalog, NativeCloudCatalogState::Pending));
 }
 
 

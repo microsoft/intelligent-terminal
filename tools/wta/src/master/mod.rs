@@ -119,6 +119,16 @@ impl ProviderBinding {
     fn is_model_scoped(&self) -> bool {
         matches!(self, Self::Custom { .. })
     }
+
+    fn has_active_custom_provider(&self) -> bool {
+        match self {
+            Self::LegacyEnvironment => {
+                crate::custom_model_provider::shared_provider_is_complete()
+            }
+            Self::Native => false,
+            Self::Custom { .. } => true,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1490,13 +1500,14 @@ fn cloud_catalog_plan(
 fn prepare_native_cloud_catalog(
     resolved_agent_id: &str,
     source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
     supplied_models: Vec<crate::app::AcpModelInfo>,
 ) -> (NativeCloudCatalogState, bool) {
     let profile = crate::agent_registry::lookup_profile_by_id(resolved_agent_id);
     match cloud_catalog_plan(
         source,
         profile.byok_mode,
-        crate::custom_model_provider::shared_provider_is_complete(),
+        provider_binding.has_active_custom_provider(),
         supplied_models.is_empty(),
     ) {
         CloudCatalogPlan::None => (NativeCloudCatalogState::Unavailable, false),
@@ -5011,8 +5022,12 @@ async fn spawn_one_agent(
         "agent CLI initialize OK; cli_source resolved"
     );
 
-    let (cloud_catalog, start_clean_probe) =
-        prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
+    let (cloud_catalog, start_clean_probe) = prepare_native_cloud_catalog(
+        &resolved_agent_id,
+        source,
+        provider_binding,
+        supplied_cloud_models,
+    );
     let agent = Arc::new(AgentCli {
         instance_id,
         conn,
