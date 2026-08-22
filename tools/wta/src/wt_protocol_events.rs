@@ -44,9 +44,9 @@ fn publish_blocking(json_payload: &str) {
         .filter(|path| path.exists())
         .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
     let payload_bytes = json_payload.len();
-    let event_method = std::sync::OnceLock::new();
+    let event_method_cache = std::sync::OnceLock::new();
     let event_method = || {
-        event_method.get_or_init(|| {
+        event_method_cache.get_or_init(|| {
             serde_json::from_str::<serde_json::Value>(json_payload)
                 .ok()
                 .and_then(|event| event.get("method")?.as_str().map(str::to_owned))
