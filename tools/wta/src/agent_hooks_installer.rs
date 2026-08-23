@@ -676,46 +676,6 @@ pub struct InstallFailure {
     pub reason: String,
 }
 
-/// Top-level entry point. Run once at wta startup. Idempotent and silent on
-/// failure: if a CLI isn't installed, we skip it; if its settings.json is
-/// malformed, we leave it alone.
-pub fn ensure_installed() {
-    let _ = ensure_installed_scoped(CliScope::All);
-}
-
-/// Install hooks for the specified scope (all CLIs or a single one).
-///
-/// Returns the CLIs whose install actively failed. Startup callers ignore it —
-/// a failed hook install must never block wta from starting — but the
-/// `wta hooks install` command reports it, because an install that failed
-/// silently is indistinguishable from one that worked.
-pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
-    let selected: Vec<CliKind> = CliKind::ALL
-        .iter()
-        .copied()
-        .filter(|k| scope.includes(*k))
-        .collect();
-    ensure_installed_for(&selected)
-}
-
-/// Install hooks for exactly the CLIs listed in `clis`, skipping the rest
-/// entirely.
-///
-/// Exists because [`CliScope`] can only say "all" or "one", and
-/// `wta hooks install --only-missing` needs to name an arbitrary subset.
-/// Every named CLI gets the first-run install flow; callers that also want
-/// out-of-date bridges upgraded build a plan with [`decide_install_action`]
-/// and hand it to [`apply_install_plan`] instead.
-pub fn ensure_installed_for(clis: &[CliKind]) -> Vec<InstallFailure> {
-    let plan: Vec<(CliKind, InstallAction)> = CliKind::ALL
-        .iter()
-        .copied()
-        .filter(|kind| clis.contains(kind))
-        .map(|kind| (kind, InstallAction::Install))
-        .collect();
-    apply_install_plan(&plan)
-}
-
 /// What an install pass should do for one CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallAction {

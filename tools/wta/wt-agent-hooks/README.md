@@ -43,11 +43,13 @@ Claude and Copilot share the same plugin manifest and event schema.
 
 ## How install works
 
-The `wta` binary auto-installs each CLI on startup via
-`agent_hooks_installer::ensure_installed()`:
+Installation is always explicit — the Settings "Install hooks" button, the
+first-run setup flow, or `wta hooks install`. Nothing installs hooks on an
+ordinary `wta` startup. Each entry point ends up in
+`agent_hooks_installer::apply_install_plan()`, which dispatches per CLI:
 
 ```
-              wta startup
+           wta hooks install
                    │
    ┌───────────────┼───────────────┐
    ▼               ▼               ▼
@@ -70,6 +72,11 @@ claude/         copilot/        gemini-extension/
  wt-agent-hooks  wt-agent-hooks
  @wt-local       @wt-local
 ```
+
+Keeping an already-installed bridge at the bundled version is a separate
+concern: `upgrade_installed_hooks()` runs at `wta-master` startup and uses
+each CLI's own update command, because a second `install` is a no-op once
+the plugin is registered.
 
 OpenCode has no separate hook marketplace. `wta hooks install --cli opencode`
 copies `wt-agent-hooks.js` into `%XDG_CONFIG_HOME%\opencode\plugins\` when
