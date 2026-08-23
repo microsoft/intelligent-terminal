@@ -3033,8 +3033,10 @@ const PLUGIN_DIR_RECOVERY_SUBDIR: &str = "hook-plugin-recovery";
 /// against a plugin directory a sibling `copilot` process loaded, while
 /// a plain sharing violation on the same directory surfaces as `The
 /// process cannot access the file because it is being used by another
-/// process. (os error 32)`. Node-based CLIs (Claude, Gemini) surface
-/// libuv's `EPERM` / `EBUSY` spellings for the same conditions.
+/// process. (os error 32)`. Node-based CLIs (Claude, Gemini) report the
+/// same conditions through libuv, which always spells the error code
+/// out in prose — `operation not permitted` and `resource busy` — so
+/// matching the prose also covers the bare error codes that precede it.
 ///
 /// Matching is case-insensitive, so these are written lower-cased.
 const LOCKED_PLUGIN_DIR_NEEDLES: &[&str] = &[
@@ -3042,8 +3044,6 @@ const LOCKED_PLUGIN_DIR_NEEDLES: &[&str] = &[
     "os error 5",
     "os error 32",
     "being used by another process",
-    "eperm",
-    "ebusy",
     "operation not permitted",
     "resource busy",
 ];
@@ -3103,18 +3103,35 @@ fn clear_dir_contents(dir: &Path) -> std::io::Result<()> {
 /// Copy `dir`'s contents to a scratch location, then empty `dir`.
 /// Returns the scratch path so the caller can restore it on failure or
 /// discard it on success.
+///
+/// A partial clear would leave the user with half their hooks, so a
+/// mid-way failure is undone here rather than surfaced to the caller as
+/// an ambiguous directory state: on error `dir` is refilled from the
+/// stash before the error propagates.
 fn stash_plugin_dir_contents(cli: CliKind, dir: &Path) -> std::io::Result<PathBuf> {
     let root = crate::runtime_paths::intelligent_terminal_local_root()
         .ok_or_else(|| std::io::Error::other("IntelligentTerminal local root unavailable"))?;
     let stash = root.join(PLUGIN_DIR_RECOVERY_SUBDIR).join(cli.dir_name());
     restage_bundle_dir(dir, &stash)?;
-    clear_dir_contents(dir)?;
+    if let Err(e) = clear_dir_contents(dir) {
+        tracing::warn!(
+            target: "agent_hooks",
+            err = %e,
+            dir = %dir.display(),
+            "failed to clear the plugin directory; restoring what was already removed",
+        );
+        restore_plugin_dir_contents(&stash, dir);
+        return Err(e);
+    }
     Ok(stash)
 }
 
 /// Put a stash taken by [`stash_plugin_dir_contents`] back and discard
-/// it. Best-effort: a failure is logged at error because it leaves the
-/// plugin directory empty, with the only surviving copy in the stash.
+/// it. Copies over whatever is still in `dir`, so it works for both a
+/// fully emptied directory and one a failed clear left half-populated.
+/// Best-effort: a failure is logged at error because it leaves the
+/// plugin directory incomplete, with the only surviving copy in the
+/// stash.
 fn restore_plugin_dir_contents(stash: &Path, dir: &Path) {
     match copy_dir_recursive(stash, dir) {
         Ok(()) => discard_plugin_dir_stash(stash),

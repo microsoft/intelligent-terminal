@@ -3582,6 +3582,38 @@ fn restore_plugin_dir_contents_round_trips_and_discards_the_stash() {
     assert!(!stash.exists(), "stash is discarded once restored");
 }
 
+/// A clear that fails partway leaves `dir` half-populated, so restore
+/// has to cope with entries that were never removed rather than assume
+/// an empty target.
+#[test]
+fn restore_plugin_dir_contents_refills_a_partially_cleared_dir() {
+    let dir = unique_dir("restore-partial");
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(dir.join("plugin.json"), "manifest").unwrap();
+    fs::write(dir.join("hooks").join("hooks.json"), "hooks").unwrap();
+
+    let stash = unique_dir("restore-partial-stash").join("stash");
+    restage_bundle_dir(&dir, &stash).unwrap();
+
+    // Simulate `clear_dir_contents` dying after the first entry: the
+    // manifest is gone, the hooks subtree is still there.
+    fs::remove_file(dir.join("plugin.json")).unwrap();
+
+    restore_plugin_dir_contents(&stash, &dir);
+
+    assert_eq!(
+        fs::read_to_string(dir.join("plugin.json")).unwrap(),
+        "manifest",
+        "the removed entry must come back",
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("hooks").join("hooks.json")).unwrap(),
+        "hooks",
+        "the surviving entry must be left intact",
+    );
+    assert!(!stash.exists(), "stash is discarded once restored");
+}
+
 fn outcome(success: bool, status_code: Option<i32>, stdout: &str, stderr: &str) -> CliRunOutcome {
     CliRunOutcome {
         success,
