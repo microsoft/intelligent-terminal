@@ -165,7 +165,8 @@ namespace TerminalApp
 
         // Inbound event from `/agent` carrying
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.
-        // Applies a runtime override and rebuilds only the target tab.
+        // Applies a runtime override and rebinds the target tab's helper when
+        // the execution source is unchanged.
         void OnAgentSwitchRequested(String eventJson);
 
         // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.

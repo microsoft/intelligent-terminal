@@ -216,7 +216,7 @@ namespace winrt::TerminalApp::implementation::details
         return false;
     }
 
-    bool TabRetirementTracker::BeginRebuild(const std::string_view tabId)
+    bool TabRetirementTracker::BeginRecreation(const std::string_view tabId)
     {
         return _closeRequested.emplace(tabId, false).second;
     }
@@ -664,7 +664,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Settings reload is delivered to every window, and a page may defer
-        // its rebuild until a terminal tab regains focus. If the live master
+        // its reconciliation until a terminal tab regains focus. If the live master
         // already has these exact trusted arguments, restarting it again is
         // both unnecessary and disruptive to helpers in other windows.
         const bool sameArgs = _cachedWtaPath == wtaPath &&

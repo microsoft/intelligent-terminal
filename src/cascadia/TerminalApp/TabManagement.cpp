@@ -759,7 +759,7 @@ namespace winrt::TerminalApp::implementation
             // Flush any deferred agent settings rebuild now that a
             // terminal tab is active. Per-tab model — no shared pane
             // reconciliation needed.
-            _FlushPendingAgentRebuild();
+            _FlushPendingAgentSettingsReconciliation();
         }
 
         // GH#5559 - If we were in the middle of a drag/drop, end it by clearing
@@ -1461,7 +1461,7 @@ namespace winrt::TerminalApp::implementation
             // Flush any deferred agent-stack rebuild now that a real
             // terminal tab is active. Per-tab model — no shared pane
             // reconciliation needed.
-            _FlushPendingAgentRebuild();
+            _FlushPendingAgentSettingsReconciliation();
         }
     }
 

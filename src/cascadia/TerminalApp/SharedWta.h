@@ -105,7 +105,7 @@ namespace winrt::TerminalApp::implementation
         class TabRetirementTracker
         {
         public:
-            bool BeginRebuild(std::string_view tabId);
+            bool BeginRecreation(std::string_view tabId);
             bool RequestClose(std::string_view tabId);
             bool Complete(std::string_view tabId);
 
@@ -246,14 +246,10 @@ namespace winrt::TerminalApp::implementation
 
         /// Force-restart the wta-master process, bypassing the
         /// `AcquirePane`/`ReleasePane` reference count. Used by the
-        /// `/restart` slash command path: the caller (TerminalPage)
-        /// tears down every agent pane around this call, so the
-        /// refcount-based teardown isn't enough — there may be other
-        /// panes' Closed handlers that have yet to fire. After this
-        /// returns, the next `AcquirePane` finds a fresh master
-        /// listening on the same `_masterPipeName` (intentionally
-        /// stable across respawns so any helpers spawned with the old
-        /// cmdline can still find it).
+        /// `/restart` slash command and launch-configuration changes after
+        /// their sessions retire. Existing panes and helpers stay alive; the
+        /// replacement master listens on the same `_masterPipeName` so they
+        /// can reconnect without rebuilding their physical terminal stack.
         ///
         /// Replays the `wtaPath` + `extraArgs` cached from the first
         /// successful spawn so the new master inherits the same

@@ -142,17 +142,17 @@ pub struct AgentReconnectRequest {
 
 /// Control requests that end or replace the helper's current ACP connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RestartRequest {
+pub enum AgentLifecycleRequest {
     /// `/restart` asks C++ to replace the shared master and agent CLI pool.
-    RestartStack { agent_cmd: Option<String> },
-    /// Settings agent changes keep the helper process and reconnect it to the
-    /// same master with a fresh immutable per-connection agent binding.
+    RestartMaster,
+    /// Agent binding changes keep the helper process and reconnect it to the
+    /// same master with a fresh immutable per-connection binding.
     RebindAgent(AgentReconnectRequest),
 }
 
-impl Default for RestartRequest {
+impl Default for AgentLifecycleRequest {
     fn default() -> Self {
-        Self::RestartStack { agent_cmd: None }
+        Self::RestartMaster
     }
 }
 
@@ -2401,7 +2401,7 @@ pub async fn run_acp_client_over_pipe(
     mut load_session_rx: mpsc::UnboundedReceiver<LoadSessionForTab>,
     mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
-    mut restart_rx: mpsc::UnboundedReceiver<RestartRequest>,
+    mut restart_rx: mpsc::UnboundedReceiver<AgentLifecycleRequest>,
     mut session_hook_rx: mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
     mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
@@ -2656,7 +2656,7 @@ pub async fn run_acp_client_over_pipe(
         }
         if !io_intentional_shutdown.load(Ordering::Acquire) {
             // An unexpected transport loss terminates the helper so Terminal
-            // can recover its pane. A settings rebind closes this transport
+            // can recover its pane. An Agent rebind closes this transport
             // intentionally and reconnects in the existing helper process.
             let _ = io_event_tx.send(AppEvent::MasterDisconnected);
         }
@@ -3223,24 +3223,23 @@ pub async fn run_acp_client_over_pipe(
             }
             Some(req) = restart_rx.recv() => {
                 match req {
-                    RestartRequest::RestartStack { agent_cmd } => {
+                    AgentLifecycleRequest::RestartMaster => {
                         // Helper can't restart the shared master in-process.
                         tracing::info!(
                             target: "helper",
-                            new_agent = ?agent_cmd,
                             "restart requested — asking WT to replace the shared master"
                         );
                         crate::wt_protocol_events::send(
-                            crate::wt_protocol_events::restart_agent_stack_event(None, None),
+                            crate::wt_protocol_events::restart_agent_stack_event(),
                         );
                     }
-                    RestartRequest::RebindAgent(request) => {
+                    AgentLifecycleRequest::RebindAgent(request) => {
                         tracing::info!(
                             target: "helper",
                             operation_id = %request.operation_id,
                             generation = request.generation,
                             agent_id = %request.agent_id,
-                            "ending helper ACP connection for settings agent rebind"
+                            "ending helper ACP connection for Agent rebind"
                         );
                         stop_prompt_tasks(
                             &mut prompt_tasks,

@@ -294,24 +294,25 @@ async fn connect_to_wt_protocol(
     Ok(channel.with_debug_sender(debug_tx))
 }
 
-fn spawn_restart_agent_stack_forwarder(
-    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
+fn spawn_agent_lifecycle_forwarder(
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
+        protocol::acp::client::AgentLifecycleRequest,
+    >,
     event_tx: tokio::sync::mpsc::UnboundedSender<app::AppEvent>,
 ) {
     tokio::task::spawn_local(async move {
         while let Some(req) = restart_rx.recv().await {
             match req {
-                protocol::acp::client::RestartRequest::RestartStack { agent_cmd } => {
+                protocol::acp::client::AgentLifecycleRequest::RestartMaster => {
                     tracing::info!(
                         target: "helper",
-                        new_agent = ?agent_cmd,
                         "restart requested before ACP task is running; asking WT to replace the shared master"
                     );
                     crate::wt_protocol_events::send(
-                        crate::wt_protocol_events::restart_agent_stack_event(None, None),
+                        crate::wt_protocol_events::restart_agent_stack_event(),
                     );
                 }
-                protocol::acp::client::RestartRequest::RebindAgent(request) => {
+                protocol::acp::client::AgentLifecycleRequest::RebindAgent(request) => {
                     let _ = event_tx.send(app::AppEvent::AgentReconnectReady(request));
                 }
             }
@@ -541,9 +542,9 @@ async fn run_acp_app(
             // its standard runtime arm — no race vs. a separate VT
             // `load_session` broadcast.
             let initial_load_tx = load_session_tx.clone();
-            // /restart channel: App emits a RestartRequest, the ACP client
-            // kills the agent child process, drops the connection, and
-            // respawns from scratch. State is cleaned up on both sides.
+            // Lifecycle channel: App either asks WT to replace the shared
+            // master or retires this helper's ACP transport for an Agent
+            // rebind. The helper process itself stays alive.
             let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
@@ -689,7 +690,7 @@ async fn run_acp_app(
                 // running yet. The boot App holds the sole restart sender; when
                 // LoginComplete calls `try_start_acp`, it replaces that sender
                 // with a fresh channel and this forwarder exits.
-                spawn_restart_agent_stack_forwarder(restart_rx, event_tx.clone());
+                spawn_agent_lifecycle_forwarder(restart_rx, event_tx.clone());
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -754,7 +755,7 @@ async fn run_acp_app(
                                 "run_acp_client_over_pipe failed"
                             );
                             // Notify the App before the visible failure so a
-                            // queued Settings rebind can continue with its
+                            // queued Agent rebind can continue with its
                             // latest target instead of becoming stranded.
                             let _ = event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
                             // Recover the typed classification: an auth error

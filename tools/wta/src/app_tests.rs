@@ -80,7 +80,7 @@ pub(super) fn test_app() -> App {
 
 fn test_app_with_restart_rx() -> (
     App,
-    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::AgentLifecycleRequest>,
 ) {
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -3042,7 +3042,7 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
         .try_recv()
         .expect("matching helper should begin a controlled reconnect")
     {
-        RestartRequest::RebindAgent(request) => {
+        AgentLifecycleRequest::RebindAgent(request) => {
             assert_eq!(request.agent_id, "claude");
             assert_eq!(request.generation, 1);
             assert!(request.acp_model.is_none());
@@ -3117,9 +3117,10 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
         message: "outgoing client failed".into(),
     });
     assert!(!app.pending_acp_start);
-    assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_some());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
     assert!(
         app.current_tab().messages.is_empty(),
         "the outgoing client's startup error must not leak into the new agent chat"
@@ -3131,8 +3132,10 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
         result: passed_preflight("claude", "Claude"),
     });
     assert!(app.pending_acp_start);
-    assert!(!app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
 }
 
 #[test]
@@ -3188,7 +3191,7 @@ fn agent_rebind_accepts_only_the_helpers_current_execution_source() {
         .try_recv()
         .expect("same-distro WSL rebind should reuse the helper")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
     assert_eq!(
@@ -3232,15 +3235,17 @@ fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() 
         .try_recv()
         .expect("the old transport should be retired before target preflight")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
     assert_eq!(app.current_agent_id, "copilot");
     assert!(!app.pending_acp_start);
 
     app.handle_event(AppEvent::AgentReconnectReady(retired));
-    assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.agent_reconnect_preflight_pending);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
     assert!(!app.pending_acp_start);
 
     app.handle_event(AppEvent::AgentReconnectPreflightComplete {
@@ -3262,8 +3267,10 @@ fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() 
     assert_eq!(app.mode, AppMode::Setup);
     assert!(app.preflight_setup_active);
     assert!(!app.pending_acp_start);
-    assert!(!app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
     let setup = app.setup.as_ref().expect("missing target should show Setup");
     assert_eq!(setup.reason, SetupReason::AgentMissing);
     assert!(setup.options.iter().any(
@@ -3297,7 +3304,7 @@ fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
         .try_recv()
         .expect("target A should retire the current transport")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
     app.handle_event(AppEvent::AgentReconnectReady(first));
@@ -3314,19 +3321,16 @@ fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
         !app.pending_acp_start,
         "accepting target B must invalidate target A's queued ACP startup"
     );
-    assert!(app.agent_reconnect_disconnect_pending);
-    assert!(!app.agent_reconnect_preflight_pending);
-    assert_eq!(
-        app.pending_agent_reconnect
-            .as_ref()
-            .map(|request| (request.agent_id.as_str(), request.generation)),
-        Some(("codex", 2))
-    );
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Disconnecting(request)
+            if request.agent_id == "codex" && request.generation == 2
+    ));
     let second = match restart_rx
         .try_recv()
         .expect("target B must retire target A before its own preflight")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
 
@@ -3336,17 +3340,20 @@ fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
         result: passed_preflight("claude", "Claude"),
     });
     assert!(!app.pending_acp_start);
-    assert_eq!(
-        app.pending_agent_reconnect
-            .as_ref()
-            .map(|request| (request.agent_id.as_str(), request.generation)),
-        Some(("codex", 2)),
-        "a stale target A completion must not consume target B"
+    assert!(
+        matches!(
+            &app.agent_reconnect_state,
+            AgentReconnectState::Disconnecting(request)
+                if request.agent_id == "codex" && request.generation == 2
+        ),
+        "a stale target A completion must not consume target B",
     );
 
     app.handle_event(AppEvent::AgentReconnectReady(second));
-    assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.agent_reconnect_preflight_pending);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
     assert!(!app.pending_acp_start);
 
     app.handle_event(AppEvent::AgentReconnectPreflightComplete {
@@ -3372,8 +3379,10 @@ fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
     );
     assert!(app.preflight_setup_active);
     assert!(!app.pending_acp_start);
-    assert!(!app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
 }
 
 #[test]
@@ -3417,7 +3426,7 @@ fn settings_model_rebind_preserves_custom_provider_selection() {
         .try_recv()
         .expect("custom model selection should trigger a controlled reconnect")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
     assert_eq!(
@@ -3458,7 +3467,7 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
         .try_recv()
         .expect("first target should trigger transport retirement")
     {
-        RestartRequest::RebindAgent(request) => request,
+        AgentLifecycleRequest::RebindAgent(request) => request,
         other => panic!("expected RebindAgent, got {other:?}"),
     };
 
@@ -3479,9 +3488,10 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
     app.handle_event(AppEvent::AgentReconnectReady(first));
 
     assert!(!app.pending_acp_start);
-    assert!(!app.agent_reconnect_disconnect_pending);
-    assert!(app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_some());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
     assert_eq!(
         app.deferred_acp
             .as_ref()
@@ -3496,8 +3506,10 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
         result: passed_preflight("gemini", "Gemini"),
     });
     assert!(app.pending_acp_start);
-    assert!(!app.agent_reconnect_preflight_pending);
-    assert!(app.pending_agent_reconnect.is_none());
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
 
     app.pending_acp_start = false;
     app.handle_event(AppEvent::AgentReconnectPreflightComplete {
@@ -3521,7 +3533,7 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
     assert_eq!(app.current_agent_id, "codex");
     assert!(matches!(
         restart_rx.try_recv(),
-        Ok(RestartRequest::RebindAgent(AgentReconnectRequest {
+        Ok(AgentLifecycleRequest::RebindAgent(AgentReconnectRequest {
             window_id,
             generation: 1,
             ..
@@ -5612,6 +5624,19 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
 #[test]
 fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
     let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
     app.handle_event(AppEvent::PostLoginAuthRecovery {
         failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
             message: "auth".to_string(),
@@ -5619,6 +5644,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         tab_id: None,
         agent_id: "copilot".to_string(),
     });
+    let restart_request_id = match &app.auth_recovery_state {
+        AuthRecoveryState::WaitingForMaster { request_id } => request_id.clone(),
+        _ => panic!("auth recovery should wait for its replacement master"),
+    };
     // Common case: transient Reconnecting, NOT the setup screen (no flash).
     assert!(
         !matches!(app.mode, AppMode::Setup),
@@ -5629,6 +5658,42 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         "recovery must show a transient Reconnecting state"
     );
     let generation = app.auth_recovery_generation;
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(
+        !app.pending_acp_start,
+        "auth recovery must wait until C++ confirms the replacement master"
+    );
+    assert_eq!(
+        app.auth_recovery_generation, generation,
+        "master disconnect must not invalidate the auth-recovery dead-man"
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "unrelated-restart" }),
+    });
+    assert!(
+        !app.pending_acp_start,
+        "another restart must not release this auth-recovery barrier"
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": restart_request_id }),
+    });
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        &app.auth_recovery_state,
+        AuthRecoveryState::Connecting
+    ));
+    app.pending_acp_start = false;
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(
+        !app.pending_acp_start,
+        "a late disconnect from the replaced master must not start a duplicate ACP client"
+    );
     // A STALE timer (older generation) must be ignored — it must not force
     // the sign-in screen onto the current Connecting state.
     app.handle_event(AppEvent::AuthRecoveryTimedOut {
@@ -5669,6 +5734,17 @@ fn master_disconnect_reconnects_retained_custom_wsl_helper() {
         Arc::clone(&app.shell_mgr),
         true,
     );
+    app.agent_reconnect_state = AgentReconnectState::Preflighting(AgentReconnectRequest {
+        operation_id: "stale-rebind".into(),
+        window_id: "window-1".into(),
+        generation: 1,
+        agent_id: "copilot".into(),
+        acp_model: None,
+        custom_model_selection: None,
+        agent_source: crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    });
     assert!(!app.should_quit);
 
     app.handle_event(AppEvent::MasterDisconnected);
@@ -5678,6 +5754,10 @@ fn master_disconnect_reconnects_retained_custom_wsl_helper() {
         app.pending_acp_start,
         "master disconnect must reconnect the existing immutable binding"
     );
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
     assert_eq!(
         app.deferred_acp
             .as_ref()

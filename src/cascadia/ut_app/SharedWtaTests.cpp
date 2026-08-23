@@ -551,7 +551,7 @@ namespace TerminalAppUnitTests
     {
         details::TabRetirementTracker tracker;
 
-        VERIFY_IS_TRUE(tracker.BeginRebuild("tab-1"));
+        VERIFY_IS_TRUE(tracker.BeginRecreation("tab-1"));
         VERIFY_IS_FALSE(tracker.RequestClose("tab-1"));
         VERIFY_IS_FALSE(tracker.Complete("tab-1"));
     }

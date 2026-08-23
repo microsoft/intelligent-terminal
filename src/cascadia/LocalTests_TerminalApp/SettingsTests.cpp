@@ -74,8 +74,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
-        TEST_METHOD(TestAgentPaneSettingsRebindClassification);
-        TEST_METHOD(TestAgentPaneAgentSwitchClassification);
+        TEST_METHOD(TestAgentPaneRebindCapability);
+        TEST_METHOD(TestAgentPaneSwitchCapability);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
         TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
 
@@ -1699,7 +1699,7 @@ namespace TerminalAppLocalTests
         customCommand.acpAgent = L"custom:local";
         customCommand.acpCustomCommand = L"agent.exe --acp";
         VERIFY_ARE_EQUAL(
-            ChangeKind::Rebuild,
+            ChangeKind::RecreatePane,
             Page::_ClassifyAgentSettingsChange(native, customCommand));
 
         auto customModelChange = customCommand;
@@ -1708,7 +1708,7 @@ namespace TerminalAppLocalTests
         auto changedCustomModel = customModelChange;
         changedCustomModel.acpModel = L"model-b";
         VERIFY_ARE_EQUAL(
-            ChangeKind::Rebuild,
+            ChangeKind::RecreatePane,
             Page::_ClassifyAgentSettingsChange(customModelChange, changedCustomModel));
     }
 
@@ -1720,44 +1720,25 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::None, false, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::ModelHotUpdate, false, false));
         VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::AgentRebind, false, false));
-        VERIFY_IS_TRUE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, false));
-        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, true, false));
-        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::Rebuild, false, true));
+        VERIFY_IS_TRUE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::RecreatePane, false, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::RecreatePane, true, false));
+        VERIFY_IS_FALSE(Page::_ShouldDeferAgentSettingsChange(ChangeKind::RecreatePane, false, true));
     }
 
-    void SettingsTests::TestAgentPaneSettingsRebindClassification()
+    void SettingsTests::TestAgentPaneRebindCapability()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
-        using Disposition = Page::AgentPaneSettingsRebindDisposition;
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
 
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected, false));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::NotConnected, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting, false));
-        VERIFY_ARE_EQUAL(
-            Disposition::Rebind,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connecting, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connected, false));
-        VERIFY_ARE_EQUAL(
-            Disposition::Rebind,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Connected, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Closing, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Closed, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneSettingsRebind(State::Failed, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::NotConnected, false));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::NotConnected, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Connecting, false));
+        VERIFY_IS_TRUE(Page::_CanRebindAgentPane(State::Connecting, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Connected, false));
+        VERIFY_IS_TRUE(Page::_CanRebindAgentPane(State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Closing, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Closed, true));
+        VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Failed, true));
 
         const auto visibleActive = Page::_GetAgentPaneRecreationOptions(false, true);
         VERIFY_IS_FALSE(visibleActive.autoStash);
@@ -2042,11 +2023,10 @@ namespace TerminalAppLocalTests
         }
     }
 
-    void SettingsTests::TestAgentPaneAgentSwitchClassification()
+    void SettingsTests::TestAgentPaneSwitchCapability()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
         using Binding = Page::AgentPaneSettingsBinding;
-        using Disposition = Page::AgentPaneSettingsRebindDisposition;
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
 
         Binding hostCopilot{
@@ -2056,51 +2036,31 @@ namespace TerminalAppLocalTests
         };
         auto hostCodex = hostCopilot;
         hostCodex.agentId = L"codex";
-        VERIFY_ARE_EQUAL(
-            Disposition::Rebind,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connecting, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Rebind,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connected, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connected, false));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Closed, true));
+        VERIFY_IS_TRUE(Page::_CanSwitchAgentInPlace(hostCopilot, hostCodex, State::Connecting, true));
+        VERIFY_IS_TRUE(Page::_CanSwitchAgentInPlace(hostCopilot, hostCodex, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(hostCopilot, hostCodex, State::Connected, false));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(hostCopilot, hostCodex, State::Closed, true));
 
         auto wslCopilot = hostCopilot;
         wslCopilot.agentSource = L"wsl";
         wslCopilot.agentWslDistro = L"Ubuntu";
         auto wslCodex = wslCopilot;
         wslCodex.agentId = L"codex";
-        VERIFY_ARE_EQUAL(
-            Disposition::Rebind,
-            Page::_ClassifyAgentPaneAgentSwitch(wslCopilot, wslCodex, State::Connected, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, wslCodex, State::Connected, true));
+        VERIFY_IS_TRUE(Page::_CanSwitchAgentInPlace(wslCopilot, wslCodex, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(hostCopilot, wslCodex, State::Connected, true));
 
         auto otherDistro = wslCodex;
         otherDistro.agentWslDistro = L"Debian";
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(wslCopilot, otherDistro, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(wslCopilot, otherDistro, State::Connected, true));
 
         auto customAgent = hostCopilot;
         customAgent.agentId = L"custom:local";
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(customAgent, hostCodex, State::Connected, true));
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, customAgent, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(customAgent, hostCodex, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(hostCopilot, customAgent, State::Connected, true));
 
         auto unavailableTarget = hostCodex;
         unavailableTarget.launchable = false;
-        VERIFY_ARE_EQUAL(
-            Disposition::Recreate,
-            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, unavailableTarget, State::Connected, true));
+        VERIFY_IS_FALSE(Page::_CanSwitchAgentInPlace(hostCopilot, unavailableTarget, State::Connected, true));
 
         VERIFY_IS_TRUE(Page::_CanRetainAgentPaneForMasterRestart(State::Connecting));
         VERIFY_IS_TRUE(Page::_CanRetainAgentPaneForMasterRestart(State::Connected));

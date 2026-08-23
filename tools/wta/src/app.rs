@@ -25,7 +25,8 @@ struct DeferredAcpParams {
         Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>>,
     rename_session_rx:
         Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RenameSessionRequest>>,
-    restart_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>>,
+    restart_rx:
+        Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::AgentLifecycleRequest>>,
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
@@ -39,6 +40,22 @@ struct DeferredAcpParams {
     /// Owner tab id for pipe-mode reconnect (mirrors the original
     /// `--owner-tab-id` CLI arg).
     owner_tab_id: Option<String>,
+}
+
+#[derive(Debug, Default)]
+enum AgentReconnectState {
+    #[default]
+    Idle,
+    Disconnecting(AgentReconnectRequest),
+    Preflighting(AgentReconnectRequest),
+}
+
+#[derive(Debug, Default)]
+enum AuthRecoveryState {
+    #[default]
+    Idle,
+    WaitingForMaster { request_id: String },
+    Connecting,
 }
 
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
@@ -118,7 +135,7 @@ use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
     AgentReconnectRequest, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    AgentLifecycleRequest, PromptSubmission, RenameSessionRequest,
 };
 use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
@@ -979,6 +996,9 @@ pub struct App {
     /// succeeded) cannot force the sign-in screen onto a later, unrelated
     /// `Connecting` state.
     auth_recovery_generation: u64,
+    /// Synchronizes a failed post-login ACP task with replacement-master
+    /// readiness without letting a late disconnect start a duplicate client.
+    auth_recovery_state: AuthRecoveryState,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
     /// Show first-run welcome hint until user sends first message.
@@ -987,13 +1007,12 @@ pub struct App {
     pub state: ConnectionState,
     /// The agent ID we're trying to connect to (set at preflight/FRE time).
     pub current_agent_id: String,
-    /// Highest host-issued Settings rebind generation observed by this helper.
+    /// Highest host-issued rebind generation observed by this helper.
     last_agent_rebind_generation: u64,
     last_agent_rebind_window_id: Option<String>,
-    /// Latest accepted target while the current ACP transport is unwinding.
-    pending_agent_reconnect: Option<AgentReconnectRequest>,
-    agent_reconnect_disconnect_pending: bool,
-    agent_reconnect_preflight_pending: bool,
+    /// Controlled same-helper transition from the old ACP transport to the
+    /// latest accepted Agent binding.
+    agent_reconnect_state: AgentReconnectState,
     suppress_next_failed_client_error: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
@@ -1043,7 +1062,7 @@ pub struct App {
     load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
     drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
-    restart_tx: mpsc::UnboundedSender<RestartRequest>,
+    restart_tx: mpsc::UnboundedSender<AgentLifecycleRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
@@ -1302,7 +1321,7 @@ impl App {
         load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
         drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
         rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
-        restart_tx: mpsc::UnboundedSender<RestartRequest>,
+        restart_tx: mpsc::UnboundedSender<AgentLifecycleRequest>,
         master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
@@ -1319,6 +1338,7 @@ impl App {
             pending_acp_start: false,
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
+            auth_recovery_state: AuthRecoveryState::Idle,
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
@@ -1326,9 +1346,7 @@ impl App {
             current_agent_id: String::new(),
             last_agent_rebind_generation: 0,
             last_agent_rebind_window_id: None,
-            pending_agent_reconnect: None,
-            agent_reconnect_disconnect_pending: false,
-            agent_reconnect_preflight_pending: false,
+            agent_reconnect_state: AgentReconnectState::Idle,
             suppress_next_failed_client_error: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
@@ -1485,8 +1503,8 @@ impl App {
     /// **Pipe-mode branch.** When `deferred_acp.master_pipe_name.is_some()`
     /// (set at boot by [`Self::set_master_pipe_acp_params`] in helper
     /// mode), we route the reconnect through
-    /// [`run_acp_client_over_pipe`] so the rebuilt helper talks to the
-    /// shared wta-master singleton — same as the cold-boot helper path.
+    /// [`run_acp_client_over_pipe`] so the retained helper reconnects to the
+    /// shared wta-master singleton, just like the cold-boot helper path.
     /// We also rebuild the `session_hook` channel and re-bind the `_tx`
     /// half on `self.session_hook_tx`, because the original receiver was
     /// consumed (and dropped) by the dead initial pipe-mode task.
@@ -3503,13 +3521,14 @@ impl App {
             params.agent_cmd = resolved;
             params.agent_id = Some(agent_id.to_string());
         }
-        // Remember the selected agent so we can notify C++ after connection succeeds.
-        // We don't notify now because mid-FRE WriteSettingsToDisk triggers
-        // _RebuildAgentStack which tears down the in-progress agent pane.
+        // Notify C++ only after the selected Agent connects, so first-run
+        // settings persistence cannot race the in-progress connection.
         self.pending_agent_selection = Some(agent_id.to_string());
     }
 
     fn prepare_agent_reconnect(&mut self, request: &AgentReconnectRequest) {
+        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
+        self.auth_recovery_state = AuthRecoveryState::Idle;
         let new_cmd = self.build_agent_cmd(&request.agent_id);
         if let Some(ref mut params) = self.deferred_acp {
             params.agent_cmd.clone_from(&new_cmd);
@@ -3537,10 +3556,8 @@ impl App {
         self.pending_acp_start = false;
         self.pending_agent_selection = None;
         self.suppress_next_failed_client_error = false;
-        self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.needs_post_login_authenticate = false;
         self.preflight_setup_active = false;
-        self.agent_reconnect_preflight_pending = false;
         self.mode = AppMode::Chat;
         self.auth = None;
         self.setup = None;
@@ -3595,14 +3612,13 @@ impl App {
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
-        if !self.agent_reconnect_disconnect_pending {
+        let AgentReconnectState::Disconnecting(latest) =
+            std::mem::take(&mut self.agent_reconnect_state)
+        else {
             return None;
-        }
-
-        self.agent_reconnect_disconnect_pending = false;
-        let latest = self.pending_agent_reconnect.clone()?;
+        };
         self.reset_agent_scoped_state();
-        self.agent_reconnect_preflight_pending = true;
+        self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
             let operation_id = latest.operation_id.clone();
             let generation = latest.generation;
@@ -4033,10 +4049,7 @@ impl App {
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
                             } else {
-                                let new_cmd = self.build_agent_cmd(&agent_id);
-                                let _ = self.restart_tx.send(RestartRequest::RestartStack {
-                                    agent_cmd: Some(new_cmd),
-                                });
+                                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
                             }
                             // Don't clear setup yet — AgentConnected will transition to Chat,
                             // AgentError will update the Setup screen.
@@ -5357,20 +5370,9 @@ impl App {
         self.project_active_tab_state();
     }
 
-    /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
-    /// transport this App is running on:
-    ///
-    /// * Standalone mode: the ACP client owns the agent CLI child.
-    ///   `restart_tx` triggers an in-process tear-down + respawn;
-    ///   subsequent prompts get a fresh session on each tab. The
-    ///   `Connecting("Restarting agent...")` state lasts until the
-    ///   new `initialize` round-trip lands.
-    ///
-    /// * Helper mode: master owns the agent CLI lifetime, so a single helper
-    ///   cannot restart it in-process. The helper's `restart_rx` arm asks C++
-    ///   to replace the shared master. Viable panes, ConPTYs, and helpers stay
-    ///   alive, then reconnect over the stable master pipe with clean ACP
-    ///   sessions.
+    /// `/restart` asks Windows Terminal to replace the shared master and Agent
+    /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
+    /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();
@@ -5384,9 +5386,7 @@ impl App {
             tab.completed_turns.clear();
             tab.session_id = None;
         }
-        let _ = self
-            .restart_tx
-            .send(RestartRequest::RestartStack { agent_cmd: None });
+        let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         self.publish_agent_status();
     }
 

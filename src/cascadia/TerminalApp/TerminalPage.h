@@ -428,15 +428,9 @@ namespace winrt::TerminalApp::implementation
         void _WireAgentPaneEvents(const winrt::TerminalApp::AgentPaneContent& content,
                                   const winrt::com_ptr<Tab>& ownerTab);
 
-        // Hot-reload of agent/model settings. Snapshot is captured on first
-        // SetSettings and after every reconciliation. Built-in global agent
-        // changes rebind the existing helper in place; changes that alter
-        // trusted master launch state keep the destructive rebuild path.
-        //
-        // Built-in agent and model binding changes rebind affected helpers.
-        // Native models with a live ACP switch path update the current session
-        // directly. Trusted custom commands and profile backend changes retain
-        // the destructive path.
+        // Hot-reload of agent/model settings. Native models update live,
+        // built-in binding changes reconnect helpers, and trust/execution
+        // boundary changes recreate the affected pane.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -452,12 +446,7 @@ namespace winrt::TerminalApp::implementation
             None,
             ModelHotUpdate,
             AgentRebind,
-            Rebuild,
-        };
-        enum class AgentPaneSettingsRebindDisposition
-        {
-            Rebind,
-            Recreate,
+            RecreatePane,
         };
         struct AgentPaneSettingsBindingRequest
         {
@@ -492,8 +481,8 @@ namespace winrt::TerminalApp::implementation
             bool focusPane;
         };
         std::string _settingsReloadRequestId;
-        std::optional<std::string> _pendingAgentRebuildRequestId;
-        uint64_t _agentSettingsRebindGeneration{ 0 };
+        std::optional<std::string> _pendingAgentSettingsRequestId;
+        uint64_t _agentRebindGeneration{ 0 };
         static std::string _AgentSettingsRequestIdentity(const AgentSettingsSnapshot& snapshot);
         // Hot-updatable non-binding agent config. When any of these change we
         // push a single consolidated `agent_config_changed` event to the
@@ -534,7 +523,7 @@ namespace winrt::TerminalApp::implementation
         // back-to-back (e.g. file-watcher reload storms).
         std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
         std::mutex _shellIntegrationReconcileMutex;
-        bool _agentRebuilding{ false };
+        bool _agentLifecycleOperationInProgress{ false };
         details::CoalescedRequest _pendingAgentStackRestart;
         struct _PendingAgentRetirement
         {
@@ -543,11 +532,11 @@ namespace winrt::TerminalApp::implementation
         };
         std::unordered_map<std::string, _PendingAgentRetirement> _pendingAgentRetirements;
         details::TabRetirementTracker _agentTabRetirements;
-        // Set when a settings change wants a rebuild but the active
+        // Set when a settings change needs reconciliation but the active
         // tab can't host an agent pane (e.g. the Settings tab itself).
-        // _FlushPendingAgentRebuild runs the deferred rebuild from
+        // _FlushPendingAgentSettingsReconciliation runs it from
         // _OnTabSelectionChanged once a terminal tab is active.
-        bool _pendingAgentRebuild{ false };
+        bool _pendingAgentSettingsReconciliation{ false };
 
         // Plan-C resume-into-new-tab bookkeeping. When the session
         // manager's Enter handler on a Historical/Ended row creates a
@@ -579,10 +568,10 @@ namespace winrt::TerminalApp::implementation
             AgentSettingsChangeKind changeKind,
             bool canHostPane,
             bool masterConfigurationChanged) noexcept;
-        static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
+        static bool _CanRebindAgentPane(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
             bool helperEventReady) noexcept;
-        static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneAgentSwitch(
+        static bool _CanSwitchAgentInPlace(
             const AgentPaneSettingsBinding& current,
             const AgentPaneSettingsBinding& target,
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
@@ -636,21 +625,27 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _WaitForAgentSessionRetirement(std::string operationId);
         void _CompleteAgentSessionRetirement(std::string_view operationId, bool timedOut);
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
-        void _RebuildAgentStack(std::string requestId = {});
+        void _RecreateAgentPane(
+            const winrt::com_ptr<Tab>& tab,
+            const AgentPaneRecreationOptions& options);
+        void _ReconcileAgentSettings(std::string requestId = {});
         void _RestartAgentStack(std::string requestId);
         // Scoped per-tab fallback when an agent override cannot be rebound
         // through the existing helper. Does not restart the shared master.
-        void _RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab);
-        void _RebindAgentPaneForTab(
+        void _RecreateAgentPaneForTab(const winrt::com_ptr<Tab>& tab);
+        void _ApplyAgentPaneBindingForTab(
             const winrt::com_ptr<Tab>& tab,
             const AgentPaneSettingsBinding& current,
             const AgentPaneSettingsBinding& target);
-        void _FlushPendingAgentRebuild();
+        bool _HandleAgentModelSwitch(
+            const winrt::hstring& agentId,
+            const Json::Value& params);
+        void _FlushPendingAgentSettingsReconciliation();
         // Build the per-process flag/value pairs that the wta-master
         // inherits at spawn time (--agent, --agent-id, --no-autofix,
         // --language, --acp-model, --delegate-agent, --delegate-model).
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
-        // (first acquire) and `_RebuildAgentStack` (settings-change-driven
+        // (first acquire) and `_ReconcileAgentSettings` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
         std::vector<std::wstring> _BuildSharedWtaExtraArgs();
         std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();

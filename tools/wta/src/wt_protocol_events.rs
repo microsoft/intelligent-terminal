@@ -3,23 +3,17 @@ pub fn send(json_payload: String) {
     let _ = publisher_sender().send(json_payload);
 }
 
-pub(crate) fn restart_agent_stack_event(reason: Option<&str>, tab_id: Option<&str>) -> String {
-    let mut params = serde_json::Map::new();
-    params.insert(
-        "request_id".into(),
-        serde_json::Value::String(uuid::Uuid::new_v4().to_string()),
-    );
-    if let Some(reason) = reason {
-        params.insert("reason".into(), serde_json::Value::String(reason.into()));
-    }
-    if let Some(tab_id) = tab_id {
-        params.insert("tab_id".into(), serde_json::Value::String(tab_id.into()));
-    }
+pub(crate) fn restart_agent_stack_event() -> String {
+    restart_agent_stack_event_with_id(&uuid::Uuid::new_v4().to_string())
+}
 
+pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     serde_json::json!({
         "type": "event",
         "method": "restart_agent_stack",
-        "params": params,
+        "params": {
+            "request_id": request_id,
+        },
     })
     .to_string()
 }
@@ -153,21 +147,26 @@ fn publish_blocking(json_payload: &str) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn restart_event_has_unique_shared_request_id_and_optional_scope() {
+    fn restart_event_has_unique_shared_request_id() {
         let first: serde_json::Value =
-            serde_json::from_str(&super::restart_agent_stack_event(None, None)).unwrap();
-        let second: serde_json::Value = serde_json::from_str(
-            &super::restart_agent_stack_event(Some("auth_recovery"), Some("tab-1")),
-        )
-        .unwrap();
+            serde_json::from_str(&super::restart_agent_stack_event()).unwrap();
+        let second: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event()).unwrap();
 
         let first_request_id = first["params"]["request_id"].as_str().unwrap();
         let second_request_id = second["params"]["request_id"].as_str().unwrap();
         assert!(uuid::Uuid::parse_str(first_request_id).is_ok());
         assert!(uuid::Uuid::parse_str(second_request_id).is_ok());
         assert_ne!(first_request_id, second_request_id);
-        assert_eq!(second["params"]["reason"], "auth_recovery");
-        assert_eq!(second["params"]["tab_id"], "tab-1");
+    }
+
+    #[test]
+    fn restart_event_preserves_supplied_request_id() {
+        let event: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event_with_id("auth-recovery-1"))
+                .unwrap();
+
+        assert_eq!(event["params"]["request_id"], "auth-recovery-1");
     }
 
     #[test]

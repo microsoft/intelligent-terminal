@@ -22,22 +22,17 @@ pub enum CommandKind {
     /// invoked manually. Any text after `/fix` is passed through as an
     /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
     Fix,
-    /// Reset the agent CLI subprocess.
-    ///
-    /// * Standalone wta: tears down + respawns the agent CLI in-process;
-    ///   tabs lazily get fresh sessions on the next prompt.
-    /// * Helper mode: fires a `restart_agent_stack` event to C++, which
-    ///   replaces the shared master; each viable helper reconnects its existing
-    ///   immutable binding over the stable pipe with a clean session. Only a
-    ///   pane whose helper process is already unavailable requires recreation.
+    /// Replace the shared master and Agent CLI pool. Each viable helper keeps
+    /// its pane and reconnects its immutable binding over the stable pipe with
+    /// a clean session. Only an unavailable helper requires pane recreation.
     Restart,
     Sessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
     /// are both host-policy-allowed and installed on this machine;
-    /// `/agent <id>` switches directly. The helper asks Windows Terminal to
-    /// rebuild only its owning tab, so the choice remains a runtime per-tab
+    /// `/agent <id>` switches directly by rebinding the existing helper when
+    /// the execution source is unchanged. The choice remains a runtime per-tab
     /// override and never changes the global `acpAgent` setting.
     Agent,
     /// Pick the ACP model for *this* agent pane.

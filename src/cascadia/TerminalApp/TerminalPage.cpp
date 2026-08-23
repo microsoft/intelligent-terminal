@@ -338,11 +338,11 @@ namespace winrt::TerminalApp::implementation
 
         // Seed the agent-settings baseline on first load so that later
         // in-memory mutations (e.g. the bottom-bar agent selector click,
-        // which mutates AcpAgent *before* calling _RebuildAgentStack) are
+        // which mutates AcpAgent *before* reconciling settings) are
         // correctly diffed against the startup state. Without this, the
-        // very first _RebuildAgentStack invocation would take the lazy
+        // very first reconciliation would take the lazy
         // "seed-and-skip" branch with the *already-mutated* value and the
-        // real rebuild would never run.
+        // real reconciliation would never run.
         if (firstLoad)
         {
             _lastAgentSettings = _CaptureAgentSettingsSnapshot();
@@ -405,7 +405,7 @@ namespace winrt::TerminalApp::implementation
         // event to the running wta-helper(s) so they update in place,
         // WITHOUT tearing down and restarting the agent pane. This is the
         // unified dispatch for non-binding runtime settings. Agent identity
-        // and ACP model changes go through _RebuildAgentStack in
+        // and ACP model changes go through _ReconcileAgentSettings in
         // _RefreshUIForSettingsReload so unready helpers can be recreated
         // before the settings snapshot advances.
         _EmitAgentRuntimeConfigIfChanged();
@@ -1658,7 +1658,7 @@ namespace winrt::TerminalApp::implementation
 
     // --- Hot-reload of agent/model settings -------------------------------
     //
-    // `_RebuildAgentStack` reconciles agent-identity settings changed through
+    // `_ReconcileAgentSettings` reconciles agent-identity settings changed through
     // settings.json, Settings UI, or the bottom-bar selector. Built-in agent
     // changes rebind the existing helper; changes to trusted launch arguments
     // retain the destructive pane/master path.
@@ -1754,7 +1754,7 @@ namespace winrt::TerminalApp::implementation
             !isBuiltinAgent(previous.acpAgent) ||
             !isBuiltinAgent(current.acpAgent))
         {
-            return AgentSettingsChangeKind::Rebuild;
+            return AgentSettingsChangeKind::RecreatePane;
         }
 
         // Built-in agent changes and model changes that require launch-time
@@ -1781,7 +1781,7 @@ namespace winrt::TerminalApp::implementation
 
         // Keep this fallback conservative if another launch-affecting field is
         // added to the snapshot without an explicit policy above.
-        return AgentSettingsChangeKind::Rebuild;
+        return AgentSettingsChangeKind::RecreatePane;
     }
 
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
@@ -1794,12 +1794,12 @@ namespace winrt::TerminalApp::implementation
         const bool canHostPane,
         const bool masterConfigurationChanged) noexcept
     {
-        return changeKind == AgentSettingsChangeKind::Rebuild &&
+        return changeKind == AgentSettingsChangeKind::RecreatePane &&
                !canHostPane &&
                !masterConfigurationChanged;
     }
 
-    TerminalPage::AgentPaneSettingsRebindDisposition TerminalPage::_ClassifyAgentPaneSettingsRebind(
+    bool TerminalPage::_CanRebindAgentPane(
         const ConnectionState connectionState,
         const bool helperEventReady) noexcept
     {
@@ -1808,13 +1808,11 @@ namespace winrt::TerminalApp::implementation
         // subscribed, so the cached readiness bit closes the startup window
         // where ConPTY is live but settings events would still be lost.
         return helperEventReady &&
-                       (connectionState == ConnectionState::Connecting ||
-                        connectionState == ConnectionState::Connected) ?
-                   AgentPaneSettingsRebindDisposition::Rebind :
-                   AgentPaneSettingsRebindDisposition::Recreate;
+               (connectionState == ConnectionState::Connecting ||
+                connectionState == ConnectionState::Connected);
     }
 
-    TerminalPage::AgentPaneSettingsRebindDisposition TerminalPage::_ClassifyAgentPaneAgentSwitch(
+    bool TerminalPage::_CanSwitchAgentInPlace(
         const AgentPaneSettingsBinding& current,
         const AgentPaneSettingsBinding& target,
         const ConnectionState connectionState,
@@ -1835,10 +1833,10 @@ namespace winrt::TerminalApp::implementation
             !isBuiltIn(target.agentId) ||
             !sameSource)
         {
-            return AgentPaneSettingsRebindDisposition::Recreate;
+            return false;
         }
 
-        return _ClassifyAgentPaneSettingsRebind(connectionState, helperEventReady);
+        return _CanRebindAgentPane(connectionState, helperEventReady);
     }
 
     bool TerminalPage::_CanRetainAgentPaneForMasterRestart(
@@ -2013,8 +2011,7 @@ namespace winrt::TerminalApp::implementation
                binding->followsGlobalAcpModel &&
                agentConnected &&
                connectionState &&
-               _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
-                   AgentPaneSettingsRebindDisposition::Rebind;
+               _CanRebindAgentPane(*connectionState, helperEventReady);
     }
 
     bool TerminalPage::_ShouldRecreateAgentPaneForModelHotUpdate(
@@ -2028,8 +2025,7 @@ namespace winrt::TerminalApp::implementation
                binding->followsGlobalAcpModel &&
                (!agentConnected ||
                 !connectionState ||
-                _ClassifyAgentPaneSettingsRebind(*connectionState, helperEventReady) ==
-                    AgentPaneSettingsRebindDisposition::Recreate);
+                !_CanRebindAgentPane(*connectionState, helperEventReady));
     }
 
     Json::Value TerminalPage::_BuildAgentPaneSettingsRebindPayload(
@@ -2180,9 +2176,29 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Rebuild a SINGLE tab's agent pane when its per-tab agent override cannot
-    // reuse the existing helper. Scoped, unlike
-    // `_RebuildAgentStack`: it touches only this tab and does NOT restart
+    void TerminalPage::_RecreateAgentPane(
+        const winrt::com_ptr<Tab>& tab,
+        const AgentPaneRecreationOptions& options)
+    {
+        if (!tab)
+        {
+            _agentPaneLog("_RecreateAgentPane: missing tab");
+            return;
+        }
+
+        _TeardownAgentPane(tab);
+        _AutoCreateHiddenAgentPaneShared(
+            tab,
+            /*intoSessionsView*/ false,
+            options.autoStash,
+            {},
+            {},
+            {},
+            options.focusPane);
+    }
+
+    // Recreate a SINGLE tab's agent pane when its per-tab agent override cannot
+    // reuse the existing helper. It touches only this tab and does NOT restart
     // the shared master. The multi-agent master stays up; the freshly
     // spawned helper declares this tab's new agent in its `initialize`
     // handshake, so the master lazily spawns/reuses the matching CLI while
@@ -2192,7 +2208,7 @@ namespace winrt::TerminalApp::implementation
     // `FindAgentPane()` is already null when we reopen — the conpty /
     // `SharedWta::ReleasePane` teardown that lags behind balances against
     // the reopen's `AcquirePane`.
-    void TerminalPage::_RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_RecreateAgentPaneForTab(const winrt::com_ptr<Tab>& tab)
     {
         if (!tab)
         {
@@ -2200,9 +2216,9 @@ namespace winrt::TerminalApp::implementation
         }
         const auto tabId = tab->StableId();
         const auto tabKey = winrt::to_string(tabId);
-        if (!_agentTabRetirements.BeginRebuild(tabKey))
+        if (!_agentTabRetirements.BeginRecreation(tabKey))
         {
-            _agentPaneLog("_RebuildAgentPaneForTab: retirement already pending for tab");
+            _agentPaneLog("_RecreateAgentPaneForTab: retirement already pending for tab");
             return;
         }
         const bool hadPane = tab->FindAgentPane() != nullptr;
@@ -2250,7 +2266,7 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
-    void TerminalPage::_RebindAgentPaneForTab(
+    void TerminalPage::_ApplyAgentPaneBindingForTab(
         const winrt::com_ptr<Tab>& tab,
         const AgentPaneSettingsBinding& current,
         const AgentPaneSettingsBinding& target)
@@ -2267,19 +2283,19 @@ namespace winrt::TerminalApp::implementation
             content &&
             winrt::get_self<implementation::AgentPaneContent>(content)->IsHelperEventReady();
         if (!control ||
-            _ClassifyAgentPaneAgentSwitch(
+            !_CanSwitchAgentInPlace(
                 current,
                 target,
                 control.ConnectionState(),
-                helperEventReady) == AgentPaneSettingsRebindDisposition::Recreate)
+                helperEventReady))
         {
-            _agentPaneLog("OnAgentSwitchRequested: rebuilding helper across an unsupported or unready boundary");
-            _RebuildAgentPaneForTab(tab);
+            _agentPaneLog("OnAgentSwitchRequested: recreating pane across an unsupported or unready boundary");
+            _RecreateAgentPaneForTab(tab);
             return;
         }
 
         const auto tabId = tab->StableId();
-        const auto rebindGeneration = ++_agentSettingsRebindGeneration;
+        const auto rebindGeneration = ++_agentRebindGeneration;
         _BeginAgentSessionRetirement(
             false,
             { tabId },
@@ -2306,9 +2322,7 @@ namespace winrt::TerminalApp::implementation
                         winrt::get_self<implementation::AgentPaneContent>(content)->IsHelperEventReady();
                     if (operationId.empty() ||
                         !control ||
-                        _ClassifyAgentPaneSettingsRebind(
-                            control.ConnectionState(),
-                            helperEventReady) == AgentPaneSettingsRebindDisposition::Recreate)
+                        !_CanRebindAgentPane(control.ConnectionState(), helperEventReady))
                     {
                         const auto focusedTab = strongThis->_GetFocusedTabImpl();
                         const auto recreationOptions = _GetAgentPaneRecreationOptions(
@@ -2316,15 +2330,7 @@ namespace winrt::TerminalApp::implementation
                             focusedTab && focusedTab == currentTab);
                         _agentPaneLog(
                             "OnAgentSwitchRequested: helper became unavailable during retirement; recreating pane");
-                        strongThis->_TeardownAgentPane(currentTab);
-                        strongThis->_AutoCreateHiddenAgentPaneShared(
-                            currentTab,
-                            /*intoSessionsView*/ false,
-                            recreationOptions.autoStash,
-                            {},
-                            {},
-                            {},
-                            recreationOptions.focusPane);
+                        strongThis->_RecreateAgentPane(currentTab, recreationOptions);
                         return;
                     }
 
@@ -2657,7 +2663,7 @@ namespace winrt::TerminalApp::implementation
     // Builds the per-process flag/value pairs that wta-master inherits
     // at spawn time. Single source of truth so the first-acquire path
     // (`_AutoCreateHiddenAgentPaneShared`) and the settings-change-
-    // driven respawn path (`_RebuildAgentStack` → `SharedWta::Restart`)
+    // driven respawn path (`_ReconcileAgentSettings` → `SharedWta::Restart`)
     // stay in sync. Each pair is pushed as two separate vector elements
     // so SharedWta can apply its own Windows command-line quoting.
     std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs()
@@ -2919,7 +2925,7 @@ namespace winrt::TerminalApp::implementation
         // Build the per-process settings the master will inherit.
         // These are baked at first-spawn time only; subsequent acquires
         // reuse the same master (settings changes route through
-        // `_RebuildAgentStack` → `SharedWta::Restart` instead). Runtime
+        // `_ReconcileAgentSettings` → `SharedWta::Restart` instead). Runtime
         // changes flow over event channels (`autofix_enabled_changed`
         // is the existing one). See `_BuildSharedWtaExtraArgs` for the
         // shared arg layout.
@@ -3795,35 +3801,35 @@ namespace winrt::TerminalApp::implementation
     // global agent changes preserve the Pane/TermControl/ConPTY/helper and
     // replace only the helper's ACP connection after retiring its old
     // session. Other launch-identity changes keep the destructive path.
-    void TerminalPage::_RebuildAgentStack(std::string requestId)
+    void TerminalPage::_ReconcileAgentSettings(std::string requestId)
     {
         const auto current = _CaptureAgentSettingsSnapshot();
 
         {
-            std::string diag = "_RebuildAgentStack: entered. current.acp=";
+            std::string diag = "_ReconcileAgentSettings: entered. current.acp=";
             diag += winrt::to_string(current.acpAgent);
             diag += " last.acp=";
             diag += winrt::to_string(_lastAgentSettings.acpAgent);
             diag += " initialized=";
             diag += (_agentSettingsSnapshotInitialized ? "true" : "false");
-            diag += " rebuilding=";
-            diag += (_agentRebuilding ? "true" : "false");
+            diag += " operation_in_progress=";
+            diag += (_agentLifecycleOperationInProgress ? "true" : "false");
             _agentPaneLog(diag);
         }
 
-        // First call just seeds the snapshot — there's nothing to rebuild.
+        // First call only establishes the baseline.
         if (!_agentSettingsSnapshotInitialized)
         {
             _lastAgentSettings = current;
             _agentSettingsSnapshotInitialized = true;
-            _agentPaneLog("_RebuildAgentStack: seeded snapshot, skip rebuild");
+            _agentPaneLog("_ReconcileAgentSettings: seeded snapshot");
             return;
         }
 
         const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
         if (changeKind == AgentSettingsChangeKind::None)
         {
-            _agentPaneLog("_RebuildAgentStack: no change, skip rebuild");
+            _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
         }
         const bool modelHotUpdate = changeKind == AgentSettingsChangeKind::ModelHotUpdate;
@@ -3882,23 +3888,23 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Reentrancy guard.
-        if (_agentRebuilding)
+        if (_agentLifecycleOperationInProgress)
         {
-            _pendingAgentRebuild = true;
+            _pendingAgentSettingsReconciliation = true;
             if (!requestId.empty())
             {
-                _pendingAgentRebuildRequestId = std::move(requestId);
+                _pendingAgentSettingsRequestId = std::move(requestId);
             }
-            _agentPaneLog("_RebuildAgentStack: already rebuilding, queued latest settings reconciliation");
+            _agentPaneLog("_ReconcileAgentSettings: lifecycle operation in progress; queued reconciliation");
             return;
         }
 
-        // Defer destructive rebuilds when there's no terminal tab in focus:
+        // Defer pane recreation when there's no terminal tab in focus:
         // newly created TermControls on non-active tabs never raise
         // SwapChainPanel.LayoutUpdated, so `connection.Start()` never runs and
         // wta.exe never launches. In-place rebinds reuse existing helpers and
         // must continue while Settings is focused.
-        // _FlushPendingAgentRebuild re-enters once a terminal tab becomes
+        // _FlushPendingAgentSettingsReconciliation re-enters once a terminal tab becomes
         // active.
         // `_lastAgentSettings` stays unchanged so the dirty diff fires
         // again on next entry.
@@ -3907,29 +3913,29 @@ namespace winrt::TerminalApp::implementation
         const bool canHostPane = focusedTab && !(*focusedTab == _settingsTab);
         if (_ShouldDeferAgentSettingsChange(changeKind, canHostPane, masterConfigurationChanged))
         {
-            _pendingAgentRebuild = true;
+            _pendingAgentSettingsReconciliation = true;
             if (!requestId.empty())
             {
-                _pendingAgentRebuildRequestId = std::move(requestId);
+                _pendingAgentSettingsRequestId = std::move(requestId);
             }
             return;
         }
 
-        _agentRebuilding = true;
+        _agentLifecycleOperationInProgress = true;
 
         if (modelHotUpdate)
         {
-            _agentPaneLog("_RebuildAgentStack: native model changed, reconciling helper readiness");
+            _agentPaneLog("_ReconcileAgentSettings: native model changed");
         }
         else
         {
             _agentPaneLog(
                 rebindAgentInPlace ?
-                    "_RebuildAgentStack: agent/model binding changed, rebinding existing helpers" :
-                    "_RebuildAgentStack: agent settings changed, rebuilding");
+                    "_ReconcileAgentSettings: rebinding existing helpers" :
+                    "_ReconcileAgentSettings: recreating affected helpers");
         }
 
-        // Rebuild only tabs whose effective agent identity changed. A custom
+        // Reconcile only tabs whose effective Agent binding changed. A custom
         // command change restarts the shared master, so every local helper is
         // collected even when its tab has a runtime override. BYOK changes
         // rebind every launchable Host pane that consumed that bootstrap.
@@ -3954,7 +3960,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         bool hadAny = false;
-        bool hasStartedPaneToRebind = false;
         bool hasModelHotUpdateTarget = false;
         std::vector<winrt::hstring> tabIdsThatHadAgentPane;
         std::vector<winrt::hstring> tabIdsToRetire;
@@ -4095,16 +4100,10 @@ namespace winrt::TerminalApp::implementation
                             continue;
                         }
 
-                        auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
-                        if (connectionState)
-                        {
-                            disposition = _ClassifyAgentPaneSettingsRebind(
-                                *connectionState,
-                                helperEventReady);
-                        }
-                        hasStartedPaneToRebind =
-                            hasStartedPaneToRebind ||
-                            disposition == AgentPaneSettingsRebindDisposition::Rebind;
+                        // A helper that reached ready may still have a
+                        // master-side session after its ConPTY closes. Retire
+                        // that session before revalidating the connection and
+                        // falling back to pane recreation below.
                         tabIdsToRetire.push_back(tabId);
                         rebindTargets.emplace_back(tabId, std::move(*rebindBinding));
                     }
@@ -4114,16 +4113,8 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& [tab, recreationOptions] : panesToRecreate)
         {
-            _agentPaneLog("_RebuildAgentStack: recreating unready agent pane with current settings");
-            _TeardownAgentPane(tab);
-            _AutoCreateHiddenAgentPaneShared(
-                tab,
-                /*intoSessionsView*/ false,
-                recreationOptions.autoStash,
-                {},
-                {},
-                {},
-                recreationOptions.focusPane);
+            _agentPaneLog("_ReconcileAgentSettings: recreating unready agent pane");
+            _RecreateAgentPane(tab, recreationOptions);
         }
 
         if (modelHotUpdate)
@@ -4138,24 +4129,24 @@ namespace winrt::TerminalApp::implementation
             }
 
             _lastAgentSettings = current;
-            _agentRebuilding = false;
-            _agentPaneLog("_RebuildAgentStack: native model updated ready helpers and recreated unready panes");
+            _agentLifecycleOperationInProgress = false;
+            _agentPaneLog("_ReconcileAgentSettings: native model reconciliation complete");
             return;
         }
 
         if (!hadAny && !masterConfigurationChanged)
         {
             _lastAgentSettings = current;
-            _agentRebuilding = false;
-            _agentPaneLog("_RebuildAgentStack: no affected agent pane, snapshot only");
+            _agentLifecycleOperationInProgress = false;
+            _agentPaneLog("_ReconcileAgentSettings: no affected agent pane");
             return;
         }
 
         if (rebindAgentInPlace && rebindTargets.empty())
         {
             _lastAgentSettings = current;
-            _agentRebuilding = false;
-            _agentPaneLog("_RebuildAgentStack: recreated all affected unready panes, snapshot only");
+            _agentLifecycleOperationInProgress = false;
+            _agentPaneLog("_ReconcileAgentSettings: recreated affected unready panes");
             return;
         }
 
@@ -4168,12 +4159,8 @@ namespace winrt::TerminalApp::implementation
         {
             tabIdsToRetire = tabIdsThatHadAgentPane;
         }
-        else if (!hasStartedPaneToRebind)
-        {
-            tabIdsToRetire.clear();
-        }
         const auto rebindGeneration =
-            rebindAgentInPlace ? ++_agentSettingsRebindGeneration : 0;
+            rebindAgentInPlace ? ++_agentRebindGeneration : 0;
         _BeginAgentSessionRetirement(
             masterConfigurationChanged,
             std::move(tabIdsToRetire),
@@ -4201,44 +4188,31 @@ namespace winrt::TerminalApp::implementation
                             if (const auto tab = strongThis->_FindTabByStableId(tabId);
                                 tab && tab->FindAgentPane())
                             {
-                                auto disposition = AgentPaneSettingsRebindDisposition::Recreate;
                                 bool helperEventReady = false;
                                 if (const auto content = tab->FindAgentPaneContent())
                                 {
                                     helperEventReady =
                                         winrt::get_self<implementation::AgentPaneContent>(content)->IsHelperEventReady();
                                 }
-                                if (const auto control = tab->FindAgentPane()->GetTerminalControl())
-                                {
-                                    disposition = _ClassifyAgentPaneSettingsRebind(
+                                const auto control = tab->FindAgentPane()->GetTerminalControl();
+                                if (!control ||
+                                    !_CanRebindAgentPane(
                                         control.ConnectionState(),
-                                        helperEventReady);
-                                }
-
-                                if (disposition == AgentPaneSettingsRebindDisposition::Recreate)
+                                        helperEventReady))
                                 {
                                     const auto recreationOptions = _GetAgentPaneRecreationOptions(
                                         tab->HasStashedAgentPane(),
                                         activeTab && activeTab == tab);
-                                    _agentPaneLog("_RebuildAgentStack: recreating terminal-state agent pane with current settings");
-                                    strongThis->_TeardownAgentPane(tab);
-                                    strongThis->_AutoCreateHiddenAgentPaneShared(
-                                        tab,
-                                        /*intoSessionsView*/ false,
-                                        recreationOptions.autoStash,
-                                        {},
-                                        {},
-                                        {},
-                                        recreationOptions.focusPane);
+                                    _agentPaneLog("_ReconcileAgentSettings: recreating unavailable agent pane");
+                                    strongThis->_RecreateAgentPane(tab, recreationOptions);
                                     continue;
                                 }
 
-                                auto params = _BuildAgentPaneSettingsRebindPayload(binding);
-                                params["operation_id"] = std::string{ operationId };
-                                params["generation"] = Json::UInt64{ rebindGeneration };
-                                params["window_id"] = std::to_string(strongThis->_WindowProperties.WindowId());
-                                params["tab_id"] = winrt::to_string(tabId);
-                                strongThis->_RaiseProtocolEvent("rebind_agent", params);
+                                strongThis->_RaiseAgentPaneRebindRequest(
+                                    tab,
+                                    binding,
+                                    operationId,
+                                    rebindGeneration);
                             }
                         }
                     }
@@ -4267,7 +4241,7 @@ namespace winrt::TerminalApp::implementation
                                 !sharedWta.Restart(std::wstring_view{ wtaPath }, extraArgs, environment))
                             {
                                 _agentPaneLog(
-                                    "_RebuildAgentStack: master configuration SharedWta::Restart failed");
+                                    "_ReconcileAgentSettings: SharedWta::Restart failed");
                             }
                         }
                     }
@@ -4299,7 +4273,7 @@ namespace winrt::TerminalApp::implementation
                     }
 
                     strongThis->_lastAgentSettings = current;
-                    strongThis->_agentRebuilding = false;
+                    strongThis->_agentLifecycleOperationInProgress = false;
                     const auto latest = strongThis->_CaptureAgentSettingsSnapshot();
                     const bool settingsChangedAgain = TerminalPage::_AgentSettingsChanged(current, latest);
                     if (settingsChangedAgain && !operationId.empty())
@@ -4310,19 +4284,19 @@ namespace winrt::TerminalApp::implementation
                     {
                         strongThis->_RestartAgentStack(*pendingRestart);
                     }
-                    else if (std::exchange(strongThis->_pendingAgentRebuild, false) ||
+                    else if (std::exchange(strongThis->_pendingAgentSettingsReconciliation, false) ||
                              settingsChangedAgain)
                     {
-                        auto pendingRequest = std::exchange(strongThis->_pendingAgentRebuildRequestId, std::nullopt);
-                        strongThis->_RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
+                        auto pendingRequest = std::exchange(strongThis->_pendingAgentSettingsRequestId, std::nullopt);
+                        strongThis->_ReconcileAgentSettings(pendingRequest ? std::move(*pendingRequest) : std::string{});
                     }
                 }
             });
     }
 
-    void TerminalPage::_FlushPendingAgentRebuild()
+    void TerminalPage::_FlushPendingAgentSettingsReconciliation()
     {
-        if (!_pendingAgentRebuild)
+        if (!_pendingAgentSettingsReconciliation)
         {
             return;
         }
@@ -4331,9 +4305,9 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        _pendingAgentRebuild = false;
-        auto pendingRequest = std::exchange(_pendingAgentRebuildRequestId, std::nullopt);
-        _RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
+        _pendingAgentSettingsReconciliation = false;
+        auto pendingRequest = std::exchange(_pendingAgentSettingsRequestId, std::nullopt);
+        _ReconcileAgentSettings(pendingRequest ? std::move(*pendingRequest) : std::string{});
     }
 
     void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource, std::wstring_view initialAuthAgent)
@@ -6085,10 +6059,10 @@ namespace winrt::TerminalApp::implementation
             if (globals.AcpAgent() != selectedAgent)
             {
                 globals.AcpAgent(selectedAgent);
-                // Update the snapshot so _RebuildAgentStack (triggered by
+                // Update the snapshot so settings reconciliation (triggered by
                 // the file-watcher after WriteSettingsToDisk) sees no diff
-                // and skips the teardown. The current WTA pane is already
-                // connected to the right agent.
+                // and does not rebind a helper that already connected to the
+                // selected Agent.
                 _lastAgentSettings.acpAgent = std::wstring{ selectedAgent };
                 try
                 {
@@ -6584,6 +6558,136 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool TerminalPage::_HandleAgentModelSwitch(
+        const hstring& agentId,
+        const Json::Value& params)
+    {
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        if (params.isMember("model_id"))
+        {
+            if (!params["model_id"].isString())
+            {
+                _agentPaneLog("OnAgentSwitchRequested: malformed cloud model");
+                return true;
+            }
+
+            const auto modelId = winrt::to_hstring(params["model_id"].asString());
+            bool found = false;
+            for (const auto& model :
+                 winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current().AvailableModels(agentId))
+            {
+                if (model.Id() == modelId)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                _agentPaneLog("OnAgentSwitchRequested: unknown cloud model");
+                return true;
+            }
+
+            auto globals = _settings.GlobalSettings();
+            if (globals.CustomModelSelection().empty() && globals.AcpModel() == modelId)
+            {
+                return true;
+            }
+            globals.CustomModelSelection(L"");
+            globals.AcpModel(modelId);
+            try
+            {
+                _settings.WriteSettingsToDisk();
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                return true;
+            }
+            _agentPaneLog("OnAgentSwitchRequested: persisted cloud model selection");
+            _ReconcileAgentSettings(
+                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
+            return true;
+        }
+
+        if (params.isMember("custom_model_selection"))
+        {
+            if (!params["custom_model_selection"].isString())
+            {
+                _agentPaneLog("OnAgentSwitchRequested: malformed BYOK selection");
+                return true;
+            }
+            if (!Reg::SupportsByok(std::wstring_view{ agentId }))
+            {
+                _agentPaneLog("OnAgentSwitchRequested: BYOK selection rejected for unsupported agent");
+                return true;
+            }
+
+            const auto selection = winrt::to_hstring(params["custom_model_selection"].asString());
+            std::wstring providerId;
+            std::wstring modelId;
+            if (!::Microsoft::Terminal::CustomModels::TryParseSelectionId(
+                    std::wstring_view{ selection },
+                    providerId,
+                    modelId))
+            {
+                _agentPaneLog("OnAgentSwitchRequested: malformed BYOK selection");
+                return true;
+            }
+
+            bool found = false;
+            for (const auto& provider : _settings.GlobalSettings().CustomModelProviders())
+            {
+                if (provider.Id() != providerId)
+                {
+                    continue;
+                }
+                if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
+                        std::wstring_view{ provider.ApiContract() }))
+                {
+                    break;
+                }
+                for (const auto& model : provider.Models())
+                {
+                    if (model.Id() == modelId)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                break;
+            }
+            if (!found)
+            {
+                _agentPaneLog("OnAgentSwitchRequested: unknown BYOK selection");
+                return true;
+            }
+
+            auto globals = _settings.GlobalSettings();
+            if (globals.CustomModelSelection() == selection)
+            {
+                return true;
+            }
+            globals.CustomModelSelection(selection);
+            globals.AcpModel(L"");
+            try
+            {
+                _settings.WriteSettingsToDisk();
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                return true;
+            }
+            _agentPaneLog("OnAgentSwitchRequested: persisted BYOK model selection");
+            _ReconcileAgentSettings(
+                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
+            return true;
+        }
+
+        return false;
+    }
+
     // Inbound `/agent` selection from WTA. SendEvent fans out to every page;
     // window_id plus the stable tab id ensure only the owning page applies it.
     void TerminalPage::OnAgentSwitchRequested(hstring eventJson)
@@ -6618,10 +6722,17 @@ namespace winrt::TerminalApp::implementation
         const auto wslDistro = params.isMember("wsl_distro") && params["wsl_distro"].isString() ?
                                    winrt::to_hstring(params["wsl_distro"].asString()) :
                                    winrt::hstring{};
-        if (!tab || agentId.empty())
+        if (!tab)
         {
+            _agentPaneLog("OnAgentSwitchRequested: target tab not found");
             return;
         }
+        if (agentId.empty())
+        {
+            _agentPaneLog("OnAgentSwitchRequested: empty agent id");
+            return;
+        }
+
         if (source != L"host" && source != L"wsl")
         {
             _agentPaneLog("OnAgentSwitchRequested: unknown agent source");
@@ -6663,129 +6774,16 @@ namespace winrt::TerminalApp::implementation
         }
 
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        bool allowed = false;
-        for (const auto& agent : Reg::FilteredAcpAgents())
-        {
-            if (agent.id == std::wstring_view{ agentId })
-            {
-                allowed = true;
-                break;
-            }
-        }
+        const auto allowed = std::ranges::any_of(Reg::FilteredAcpAgents(), [&](const auto& agent) {
+            return agent.id == std::wstring_view{ agentId };
+        });
         if (!allowed)
         {
             _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
             return;
         }
-
-        if (params.isMember("model_id") && params["model_id"].isString())
+        if (_HandleAgentModelSwitch(agentId, params))
         {
-            const auto modelId = winrt::to_hstring(params["model_id"].asString());
-            bool found = false;
-            for (const auto& model :
-                 winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current().AvailableModels(agentId))
-            {
-                if (model.Id() == modelId)
-                {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-            {
-                _agentPaneLog("OnAgentSwitchRequested: unknown cloud model");
-                return;
-            }
-
-            auto globals = _settings.GlobalSettings();
-            if (globals.CustomModelSelection().empty() && globals.AcpModel() == modelId)
-            {
-                return;
-            }
-            globals.CustomModelSelection(L"");
-            globals.AcpModel(modelId);
-            try
-            {
-                _settings.WriteSettingsToDisk();
-            }
-            catch (...)
-            {
-                LOG_CAUGHT_EXCEPTION();
-                return;
-            }
-            _agentPaneLog("OnAgentSwitchRequested: persisted cloud model selection");
-            _RebuildAgentStack(
-                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
-            return;
-        }
-
-        if (params.isMember("custom_model_selection") && params["custom_model_selection"].isString())
-        {
-            if (!Reg::SupportsByok(std::wstring_view{ agentId }))
-            {
-                _agentPaneLog("OnAgentSwitchRequested: BYOK selection rejected for unsupported agent");
-                return;
-            }
-
-            const auto selection = winrt::to_hstring(params["custom_model_selection"].asString());
-            std::wstring providerId;
-            std::wstring modelId;
-            if (!::Microsoft::Terminal::CustomModels::TryParseSelectionId(
-                    std::wstring_view{ selection },
-                    providerId,
-                    modelId))
-            {
-                _agentPaneLog("OnAgentSwitchRequested: malformed BYOK selection");
-                return;
-            }
-
-            bool found = false;
-            for (const auto& provider : _settings.GlobalSettings().CustomModelProviders())
-            {
-                if (provider.Id() != providerId)
-                {
-                    continue;
-                }
-                if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
-                        std::wstring_view{ provider.ApiContract() }))
-                {
-                    break;
-                }
-                for (const auto& model : provider.Models())
-                {
-                    if (model.Id() == modelId)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                break;
-            }
-            if (!found)
-            {
-                _agentPaneLog("OnAgentSwitchRequested: unknown BYOK selection");
-                return;
-            }
-
-            auto globals = _settings.GlobalSettings();
-            if (globals.CustomModelSelection() == selection)
-            {
-                return;
-            }
-            globals.CustomModelSelection(selection);
-            globals.AcpModel(L"");
-            try
-            {
-                _settings.WriteSettingsToDisk();
-            }
-            catch (...)
-            {
-                LOG_CAUGHT_EXCEPTION();
-                return;
-            }
-            _agentPaneLog("OnAgentSwitchRequested: persisted BYOK model selection");
-            _RebuildAgentStack(
-                winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId());
             return;
         }
 
@@ -6799,7 +6797,7 @@ namespace winrt::TerminalApp::implementation
 
         tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{}, source, wslDistro);
         const auto targetBinding = _ResolveAgentPaneSettingsBindingForTab(tab);
-        _RebindAgentPaneForTab(tab, currentBinding, targetBinding);
+        _ApplyAgentPaneBindingForTab(tab, currentBinding, targetBinding);
     }
 
     // `/restart` replaces the shared master and its agent CLI pool while
@@ -6810,35 +6808,32 @@ namespace winrt::TerminalApp::implementation
     // already unavailable retain the scoped recreation fallback.
     void TerminalPage::OnRestartAgentStackRequested(hstring eventJson)
     {
-        std::string requestId;
         Json::Value event;
         Json::CharReaderBuilder reader;
         std::istringstream stream{ winrt::to_string(eventJson) };
         std::string errors;
-        if (Json::parseFromStream(reader, stream, &event, &errors) &&
-            event.isMember("params") && event["params"].isObject() &&
-            event["params"].isMember("request_id") && event["params"]["request_id"].isString())
+        if (!Json::parseFromStream(reader, stream, &event, &errors) ||
+            !event.isMember("params") || !event["params"].isObject() ||
+            !event["params"].isMember("request_id") || !event["params"]["request_id"].isString() ||
+            event["params"]["request_id"].asString().empty())
         {
-            requestId = event["params"]["request_id"].asString();
+            _agentPaneLog("OnRestartAgentStackRequested: missing request_id, dropping");
+            return;
         }
-        if (requestId.empty())
-        {
-            requestId = winrt::TerminalApp::implementation::SharedWta::Instance().CreateRetirementRequestId();
-        }
-        _RestartAgentStack(std::move(requestId));
+        _RestartAgentStack(event["params"]["request_id"].asString());
     }
 
     void TerminalPage::_RestartAgentStack(std::string requestId)
     {
         _agentPaneLog("OnRestartAgentStackRequested: /restart received from wta");
 
-        if (_agentRebuilding)
+        if (_agentLifecycleOperationInProgress)
         {
             _pendingAgentStackRestart.Queue(std::move(requestId));
-            _agentPaneLog("OnRestartAgentStackRequested: rebuild pending; queued restart");
+            _agentPaneLog("OnRestartAgentStackRequested: lifecycle operation pending; queued restart");
             return;
         }
-        _agentRebuilding = true;
+        _agentLifecycleOperationInProgress = true;
 
         std::vector<winrt::hstring> tabIds;
         for (const auto& t : _tabs)
@@ -6861,10 +6856,18 @@ namespace winrt::TerminalApp::implementation
                 if (const auto strongThis = weakThis.get())
                 {
                     auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
-                    if (sharedWta.ClaimRetirementAction(operationId, "restart_master") &&
-                        !sharedWta.Restart())
+                    if (sharedWta.ClaimRetirementAction(operationId, "restart_master"))
                     {
-                        _agentPaneLog("OnRestartAgentStackRequested: SharedWta::Restart returned false");
+                        if (!sharedWta.Restart())
+                        {
+                            _agentPaneLog("OnRestartAgentStackRequested: SharedWta::Restart returned false");
+                        }
+                        else
+                        {
+                            Json::Value params{ Json::objectValue };
+                            params["operation_id"] = std::string{ operationId };
+                            strongThis->_RaiseProtocolEvent("agent_master_restarted", params);
+                        }
                     }
 
                     const auto activeTab = strongThis->_GetFocusedTabImpl();
@@ -6888,24 +6891,16 @@ namespace winrt::TerminalApp::implementation
                                 activeTab && activeTab == tab);
                             _agentPaneLog(
                                 "OnRestartAgentStackRequested: recreating pane with unavailable helper process");
-                            strongThis->_TeardownAgentPane(tab);
-                            strongThis->_AutoCreateHiddenAgentPaneShared(
-                                tab,
-                                /*intoSessionsView*/ false,
-                                recreationOptions.autoStash,
-                                {},
-                                {},
-                                {},
-                                recreationOptions.focusPane);
+                            strongThis->_RecreateAgentPane(tab, recreationOptions);
                         }
                     }
 
-                    strongThis->_agentRebuilding = false;
+                    strongThis->_agentLifecycleOperationInProgress = false;
                     strongThis->_pendingAgentStackRestart.Clear();
-                    if (std::exchange(strongThis->_pendingAgentRebuild, false))
+                    if (std::exchange(strongThis->_pendingAgentSettingsReconciliation, false))
                     {
-                        auto pendingRequest = std::exchange(strongThis->_pendingAgentRebuildRequestId, std::nullopt);
-                        strongThis->_RebuildAgentStack(pendingRequest ? std::move(*pendingRequest) : std::string{});
+                        auto pendingRequest = std::exchange(strongThis->_pendingAgentSettingsRequestId, std::nullopt);
+                        strongThis->_ReconcileAgentSettings(pendingRequest ? std::move(*pendingRequest) : std::string{});
                     }
                 }
             });
@@ -9875,13 +9870,13 @@ namespace winrt::TerminalApp::implementation
 
         // Reconcile agent/model identity changes. Supported model changes stay
         // on the live ACP session, launch-time model changes rebind the same
-        // helper, and only trusted command/backend boundaries rebuild panes.
+        // helper, and only trusted command/backend boundaries recreate panes.
         auto requestId = std::exchange(_settingsReloadRequestId, {});
         if (!requestId.empty())
         {
             requestId.append(_AgentSettingsRequestIdentity(_CaptureAgentSettingsSnapshot()));
         }
-        _RebuildAgentStack(std::move(requestId));
+        _ReconcileAgentSettings(std::move(requestId));
 
         // Re-project cached per-tab status after settings-only presentation
         // changes, including showTokenUsageAndCost.

@@ -11,6 +11,7 @@ use super::*;
 struct AgentReconnectWire {
     operation_id: String,
     window_id: String,
+    tab_id: String,
     generation: u64,
     agent_id: String,
     acp_model: Option<String>,
@@ -20,6 +21,137 @@ struct AgentReconnectWire {
 }
 
 impl App {
+    fn handle_agent_rebind(&mut self, params: serde_json::Value) {
+        let Ok(wire) = serde_json::from_value::<AgentReconnectWire>(params.clone()) else {
+            tracing::warn!(
+                target: "agent_rebind",
+                payload = %params,
+                "ignoring malformed agent rebind event"
+            );
+            return;
+        };
+        if self.owner_tab_id.as_deref() != Some(wire.tab_id.as_str())
+            || wire.window_id.trim().is_empty()
+            || self
+                .window_id
+                .as_deref()
+                .is_some_and(|window_id| !window_id.is_empty() && window_id != wire.window_id)
+        {
+            return;
+        }
+
+        let agent_source = if wire
+            .agent_source
+            .eq_ignore_ascii_case(crate::agent_source::AgentSource::HOST_KIND)
+        {
+            crate::agent_source::AgentSource::Host
+        } else if wire
+            .agent_source
+            .eq_ignore_ascii_case(crate::agent_source::AgentSource::WSL_KIND)
+        {
+            let Some(distro) = wire
+                .wsl_distro
+                .as_deref()
+                .map(str::trim)
+                .filter(|distro| !distro.is_empty())
+            else {
+                tracing::warn!(
+                    target: "agent_rebind",
+                    "ignoring WSL agent rebind without a distro"
+                );
+                return;
+            };
+            crate::agent_source::AgentSource::Wsl {
+                distro: distro.to_string(),
+            }
+        } else {
+            tracing::warn!(
+                target: "agent_rebind",
+                source = %wire.agent_source,
+                "ignoring agent rebind with an unknown source"
+            );
+            return;
+        };
+
+        let mut request = AgentReconnectRequest {
+            operation_id: wire.operation_id,
+            window_id: wire.window_id,
+            generation: wire.generation,
+            agent_id: wire.agent_id,
+            acp_model: wire.acp_model,
+            custom_model_selection: wire.custom_model_selection,
+            agent_source,
+        };
+        if request.operation_id.trim().is_empty()
+            || (self.last_agent_rebind_window_id.as_deref() == Some(request.window_id.as_str())
+                && request.generation <= self.last_agent_rebind_generation)
+        {
+            return;
+        }
+        if request.agent_source != self.current_agent_source {
+            tracing::warn!(
+                target: "agent_rebind",
+                operation_id = %request.operation_id,
+                generation = request.generation,
+                current_source = %self.current_agent_source,
+                requested_source = %request.agent_source,
+                "ignoring execution-source-changing agent rebind"
+            );
+            return;
+        }
+        if !crate::agent_registry::is_known_id(&request.agent_id)
+            || (self.host_agent_allowlist_present
+                && !self
+                    .allowed_agent_ids
+                    .iter()
+                    .any(|id| id.eq_ignore_ascii_case(&request.agent_id)))
+        {
+            tracing::warn!(
+                target: "agent_rebind",
+                operation_id = %request.operation_id,
+                generation = request.generation,
+                agent_id = %request.agent_id,
+                source = %request.agent_source,
+                "ignoring unsupported or policy-blocked agent rebind"
+            );
+            return;
+        }
+
+        request.agent_id.make_ascii_lowercase();
+        request.acp_model = request
+            .acp_model
+            .take()
+            .filter(|model| !model.trim().is_empty());
+        request.custom_model_selection = request
+            .custom_model_selection
+            .take()
+            .filter(|selection| !selection.trim().is_empty());
+        if !matches!(request.agent_source, crate::agent_source::AgentSource::Host)
+            || crate::agent_registry::lookup_profile_by_id(&request.agent_id).byok_mode
+                == crate::agent_registry::ByokMode::Unsupported
+        {
+            request.custom_model_selection = None;
+        }
+
+        self.last_agent_rebind_window_id = Some(request.window_id.clone());
+        self.last_agent_rebind_generation = request.generation;
+        self.prepare_agent_reconnect(&request);
+
+        let disconnect_in_progress = matches!(
+            &self.agent_reconnect_state,
+            AgentReconnectState::Disconnecting(_)
+        );
+        self.agent_reconnect_state = AgentReconnectState::Disconnecting(request.clone());
+        if !disconnect_in_progress
+            && self
+                .restart_tx
+                .send(AgentLifecycleRequest::RebindAgent(request))
+                .is_err()
+        {
+            let _ = self.begin_pending_agent_reconnect_preflight();
+        }
+    }
+
     fn completed_turn_hit_at(&self, column: u16, row: u16) -> Option<CompletedTurnHitRegion> {
         let tab = self.current_tab();
         if self.mode != AppMode::Chat
@@ -422,6 +554,7 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
+                self.auth_recovery_state = AuthRecoveryState::Idle;
                 let (available_models, current_model_id) = self
                     .session_model_configs
                     .entry(session_id.clone())
@@ -902,7 +1035,15 @@ impl App {
                 }
             }
             AppEvent::MasterDisconnected => {
+                self.agent_reconnect_state = AgentReconnectState::Idle;
                 if self.deferred_acp.is_some() {
+                    if !matches!(&self.auth_recovery_state, AuthRecoveryState::Idle) {
+                        tracing::warn!(
+                            target: "helper",
+                            "master disconnected during auth recovery; explicit restart barrier owns reconnect"
+                        );
+                        return;
+                    }
                     tracing::warn!(
                         target: "helper",
                         agent_id = %self.current_agent_id,
@@ -946,6 +1087,10 @@ impl App {
                 // Connecting state.
                 self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
                 let recovery_generation = self.auth_recovery_generation;
+                let restart_request_id = uuid::Uuid::new_v4().to_string();
+                self.auth_recovery_state = AuthRecoveryState::WaitingForMaster {
+                    request_id: restart_request_id.clone(),
+                };
                 // (i) Transient "Reconnecting…" — NOT the sign-in screen. The
                 // master restart below reconnects this retained helper, so the
                 // common path never flashes the setup screen. Only a dropped
@@ -964,11 +1109,11 @@ impl App {
                 // cached its unauthenticated state at spawn and `authenticate`
                 // does not refresh it; only a respawn (which re-reads the now
                 // valid on-disk credential) recovers. Reuse the tested
-                // `/restart` machinery; `tab_id` identifies the failing tab.
+                // `/restart` machinery. C++ publishes agent_master_restarted
+                // only after the replacement has claimed the stable pipe.
                 send_wt_protocol_event(
-                    crate::wt_protocol_events::restart_agent_stack_event(
-                        Some("auth_recovery"),
-                        tab_id.as_deref(),
+                    crate::wt_protocol_events::restart_agent_stack_event_with_id(
+                        &restart_request_id,
                     ),
                 );
                 // (iii) Dead-man fallback: a successful retained-helper
@@ -1006,6 +1151,7 @@ impl App {
                     && self.mode != AppMode::Setup
                     && matches!(self.state, ConnectionState::Connecting(_))
                 {
+                    self.auth_recovery_state = AuthRecoveryState::Idle;
                     tracing::warn!(
                         target: "auth_recovery",
                         agent_id = %agent_id,
@@ -1386,9 +1532,7 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
-                if self.agent_reconnect_disconnect_pending
-                    || self.agent_reconnect_preflight_pending
-                {
+                if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     tracing::debug!(
                         target: "preflight",
                         stale_agent = %result.agent_id,
@@ -1424,12 +1568,14 @@ impl App {
                 generation,
                 result,
             } => {
-                let matches_pending = self.agent_reconnect_preflight_pending
-                    && self.pending_agent_reconnect.as_ref().is_some_and(|pending| {
+                let matches_pending = match &self.agent_reconnect_state {
+                    AgentReconnectState::Preflighting(pending) => {
                         pending.operation_id == operation_id
                             && pending.generation == generation
                             && pending.agent_id.eq_ignore_ascii_case(&result.agent_id)
-                    });
+                    }
+                    _ => false,
+                };
                 if !matches_pending {
                     tracing::debug!(
                         target: "agent_rebind",
@@ -1441,8 +1587,7 @@ impl App {
                     return;
                 }
 
-                self.agent_reconnect_preflight_pending = false;
-                self.pending_agent_reconnect = None;
+                self.agent_reconnect_state = AgentReconnectState::Idle;
                 if result.all_passed() {
                     self.pending_acp_start = true;
                     tracing::info!(
@@ -1720,135 +1865,41 @@ impl App {
                     return;
                 }
 
+                if method == "agent_master_restarted" {
+                    let request_id = params
+                        .get("operation_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if !matches!(
+                        &self.auth_recovery_state,
+                        AuthRecoveryState::WaitingForMaster {
+                            request_id: expected
+                        } if expected == request_id
+                    ) {
+                        return;
+                    }
+                    if self.deferred_acp.is_none() {
+                        tracing::warn!(
+                            target: "auth_recovery",
+                            %request_id,
+                            "replacement master is ready but helper binding is unavailable"
+                        );
+                        return;
+                    }
+
+                    tracing::info!(
+                        target: "auth_recovery",
+                        %request_id,
+                        "replacement master is ready; reconnecting retained helper"
+                    );
+                    self.auth_recovery_state = AuthRecoveryState::Connecting;
+                    self.reset_agent_scoped_state();
+                    self.pending_acp_start = true;
+                    return;
+                }
+
                 if method == "rebind_agent" {
-                    let target_tab = params.get("tab_id").and_then(|value| value.as_str());
-                    if target_tab != self.owner_tab_id.as_deref() {
-                        return;
-                    }
-
-                    let Ok(wire) = serde_json::from_value::<AgentReconnectWire>(params.clone())
-                    else {
-                        tracing::warn!(
-                            target: "agent_rebind",
-                            payload = %params,
-                            "ignoring malformed agent rebind event"
-                        );
-                        return;
-                    };
-                    if wire.window_id.trim().is_empty()
-                        || self.window_id.as_deref().is_some_and(|window_id| {
-                            !window_id.is_empty() && window_id != wire.window_id
-                        })
-                    {
-                        return;
-                    }
-                    let agent_source = if wire
-                        .agent_source
-                        .eq_ignore_ascii_case(crate::agent_source::AgentSource::HOST_KIND)
-                    {
-                        crate::agent_source::AgentSource::Host
-                    } else if wire
-                        .agent_source
-                        .eq_ignore_ascii_case(crate::agent_source::AgentSource::WSL_KIND)
-                    {
-                        let Some(distro) = wire
-                            .wsl_distro
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|distro| !distro.is_empty())
-                        else {
-                            tracing::warn!(
-                                target: "agent_rebind",
-                                "ignoring WSL agent rebind without a distro"
-                            );
-                            return;
-                        };
-                        crate::agent_source::AgentSource::Wsl {
-                            distro: distro.to_string(),
-                        }
-                    } else {
-                        tracing::warn!(
-                            target: "agent_rebind",
-                            source = %wire.agent_source,
-                            "ignoring agent rebind with an unknown source"
-                        );
-                        return;
-                    };
-                    let mut request = AgentReconnectRequest {
-                        operation_id: wire.operation_id,
-                        window_id: wire.window_id,
-                        generation: wire.generation,
-                        agent_id: wire.agent_id,
-                        acp_model: wire.acp_model,
-                        custom_model_selection: wire.custom_model_selection,
-                        agent_source,
-                    };
-                    if request.operation_id.trim().is_empty()
-                        || (self.last_agent_rebind_window_id.as_deref()
-                            == Some(request.window_id.as_str())
-                            && request.generation <= self.last_agent_rebind_generation)
-                    {
-                        return;
-                    }
-                    if request.agent_source != self.current_agent_source {
-                        tracing::warn!(
-                            target: "agent_rebind",
-                            operation_id = %request.operation_id,
-                            generation = request.generation,
-                            current_source = %self.current_agent_source,
-                            requested_source = %request.agent_source,
-                            "ignoring execution-source-changing agent rebind"
-                        );
-                        return;
-                    }
-                    if !crate::agent_registry::is_known_id(&request.agent_id)
-                        || (self.host_agent_allowlist_present
-                            && !self
-                                .allowed_agent_ids
-                                .iter()
-                                .any(|id| id.eq_ignore_ascii_case(&request.agent_id)))
-                    {
-                        tracing::warn!(
-                            target: "agent_rebind",
-                            operation_id = %request.operation_id,
-                            generation = request.generation,
-                            agent_id = %request.agent_id,
-                            source = %request.agent_source,
-                            "ignoring unsupported or policy-blocked agent rebind"
-                        );
-                        return;
-                    }
-
-                    request.agent_id.make_ascii_lowercase();
-                    request.acp_model = request
-                        .acp_model
-                        .take()
-                        .filter(|model| !model.trim().is_empty());
-                    request.custom_model_selection = request
-                        .custom_model_selection
-                        .take()
-                        .filter(|selection| !selection.trim().is_empty());
-                    if !matches!(request.agent_source, crate::agent_source::AgentSource::Host)
-                        || crate::agent_registry::lookup_profile_by_id(&request.agent_id).byok_mode
-                            == crate::agent_registry::ByokMode::Unsupported
-                    {
-                        request.custom_model_selection = None;
-                    }
-                    self.last_agent_rebind_window_id = Some(request.window_id.clone());
-                    self.last_agent_rebind_generation = request.generation;
-                    self.prepare_agent_reconnect(&request);
-                    self.pending_agent_reconnect = Some(request.clone());
-
-                    if !self.agent_reconnect_disconnect_pending {
-                        self.agent_reconnect_disconnect_pending = true;
-                        if self
-                            .restart_tx
-                            .send(RestartRequest::RebindAgent(request.clone()))
-                            .is_err()
-                        {
-                            let _ = self.begin_pending_agent_reconnect_preflight();
-                        }
-                    }
+                    self.handle_agent_rebind(params);
                     return;
                 }
 
