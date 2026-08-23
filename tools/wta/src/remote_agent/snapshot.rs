@@ -1,10 +1,15 @@
 //! Conversion of canonical host state into official AHP snapshot/list types.
 
 use ahp_types::state::{
-    RootState, SessionLifecycle, SessionState, SessionSummary, Snapshot, SnapshotState,
+    ActiveTurn, ChatInteractivity, ChatOrigin, ChatState, ChatSummary, ErrorInfo,
+    MarkdownResponsePart, Message, MessageKind, MessageOrigin, ResponsePart, RootState,
+    SessionLifecycle, SessionState, SessionSummary, Snapshot, SnapshotState, Turn, TurnState,
 };
 
-use super::state::{DomainSession, HostState};
+use super::state::{
+    DomainActiveTurn, DomainChat, DomainMessage, DomainResponsePart, DomainSession,
+    DomainSessionLifecycle, DomainTurn, DomainTurnState, HostState,
+};
 
 /// Build one fresh snapshot without storing any SDK wire object in host state.
 pub(crate) fn snapshot_for(state: &HostState, resource: &str) -> Option<Snapshot> {
@@ -32,9 +37,16 @@ pub(crate) fn snapshot_for(state: &HostState, resource: &str) -> Option<Snapshot
         });
     }
 
-    state.session(resource).map(|session| Snapshot {
+    if let Some(session) = state.session(resource) {
+        return Some(Snapshot {
+            resource: resource.to_string(),
+            state: SnapshotState::Session(Box::new(session_state(state, session))),
+            from_seq,
+        });
+    }
+    state.chat(resource).map(|chat| Snapshot {
         resource: resource.to_string(),
-        state: SnapshotState::Session(Box::new(session_state(session))),
+        state: SnapshotState::Chat(Box::new(chat_state(chat))),
         from_seq,
     })
 }
@@ -69,7 +81,7 @@ pub(crate) fn session_summary(session: &DomainSession) -> SessionSummary {
         status: session.status,
         activity: session.activity.clone(),
         project: None,
-        working_directories: None,
+        working_directories: session.working_directories.clone(),
         annotations: None,
         resource: session.resource_uri(),
         created_at: session.created_at.clone(),
@@ -79,25 +91,122 @@ pub(crate) fn session_summary(session: &DomainSession) -> SessionSummary {
     }
 }
 
-fn session_state(session: &DomainSession) -> SessionState {
+fn session_state(state: &HostState, session: &DomainSession) -> SessionState {
     SessionState {
         provider: session.provider.clone(),
         title: session.title.clone(),
         status: session.status,
         activity: session.activity.clone(),
         project: None,
-        working_directories: None,
+        working_directories: session.working_directories.clone(),
         annotations: None,
-        lifecycle: SessionLifecycle::Ready,
-        creation_error: None,
+        lifecycle: match session.lifecycle {
+            DomainSessionLifecycle::Creating => SessionLifecycle::Creating,
+            DomainSessionLifecycle::Ready => SessionLifecycle::Ready,
+            DomainSessionLifecycle::CreationFailed => SessionLifecycle::CreationFailed,
+        },
+        creation_error: session.creation_error.as_ref().map(|error| ErrorInfo {
+            error_type: error.error_type.clone(),
+            message: error.message.clone(),
+            stack: None,
+            meta: None,
+        }),
         server_tools: None,
         active_clients: Vec::new(),
-        chats: Vec::new(),
-        default_chat: None,
+        chats: state
+            .chats_for_session(&session.id)
+            .map(chat_summary)
+            .collect(),
+        default_chat: session.default_chat.clone(),
         config: None,
         customizations: None,
         changesets: None,
         input_needed: None,
         meta: None,
     }
+}
+
+fn chat_summary(chat: &DomainChat) -> ChatSummary {
+    ChatSummary {
+        resource: chat.resource_uri(),
+        title: chat.title.clone(),
+        status: chat.status,
+        activity: chat.activity.clone(),
+        modified_at: chat.modified_at.clone(),
+        origin: Some(ChatOrigin::User),
+        interactivity: Some(ChatInteractivity::Full),
+        working_directories: None,
+    }
+}
+
+fn chat_state(chat: &DomainChat) -> ChatState {
+    ChatState {
+        resource: chat.resource_uri(),
+        title: chat.title.clone(),
+        status: chat.status,
+        activity: chat.activity.clone(),
+        modified_at: chat.modified_at.clone(),
+        origin: Some(ChatOrigin::User),
+        interactivity: Some(ChatInteractivity::Full),
+        working_directories: None,
+        turns: chat.turns.iter().map(turn).collect(),
+        turns_next_cursor: None,
+        active_turn: chat.active_turn.as_ref().map(active_turn),
+        steering_message: None,
+        queued_messages: None,
+        draft: None,
+        meta: None,
+    }
+}
+
+fn active_turn(turn: &DomainActiveTurn) -> ActiveTurn {
+    ActiveTurn {
+        id: turn.id.clone(),
+        started_at: turn.started_at.clone(),
+        message: message(&turn.message),
+        response_parts: turn.response_parts.iter().map(response_part).collect(),
+        usage: None,
+    }
+}
+
+fn turn(turn: &DomainTurn) -> Turn {
+    Turn {
+        id: turn.id.clone(),
+        started_at: Some(turn.started_at.clone()),
+        duration: Some(turn.duration),
+        message: message(&turn.message),
+        response_parts: turn.response_parts.iter().map(response_part).collect(),
+        usage: None,
+        state: match turn.state {
+            DomainTurnState::Complete => TurnState::Complete,
+            DomainTurnState::Cancelled => TurnState::Cancelled,
+            DomainTurnState::Error => TurnState::Error,
+        },
+        error: turn.error.as_ref().map(|error| ErrorInfo {
+            error_type: error.error_type.clone(),
+            message: error.message.clone(),
+            stack: None,
+            meta: None,
+        }),
+    }
+}
+
+fn message(message: &DomainMessage) -> Message {
+    Message {
+        text: message.text.clone(),
+        origin: MessageOrigin {
+            kind: MessageKind::User,
+        },
+        attachments: None,
+        model: None,
+        agent: None,
+        meta: None,
+    }
+}
+
+fn response_part(part: &DomainResponsePart) -> ResponsePart {
+    ResponsePart::Markdown(MarkdownResponsePart {
+        id: part.id.clone(),
+        content: part.content.clone(),
+    })
 }

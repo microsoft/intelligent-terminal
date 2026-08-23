@@ -14,6 +14,12 @@ use super::relay::{RelayEnvelope, RelayKind, RelayOrigin};
 
 const MAX_SESSIONS: usize = 1_000;
 const MAX_SESSION_TITLE_BYTES: usize = 512;
+const MAX_SESSION_ID_BYTES: usize = 256;
+const MAX_CHAT_ID_BYTES: usize = 256;
+const MAX_TURN_ID_BYTES: usize = 256;
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+const MAX_PROVIDER_BYTES: usize = 128;
+const CURRENT_FORMAT_VERSION: u32 = 3;
 
 /// Stable host identifier. It is generated only once and stored with the
 /// canonical host state, so a restarted process represents the same host.
@@ -41,11 +47,99 @@ pub(crate) struct DomainSession {
     pub(crate) activity: Option<String>,
     pub(crate) created_at: String,
     pub(crate) modified_at: String,
+    #[serde(default)]
+    pub(crate) lifecycle: DomainSessionLifecycle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) creation_error: Option<DomainError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) working_directories: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) default_chat: Option<String>,
 }
 
 impl DomainSession {
     pub(crate) fn resource_uri(&self) -> String {
         format!("ahp-session:/{}", self.id)
+    }
+}
+
+/// Durable lifecycle state independent from the AHP wire enum.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum DomainSessionLifecycle {
+    Creating,
+    #[default]
+    Ready,
+    CreationFailed,
+}
+
+/// Durable backend error without coupling the host store to AHP wire types.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainError {
+    pub(crate) error_type: String,
+    pub(crate) message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainMessage {
+    pub(crate) text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainResponsePart {
+    pub(crate) id: String,
+    pub(crate) content: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum DomainTurnState {
+    Complete,
+    Cancelled,
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainActiveTurn {
+    pub(crate) id: String,
+    pub(crate) started_at: String,
+    pub(crate) message: DomainMessage,
+    pub(crate) response_parts: Vec<DomainResponsePart>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainTurn {
+    pub(crate) id: String,
+    pub(crate) started_at: String,
+    pub(crate) duration: i64,
+    pub(crate) message: DomainMessage,
+    pub(crate) response_parts: Vec<DomainResponsePart>,
+    pub(crate) state: DomainTurnState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<DomainError>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct DomainChat {
+    pub(crate) id: String,
+    pub(crate) session_id: String,
+    pub(crate) title: String,
+    pub(crate) status: u32,
+    pub(crate) activity: Option<String>,
+    pub(crate) modified_at: String,
+    pub(crate) turns: Vec<DomainTurn>,
+    pub(crate) active_turn: Option<DomainActiveTurn>,
+}
+
+impl DomainChat {
+    pub(crate) fn resource_uri(&self) -> String {
+        format!("ahp-chat:/{}", self.id)
+    }
+
+    pub(crate) fn session_resource_uri(&self) -> String {
+        format!("ahp-session:/{}", self.session_id)
     }
 }
 
@@ -58,6 +152,8 @@ pub(crate) struct PersistedHostState {
     pub(crate) next_server_seq: u64,
     pub(crate) next_connection_epoch: u64,
     pub(crate) sessions: BTreeMap<String, DomainSession>,
+    #[serde(default)]
+    pub(crate) chats: BTreeMap<String, DomainChat>,
     pub(crate) client_sequences: BTreeMap<String, i64>,
 }
 
@@ -84,22 +180,54 @@ pub(crate) struct LegacyIngestOutcome {
     pub(crate) added: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentUnavailableOutcome {
+    pub(crate) session: DomainSession,
+    pub(crate) envelopes: Vec<RelayEnvelope>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SessionMutationOutcome {
+    pub(crate) envelope: RelayEnvelope,
+    pub(crate) session: DomainSession,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SessionDisposedOutcome {
+    pub(crate) envelope: RelayEnvelope,
+    pub(crate) resource: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChatCreatedOutcome {
+    pub(crate) envelopes: Vec<RelayEnvelope>,
+    pub(crate) chat: DomainChat,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChatMutationOutcome {
+    pub(crate) envelope: RelayEnvelope,
+    pub(crate) chat: DomainChat,
+}
+
 impl HostState {
     pub(crate) fn new() -> Self {
         Self {
             persisted: PersistedHostState {
-                format_version: 1,
+                format_version: CURRENT_FORMAT_VERSION,
                 host_id: HostId::new(),
                 next_server_seq: 0,
                 next_connection_epoch: 0,
                 sessions: BTreeMap::new(),
+                chats: BTreeMap::new(),
                 client_sequences: BTreeMap::new(),
             },
             live_clients: BTreeMap::new(),
         }
     }
 
-    pub(crate) fn from_persisted(persisted: PersistedHostState) -> Self {
+    pub(crate) fn from_persisted(mut persisted: PersistedHostState) -> Self {
+        persisted.format_version = CURRENT_FORMAT_VERSION;
         Self {
             persisted,
             live_clients: BTreeMap::new(),
@@ -142,6 +270,710 @@ impl HostState {
             .sessions
             .values()
             .find(|session| session.resource_uri() == resource)
+    }
+
+    pub(crate) fn chats_for_session<'a>(
+        &'a self,
+        session_id: &'a str,
+    ) -> impl Iterator<Item = &'a DomainChat> {
+        self.persisted
+            .chats
+            .values()
+            .filter(move |chat| chat.session_id == session_id)
+    }
+
+    pub(crate) fn chat(&self, resource: &str) -> Option<&DomainChat> {
+        self.persisted
+            .chats
+            .values()
+            .find(|chat| chat.resource_uri() == resource)
+    }
+
+    pub(crate) fn sync_chat_summary(
+        &mut self,
+        chat_resource: &str,
+    ) -> Result<RelayEnvelope, String> {
+        let chat_id = parse_chat_resource(chat_resource)?;
+        let chat = self
+            .persisted
+            .chats
+            .get(chat_id)
+            .cloned()
+            .ok_or_else(|| "unknown chat resource".to_string())?;
+        let session = self
+            .persisted
+            .sessions
+            .get_mut(&chat.session_id)
+            .ok_or_else(|| "chat session is unavailable".to_string())?;
+        session.status = chat.status;
+        session.activity = chat.activity.clone();
+        session.modified_at = chat.modified_at.clone();
+        let session_resource = session.resource_uri();
+        Ok(self.next_envelope(
+            session_resource,
+            RelayKind::SessionChatUpdated {
+                chat: chat.resource_uri(),
+                status: chat.status,
+                activity: chat.activity,
+                modified_at: chat.modified_at,
+            },
+            None,
+            None,
+        ))
+    }
+
+    pub(crate) fn begin_session_creation(
+        &mut self,
+        resource: &str,
+        provider: String,
+        working_directories: Option<Vec<String>>,
+    ) -> Result<SessionMutationOutcome, String> {
+        let session_id = parse_session_resource(resource)?;
+        let provider = provider.trim();
+        if provider.is_empty() {
+            return Err("session provider must not be empty".to_string());
+        }
+        if provider.len() > MAX_PROVIDER_BYTES {
+            return Err(format!(
+                "session provider exceeds {MAX_PROVIDER_BYTES} bytes"
+            ));
+        }
+        if self.persisted.sessions.contains_key(session_id) {
+            return Err("session resource already exists".to_string());
+        }
+        if self.persisted.sessions.len() >= MAX_SESSIONS {
+            return Err(format!(
+                "Remote Agent Host session limit of {MAX_SESSIONS} reached"
+            ));
+        }
+
+        let now = current_timestamp();
+        let session = DomainSession {
+            id: session_id.to_string(),
+            provider: provider.to_string(),
+            title: "New Session".to_string(),
+            status: ahp_types::state::SessionStatus::Idle.bits(),
+            activity: Some("Starting agent".to_string()),
+            created_at: now.clone(),
+            modified_at: now,
+            lifecycle: DomainSessionLifecycle::Creating,
+            creation_error: None,
+            working_directories,
+            agent_session_id: None,
+            default_chat: None,
+        };
+        self.persisted
+            .sessions
+            .insert(session.id.clone(), session.clone());
+        let envelope = self.next_envelope(
+            ahp_types::ROOT_RESOURCE_URI.to_string(),
+            RelayKind::RootActiveSessionsChanged {
+                active_sessions: self.persisted.sessions.len() as i64,
+            },
+            None,
+            None,
+        );
+        Ok(SessionMutationOutcome { envelope, session })
+    }
+
+    pub(crate) fn complete_session_creation(
+        &mut self,
+        resource: &str,
+        agent_session_id: String,
+    ) -> Result<SessionMutationOutcome, String> {
+        if agent_session_id.trim().is_empty() {
+            return Err("agent session id must not be empty".to_string());
+        }
+        let session = self
+            .persisted
+            .sessions
+            .values_mut()
+            .find(|session| session.resource_uri() == resource)
+            .ok_or_else(|| "unknown session resource".to_string())?;
+        if session.lifecycle != DomainSessionLifecycle::Creating {
+            return Err("session is not being created".to_string());
+        }
+        session.lifecycle = DomainSessionLifecycle::Ready;
+        session.creation_error = None;
+        session.agent_session_id = Some(agent_session_id);
+        session.status = ahp_types::state::SessionStatus::Idle.bits();
+        session.activity = None;
+        session.modified_at = current_timestamp();
+        let session = session.clone();
+        let envelope =
+            self.next_envelope(resource.to_string(), RelayKind::SessionReady, None, None);
+        Ok(SessionMutationOutcome { envelope, session })
+    }
+
+    pub(crate) fn fail_session_creation(
+        &mut self,
+        resource: &str,
+        error_type: String,
+        message: String,
+    ) -> Result<SessionMutationOutcome, String> {
+        if error_type.trim().is_empty() || message.trim().is_empty() {
+            return Err("session creation error type and message must not be empty".to_string());
+        }
+        let session = self
+            .persisted
+            .sessions
+            .values_mut()
+            .find(|session| session.resource_uri() == resource)
+            .ok_or_else(|| "unknown session resource".to_string())?;
+        if session.lifecycle != DomainSessionLifecycle::Creating {
+            return Err("session is not being created".to_string());
+        }
+        let error = DomainError {
+            error_type,
+            message,
+        };
+        session.lifecycle = DomainSessionLifecycle::CreationFailed;
+        session.creation_error = Some(error.clone());
+        session.status = ahp_types::state::SessionStatus::Error.bits();
+        session.activity = None;
+        session.modified_at = current_timestamp();
+        let session = session.clone();
+        let envelope = self.next_envelope(
+            resource.to_string(),
+            RelayKind::SessionCreationFailed { error },
+            None,
+            None,
+        );
+        Ok(SessionMutationOutcome { envelope, session })
+    }
+
+    pub(crate) fn dispose_session(
+        &mut self,
+        resource: &str,
+    ) -> Result<SessionDisposedOutcome, String> {
+        let session_id = parse_session_resource(resource)?;
+        self.persisted
+            .sessions
+            .remove(session_id)
+            .ok_or_else(|| "unknown session resource".to_string())?;
+        self.persisted
+            .chats
+            .retain(|_, chat| chat.session_id != session_id);
+        let envelope = self.next_envelope(
+            ahp_types::ROOT_RESOURCE_URI.to_string(),
+            RelayKind::RootActiveSessionsChanged {
+                active_sessions: self.persisted.sessions.len() as i64,
+            },
+            None,
+            None,
+        );
+        Ok(SessionDisposedOutcome {
+            envelope,
+            resource: resource.to_string(),
+        })
+    }
+
+    pub(crate) fn create_chat(
+        &mut self,
+        session_resource: &str,
+        chat_resource: &str,
+    ) -> Result<ChatCreatedOutcome, String> {
+        let session_id = parse_session_resource(session_resource)?;
+        let chat_id = parse_chat_resource(chat_resource)?;
+        let session = self
+            .persisted
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| "unknown session resource".to_string())?;
+        if session.lifecycle != DomainSessionLifecycle::Ready {
+            return Err("session is not ready".to_string());
+        }
+        if self.persisted.chats.contains_key(chat_id) {
+            return Err("chat resource already exists".to_string());
+        }
+        if self
+            .persisted
+            .chats
+            .values()
+            .any(|chat| chat.session_id == session_id)
+        {
+            return Err("multiple chats are not supported yet".to_string());
+        }
+
+        let now = current_timestamp();
+        let chat = DomainChat {
+            id: chat_id.to_string(),
+            session_id: session_id.to_string(),
+            title: "New Chat".to_string(),
+            status: ahp_types::state::SessionStatus::Idle.bits(),
+            activity: None,
+            modified_at: now,
+            turns: Vec::new(),
+            active_turn: None,
+        };
+        self.persisted.chats.insert(chat.id.clone(), chat.clone());
+
+        let set_default = self
+            .persisted
+            .sessions
+            .get(session_id)
+            .is_some_and(|session| session.default_chat.is_none());
+        if set_default {
+            let session = self
+                .persisted
+                .sessions
+                .get_mut(session_id)
+                .expect("validated session exists");
+            session.default_chat = Some(chat_resource.to_string());
+            session.modified_at = current_timestamp();
+        }
+
+        let mut envelopes = vec![self.next_envelope(
+            session_resource.to_string(),
+            RelayKind::SessionChatAdded {
+                chat_id: chat.id.clone(),
+                title: chat.title.clone(),
+                status: chat.status,
+                activity: chat.activity.clone(),
+                modified_at: chat.modified_at.clone(),
+            },
+            None,
+            None,
+        )];
+        if set_default {
+            envelopes.push(self.next_envelope(
+                session_resource.to_string(),
+                RelayKind::SessionDefaultChatChanged {
+                    default_chat: Some(chat_resource.to_string()),
+                },
+                None,
+                None,
+            ));
+        }
+        Ok(ChatCreatedOutcome { envelopes, chat })
+    }
+
+    pub(crate) fn start_turn(
+        &mut self,
+        client_id: &str,
+        connection_epoch: u64,
+        params: DispatchActionParams,
+    ) -> Result<DispatchOutcome, String> {
+        let StateAction::ChatTurnStarted(action) = &params.action else {
+            return Err("expected chat/turnStarted action".to_string());
+        };
+        let chat_id = parse_chat_resource(&params.channel)?;
+        validate_turn_id(&action.turn_id)?;
+        if action.message.origin.kind != ahp_types::state::MessageKind::User {
+            return Err("chat/turnStarted requires a user message".to_string());
+        }
+        if action.message.text.trim().is_empty() {
+            return Err("chat/turnStarted message must not be empty".to_string());
+        }
+        if action.message.text.len() > MAX_MESSAGE_BYTES {
+            return Err(format!("message exceeds {MAX_MESSAGE_BYTES} bytes"));
+        }
+        if action.message.attachments.is_some()
+            || action.message.model.is_some()
+            || action.message.agent.is_some()
+            || action.message.meta.is_some()
+            || action.queued_message_id.is_some()
+            || action.meta.is_some()
+        {
+            return Err(
+                "chat/turnStarted advanced message fields are not supported yet".to_string(),
+            );
+        }
+
+        let origin = RelayOrigin {
+            client_id: client_id.to_string(),
+            client_seq: params.client_seq,
+        };
+        if self.live_clients.get(client_id).copied() != Some(connection_epoch) {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                RelayKind::ChatTurnStarted {
+                    turn_id: action.turn_id.clone(),
+                    started_at: action.started_at.clone(),
+                    message: DomainMessage {
+                        text: action.message.text.clone(),
+                    },
+                },
+                Some(origin),
+                Some("stale connection epoch".to_string()),
+            )));
+        }
+        let expected = self
+            .persisted
+            .client_sequences
+            .get(client_id)
+            .copied()
+            .unwrap_or(0)
+            .saturating_add(1);
+        if params.client_seq != expected {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                RelayKind::ChatTurnStarted {
+                    turn_id: action.turn_id.clone(),
+                    started_at: action.started_at.clone(),
+                    message: DomainMessage {
+                        text: action.message.text.clone(),
+                    },
+                },
+                Some(origin),
+                Some(format!(
+                    "invalid clientSeq {}; expected {expected}",
+                    params.client_seq
+                )),
+            )));
+        }
+
+        let chat = self
+            .persisted
+            .chats
+            .get_mut(chat_id)
+            .ok_or_else(|| "unknown chat resource".to_string())?;
+        if chat.active_turn.is_some() {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                RelayKind::ChatTurnStarted {
+                    turn_id: action.turn_id.clone(),
+                    started_at: action.started_at.clone(),
+                    message: DomainMessage {
+                        text: action.message.text.clone(),
+                    },
+                },
+                Some(origin),
+                Some("chat already has an active turn".to_string()),
+            )));
+        }
+        if chat.turns.iter().any(|turn| turn.id == action.turn_id) {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                RelayKind::ChatTurnStarted {
+                    turn_id: action.turn_id.clone(),
+                    started_at: action.started_at.clone(),
+                    message: DomainMessage {
+                        text: action.message.text.clone(),
+                    },
+                },
+                Some(origin),
+                Some("turn identifier already exists".to_string()),
+            )));
+        }
+
+        let message = DomainMessage {
+            text: action.message.text.clone(),
+        };
+        chat.active_turn = Some(DomainActiveTurn {
+            id: action.turn_id.clone(),
+            started_at: action.started_at.clone(),
+            message: message.clone(),
+            response_parts: Vec::new(),
+        });
+        chat.status = ahp_types::state::SessionStatus::InProgress.bits();
+        chat.activity = Some("Waiting for agent".to_string());
+        chat.modified_at = current_timestamp();
+        self.persisted
+            .client_sequences
+            .insert(client_id.to_string(), params.client_seq);
+        Ok(DispatchOutcome::Accepted(self.next_envelope(
+            params.channel,
+            RelayKind::ChatTurnStarted {
+                turn_id: action.turn_id.clone(),
+                started_at: action.started_at.clone(),
+                message,
+            },
+            Some(origin),
+            None,
+        )))
+    }
+
+    pub(crate) fn append_agent_text(
+        &mut self,
+        agent_session_id: &str,
+        content: String,
+    ) -> Result<Vec<ChatMutationOutcome>, String> {
+        let session_id = self
+            .persisted
+            .sessions
+            .values()
+            .find(|session| session.agent_session_id.as_deref() == Some(agent_session_id))
+            .map(|session| session.id.clone())
+            .ok_or_else(|| "unknown ACP session".to_string())?;
+        let chat = self
+            .persisted
+            .chats
+            .values_mut()
+            .find(|chat| chat.session_id == session_id && chat.active_turn.is_some())
+            .ok_or_else(|| "ACP session has no active chat turn".to_string())?;
+        let active = chat.active_turn.as_mut().expect("active chat was selected");
+        let turn_id = active.id.clone();
+        let mut kinds = Vec::new();
+        if active.response_parts.is_empty() {
+            let part_id = format!("{turn_id}-response");
+            active.response_parts.push(DomainResponsePart {
+                id: part_id.clone(),
+                content: String::new(),
+            });
+            kinds.push(RelayKind::ChatResponsePart {
+                turn_id: turn_id.clone(),
+                part_id,
+            });
+        }
+        let part = active
+            .response_parts
+            .last_mut()
+            .expect("response part was created");
+        part.content.push_str(&content);
+        let part_id = part.id.clone();
+        chat.activity = Some("Agent is responding".to_string());
+        chat.modified_at = current_timestamp();
+        let chat = chat.clone();
+        kinds.push(RelayKind::ChatDelta {
+            turn_id,
+            part_id,
+            content,
+        });
+        Ok(kinds
+            .into_iter()
+            .map(|kind| ChatMutationOutcome {
+                envelope: self.next_envelope(chat.resource_uri(), kind, None, None),
+                chat: chat.clone(),
+            })
+            .collect())
+    }
+
+    pub(crate) fn cancel_turn(
+        &mut self,
+        client_id: &str,
+        connection_epoch: u64,
+        params: DispatchActionParams,
+    ) -> Result<DispatchOutcome, String> {
+        let StateAction::ChatTurnCancelled(action) = &params.action else {
+            return Err("expected chat/turnCancelled action".to_string());
+        };
+        let chat_id = parse_chat_resource(&params.channel)?;
+        validate_turn_id(&action.turn_id)?;
+        if action.duration < 0 {
+            return Err("chat/turnCancelled duration must not be negative".to_string());
+        }
+        if action.meta.is_some() {
+            return Err("chat/turnCancelled metadata is not supported yet".to_string());
+        }
+
+        let origin = RelayOrigin {
+            client_id: client_id.to_string(),
+            client_seq: params.client_seq,
+        };
+        let kind = RelayKind::ChatTurnCancelled {
+            turn_id: action.turn_id.clone(),
+            duration: action.duration,
+        };
+        if self.live_clients.get(client_id).copied() != Some(connection_epoch) {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                kind,
+                Some(origin),
+                Some("stale connection epoch".to_string()),
+            )));
+        }
+        let expected = self
+            .persisted
+            .client_sequences
+            .get(client_id)
+            .copied()
+            .unwrap_or(0)
+            .saturating_add(1);
+        if params.client_seq != expected {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                kind,
+                Some(origin),
+                Some(format!(
+                    "invalid clientSeq {}; expected {expected}",
+                    params.client_seq
+                )),
+            )));
+        }
+
+        let chat = self
+            .persisted
+            .chats
+            .get_mut(chat_id)
+            .ok_or_else(|| "unknown chat resource".to_string())?;
+        let Some(active) = chat.active_turn.take() else {
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                kind,
+                Some(origin),
+                Some("chat has no active turn".to_string()),
+            )));
+        };
+        if active.id != action.turn_id {
+            chat.active_turn = Some(active);
+            return Ok(DispatchOutcome::Rejected(self.next_envelope(
+                params.channel,
+                kind,
+                Some(origin),
+                Some("turn identifier does not match the active turn".to_string()),
+            )));
+        }
+        chat.turns.push(DomainTurn {
+            id: active.id,
+            started_at: active.started_at,
+            duration: action.duration,
+            message: active.message,
+            response_parts: active.response_parts,
+            state: DomainTurnState::Cancelled,
+            error: None,
+        });
+        chat.status = ahp_types::state::SessionStatus::Idle.bits();
+        chat.activity = None;
+        chat.modified_at = current_timestamp();
+        self.persisted
+            .client_sequences
+            .insert(client_id.to_string(), params.client_seq);
+        Ok(DispatchOutcome::Accepted(self.next_envelope(
+            params.channel,
+            kind,
+            Some(origin),
+            None,
+        )))
+    }
+
+    pub(crate) fn finish_turn(
+        &mut self,
+        agent_session_id: &str,
+        duration: i64,
+        error: Option<DomainError>,
+    ) -> Result<ChatMutationOutcome, String> {
+        let state = if error.is_some() {
+            DomainTurnState::Error
+        } else {
+            DomainTurnState::Complete
+        };
+        self.finish_agent_turn(agent_session_id, duration, state, error)
+    }
+
+    pub(crate) fn cancel_agent_turn(
+        &mut self,
+        agent_session_id: &str,
+        duration: i64,
+    ) -> Result<ChatMutationOutcome, String> {
+        self.finish_agent_turn(agent_session_id, duration, DomainTurnState::Cancelled, None)
+    }
+
+    pub(crate) fn fail_agent_session(
+        &mut self,
+        agent_session_id: &str,
+        error: DomainError,
+    ) -> Result<AgentUnavailableOutcome, String> {
+        let session_id = self
+            .persisted
+            .sessions
+            .values()
+            .find(|session| session.agent_session_id.as_deref() == Some(agent_session_id))
+            .map(|session| session.id.clone())
+            .ok_or_else(|| "unknown ACP session".to_string())?;
+        let active_chat = self
+            .persisted
+            .chats
+            .values()
+            .find(|chat| chat.session_id == session_id && chat.active_turn.is_some())
+            .map(|chat| chat.resource_uri());
+        let mut envelopes = Vec::new();
+        if active_chat.is_some() {
+            let turn = self.finish_agent_turn(
+                agent_session_id,
+                0,
+                DomainTurnState::Error,
+                Some(error.clone()),
+            )?;
+            envelopes.push(turn.envelope);
+            envelopes.push(
+                self.sync_chat_summary(
+                    active_chat
+                        .as_deref()
+                        .expect("active chat resource was selected"),
+                )?,
+            );
+        } else {
+            let session = self
+                .persisted
+                .sessions
+                .get_mut(&session_id)
+                .expect("session id was selected from the same map");
+            session.status = ahp_types::state::SessionStatus::Error.bits();
+            session.activity = Some("Agent disconnected".to_string());
+            session.modified_at = current_timestamp();
+        }
+        let session = self
+            .persisted
+            .sessions
+            .get(&session_id)
+            .expect("session id was selected from the same map")
+            .clone();
+        Ok(AgentUnavailableOutcome { session, envelopes })
+    }
+
+    fn finish_agent_turn(
+        &mut self,
+        agent_session_id: &str,
+        duration: i64,
+        state: DomainTurnState,
+        error: Option<DomainError>,
+    ) -> Result<ChatMutationOutcome, String> {
+        let session_id = self
+            .persisted
+            .sessions
+            .values()
+            .find(|session| session.agent_session_id.as_deref() == Some(agent_session_id))
+            .map(|session| session.id.clone())
+            .ok_or_else(|| "unknown ACP session".to_string())?;
+        let chat = self
+            .persisted
+            .chats
+            .values_mut()
+            .find(|chat| chat.session_id == session_id && chat.active_turn.is_some())
+            .ok_or_else(|| "ACP session has no active chat turn".to_string())?;
+        let active = chat.active_turn.take().expect("active chat was selected");
+        let turn_id = active.id.clone();
+        let kind = match state {
+            DomainTurnState::Error => RelayKind::ChatError {
+                turn_id: turn_id.clone(),
+                duration,
+                error: error
+                    .clone()
+                    .ok_or_else(|| "errored turn requires error details".to_string())?,
+            },
+            DomainTurnState::Cancelled => RelayKind::ChatTurnCancelled {
+                turn_id: turn_id.clone(),
+                duration,
+            },
+            DomainTurnState::Complete => RelayKind::ChatTurnComplete {
+                turn_id: turn_id.clone(),
+                duration,
+            },
+        };
+        chat.turns.push(DomainTurn {
+            id: active.id,
+            started_at: active.started_at,
+            duration,
+            message: active.message,
+            response_parts: active.response_parts,
+            state,
+            error,
+        });
+        chat.status = if chat
+            .turns
+            .last()
+            .is_some_and(|turn| turn.state == DomainTurnState::Error)
+        {
+            ahp_types::state::SessionStatus::Error.bits()
+        } else {
+            ahp_types::state::SessionStatus::Idle.bits()
+        };
+        chat.activity = None;
+        chat.modified_at = current_timestamp();
+        let chat = chat.clone();
+        let envelope = self.next_envelope(chat.resource_uri(), kind, None, None);
+        Ok(ChatMutationOutcome { envelope, chat })
     }
 
     /// Applies the narrow, deliberate MVP dispatch surface.
@@ -244,6 +1076,11 @@ impl HostState {
                 activity: summary.activity,
                 created_at: now.clone(),
                 modified_at: now,
+                lifecycle: DomainSessionLifecycle::Ready,
+                creation_error: None,
+                working_directories: None,
+                agent_session_id: None,
+                default_chat: None,
             })
             .clone();
 
@@ -303,6 +1140,47 @@ impl HostState {
             rejection_reason,
         }
     }
+}
+
+fn parse_session_resource(resource: &str) -> Result<&str, String> {
+    let session_id = resource
+        .strip_prefix("ahp-session:/")
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "invalid session resource".to_string())?;
+    if session_id.len() > MAX_SESSION_ID_BYTES {
+        return Err(format!(
+            "session identifier exceeds {MAX_SESSION_ID_BYTES} bytes"
+        ));
+    }
+
+    if session_id.contains('/') {
+        return Err("session identifier must be one path segment".to_string());
+    }
+    Ok(session_id)
+}
+
+fn parse_chat_resource(resource: &str) -> Result<&str, String> {
+    let chat_id = resource
+        .strip_prefix("ahp-chat:/")
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "invalid chat resource".to_string())?;
+    if chat_id.len() > MAX_CHAT_ID_BYTES {
+        return Err(format!("chat identifier exceeds {MAX_CHAT_ID_BYTES} bytes"));
+    }
+    if chat_id.contains('/') {
+        return Err("chat identifier must be one path segment".to_string());
+    }
+    Ok(chat_id)
+}
+
+fn validate_turn_id(turn_id: &str) -> Result<(), String> {
+    if turn_id.trim().is_empty() {
+        return Err("turn identifier must not be empty".to_string());
+    }
+    if turn_id.len() > MAX_TURN_ID_BYTES {
+        return Err(format!("turn identifier exceeds {MAX_TURN_ID_BYTES} bytes"));
+    }
+    Ok(())
 }
 
 fn legacy_session_id(source: &str, external_id: &str) -> String {

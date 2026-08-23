@@ -7,6 +7,7 @@
 
 pub(crate) mod legacy;
 
+mod acp_backend;
 pub(crate) mod client;
 mod host;
 mod mirror;
@@ -36,6 +37,23 @@ pub(crate) async fn run_host(
     state_path: Option<PathBuf>,
     auth_token_path: Option<PathBuf>,
 ) -> Result<()> {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(run_host_local(
+            listen,
+            replay_capacity,
+            state_path,
+            auth_token_path,
+        ))
+        .await
+}
+
+async fn run_host_local(
+    listen: std::net::SocketAddr,
+    replay_capacity: usize,
+    state_path: Option<PathBuf>,
+    auth_token_path: Option<PathBuf>,
+) -> Result<()> {
     let state_path = match state_path {
         Some(path) => path,
         None => crate::runtime_paths::remote_agent_host_state_path()
@@ -44,7 +62,21 @@ pub(crate) async fn run_host(
     let auth_token_path = auth_token_path.unwrap_or_else(|| state_path.with_extension("token"));
     let auth_token = load_or_create_auth_token(&auth_token_path)?;
     let store = Arc::new(FileHostStateStore::new(state_path.clone())?);
-    let host = host::RemoteAgentHost::load(store, replay_capacity, &auth_token)?;
+    let (backend, mut backend_events) = acp_backend::HostAcpBackend::start();
+    let host =
+        host::RemoteAgentHost::load_with_backend(store, replay_capacity, &auth_token, backend)?;
+    let event_host = Arc::clone(&host);
+    tokio::task::spawn_local(async move {
+        while let Some(event) = backend_events.recv().await {
+            if let Err(error) = event_host.apply_backend_event(event) {
+                tracing::warn!(
+                    target = "remote_agent_host",
+                    %error,
+                    "failed to apply Host ACP event"
+                );
+            }
+        }
+    });
     tracing::info!(
         target = "remote_agent_host",
         host_id = %host.host_id(),
@@ -184,15 +216,22 @@ fn load_or_create_auth_token(path: &std::path::Path) -> Result<String> {
 mod tests {
     use std::sync::{Arc, Barrier};
 
-    use ahp_types::actions::{SessionTitleChangedAction, StateAction};
+    use ahp_types::actions::{
+        ChatTurnCancelledAction, ChatTurnStartedAction, SessionTitleChangedAction, StateAction,
+    };
     use ahp_types::commands::{DispatchActionParams, ListSessionsParams, ReconnectResult};
+    use ahp_types::state::{
+        Message, MessageKind, MessageOrigin, SessionLifecycle, SessionStatus, SnapshotState,
+        TurnState,
+    };
     use tokio::net::TcpListener;
 
     use super::host::RemoteAgentHost;
     use super::legacy::{LegacySessionSummary, LegacySessionSummarySink};
     use super::mirror::{MirrorApplyOutcome, RemoteClientMirror};
     use super::persistence::{FileHostStateStore, HostStateStore, MemoryHostStateStore};
-    use super::state::DispatchOutcome;
+    use super::relay::RelayKind;
+    use super::state::{DispatchOutcome, DomainSessionLifecycle, HostState};
     fn test_host(replay_capacity: usize) -> Arc<RemoteAgentHost> {
         let store: Arc<dyn HostStateStore> = Arc::new(MemoryHostStateStore::empty());
         RemoteAgentHost::load(store, replay_capacity, "test-token").expect("create in-memory host")
@@ -217,6 +256,473 @@ mod tests {
                 title: title.to_string(),
             }),
         }
+    }
+
+    fn turn_dispatch(resource: &str, client_seq: i64, turn_id: &str) -> DispatchActionParams {
+        DispatchActionParams {
+            channel: resource.to_string(),
+            client_seq,
+            action: StateAction::ChatTurnStarted(ChatTurnStartedAction {
+                turn_id: turn_id.to_string(),
+                started_at: "2026-08-23T00:00:00.000Z".to_string(),
+                message: Message {
+                    text: "Explain this failure".to_string(),
+                    origin: MessageOrigin {
+                        kind: MessageKind::User,
+                    },
+                    meta: None,
+                    attachments: None,
+                    model: None,
+                    agent: None,
+                },
+                queued_message_id: None,
+                meta: None,
+            }),
+        }
+    }
+
+    fn cancel_dispatch(
+        resource: &str,
+        client_seq: i64,
+        turn_id: &str,
+    ) -> DispatchActionParams {
+        DispatchActionParams {
+            channel: resource.to_string(),
+            client_seq,
+            action: StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
+                turn_id: turn_id.to_string(),
+                duration: 15,
+                meta: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn host_native_session_lifecycle_is_reduced_and_snapshotted() {
+        let resource = "ahp-session:/host-native-1";
+        let mut state = HostState::new();
+        let created = state
+            .begin_session_creation(
+                resource,
+                "copilot".to_string(),
+                Some(vec!["file:///C:/repo".to_string()]),
+            )
+            .expect("begin session creation");
+
+        assert_eq!(created.session.lifecycle, DomainSessionLifecycle::Creating);
+        assert_eq!(created.session.status, SessionStatus::Idle.bits());
+        assert!(matches!(
+            created.envelope.kind,
+            RelayKind::RootActiveSessionsChanged { active_sessions: 1 }
+        ));
+        let creating_snapshot =
+            super::snapshot::snapshot_for(&state, resource).expect("creating snapshot");
+        let SnapshotState::Session(creating_state) = creating_snapshot.state else {
+            panic!("expected session snapshot");
+        };
+        assert_eq!(creating_state.lifecycle, SessionLifecycle::Creating);
+        assert_eq!(
+            creating_state.working_directories,
+            Some(vec!["file:///C:/repo".to_string()])
+        );
+
+        let ready = state
+            .complete_session_creation(resource, "acp-session-1".to_string())
+            .expect("complete session creation");
+        assert!(matches!(ready.envelope.kind, RelayKind::SessionReady));
+        assert_eq!(ready.session.lifecycle, DomainSessionLifecycle::Ready);
+        assert_eq!(
+            ready.session.agent_session_id.as_deref(),
+            Some("acp-session-1")
+        );
+        let ready_snapshot =
+            super::snapshot::snapshot_for(&state, resource).expect("ready snapshot");
+        let SnapshotState::Session(ready_state) = ready_snapshot.state else {
+            panic!("expected session snapshot");
+        };
+        assert_eq!(ready_state.lifecycle, SessionLifecycle::Ready);
+        assert!(ready_state.creation_error.is_none());
+    }
+
+    #[test]
+    fn host_native_session_creation_failure_is_durable() {
+        let resource = "ahp-session:/host-native-failed";
+        let mut state = HostState::new();
+        state
+            .begin_session_creation(resource, "copilot".to_string(), None)
+            .expect("begin session creation");
+        let failed = state
+            .fail_session_creation(
+                resource,
+                "AcpInitializeFailed".to_string(),
+                "agent did not initialize".to_string(),
+            )
+            .expect("fail session creation");
+
+        assert!(matches!(
+            failed.envelope.kind,
+            RelayKind::SessionCreationFailed { .. }
+        ));
+        assert_eq!(
+            failed.session.lifecycle,
+            DomainSessionLifecycle::CreationFailed
+        );
+        assert_eq!(failed.session.status, SessionStatus::Error.bits());
+
+        let restored = HostState::from_persisted(state.persisted());
+        let snapshot = super::snapshot::snapshot_for(&restored, resource).expect("failed snapshot");
+        let SnapshotState::Session(session) = snapshot.state else {
+            panic!("expected session snapshot");
+        };
+        assert_eq!(session.lifecycle, SessionLifecycle::CreationFailed);
+        let error = session.creation_error.expect("creation error");
+        assert_eq!(error.error_type, "AcpInitializeFailed");
+        assert_eq!(error.message, "agent did not initialize");
+    }
+
+    #[test]
+    fn host_native_session_resource_is_unique_and_disposable() {
+        let resource = "ahp-session:/host-native-dispose";
+        let mut state = HostState::new();
+        state
+            .begin_session_creation(resource, "copilot".to_string(), None)
+            .expect("begin session creation");
+        let duplicate = state.begin_session_creation(resource, "copilot".to_string(), None);
+        assert_eq!(
+            duplicate.expect_err("duplicate session must fail"),
+            "session resource already exists"
+        );
+
+        let disposed = state.dispose_session(resource).expect("dispose session");
+        assert_eq!(disposed.resource, resource);
+        assert!(matches!(
+            disposed.envelope.kind,
+            RelayKind::RootActiveSessionsChanged { active_sessions: 0 }
+        ));
+        assert!(super::snapshot::snapshot_for(&state, resource).is_none());
+    }
+
+    #[test]
+    fn host_native_chat_turn_stream_is_durable_and_snapshotted() {
+        let session_resource = "ahp-session:/chat-session";
+        let chat_resource = "ahp-chat:/chat-1";
+        let mut state = HostState::new();
+        state
+            .begin_session_creation(session_resource, "copilot".to_string(), None)
+            .expect("begin session");
+        state
+            .complete_session_creation(session_resource, "acp-chat-session".to_string())
+            .expect("complete session");
+        let created = state
+            .create_chat(session_resource, chat_resource)
+            .expect("create chat");
+        assert_eq!(created.envelopes.len(), 2);
+
+        let epoch = state.connect_client("client");
+        let started = state
+            .start_turn(
+                "client",
+                epoch,
+                turn_dispatch(chat_resource, 1, "turn-1"),
+            )
+            .expect("start turn");
+        assert!(matches!(started, DispatchOutcome::Accepted(_)));
+
+        let first = state
+            .append_agent_text("acp-chat-session", "Hello ".to_string())
+            .expect("append first chunk");
+        assert_eq!(first.len(), 2, "first chunk creates a part then appends");
+        let second = state
+            .append_agent_text("acp-chat-session", "world".to_string())
+            .expect("append second chunk");
+        assert_eq!(second.len(), 1);
+        state
+            .finish_turn("acp-chat-session", 42, None)
+            .expect("finish turn");
+
+        let restored = HostState::from_persisted(state.persisted());
+        let chat =
+            super::snapshot::snapshot_for(&restored, chat_resource).expect("chat snapshot");
+        let SnapshotState::Chat(chat) = chat.state else {
+            panic!("expected chat snapshot");
+        };
+        assert!(chat.active_turn.is_none());
+        assert_eq!(chat.turns.len(), 1);
+        assert_eq!(chat.turns[0].state, TurnState::Complete);
+        assert_eq!(chat.turns[0].message.text, "Explain this failure");
+        assert_eq!(chat.turns[0].response_parts.len(), 1);
+        let ahp_types::state::ResponsePart::Markdown(part) =
+            &chat.turns[0].response_parts[0]
+        else {
+            panic!("expected markdown response");
+        };
+        assert_eq!(part.content, "Hello world");
+
+        let session =
+            super::snapshot::snapshot_for(&restored, session_resource).expect("session snapshot");
+        let SnapshotState::Session(session) = session.state else {
+            panic!("expected session snapshot");
+        };
+        assert_eq!(session.default_chat.as_deref(), Some(chat_resource));
+        assert_eq!(session.chats.len(), 1);
+        assert_eq!(session.chats[0].resource, chat_resource);
+    }
+
+    #[test]
+    fn host_native_chat_rejects_parallel_turns_and_records_errors() {
+        let session_resource = "ahp-session:/chat-error-session";
+        let chat_resource = "ahp-chat:/chat-error";
+        let mut state = HostState::new();
+        state
+            .begin_session_creation(session_resource, "copilot".to_string(), None)
+            .expect("begin session");
+        state
+            .complete_session_creation(session_resource, "acp-chat-error".to_string())
+            .expect("complete session");
+        state
+            .create_chat(session_resource, chat_resource)
+            .expect("create chat");
+        let epoch = state.connect_client("client");
+        state
+            .start_turn(
+                "client",
+                epoch,
+                turn_dispatch(chat_resource, 1, "turn-1"),
+            )
+            .expect("start first turn");
+        let parallel = state
+            .start_turn(
+                "client",
+                epoch,
+                turn_dispatch(chat_resource, 2, "turn-2"),
+            )
+            .expect("reject parallel turn");
+        let DispatchOutcome::Rejected(rejected) = parallel else {
+            panic!("parallel turn must be rejected");
+        };
+        assert_eq!(
+            rejected.rejection_reason.as_deref(),
+            Some("chat already has an active turn")
+        );
+
+        state
+            .finish_turn(
+                "acp-chat-error",
+                7,
+                Some(super::state::DomainError {
+                    error_type: "AcpPromptFailed".to_string(),
+                    message: "agent disconnected".to_string(),
+                }),
+            )
+            .expect("record turn error");
+        let snapshot =
+            super::snapshot::snapshot_for(&state, chat_resource).expect("chat snapshot");
+        let SnapshotState::Chat(chat) = snapshot.state else {
+            panic!("expected chat snapshot");
+        };
+        assert_eq!(chat.turns[0].state, TurnState::Error);
+        assert_eq!(
+            chat.turns[0].error.as_ref().map(|error| error.message.as_str()),
+            Some("agent disconnected")
+        );
+    }
+
+    #[test]
+    fn host_native_chat_cancellation_is_durable_and_rejects_stale_turns() {
+        let session_resource = "ahp-session:/chat-cancel-session";
+        let chat_resource = "ahp-chat:/chat-cancel";
+        let mut state = HostState::new();
+        state
+            .begin_session_creation(session_resource, "copilot".to_string(), None)
+            .expect("begin session");
+        state
+            .complete_session_creation(session_resource, "acp-chat-cancel".to_string())
+            .expect("complete session");
+        state
+            .create_chat(session_resource, chat_resource)
+            .expect("create chat");
+        let epoch = state.connect_client("client");
+        state
+            .start_turn(
+                "client",
+                epoch,
+                turn_dispatch(chat_resource, 1, "turn-1"),
+            )
+            .expect("start turn");
+
+        let wrong_turn = state
+            .cancel_turn(
+                "client",
+                epoch,
+                cancel_dispatch(chat_resource, 2, "turn-2"),
+            )
+            .expect("reject stale cancellation");
+        let DispatchOutcome::Rejected(rejected) = wrong_turn else {
+            panic!("stale cancellation must be rejected");
+        };
+        assert_eq!(
+            rejected.rejection_reason.as_deref(),
+            Some("turn identifier does not match the active turn")
+        );
+
+        let cancelled = state
+            .cancel_turn(
+                "client",
+                epoch,
+                cancel_dispatch(chat_resource, 2, "turn-1"),
+            )
+            .expect("cancel turn");
+        let DispatchOutcome::Accepted(cancelled) = cancelled else {
+            panic!("matching cancellation must be accepted");
+        };
+        assert!(matches!(
+            cancelled.kind,
+            RelayKind::ChatTurnCancelled {
+                ref turn_id,
+                duration: 15
+            } if turn_id == "turn-1"
+        ));
+
+        let restored = HostState::from_persisted(state.persisted());
+        let snapshot =
+            super::snapshot::snapshot_for(&restored, chat_resource).expect("chat snapshot");
+        let SnapshotState::Chat(chat) = snapshot.state else {
+            panic!("expected chat snapshot");
+        };
+        assert!(chat.active_turn.is_none());
+        assert_eq!(chat.turns.len(), 1);
+        assert_eq!(chat.turns[0].state, TurnState::Cancelled);
+        assert_eq!(chat.turns[0].duration, Some(15));
+    }
+
+    #[test]
+    fn host_coordinator_persists_and_replays_native_session_lifecycle() {
+        let host = test_host(8);
+        let resource = "ahp-session:/host-coordinator";
+        let (epoch, _) = host
+            .initialize(
+                "client",
+                &[
+                    ahp_types::ROOT_RESOURCE_URI.to_string(),
+                    resource.to_string(),
+                ],
+                None,
+            )
+            .expect("initialize");
+
+        let snapshot = host
+            .begin_session_creation(resource, "copilot".to_string(), None)
+            .expect("begin session creation");
+        let SnapshotState::Session(session) = snapshot.state else {
+            panic!("expected session snapshot");
+        };
+        assert_eq!(session.lifecycle, SessionLifecycle::Creating);
+        host.complete_session_creation(resource, "acp-session-1".to_string())
+            .expect("complete session creation");
+
+        let (_, reconnect) = host
+            .reconnect(
+                "client",
+                0,
+                &[
+                    ahp_types::ROOT_RESOURCE_URI.to_string(),
+                    resource.to_string(),
+                ],
+                None,
+            )
+            .expect("reconnect");
+        let ReconnectResult::Replay(replay) = reconnect else {
+            panic!("expected lifecycle replay");
+        };
+        assert_eq!(replay.actions.len(), 2);
+        assert!(matches!(
+            replay.actions[0].action,
+            StateAction::RootActiveSessionsChanged(_)
+        ));
+        assert!(matches!(
+            replay.actions[1].action,
+            StateAction::SessionReady(_)
+        ));
+
+        host.dispose_session(resource).expect("dispose session");
+        assert!(host
+            .list_sessions(ListSessionsParams {
+                channel: ahp_types::ROOT_RESOURCE_URI.to_string(),
+                limit: None,
+                cursor: None,
+            })
+            .expect("list sessions")
+            .items
+            .is_empty());
+
+        let failed_resource = "ahp-session:/host-coordinator-failed";
+        host.begin_session_creation(failed_resource, "copilot".to_string(), None)
+            .expect("begin failed session creation");
+        host.fail_session_creation(
+            failed_resource,
+            "AcpInitializeFailed".to_string(),
+            "agent did not initialize".to_string(),
+        )
+        .expect("fail session creation");
+        let (_, failed_init) = host
+            .initialize("observer", &[failed_resource.to_string()], None)
+            .expect("initialize failed-session observer");
+        let failed_snapshot = failed_init
+            .snapshots
+            .into_iter()
+            .next()
+            .expect("failed snapshot");
+        let SnapshotState::Session(failed_session) = failed_snapshot.state else {
+            panic!("expected failed session snapshot");
+        };
+        assert_eq!(failed_session.lifecycle, SessionLifecycle::CreationFailed);
+        assert_ne!(epoch, 0);
+    }
+
+    #[tokio::test]
+    async fn host_acp_backend_failure_drives_creation_failed_lifecycle() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let store: Arc<dyn HostStateStore> =
+                    Arc::new(MemoryHostStateStore::empty());
+                let (backend, _events) = super::acp_backend::HostAcpBackend::start();
+                let host =
+                    RemoteAgentHost::load_with_backend(store, 8, "test-token", backend)
+                        .expect("create host with ACP backend");
+                let resource = "ahp-session:/unknown-provider";
+
+                let snapshot = host
+                    .create_session(resource, "not-a-real-provider".to_string(), None)
+                    .expect("begin ACP-backed session creation");
+                let SnapshotState::Session(session) = snapshot.state else {
+                    panic!("expected creating session snapshot");
+                };
+                assert_eq!(session.lifecycle, SessionLifecycle::Creating);
+
+                tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                    loop {
+                        let (_, initialized) = host
+                            .initialize("observer", &[resource.to_string()], None)
+                            .expect("observe ACP-backed session");
+                        let lifecycle = initialized
+                            .snapshots
+                            .into_iter()
+                            .next()
+                            .and_then(|snapshot| match snapshot.state {
+                                SnapshotState::Session(session) => Some(session.lifecycle),
+                                _ => None,
+                            });
+                        if lifecycle == Some(SessionLifecycle::CreationFailed) {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .expect("ACP backend failure should update the lifecycle");
+            })
+            .await;
     }
 
     #[test]

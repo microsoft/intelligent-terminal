@@ -5,17 +5,24 @@
 //! official `ahp-types` envelope used on the wire.
 
 use ahp_types::actions::{
-    ActionEnvelope, ActionOrigin, RootActiveSessionsChangedAction, SessionTitleChangedAction,
-    StateAction,
+    ActionEnvelope, ActionOrigin, ChatDeltaAction, ChatErrorAction, ChatResponsePartAction,
+    ChatTurnCancelledAction, ChatTurnCompleteAction, ChatTurnStartedAction, PartialChatSummary,
+    RootActiveSessionsChangedAction, SessionChatAddedAction, SessionChatUpdatedAction,
+    SessionCreationFailedAction, SessionDefaultChatChangedAction, SessionReadyAction,
+    SessionTitleChangedAction, StateAction,
 };
 use ahp_types::messages::JsonRpcMessage;
+use ahp_types::state::{
+    ChatInteractivity, ChatOrigin, ChatSummary, ErrorInfo, MarkdownResponsePart, Message,
+    MessageKind, MessageOrigin, ResponsePart,
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{tcp::OwnedReadHalf, tcp::OwnedWriteHalf, TcpStream};
 
-use super::state::HostId;
+use super::state::{DomainError, DomainMessage, HostId};
 
 /// Largest accepted loopback frame. This protects the diagnostic host from an
 /// accidental or malicious unbounded allocation.
@@ -27,9 +34,63 @@ const LOCAL_AUTH_PREFIX: &[u8] = b"wta-local-auth-v1\0";
 pub(crate) enum RelayKind {
     /// The root's session count changed. Individual catalogue rows are
     /// deliberately refetched with `listSessions` after reconnect.
-    RootActiveSessionsChanged { active_sessions: i64 },
+    RootActiveSessionsChanged {
+        active_sessions: i64,
+    },
     /// A legacy summary or an AHP client changed a session title.
-    SessionTitleChanged { session_id: String, title: String },
+    SessionTitleChanged {
+        session_id: String,
+        title: String,
+    },
+    /// A host-native ACP session finished initializing.
+    SessionReady,
+    /// A host-native ACP session failed to initialize.
+    SessionCreationFailed {
+        error: DomainError,
+    },
+    SessionChatAdded {
+        chat_id: String,
+        title: String,
+        status: u32,
+        activity: Option<String>,
+        modified_at: String,
+    },
+    SessionChatUpdated {
+        chat: String,
+        status: u32,
+        activity: Option<String>,
+        modified_at: String,
+    },
+    SessionDefaultChatChanged {
+        default_chat: Option<String>,
+    },
+    ChatTurnStarted {
+        turn_id: String,
+        started_at: String,
+        message: DomainMessage,
+    },
+    ChatResponsePart {
+        turn_id: String,
+        part_id: String,
+    },
+    ChatDelta {
+        turn_id: String,
+        part_id: String,
+        content: String,
+    },
+    ChatTurnComplete {
+        turn_id: String,
+        duration: i64,
+    },
+    ChatTurnCancelled {
+        turn_id: String,
+        duration: i64,
+    },
+    ChatError {
+        turn_id: String,
+        duration: i64,
+        error: DomainError,
+    },
 }
 
 /// Client identity stamped on an accepted or rejected dispatch.
@@ -65,6 +126,118 @@ impl RelayEnvelope {
             RelayKind::SessionTitleChanged { title, .. } => {
                 StateAction::SessionTitleChanged(SessionTitleChangedAction { title })
             }
+            RelayKind::SessionReady => StateAction::SessionReady(SessionReadyAction {}),
+            RelayKind::SessionCreationFailed { error } => {
+                StateAction::SessionCreationFailed(SessionCreationFailedAction {
+                    error: ahp_types::state::ErrorInfo {
+                        error_type: error.error_type,
+                        message: error.message,
+                        stack: None,
+                        meta: None,
+                    },
+                })
+            }
+            RelayKind::SessionChatAdded {
+                chat_id,
+                title,
+                status,
+                activity,
+                modified_at,
+            } => StateAction::SessionChatAdded(SessionChatAddedAction {
+                summary: ChatSummary {
+                    resource: format!("ahp-chat:/{chat_id}"),
+                    title,
+                    status,
+                    activity,
+                    modified_at,
+                    origin: Some(ChatOrigin::User),
+                    interactivity: Some(ChatInteractivity::Full),
+                    working_directories: None,
+                },
+            }),
+            RelayKind::SessionChatUpdated {
+                chat,
+                status,
+                activity,
+                modified_at,
+            } => StateAction::SessionChatUpdated(SessionChatUpdatedAction {
+                chat,
+                changes: PartialChatSummary {
+                    resource: None,
+                    title: None,
+                    status: Some(status),
+                    activity,
+                    modified_at: Some(modified_at),
+                    origin: None,
+                    interactivity: None,
+                    working_directories: None,
+                },
+            }),
+            RelayKind::SessionDefaultChatChanged { default_chat } => {
+                StateAction::SessionDefaultChatChanged(SessionDefaultChatChangedAction {
+                    default_chat,
+                })
+            }
+            RelayKind::ChatTurnStarted {
+                turn_id,
+                started_at,
+                message,
+            } => StateAction::ChatTurnStarted(ChatTurnStartedAction {
+                turn_id,
+                started_at,
+                message: domain_message(message),
+                queued_message_id: None,
+                meta: None,
+            }),
+            RelayKind::ChatResponsePart { turn_id, part_id } => {
+                StateAction::ChatResponsePart(ChatResponsePartAction {
+                    turn_id,
+                    part: ResponsePart::Markdown(MarkdownResponsePart {
+                        id: part_id,
+                        content: String::new(),
+                    }),
+                    meta: None,
+                })
+            }
+            RelayKind::ChatDelta {
+                turn_id,
+                part_id,
+                content,
+            } => StateAction::ChatDelta(ChatDeltaAction {
+                turn_id,
+                part_id,
+                content,
+                meta: None,
+            }),
+            RelayKind::ChatTurnComplete { turn_id, duration } => {
+                StateAction::ChatTurnComplete(ChatTurnCompleteAction {
+                    turn_id,
+                    duration,
+                    meta: None,
+                })
+            }
+            RelayKind::ChatTurnCancelled { turn_id, duration } => {
+                StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
+                    turn_id,
+                    duration,
+                    meta: None,
+                })
+            }
+            RelayKind::ChatError {
+                turn_id,
+                duration,
+                error,
+            } => StateAction::ChatError(ChatErrorAction {
+                turn_id,
+                duration,
+                error: ErrorInfo {
+                    error_type: error.error_type,
+                    message: error.message,
+                    stack: None,
+                    meta: None,
+                },
+                meta: None,
+            }),
         };
 
         ActionEnvelope {
@@ -77,6 +250,19 @@ impl RelayEnvelope {
             }),
             rejection_reason: self.rejection_reason,
         }
+    }
+}
+
+fn domain_message(message: DomainMessage) -> Message {
+    Message {
+        text: message.text,
+        origin: MessageOrigin {
+            kind: MessageKind::User,
+        },
+        attachments: None,
+        model: None,
+        agent: None,
+        meta: None,
     }
 }
 
