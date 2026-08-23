@@ -26,6 +26,17 @@ pub(crate) struct HostAcpBackend {
 
 impl HostAcpBackend {
     pub(crate) fn start() -> (Self, mpsc::UnboundedReceiver<BackendEvent>) {
+        Self::start_inner(None)
+    }
+
+    #[cfg(test)]
+    fn start_with_command(command: String) -> (Self, mpsc::UnboundedReceiver<BackendEvent>) {
+        Self::start_inner(Some(command))
+    }
+
+    fn start_inner(
+        command_override: Option<String>,
+    ) -> (Self, mpsc::UnboundedReceiver<BackendEvent>) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let (events, event_receiver) = mpsc::unbounded_channel();
         let (provider_events, provider_event_receiver) = mpsc::unbounded_channel();
@@ -34,6 +45,7 @@ impl HostAcpBackend {
             events,
             provider_events,
             provider_event_receiver,
+            command_override,
         ));
         (Self { sender }, event_receiver)
     }
@@ -155,6 +167,7 @@ async fn run_backend(
     events: mpsc::UnboundedSender<BackendEvent>,
     provider_events: mpsc::UnboundedSender<ProviderEvent>,
     mut provider_event_receiver: mpsc::UnboundedReceiver<ProviderEvent>,
+    command_override: Option<String>,
 ) {
     let mut agents = HashMap::<String, AgentRuntime>::new();
     let mut sessions = HashMap::<String, BackendSession>::new();
@@ -203,6 +216,7 @@ async fn run_backend(
                     &events,
                     &provider_events,
                     &mut next_generation,
+                    command_override.as_deref(),
                     resource,
                     provider,
                     working_directories,
@@ -346,6 +360,7 @@ async fn create_session(
     events: &mpsc::UnboundedSender<BackendEvent>,
     provider_events: &mpsc::UnboundedSender<ProviderEvent>,
     next_generation: &mut u64,
+    command_override: Option<&str>,
     resource: String,
     provider: String,
     working_directories: Option<Vec<String>>,
@@ -361,6 +376,7 @@ async fn create_session(
         let runtime = spawn_agent(
             &provider,
             generation,
+            command_override,
             events.clone(),
             provider_events.clone(),
         )
@@ -455,10 +471,13 @@ async fn dispose_session(
 async fn spawn_agent(
     provider: &str,
     generation: u64,
+    command_override: Option<&str>,
     events: mpsc::UnboundedSender<BackendEvent>,
     provider_events: mpsc::UnboundedSender<ProviderEvent>,
 ) -> Result<AgentRuntime> {
-    let command = crate::agent_registry::build_acp_command(provider, None);
+    let command = command_override
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::agent_registry::build_acp_command(provider, None));
     let mut spawned = spawn_agent_process(
         &command,
         None,
@@ -624,7 +643,19 @@ fn format_startup_stderr(lines: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    use std::path::Path;
+    #[cfg(windows)]
+    use std::time::Duration;
+
+    #[cfg(windows)]
+    use tokio::sync::mpsc;
+    #[cfg(windows)]
+    use tokio::task::LocalSet;
+
     use super::file_uri_to_path;
+    #[cfg(windows)]
+    use super::{BackendEvent, HostAcpBackend};
 
     #[test]
     fn local_file_uri_is_converted_to_an_acp_working_directory() {
@@ -637,5 +668,177 @@ mod tests {
     fn encoded_or_remote_working_directory_is_rejected() {
         assert!(file_uri_to_path("file://server/share").is_err());
         assert!(file_uri_to_path("file:///C:/repo%20name").is_err());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn process_mock_exercises_stdio_lifecycle_and_provider_restart() {
+        LocalSet::new()
+            .run_until(async {
+                let log_path = std::env::temp_dir().join(format!(
+                    "wta-mock-acp-{}-{}.log",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .expect("system time")
+                        .as_nanos()
+                ));
+                let command = mock_agent_command(&log_path);
+                let (backend, mut events) = HostAcpBackend::start_with_command(command);
+
+                let first_session = backend
+                    .create_session("ahp-session:/one".to_string(), "copilot".to_string(), None)
+                    .await
+                    .expect("create first process-backed ACP session");
+                assert_eq!(first_session, "mock-session-1");
+
+                backend
+                    .prompt("ahp-session:/one".to_string(), "hello".to_string())
+                    .await
+                    .expect("start process-backed ACP prompt");
+                assert_agent_text(&mut events, "mock-session-1", "mock ").await;
+                assert_agent_text(&mut events, "mock-session-1", "reply").await;
+                match next_event(&mut events).await {
+                    BackendEvent::PromptFinished {
+                        agent_session_id,
+                        cancelled,
+                        error,
+                        ..
+                    } => {
+                        assert_eq!(agent_session_id, "mock-session-1");
+                        assert!(!cancelled);
+                        assert_eq!(error, None);
+                    }
+                    _ => panic!("expected prompt completion"),
+                }
+
+                backend
+                    .prompt("ahp-session:/one".to_string(), "WAIT".to_string())
+                    .await
+                    .expect("start cancellable ACP prompt");
+                backend
+                    .cancel("ahp-session:/one".to_string())
+                    .await
+                    .expect("cancel ACP prompt");
+                backend
+                    .dispose_session("ahp-session:/one".to_string())
+                    .await
+                    .expect("close ACP session");
+
+                let crash_session = backend
+                    .create_session(
+                        "ahp-session:/crash".to_string(),
+                        "copilot".to_string(),
+                        None,
+                    )
+                    .await
+                    .expect("create crash ACP session");
+                assert_eq!(crash_session, "mock-session-2");
+                backend
+                    .prompt("ahp-session:/crash".to_string(), "CRASH".to_string())
+                    .await
+                    .expect("start crashing ACP prompt");
+
+                loop {
+                    if let BackendEvent::ProviderExited {
+                        agent_session_ids, ..
+                    } = next_event(&mut events).await
+                    {
+                        assert_eq!(agent_session_ids, vec!["mock-session-2"]);
+                        break;
+                    }
+                }
+
+                let replacement_session = backend
+                    .create_session(
+                        "ahp-session:/replacement".to_string(),
+                        "copilot".to_string(),
+                        None,
+                    )
+                    .await
+                    .expect("respawn ACP provider");
+                assert_eq!(replacement_session, "mock-session-1");
+                backend
+                    .dispose_session("ahp-session:/replacement".to_string())
+                    .await
+                    .expect("close replacement ACP session");
+
+                let log = std::fs::read_to_string(&log_path).expect("read mock ACP process log");
+                assert_eq!(log.matches("initialize").count(), 2);
+                assert!(log.contains("prompt:mock-session-1:hello"));
+                assert!(log.contains("cancel:mock-session-1"));
+                assert!(log.contains("close:mock-session-1"));
+                assert!(log.contains("prompt:mock-session-2:CRASH"));
+                std::fs::remove_file(log_path).expect("remove mock ACP process log");
+            })
+            .await;
+    }
+
+    #[cfg(windows)]
+    async fn assert_agent_text(
+        events: &mut mpsc::UnboundedReceiver<BackendEvent>,
+        expected_session_id: &str,
+        expected_content: &str,
+    ) {
+        match next_event(events).await {
+            BackendEvent::AgentText {
+                agent_session_id,
+                content,
+            } => {
+                assert_eq!(agent_session_id, expected_session_id);
+                assert_eq!(content, expected_content);
+            }
+            _ => panic!("expected agent text"),
+        }
+    }
+
+    #[cfg(windows)]
+    async fn next_event(events: &mut mpsc::UnboundedReceiver<BackendEvent>) -> BackendEvent {
+        tokio::time::timeout(Duration::from_secs(10), events.recv())
+            .await
+            .expect("timed out waiting for backend event")
+            .expect("backend event channel closed")
+    }
+
+    #[cfg(windows)]
+    fn mock_agent_command(log_path: &Path) -> String {
+        let log_path = log_path.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "$env:WTA_MOCK_ACP_LOG = '{log_path}'\n{}",
+            include_str!("../../testdata/mock-acp-agent.ps1")
+        );
+        let bytes = script
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        format!(
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {}",
+            base64_encode(&bytes)
+        )
+    }
+
+    #[cfg(windows)]
+    fn base64_encode(bytes: &[u8]) -> String {
+        const ALPHABET: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+        for chunk in bytes.chunks(3) {
+            let value = (u32::from(chunk[0]) << 16)
+                | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+                | u32::from(*chunk.get(2).unwrap_or(&0));
+            encoded.push(ALPHABET[((value >> 18) & 0x3f) as usize] as char);
+            encoded.push(ALPHABET[((value >> 12) & 0x3f) as usize] as char);
+            encoded.push(if chunk.len() > 1 {
+                ALPHABET[((value >> 6) & 0x3f) as usize] as char
+            } else {
+                '='
+            });
+            encoded.push(if chunk.len() > 2 {
+                ALPHABET[(value & 0x3f) as usize] as char
+            } else {
+                '='
+            });
+        }
+        encoded
     }
 }

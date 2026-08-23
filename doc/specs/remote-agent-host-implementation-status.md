@@ -33,6 +33,10 @@
   - generation checks prevent stale exits from evicting a replacement process
   - active prompts are interrupted and affected Sessions/turns become Error
   - subsequent Session creation starts a fresh provider process
+- Process-backed ACP verification:
+  - launches a real mock Agent child process over piped stdin/stdout
+  - covers initialize, Session create/close, streamed prompts, and cancellation
+  - verifies crash detection, provider eviction, and provider process restart
 
 ## Current limitations
 
@@ -49,16 +53,13 @@
 
 ## Next implementation stages
 
-1. Add a process-backed mock ACP agent test that exercises the real stdio
-   `initialize` -> `session/new` -> `session/prompt` -> `session/cancel` ->
-   `session/close` path, including streaming and provider crashes.
-2. Add the Intelligent Terminal remote Chat UI with snapshot/replay,
+1. Add the Intelligent Terminal remote Chat UI with snapshot/replay,
    reconnect, prompt, cancellation, and error handling.
-3. Implement Host-owned PTYs and AHP terminal channels, followed by baseline
+2. Implement Host-owned PTYs and AHP terminal channels, followed by baseline
    ACP permission and file-operation handling.
-4. Replace the loopback transport with Azure Web PubSub and native Entra
+3. Replace the loopback transport with Azure Web PubSub and native Entra
    authentication.
-5. Complete multi-client authorization, conflict handling, observability, and
+4. Complete multi-client authorization, conflict handling, observability, and
    production hardening.
 
 ## Validation
@@ -66,5 +67,5 @@
 The explicit-target WTA suite currently passes:
 
 ```text
-1674 passed; 0 failed
+1675 passed; 0 failed
 ```
