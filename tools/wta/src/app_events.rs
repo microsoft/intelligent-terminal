@@ -234,7 +234,6 @@ impl App {
                     {
                         self.pressed_completed_turn = None;
                         self.last_completed_turn_click = None;
-                        self.text_selection.clear();
                         self.current_tab_mut().clear_completed_turn_selection();
                         return;
                     }

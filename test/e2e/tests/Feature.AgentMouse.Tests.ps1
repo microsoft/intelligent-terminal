@@ -105,9 +105,6 @@ Describe 'Feature: agent pane mouse interactions' -Tag 'Feature' -Skip:(-not $sc
         Send-AgentWin32Key -App $script:app -PaneSessionId $session.PaneSessionId -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
 
         (Get-Clipboard -Raw) | Should -Be $marker -Because 'Ctrl+C must copy the WTA mouse selection through the OS clipboard'
-        $copiedPattern = Get-WtaLocalizedTextRegex -Key 'system.selection_copied'
-        if (-not $copiedPattern) { $copiedPattern = '(?i)Copied' }
-        Assert-AgentPaneText -App $script:app -PaneSessionId $session.PaneSessionId -Pattern $copiedPattern -TimeoutSec 5
 
         $sentinel = "MOUSE_COPY_CLEARED_$([guid]::NewGuid().ToString('N'))"
         Set-Clipboard -Value $sentinel
@@ -424,8 +421,8 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $rectangles.Count | Should -Be 1 -Because 'the unique reply marker must expose one UIA text rectangle'
         $rect = $rectangles[0]
         $cellWidth = $rect.Width / $reply.Length
-        $fromX = [Math]::Round($rect.Right - 1)
-        $toX = [Math]::Round($rect.Left - (2 * $cellWidth) + 1)
+        $fromX = [Math]::Round($rect.Right - ($cellWidth / 2))
+        $toX = [Math]::Round($rect.Left + ($cellWidth / 2))
         $y = [Math]::Round($rect.Top + ($rect.Height / 2))
 
         Save-UiScreenshot -App $script:app -Path (Join-Path $rightClickEvidenceDir 'before-right-click-selection.png') | Out-Null

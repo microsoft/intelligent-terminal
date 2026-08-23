@@ -210,6 +210,13 @@ Describe 'Feature: agent tab undock and redock lifecycle' -Tag 'Feature' -Skip:(
         Start-Sleep -Milliseconds 1000
         & winapp ui invoke 'Move tab to window' -w ([string]$temporaryApp.Hwnd) 2>&1 | Out-Null
 
+        $redockedWindow = Wait-Until -TimeoutSec 15 -IntervalSec 1 -Quiet -Because 'agent pane redocked into a source window' -Condition {
+            foreach ($windowId in $sourceWindows) {
+                $paneIds = @(Get-WtPanes -App $script:redockApp -WindowId $windowId | ForEach-Object session_id)
+                if ($paneIds -contains $agentSid) { return $windowId }
+            }
+        }
+        $redockedWindow | Should -Not -BeNullOrEmpty -Because 'the move action must transfer the original agent pane before window-close behavior can be evaluated'
         (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition {
             @(Get-WtWindows -App $script:redockApp).window_id -notcontains $temporaryWindow
         }) | Should -BeTrue -Because 'redocking the only tab should close the temporary window'
