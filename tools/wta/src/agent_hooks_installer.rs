@@ -3127,14 +3127,35 @@ fn stash_plugin_dir_contents(cli: CliKind, dir: &Path) -> std::io::Result<PathBu
 }
 
 /// Put a stash taken by [`stash_plugin_dir_contents`] back and discard
-/// it. Copies over whatever is still in `dir`, so it works for both a
-/// fully emptied directory and one a failed clear left half-populated.
-/// Best-effort: a failure is logged at error because it leaves the
-/// plugin directory incomplete, with the only surviving copy in the
-/// stash.
+/// it.
+///
+/// The failed attempt this rolls back may have written part of the new
+/// plugin before giving up, so `dir` is emptied before the stash is
+/// copied over it. Without that, `copy_dir_recursive` would overwrite
+/// the paths the two versions share and leave the rest of the partial
+/// write in place, handing the user a mix of old and new hooks instead
+/// of the pre-recovery state.
+///
+/// Best-effort: failures are logged rather than propagated, and the
+/// stash is kept unless the restore was provably complete, since it is
+/// then the only pristine copy left.
 fn restore_plugin_dir_contents(stash: &Path, dir: &Path) {
+    let emptied = match clear_dir_contents(dir) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                dir = %dir.display(),
+                "could not empty the plugin directory before restoring it; \
+                 the result may be mixed with a partially written retry",
+            );
+            false
+        }
+    };
     match copy_dir_recursive(stash, dir) {
-        Ok(()) => discard_plugin_dir_stash(stash),
+        Ok(()) if emptied => discard_plugin_dir_stash(stash),
+        Ok(()) => {}
         Err(e) => tracing::error!(
             target: "agent_hooks",
             err = %e,

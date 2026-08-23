@@ -3614,6 +3614,42 @@ fn restore_plugin_dir_contents_refills_a_partially_cleared_dir() {
     assert!(!stash.exists(), "stash is discarded once restored");
 }
 
+/// A retry that fails after writing part of the new plugin leaves files
+/// the stash has no counterpart for. Restoring has to drop them instead
+/// of merging the two versions.
+#[test]
+fn restore_plugin_dir_contents_removes_what_a_failed_retry_left_behind() {
+    let dir = unique_dir("restore-leftovers");
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(dir.join("plugin.json"), "old manifest").unwrap();
+    fs::write(dir.join("hooks").join("hooks.json"), "old hooks").unwrap();
+
+    let stash = unique_dir("restore-leftovers-stash").join("stash");
+    restage_bundle_dir(&dir, &stash).unwrap();
+    clear_dir_contents(&dir).unwrap();
+
+    // The CLI got partway through writing the new version before failing.
+    fs::create_dir_all(dir.join("scripts")).unwrap();
+    fs::write(dir.join("plugin.json"), "new manifest").unwrap();
+    fs::write(dir.join("scripts").join("leftover.ps1"), "new").unwrap();
+
+    restore_plugin_dir_contents(&stash, &dir);
+
+    assert_eq!(
+        fs::read_to_string(dir.join("plugin.json")).unwrap(),
+        "old manifest",
+        "a shared path must be rolled back, not left at the retry's version",
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("hooks").join("hooks.json")).unwrap(),
+        "old hooks",
+    );
+    assert!(
+        !dir.join("scripts").exists(),
+        "the retry's partial output must not survive the restore",
+    );
+}
+
 fn outcome(success: bool, status_code: Option<i32>, stdout: &str, stderr: &str) -> CliRunOutcome {
     CliRunOutcome {
         success,
