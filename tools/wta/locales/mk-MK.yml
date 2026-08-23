@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Притиснете Enter за да се о�
 chat.activity_thinking: "Размислувам..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Добредојдовте во Интелигентен Терминал!"
-chat.welcome_disclaimer: "Интелигентен Терминал користи AI. Проверете за грешки."
+chat.welcome_disclaimer: "Интелигентен Терминал користи AI."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -198,7 +198,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks инсталиран за %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n has no CLDR plural support; Rust selects singular vs. other.
@@ -232,8 +232,17 @@ system.agent_switch_unavailable: "Префрлањето на агент не е
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Изберете го моделот за овој панел (/model <id> за директно префрлување)"  # {Locked="/model","<id>"}
+commands.config.summary: "Конфигурирајте ја оваа сесија на агентот"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Премести го панелот на агентот за ова јазиче (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Поврзаниот агент не објави ниту еден модел што може да се избере."
 system.model_set: "Моделот за овој панел е поставен на %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Конфигурација на сесијата (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Поврзаниот агент не рекламираше никакви опции за сесија што може да се конфигурираат."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Не успеа да се ажурира %{option}: %{error}"
 system.model_unknown: "Непознат модел %{model} — внесете /model за да ја видите достапната листа."  # {Locked="%{model}","/model"}

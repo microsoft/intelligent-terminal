@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Yenidən cəhd etmək üçün Enter basın, y
 chat.activity_thinking: "Düşünür…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Ağıllı Terminal-a xoş gəlmisiniz!"
-chat.welcome_disclaimer: "Ağıllı Terminal AI istifadə edir. Səhvləri yoxlayın."
+chat.welcome_disclaimer: "Ağıllı Terminal AI istifadə edir."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -204,7 +204,7 @@ hooks.marketplace_path_stale: "⚠ marketplace yolu köhnəlib"
 hooks.installed_but_disabled: "⚠ quraşdırılıb amma deaktiv edilib"
 hooks.not_installed: "✗ quraşdırılmayıb"
 hooks.uninstall_skipped: "keçildi (CLI PATH-də deyil)"
-hooks.install_attempted: "wt-agent-hooks quraşdırması cəhd edildi (idempotent). Nəticəni yoxlamaq üçün `wta hooks status` icra edin. İzləmə jurnalı: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} üçün quraşdırılıb"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "indicə"
 time.minute_singular: "%{count} dəqiqə əvvəl"
@@ -234,8 +234,17 @@ system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kəna
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "Bu agent sessiyasını konfiqurasiya edin"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu tabın agent panelini köçür (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessiya konfiqurasiyası (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Qoşulmuş agent heç bir konfiqurasiya edilə bilən sessiya seçimi elan etmədi."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} yenilənməsi uğursuz oldu: %{error}"
 system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}

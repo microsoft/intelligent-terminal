@@ -119,3 +119,46 @@ Describe 'Resolve-ItApp' -Tag 'Unit' {
         $app.WtcliPath | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
+    It 'waits for the first window before probing COM' {
+        InModuleScope ItE2E {
+            $script:startupOrder = @()
+            $root = Join-Path $env:TEMP "ite2e-startup-order-$PID"
+            $fakeApp = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                Version = '0.0.0.0'
+                WtcliPath = 'wtcli.exe'
+                LocalStateDir = $root
+                SettingsPath = Join-Path $root 'settings.json'
+                StatePath = Join-Path $root 'state.json'
+                AppUserModelId = 'IntelligentTerminal_rd9vj3e6a2mbr!App'
+                LaunchAlias = $null
+                ComClsid = $null
+                Pid = $null
+                Hwnd = $null
+            }
+
+            Mock Resolve-ItApp { $fakeApp }
+            Mock Stop-StaleItInstances
+            Mock Get-WtProcessesForApp { [pscustomobject]@{ Id = 4242 } }
+            Mock Start-Process
+            Mock Get-WtWindowHwnds {
+                $script:startupOrder += 'hwnd'
+                [pscustomobject]@{ pid = 4242; hwnd = 9001; title = 'PowerShell' }
+            }
+            Mock Resolve-WtComClsid {
+                $script:startupOrder += 'com'
+                '{D5B7C9E1-4F6A-4B8C-D9E0-F1A2B3C4D5E6}'
+            }
+            Mock Get-ActivePane { [pscustomobject]@{ window_id = 1 } }
+            Mock Initialize-LogOffsets
+            Mock Write-ItLog
+
+            $app = Start-Terminal -Package Dev -PassFre $false -Backup $false -CleanSettings $false
+
+            $app.Hwnd | Should -Be 9001
+            $script:startupOrder | Should -Be @('hwnd', 'com')
+        }
+    }
+}

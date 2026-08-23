@@ -9,6 +9,8 @@
 #include "Utils.h"
 #include "SearchIndex.h"
 
+#include <unordered_set>
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     struct Breadcrumb : BreadcrumbT<Breadcrumb>
@@ -108,6 +110,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         void _UpdateBackgroundForMica();
         void _MoveXamlParsedNavItemsIntoItemSource();
+        void _ApplyHostAgentAvailability(const Editor::ProfileViewModel& profile);
+        safe_void_coroutine _ProbeHostAgentAvailabilityAsync();
 
         safe_void_coroutine _UpdateSearchIndex();
 
@@ -125,6 +129,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _actionsViewModelChangedRevoker;
         Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _ntmViewModelChangedRevoker;
         Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _extensionsViewModelChangedRevoker;
+
+        std::unordered_set<std::wstring> _availableHostAgents;
     };
 }
 

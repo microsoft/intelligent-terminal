@@ -101,6 +101,7 @@ namespace Microsoft.Terminal.Control
 
         Boolean CopySelectionToClipboard(Boolean dismissSelection, Boolean singleLine, Boolean withControlSequences, CopyFormat formats);
         void PasteTextFromClipboard();
+        void EnableAgentPasteShortcutFallback(Boolean enabled);
         void SelectAll();
         Boolean ToggleBlockSelection();
         void ToggleMarkMode();

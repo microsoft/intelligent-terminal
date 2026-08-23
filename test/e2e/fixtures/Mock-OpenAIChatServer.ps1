@@ -59,7 +59,7 @@ try {
                 model = 'ite2e-model'
                 choices = @(@{
                     index = 0
-                    delta = @{ role = 'assistant'; content = 'BYOM fixture response' }
+                    delta = @{ role = 'assistant'; content = 'BYOK fixture response' }
                     finish_reason = $null
                 })
             } | ConvertTo-Json -Depth 8 -Compress

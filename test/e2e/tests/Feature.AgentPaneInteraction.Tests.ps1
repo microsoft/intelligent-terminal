@@ -29,11 +29,14 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             # (not just the echoed prompt).
             Send-AgentPrompt -App $script:app -Text 'What is 21 plus 21? Reply with only the number.' | Out-Null
             Assert-AgentPaneText -App $script:app -Pattern '\b42\b' -TimeoutSec 40
+            Initialize-LogOffsets -App $script:app | Out-Null
             Stop-AgentPane -App $script:app | Out-Null
             Start-Sleep -Seconds 1
             Open-AgentPane -App $script:app | Out-Null
             # The prior exchange (including the 42 answer) survives the stash/restore.
             Assert-AgentPaneText -App $script:app -Pattern '\b42\b' -TimeoutSec 15
+            (Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart) |
+                Should -Not -Match 'closed helper-owned ACP session' -Because 'stashing must preserve the ACP session and its chat history'
         }
         It 'Focus hotkey / focus works (agent pane gets focus)' {
             Set-AgentPaneFocus -App $script:app | Out-Null
@@ -55,16 +58,21 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             Set-WtPanePosition -App $script:app -Position 'bottom' | Out-Null
             Open-AgentPane -App $script:app | Out-Null
         }
-        It 'Tab close cleans up (closing a tab tears down its pre-warmed helper)' {
-            # Each tab pre-warms its own agent-pane helper (a wta.exe child of WT). Closing the
-            # tab must tear that helper back down — verify via the descendant wta.exe count, not
-            # just that the original tab survives.
+        It 'Tab close cleans up (closing a tab tears down its pre-warmed helper and ACP session)' {
+            # Each tab owns a helper and an ACP session. Closing the tab must cross the real
+            # Terminal -> helper -> master -> Copilot boundary and release both resources.
             $rootPid = $script:app.Pid
             $before = @(Get-DescendantWtaIds -RootPid $rootPid).Count
             $tab = New-WtTab -App $script:app -Title 'cleanup'
             $grew = Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition { @(Get-DescendantWtaIds -RootPid $rootPid).Count -gt $before }
             $grew | Should -BeTrue -Because 'a new tab pre-warms its own helper (one more wta.exe child)'
+            $agentSession = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $tab.session_id -TimeoutSec 90
+            $agentSession.AcpSessionId |
+                Should -Not -BeNullOrEmpty -Because 'the tab must own a physical Copilot ACP session before it closes'
+            Initialize-LogOffsets -App $script:app | Out-Null
             Close-WtPane -App $script:app -SessionId $tab.session_id
+            Assert-Log -App $script:app -Name 'wta-main_master.log' `
+                -Pattern 'closed ACP session resolved from destroyed tab.*cleanup=PhysicallyClosed' -TimeoutSec 20
             $cleaned = Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition { @(Get-DescendantWtaIds -RootPid $rootPid).Count -le $before }
             $cleaned | Should -BeTrue -Because 'closing the tab cleans up its helper (no leak)'
             # The original window/tab is still alive and usable.

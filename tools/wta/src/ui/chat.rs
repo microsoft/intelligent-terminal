@@ -1,9 +1,17 @@
 use std::borrow::Cow;
+#[cfg(test)]
+use std::cell::Cell;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, ChatMessage, CompletedTurn, NoticeKind, PlanEntryStatus};
+use crate::app::{
+    App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
+    ToolCallOutput,
+};
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
@@ -11,6 +19,170 @@ use crate::ui_trace;
 fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
+const MAX_TOOL_OUTPUT_LINES: usize = 4;
+const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
+const MAX_TOOL_PREVIEW_LINES: usize = 2;
+const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
+const MAX_TOOL_DETAIL_LINES: usize = 32;
+
+#[cfg(test)]
+thread_local! {
+    static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_line_build_count() {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_line_build_count() -> usize {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_line_build() {
+    COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
+    let mut lines = output.text.lines().rev();
+    let mut tail: Vec<String> = lines
+        .by_ref()
+        .take(MAX_TOOL_OUTPUT_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            if chars.next().is_some() {
+                format!("{head}…")
+            } else {
+                head
+            }
+        })
+        .collect();
+    let omitted = output.truncated || lines.next().is_some();
+    tail.reverse();
+
+    let mut lines = Vec::with_capacity(MAX_TOOL_OUTPUT_LINES + usize::from(omitted));
+    if omitted {
+        lines.push("…".to_string());
+    }
+    lines.extend(tail);
+    lines
+}
+
+fn full_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
+    let mut source = output.text.lines().rev();
+    let mut lines: Vec<String> = source
+        .by_ref()
+        .take(MAX_TOOL_DETAIL_OUTPUT_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            let suffix = if chars.next().is_some() { "…" } else { "" };
+            format!("{prefix}{head}{suffix}")
+        })
+        .collect();
+    let omitted = output.truncated || source.next().is_some();
+    lines.reverse();
+    if omitted {
+        lines.insert(0, format!("{prefix}…"));
+    }
+    if lines.is_empty() {
+        lines.push(prefix.trim_end().to_string());
+    }
+    lines
+}
+
+fn preview_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
+    let mut source = output.text.lines().rev();
+    let mut lines: Vec<String> = source
+        .by_ref()
+        .take(MAX_TOOL_PREVIEW_LINES)
+        .map(|line| {
+            let mut chars = line.chars();
+            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
+            let suffix = if chars.next().is_some() { "…" } else { "" };
+            format!("{prefix}{head}{suffix}")
+        })
+        .collect();
+    let omitted = output.truncated || source.next().is_some();
+    lines.reverse();
+    if omitted {
+        lines.insert(0, format!("{prefix}…"));
+    }
+    lines
+}
+
+fn tool_detail_lines(
+    content: &[ToolCallContent],
+    locations: &[ToolCallLocation],
+    detailed: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut omitted = false;
+    if detailed {
+        for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
+            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            lines.push(format!("    {}{suffix}", location.path));
+        }
+        omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
+    }
+    for item in content {
+        if lines.len() >= MAX_TOOL_DETAIL_LINES {
+            omitted = true;
+            break;
+        }
+        match item {
+            ToolCallContent::Text(output) => {
+                if detailed {
+                    lines.extend(full_output_lines(output, "    │ "));
+                } else {
+                    lines.extend(preview_output_lines(output, "    │ "));
+                }
+            }
+            ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            } => {
+                lines.push(format!("    Δ {path}"));
+                if detailed {
+                    if let Some(old_text) = old_text {
+                        lines.extend(full_output_lines(old_text, "    - "));
+                    }
+                    lines.extend(full_output_lines(new_text, "    + "));
+                }
+            }
+            ToolCallContent::Terminal {
+                id,
+                output,
+                exit_code,
+            } => {
+                let status = exit_code.map_or_else(String::new, |code| format!(" · exit {code}"));
+                lines.push(format!("    $ {id}{status}"));
+                if detailed {
+                    if let Some(output) = output {
+                        lines.extend(full_output_lines(output, "    │ "));
+                    }
+                }
+            }
+            ToolCallContent::Attachment { label, uri } => {
+                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                lines.push(format!("    ↳ {label}{target}"));
+            }
+        }
+        if lines.len() > MAX_TOOL_DETAIL_LINES {
+            omitted = true;
+            break;
+        }
+    }
+    if omitted {
+        lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
+        lines.push("    …".to_string());
+    }
+    lines
+}
 
 /// Estimate the chat block's natural height (in visual rows) given the
 /// rendering width. Counts wraps for each message + completed turn. Used by
@@ -23,14 +195,39 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // Fetch once for the pending-height calculation.
     let pending_text = pending_render_text(tab);
 
-    let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
-    let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
-    let pending = pending_text
-        .as_deref()
-        .map(|text| {
-            let body_width = wrap_width.saturating_sub(2).max(1);
-            dot_wrap_count(text, body_width)
+    let streaming_index = tab.streaming_agent_message_index();
+    let permission_tool_call_id = permission_tool_call_id(tab);
+    let messages: usize = tab
+        .messages
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != streaming_index)
+        .map(|(index, message)| {
+            rendered_lines_height(
+                &build_message_lines(
+                    message,
+                    index + 1 == tab.messages.len(),
+                    tab.turn.is_streaming(),
+                    permission_tool_call_id,
+                    tab.activity_frame,
+                    wrap_width,
+                ),
+                wrap_width,
+            )
         })
+        .sum();
+    let turns: usize = tab
+        .completed_turns
+        .iter()
+        .map(|turn| {
+            rendered_lines_height(
+                &build_completed_turn_lines(turn, false, false, wrap_width),
+                wrap_width,
+            )
+        })
+        .sum();
+    let pending = pending_text
+        .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
         .unwrap_or(0);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
@@ -48,111 +245,47 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
 }
 
-fn wrap_count(text: &str, width: usize) -> usize {
-    let w = width.max(1);
-    text.split('\n')
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 { 1 } else { chars.div_ceil(w) }
-        })
-        .sum::<usize>()
-        .max(1)
-}
-
-/// Mirrors `push_dot_prefixed_lines`: leading blank paragraphs are skipped
-/// (the dot lands on the first content row), so they must not be counted
-/// against the chat-area height either.
-fn dot_wrap_count(text: &str, width: usize) -> usize {
-    wrap_count(text.trim_start_matches('\n'), width)
-}
-
-struct MessageLayout {
-    height: usize,
-    has_trailing_blank: bool,
-}
-
-fn message_layout(msg: &ChatMessage, wrap_width: usize) -> MessageLayout {
-    // Most variants render with a 2-cell prefix ("● " for agent/error,
-    // "> " for user) and a trailing blank line.
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => MessageLayout {
-            height: dot_wrap_count(t, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::User(t) => MessageLayout {
-            height: wrap_count(t, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::System(t) | ChatMessage::AgentEvent(t) => MessageLayout {
-            height: wrap_count(t, wrap_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::Notice { text, .. } => MessageLayout {
-            height: dot_wrap_count(text, body_width) + 1,
-            has_trailing_blank: true,
-        },
-        ChatMessage::ToolCall {
-            location,
-            location_is_command,
-            ..
-        } => {
-            // Command targets render one line per split statement (see
-            // the render arm below, and `command_format`) — must count
-            // the same number of rows here, or the chat area's height
-            // budget undercounts and clips the scrollback.
-            let command_lines = if *location_is_command {
-                location
-                    .as_deref()
-                    .filter(|l| !l.is_empty())
-                    .map(|l| crate::ui::command_format::command_display_lines(l).len())
-                    .unwrap_or(0)
-            } else {
-                0
-            };
-            MessageLayout {
-                height: 1 + command_lines + usize::from(command_lines > 0),
-                has_trailing_blank: command_lines > 0,
-            }
-        }
-        ChatMessage::Plan(entries) => MessageLayout {
-            height: 2 + entries.len(), // header + each entry + blank
-            has_trailing_blank: true,
-        },
-        // Disclaimer is a single dim row — terminal min-width guarantees the
-        // short text fits without wrapping, and no trailing blank is needed.
-        ChatMessage::Disclaimer => MessageLayout {
-            height: 1,
-            has_trailing_blank: false,
-        },
-    }
-}
-
+#[cfg(test)]
 fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
-    message_layout(msg, wrap_width).height
+    rendered_lines_height(
+        &build_message_lines(msg, false, false, None, 0, wrap_width),
+        wrap_width,
+    )
 }
 
+#[cfg(test)]
 fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
-    // Collapsed view = prompt header + trailing blank. Expanded turns put
-    // details immediately after the header, so only add a trailing blank when
-    // the final detail does not already render one.
-    let chars = "▶ > ".chars().count() + turn.prompt.chars().count();
-    let prompt_rows = chars.div_ceil(wrap_width.max(1)).max(1);
-    let mut h = prompt_rows;
-    if turn.expanded {
-        let mut has_trailing_blank = false;
-        for message in &turn.details {
-            let layout = message_layout(message, wrap_width);
-            h += layout.height;
-            has_trailing_blank = layout.has_trailing_blank;
-        }
-        if !has_trailing_blank {
-            h += 1;
-        }
-    } else {
-        h += 1;
-    }
-    h
+    rendered_lines_height(
+        &build_completed_turn_lines(turn, false, false, wrap_width),
+        wrap_width,
+    )
+}
+
+fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    let width = wrap_width.max(1);
+    lines
+        .iter()
+        .map(|line| {
+            let text = match line.spans.as_slice() {
+                [] => return 1,
+                [span] => Cow::Borrowed(span.content.as_ref()),
+                spans => Cow::Owned(
+                    spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<String>(),
+                ),
+            };
+            let display_width = UnicodeWidthStr::width(text.as_ref());
+            if display_width == 0 {
+                1
+            } else if display_width <= width {
+                1
+            } else {
+                textwrap::wrap(text.as_ref(), width).len().max(1)
+            }
+        })
+        .sum()
 }
 
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
@@ -222,11 +355,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner_area = inner.inner(area);
     let visible_height = inner_area.height as usize;
     let wrap_width = inner_area.width as usize;
-    let requested_lines = visible_height
-        .saturating_add(app.current_tab().chat_scroll.offset)
+    let selection_pending = app.current_tab().completed_turn_selection_visible_pending;
+    let selection_target_idx = selection_pending
+        .then_some(app.current_tab().selected_completed_turn_idx)
+        .flatten()
+        .filter(|index| *index < app.current_tab().completed_turns.len());
+    let mut effective_offset = app.current_tab().chat_scroll.offset;
+    let mut requested_lines = visible_height
+        .saturating_add(effective_offset)
         .saturating_add(32);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
+    let mut turn_hit_offsets = Vec::new();
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
@@ -235,7 +375,11 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
+    let streaming_index = tab.streaming_agent_message_index();
     for (idx, msg) in tab.messages.iter().enumerate().rev() {
+        if Some(idx) == streaming_index {
+            continue;
+        }
         let is_last_message = idx + 1 == tab.messages.len();
         let mut message_lines = build_message_lines(
             msg,
@@ -246,7 +390,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             wrap_width,
         );
         reversed_lines.extend(message_lines.drain(..).rev());
-        if reversed_lines.len() >= requested_lines {
+        if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
             truncated = true;
             break;
         }
@@ -255,11 +399,42 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     if !truncated {
         let selected_idx = app.current_tab().selected_completed_turn_idx;
         let pane_focused = app.pane_focused;
+        let mut selection_reached = selection_target_idx.is_none();
+        let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let mut turn_lines = build_completed_turn_lines(turn, is_selected, pane_focused, wrap_width);
+            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
+                turn,
+                is_selected,
+                pane_focused,
+                wrap_width,
+            );
+            let turn_height = rendered_lines_height(&turn_lines, wrap_width);
+            turn_hit_offsets.push((
+                idx,
+                rendered_rows_below,
+                turn_height,
+                turn.expanded,
+                prompt_rows,
+            ));
+            if selection_target_idx == Some(idx) {
+                let selected_end = rendered_rows_below.saturating_add(turn_height);
+                let viewport_height = visible_height.max(1);
+                effective_offset = if rendered_rows_below < effective_offset {
+                    rendered_rows_below
+                } else if selected_end > effective_offset.saturating_add(viewport_height) {
+                    selected_end.saturating_sub(viewport_height)
+                } else {
+                    effective_offset
+                };
+                requested_lines = visible_height
+                    .saturating_add(effective_offset)
+                    .saturating_add(32);
+                selection_reached = true;
+            }
             reversed_lines.extend(turn_lines.drain(..).rev());
-            if reversed_lines.len() >= requested_lines {
+            rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
+            if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
                 break;
             }
@@ -284,16 +459,80 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
-    let total_lines = lines.len();
-    let scroll = total_lines.saturating_sub(visible_height.saturating_add(app.current_tab().chat_scroll.offset));
+    let total_lines = rendered_lines_height(&lines, wrap_width);
+    let scroll = total_lines.saturating_sub(visible_height.saturating_add(effective_offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
         .alignment(crate::rtl::text_alignment())
         .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
+        .scroll((scroll.min(u16::MAX as usize) as u16, 0));
 
     frame.render_widget(paragraph, area);
+
+    let mut completed_turn_hits = Vec::new();
+    let buffer = frame.buffer_mut();
+    for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
+        let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
+        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
+        {
+            let row = inner_area.y.saturating_add(header_row as u16);
+            let symbol = if expanded { "▼" } else { "▶" };
+            if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
+                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+            {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column: column,
+                    end_column: column.saturating_add(1),
+                    row,
+                    turn_index,
+                    kind: crate::app::CompletedTurnHitKind::Triangle,
+                });
+            }
+        }
+
+        for prompt_row in prompt_rows {
+            let Some(visible_row) = header_from_top
+                .saturating_add(prompt_row.row_offset)
+                .checked_sub(scroll)
+            else {
+                continue;
+            };
+            if visible_row >= visible_height {
+                continue;
+            }
+            let start = inner_area.x as usize;
+            let end = inner_area.x.saturating_add(inner_area.width) as usize;
+            if start < end {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column: start as u16,
+                    end_column: end as u16,
+                    row: inner_area.y.saturating_add(visible_row as u16),
+                    turn_index,
+                    kind: crate::app::CompletedTurnHitKind::UserInput,
+                });
+                app.completed_turn_action_links.push(
+                    crate::action_links::CompletedTurnActionLink {
+                        start_column: start as u16,
+                        end_column: end as u16,
+                        row: inner_area.y.saturating_add(visible_row as u16),
+                        action: if expanded {
+                            crate::action_links::CompletedTurnAction::Collapse
+                        } else {
+                            crate::action_links::CompletedTurnAction::Expand
+                        },
+                    },
+                );
+            }
+        }
+    }
+    app.completed_turn_hits = completed_turn_hits;
+
+    if selection_pending {
+        let tab = app.current_tab_mut();
+        tab.chat_scroll.offset = effective_offset;
+        tab.completed_turn_selection_visible_pending = false;
+    }
 
     // Update the scroll bound only when the build saw all of history;
     // otherwise the true max is still unknown and the stored value (possibly
@@ -309,7 +548,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         format!(
             "messages={} pending_chars={} requested_lines={} visible_height={} area={}x{}",
             app.current_tab().messages.len(),
-            app.current_tab().turn.buffer().map(|b| b.chars().count()).unwrap_or(0),
+            app.current_tab()
+                .streaming_agent_text()
+                .map(|text| text.chars().count())
+                .unwrap_or(0),
             requested_lines,
             visible_height,
             area.width,
@@ -318,12 +560,84 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     });
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PromptRowGeometry {
+    row_offset: usize,
+    line_width: usize,
+    body_start: usize,
+    body_width: usize,
+}
+
+fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<PromptRowGeometry> {
+    let width = wrap_width.max(1);
+    let mut rows = Vec::new();
+    for line in lines {
+        let line_width = line
+            .spans
+            .iter()
+            .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+            .sum::<usize>();
+        let body_start = line
+            .spans
+            .iter()
+            .take(2)
+            .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+            .sum::<usize>();
+        if line_width <= width {
+            rows.push(PromptRowGeometry {
+                row_offset: rows.len(),
+                line_width,
+                body_start,
+                body_width: line_width.saturating_sub(body_start),
+            });
+            continue;
+        }
+
+        let text = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        let pieces = textwrap::wrap(&text, width);
+        if pieces.is_empty() {
+            continue;
+        }
+        for (piece_index, piece) in pieces.into_iter().enumerate() {
+            let line_width = UnicodeWidthStr::width(piece.as_ref()).min(width);
+            let body_start = if piece_index == 0 {
+                body_start.min(line_width)
+            } else {
+                0
+            };
+            rows.push(PromptRowGeometry {
+                row_offset: rows.len(),
+                line_width,
+                body_start,
+                body_width: line_width.saturating_sub(body_start),
+            });
+        }
+    }
+    rows
+}
+
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
+}
+
+fn build_completed_turn_lines_with_prompt_rows<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
+    #[cfg(test)]
+    record_completed_turn_line_build();
+
     let chevron = if turn.expanded { "▼ " } else { "▶ " };
     // Selected row highlights the current Tab target. When the pane is focused
     // it's the live, active selection (bright SELECTED bar); when the pane is
@@ -346,37 +660,51 @@ fn build_completed_turn_lines<'a>(
         theme::DIM
     };
 
-    // The collapsed header is always a single `Line` by design (see
-    // `turn_height`'s "Collapsed view = single Line" comment above), so a
-    // multi-line prompt (Shift+Enter) can't keep its line breaks here. Without
-    // this, the embedded '\n' would vanish invisibly and run the two lines
-    // together with no separator at all (e.g. "remember,And ..."), since
-    // ratatui doesn't render embedded newlines as whitespace. Replace each
-    // '\n' with a space so the collapsed preview stays readable.
-    // Only allocate when the collapse step actually rewrote the text (i.e.
-    // the prompt had an embedded '\n'); the common single-line, non-wrapped
-    // prompt stays a zero-copy borrow of `turn.prompt` for the `'a` lifetime.
-    let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
-    let prompt_text: Cow<'a, str> = match collapsed_prompt {
-        Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
-        // `collapsed` is already an owned `String`; only clone again if
-        // truncation actually shortens it; otherwise reuse it as-is instead
-        // of cloning a second time via `truncate_render_text(..).into_owned()`.
-        Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
-            Cow::Borrowed(_) => Cow::Owned(collapsed),
-            Cow::Owned(truncated) => Cow::Owned(truncated),
-        },
+    let mut lines = if turn.expanded {
+        let mut prompt_lines = Vec::new();
+        push_prompt_prefixed_lines(
+            &mut prompt_lines,
+            &turn.prompt,
+            wrap_width.saturating_sub(2).max(1),
+        );
+        for (index, line) in prompt_lines.iter_mut().enumerate() {
+            for span in &mut line.spans {
+                span.style = prompt_style;
+            }
+            line.spans.insert(
+                0,
+                if index == 0 {
+                    Span::styled(chevron, chevron_style)
+                } else {
+                    Span::styled("  ", chevron_style)
+                },
+            );
+        }
+        prompt_lines
+    } else {
+        // Collapsed turns are a single-line summary. Replace embedded newlines
+        // with spaces so Ratatui does not run adjacent source lines together.
+        let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
+        let prompt_text: Cow<'a, str> = match collapsed_prompt {
+            Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
+            Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
+                Cow::Borrowed(_) => Cow::Owned(collapsed),
+                Cow::Owned(truncated) => Cow::Owned(truncated),
+            },
+        };
+        vec![Line::from(vec![
+            Span::styled(chevron, chevron_style),
+            Span::styled("> ", prompt_style),
+            Span::styled(prompt_text, prompt_style),
+        ])]
     };
-    let mut lines = vec![Line::from(vec![
-        Span::styled(chevron, chevron_style),
-        Span::styled("> ", prompt_style),
-        Span::styled(prompt_text, prompt_style),
-    ])];
+
+    let prompt_rows = completed_turn_prompt_rows(&lines, wrap_width);
 
     // Index of the line that should receive an inline trailing marker (eg
     // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
-    // first detail row (right after the header chevron line); collapsed
-    // turns put it next to the prompt header.
+    // first detail row (after all expanded prompt rows); collapsed turns
+    // put it next to the prompt header.
     let marker_target_idx = if turn.expanded && !turn.details.is_empty() {
         Some(lines.len())
     } else {
@@ -390,7 +718,9 @@ fn build_completed_turn_lines<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
-            lines.extend(build_message_lines(msg, false, false, None, 0, wrap_width));
+            lines.extend(build_message_lines_with_details(
+                msg, false, false, None, 0, wrap_width, true,
+            ));
         }
     }
 
@@ -409,7 +739,7 @@ fn build_completed_turn_lines<'a>(
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
-    lines
+    (lines, prompt_rows)
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
@@ -446,8 +776,7 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
 }
 
 fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    // Pending text is only meaningful while the turn is actively streaming.
-    user_visible_stream_text(tab.turn.buffer()?)
+    user_visible_stream_text(tab.streaming_agent_text()?)
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -459,11 +788,11 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     // the streaming text. The reveal cursor is advanced toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
-    // full text is always in `turn.buffer()`, and finalize commits it in full,
-    // so this never drops or delays the final content.
+    // full text is always in the ordered transcript, and finalize moves that
+    // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
         let total = text.chars().count();
-        let shown = tab.reveal_chars.min(total);
+        let shown = tab.reveal_chars.max(1).min(total);
         if shown >= total {
             text
         } else {
@@ -488,6 +817,26 @@ fn build_message_lines<'a>(
     permission_tool_call_id: Option<&str>,
     activity_frame: usize,
     wrap_width: usize,
+) -> Vec<Line<'a>> {
+    build_message_lines_with_details(
+        msg,
+        is_last_message,
+        agent_streaming,
+        permission_tool_call_id,
+        activity_frame,
+        wrap_width,
+        false,
+    )
+}
+
+fn build_message_lines_with_details<'a>(
+    msg: &'a ChatMessage,
+    is_last_message: bool,
+    agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
+    wrap_width: usize,
+    detailed_tools: bool,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
@@ -530,8 +879,14 @@ fn build_message_lines<'a>(
             id,
             title,
             status,
+            kind,
             location,
             location_is_command,
+            cwd,
+            output,
+            exit_code,
+            content,
+            locations,
         } => {
             let (marker, marker_style, detail) = tool_call_presentation(status);
             let marker = if permission_tool_call_id == Some(id.as_str())
@@ -561,11 +916,31 @@ fn build_message_lines<'a>(
                     ));
                 }
             }
+            if *kind == ToolCallKind::Execute {
+                if let Some(cwd) = cwd
+                    .as_deref()
+                    .filter(|cwd| !cwd.is_empty())
+                    .filter(|cwd| !title.contains(cwd))
+                {
+                    spans.push(Span::styled(
+                        format!(" ({})", truncate_render_text(cwd)),
+                        theme::DIM,
+                    ));
+                }
+            }
             if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
                 spans.push(Span::styled(
                     format!(" · {}", truncate_render_text(detail)),
                     theme::DIM,
                 ));
+            }
+            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
+                if let Some(exit_code) = exit_code.filter(|_| {
+                    !starts_with_ignore_ascii_case(status, "exited (")
+                        && !starts_with_ignore_ascii_case(status, "failed:")
+                }) {
+                    spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
+                }
             }
             lines.push(Line::from(spans));
             // A command target can be several `;`-chained PowerShell
@@ -590,7 +965,36 @@ fn build_message_lines<'a>(
                     }
                 }
             }
-            if rendered_command {
+            let mut rendered_output = false;
+            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
+                if let Some(output) = output {
+                    for line in tool_output_lines(output) {
+                        rendered_output = true;
+                        lines.push(Line::from(Span::styled(
+                            format!("    │ {line}"),
+                            theme::DIM,
+                        )));
+                    }
+                }
+            }
+            let has_text_content = content
+                .iter()
+                .any(|item| matches!(item, ToolCallContent::Text(_)));
+            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
+            if !has_text_content {
+                if let Some(output) = output {
+                    if detailed_tools {
+                        detail_lines.extend(full_output_lines(output, "    │ "));
+                    } else if *kind != ToolCallKind::Execute && !*location_is_command {
+                        detail_lines.extend(preview_output_lines(output, "    │ "));
+                    }
+                }
+            }
+            let rendered_details = !detail_lines.is_empty();
+            for line in detail_lines {
+                lines.push(Line::from(Span::styled(line, theme::DIM)));
+            }
+            if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
             }
         }
@@ -640,7 +1044,7 @@ fn build_message_lines<'a>(
                 Span::raw("  "),
                 Span::styled(
                     t!("chat.welcome_disclaimer").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                    theme::DISCLAIMER_TEXT,
                 ),
             ]));
         }
@@ -740,8 +1144,8 @@ fn push_prefixed_lines<'a>(
 /// multiple rows, so without this split any line after the first would
 /// never appear in the rendered transcript (see issue #492). The first
 /// rendered row gets the `"> "` prompt marker; continuation rows get a
-/// matching 2-cell indent, consistent with `message_height`'s
-/// `wrap_count`-based row estimate for `ChatMessage::User`.
+/// matching 2-cell indent. Height measurement consumes these same rendered
+/// lines and counts their terminal display width.
 fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &'a str, wrap_width: usize) {
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
@@ -835,6 +1239,20 @@ mod tests {
     }
 
     #[test]
+    fn completed_turn_build_counter_does_not_leak_across_threads() {
+        reset_completed_turn_line_build_count();
+        std::thread::spawn(|| {
+            reset_completed_turn_line_build_count();
+            record_completed_turn_line_build();
+            assert_eq!(completed_turn_line_build_count(), 1);
+        })
+        .join()
+        .expect("counter thread must finish");
+
+        assert_eq!(completed_turn_line_build_count(), 0);
+    }
+
+    #[test]
     fn notices_render_distinct_markers_and_hanging_indents() {
         let cases = [
             (NoticeKind::Success, "✓"),
@@ -868,6 +1286,22 @@ mod tests {
     }
 
     #[test]
+    fn message_height_uses_terminal_display_width_for_cjk() {
+        let message = ChatMessage::Agent("你好".into());
+        let lines = build_message_lines(&message, false, false, None, 0, 4);
+
+        assert_eq!(lines.len(), 3, "two CJK glyphs wrap into two body rows");
+        assert_eq!(message_height(&message, 4), lines.len());
+    }
+
+    #[test]
+    fn rendered_height_accounts_for_word_wrap_gaps() {
+        let lines = vec![Line::from("aaa aaa aaa aaa")];
+
+        assert_eq!(rendered_lines_height(&lines, 5), 4);
+    }
+
+    #[test]
     fn expanded_turn_height_matches_rendered_detail_endings() {
         let cases = [
             (
@@ -882,8 +1316,14 @@ mod tests {
                     id: "tool".into(),
                     title: "Read source".into(),
                     status: "Completed".into(),
+                    kind: ToolCallKind::Read,
                     location: Some(r"C:\src\main.rs".into()),
                     location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 }],
             ),
             (
@@ -892,8 +1332,14 @@ mod tests {
                     id: "tool".into(),
                     title: "Run tests".into(),
                     status: "Completed".into(),
+                    kind: ToolCallKind::Execute,
                     location: Some("cargo test --workspace".into()),
                     location_is_command: true,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
                 }],
             ),
             ("disclaimer", vec![ChatMessage::Disclaimer]),
@@ -916,6 +1362,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn expanded_completed_turn_restores_multiline_prompt() {
+        let mut turn = CompletedTurn {
+            prompt: ["line one", "line two"].join("\n"),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        };
+
+        let collapsed = build_completed_turn_lines(&turn, false, true, 80);
+        assert_eq!(line_text(&collapsed[0]), "▶ > line one line two");
+
+        turn.expanded = true;
+        let expanded = build_completed_turn_lines(&turn, true, true, 80);
+        let texts: Vec<String> = expanded.iter().map(line_text).collect();
+        assert_eq!(
+            texts,
+            vec![
+                "▼ > line one".to_string(),
+                "    line two".to_string(),
+                String::new(),
+            ]
+        );
+        assert_eq!(expanded[1].spans[0].style, theme::SELECTED);
+        assert_eq!(turn_height(&turn, 80), expanded.len());
+    }
+
     fn assert_tool_call(
         status: &str,
         expected_text: &str,
@@ -926,8 +1399,14 @@ mod tests {
             id: "tool".into(),
             title: "Run: cargo test".into(),
             status: status.into(),
+            kind: ToolCallKind::Other,
             location: None,
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -947,8 +1426,14 @@ mod tests {
             id: "tool".into(),
             title: "Access paths outside trusted directories".into(),
             status: "Pending".into(),
+            kind: ToolCallKind::Other,
             location: Some(r"C:\src\rust-app".into()),
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -975,8 +1460,14 @@ mod tests {
             id: "tool".into(),
             title: "Run command".into(),
             status: "Pending".into(),
+            kind: ToolCallKind::Execute,
             location: Some("cargo test --workspace".into()),
             location_is_command: true,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1009,10 +1500,16 @@ mod tests {
             id: "tool".into(),
             title: "Check installed PowerToys and Foundry Local packages".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Execute,
             location: Some(
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
             ),
             location_is_command: true,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
@@ -1035,6 +1532,99 @@ mod tests {
             4,
             "the height budget must count one row per split statement"
         );
+    }
+
+    #[test]
+    fn execute_tool_call_renders_cwd_reported_output_tail_and_exit_code() {
+        let cwd = concat!("C:", "\\", "repo");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "bash".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: Some(cwd.into()),
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+        let rendered: Vec<String> = lines.iter().map(line_text).collect();
+
+        assert_eq!(rendered[0], format!("✓ bash ({cwd}) · exit 0"));
+        assert_eq!(rendered[1], "    $ cargo test");
+        assert_eq!(rendered[2], "    │ …");
+        assert_eq!(rendered[3], "    │ line 2");
+        assert_eq!(rendered[6], "    │ line 5");
+        assert!(rendered[7].is_empty());
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn completed_non_execute_tool_call_shows_bounded_output_preview() {
+        let location = concat!("C:", "\\", "repo", "\\", "large.txt");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Read file".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: Some(location.into()),
+            location_is_command: false,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3", "line 4"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(200),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 120);
+        let rendered: Vec<String> = lines.iter().map(line_text).collect();
+
+        assert_eq!(rendered[1], "    │ …");
+        assert_eq!(rendered[2], "    │ line 3");
+        assert_eq!(rendered[3], "    │ line 4");
+        assert!(!rendered.iter().any(|line| line.contains("line 1")));
+        assert!(!rendered[0].contains("exit 200"));
+        assert!(rendered[4].is_empty());
+        assert_eq!(lines.len(), message_height(&message, 120));
+    }
+
+    #[test]
+    fn expanded_tool_output_is_bounded_for_large_file_lists() {
+        let output = ToolCallOutput {
+            text: (0..200)
+                .map(|index| format!("debug/incremental/object-{index:03}.o"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            truncated: false,
+        };
+        let lines = tool_detail_lines(&[ToolCallContent::Text(output)], &[], true);
+
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
+        assert_eq!(lines[0], "    │ …");
+        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+    }
+
+    #[test]
+    fn tool_detail_lines_strictly_caps_locations_including_ellipsis() {
+        let locations: Vec<ToolCallLocation> = (0..=MAX_TOOL_DETAIL_LINES)
+            .map(|index| ToolCallLocation {
+                path: format!("file-{index}.rs"),
+                line: None,
+            })
+            .collect();
+
+        let lines = tool_detail_lines(&[], &locations, true);
+
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
+        assert_eq!(lines.last().map(String::as_str), Some("    …"));
     }
 
     #[test]
@@ -1145,8 +1735,10 @@ mod tests {
                 context: crate::app::TurnContext::default(),
                 autofix: None,
             },
-            buf: buf.to_string(),
         };
+        if !buf.is_empty() {
+            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+        }
         tab.reveal_chars = reveal_chars;
         tab
     }
@@ -1178,15 +1770,27 @@ mod tests {
             id: "tool-2".into(),
             title: "Read Cargo.toml".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Read,
             location: None,
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
         let other = ChatMessage::ToolCall {
             id: "tool-1".into(),
             title: "Find files".into(),
             status: "Completed".into(),
+            kind: ToolCallKind::Search,
             location: None,
             location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
         };
 
         let matching_lines =
@@ -1204,8 +1808,14 @@ mod tests {
                 id: "tool".into(),
                 title: "Find files".into(),
                 status: status.into(),
+                kind: ToolCallKind::Search,
                 location: None,
                 location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
             };
             let lines = build_message_lines(&message, false, false, None, 9, 80);
             assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");

@@ -44,7 +44,7 @@ auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
+chat.welcome_disclaimer: "Intelligent Terminal uses AI."  # {Locked="AI"}
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -99,6 +99,7 @@ commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.config.summary: "Configure this agent session"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
@@ -131,6 +132,14 @@ system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."
 # {model} is the unrecognized text the user typed after /model.
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Session configuration (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "The connected agent did not advertise any configurable session options."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Failed to update %{option}: %{error}"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
@@ -282,7 +291,9 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 # Shown when a shell hook is not yet installed
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# Confirmation printed by `wta hooks install` once the install is verified.
+# %{clis} = comma-separated agent CLI names, e.g. "copilot, claude".
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n 3.x has no CLDR plural support — only string interpolation. So we

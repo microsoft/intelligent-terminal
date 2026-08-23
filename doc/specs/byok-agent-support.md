@@ -1,15 +1,15 @@
-# BYOK/BYOM support across built-in agents
+# BYOK support across built-in agents
 
 Last researched: 2026-07-27
 
-This document records the upstream, vendor-documented BYOK/BYOM behavior of
+This document records the upstream, vendor-documented BYOK behavior of
 the agent CLIs built into Intelligent Terminal. It intentionally starts from
 upstream documentation rather than from Intelligent Terminal's implementation.
 
 ## Terminology and scope
 
-- **BYOK** means supplying credentials for a model provider or gateway.
-- **BYOM** means selecting a model or endpoint that is not the agent's default.
+- **BYOK** means supplying provider credentials and selecting a provider
+  endpoint or model that is not the agent's default.
 - **Agent pane** means the ACP process launched by `wta-master`.
 - **Delegate** means the normal interactive CLI launched by `?<prompt>`.
 - "OpenAI-compatible" is not one protocol. The two relevant APIs are:
@@ -21,7 +21,7 @@ other.
 
 ## Summary matrix
 
-| Agent | Upstream BYOK/BYOM support | Primary configuration surfaces | Provider protocol used by custom endpoints | Fit for Intelligent Terminal's current shared provider |
+| Agent | Upstream BYOK support | Primary configuration surfaces | Provider protocol used by custom endpoints | Fit for Intelligent Terminal's current shared provider |
 |---|---|---|---|---|
 | GitHub Copilot CLI | Yes | Environment variables; `--model` | OpenAI Chat Completions, Azure OpenAI, or Anthropic | Supported for the OpenAI Chat Completions subset |
 | Claude Code | Yes | Login/setup commands, environment variables, settings files, `--model`, `/model` | Anthropic Messages API, Bedrock, Vertex AI, Microsoft Foundry | Not compatible with a generic OpenAI endpoint without an Anthropic-format gateway |
@@ -356,7 +356,7 @@ contracts.
 
 #### 2. "Unsupported" describes the integration, not the upstream agent
 
-Claude and Gemini both support native BYOK/BYOM. They are unsupported only by
+Claude and Gemini both support native BYOK and model selection. They are unsupported only by
 the current shared **OpenAI-compatible** provider abstraction.
 
 **Recommended fix:** keep the runtime gating, but use user-facing wording and

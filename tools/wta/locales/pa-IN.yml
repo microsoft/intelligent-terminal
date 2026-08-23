@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  ਮੁੜ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਲ
 chat.activity_thinking: "ਸੋਚ ਰਿਹਾ ਹੈ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ ਵਿੱਚ ਤੁਹਾਡਾ ਸੁਆਗਤ ਹੈ!"
-chat.welcome_disclaimer: "ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ AI ਦੀ ਵਰਤੋਂ ਕਰਦਾ ਹੈ। ਗਲਤੀਆਂ ਦੀ ਜਾਂਚ ਕਰੋ।"
+chat.welcome_disclaimer: "ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ AI ਦੀ ਵਰਤੋਂ ਕਰਦਾ ਹੈ।"
 chat.plan_header: "ਯੋਜਨਾ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ ਮਾਰਕੀਟਪਲੇਸ ਪਾਥ ਪ�
 hooks.installed_but_disabled: "⚠ ਇੰਸਟਾਲ ਹੈ ਪਰ ਅਯੋਗ ਹੈ"
 hooks.not_installed: "✗ ਇੰਸਟਾਲ ਨਹੀਂ ਹੈ"
 hooks.uninstall_skipped: "ਛੱਡ ਦਿੱਤਾ ਗਿਆ (CLI PATH 'ਤੇ ਨਹੀਂ ਹੈ)"
-hooks.install_attempted: "wt-agent-hooks ਇੰਸਟਾਲ ਦੀ ਕੋਸ਼ਿਸ਼ ਕੀਤੀ ਗਈ (ਆਈਡੈਮਪੋਟੈਂਟ)। ਨਤੀਜਾ ਜਾਂਚਣ ਲਈ `wta hooks status` ਚਲਾਓ। ਟ੍ਰੇਸ ਲੌਗ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} ਲਈ ਇੰਸਟਾਲ ਹੈ"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ਹੁਣੇ ਹੀ"
@@ -233,8 +233,17 @@ system.agent_switch_unavailable: "ਵਿੰਡੋਜ਼ ਟਰਮੀਨਲ ਟ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ਇਸ ਏਜੰਟ ਸੈਸ਼ਨ ਨੂੰ ਸੰਰਚਿਤ ਕਰੋ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ਇਸ ਟੈബ ਦੇ ਏਜੰट ਪੈਨ ਨੂੰ ਹਿਲਾਓ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
 system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ਸੈਸ਼ਨ ਸੰਰਚਨਾ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਸੰਰਚਨਾਯੋਗ ਸੈਸ਼ਨ ਵਿਕਲਪਾਂ ਦਾ ਇਸ਼ਤਿਹਾਰ ਨਹੀਂ ਦਿੱਤਾ।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} ਨੂੰ ਅੱਪਡੇਟ ਕਰਨ ਵਿੱਚ ਅਸਫਲ: %{error}"
 system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  फिर से प्रयास करन
 chat.activity_thinking: "सोच रहा है…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "इंटेलिजेंट टर्मिनल में आपका स्वागत है!"
-chat.welcome_disclaimer: "इंटेलिजेंट टर्मिनल AI का उपयोग करता है। गलतियों की जाँच करें।"
+chat.welcome_disclaimer: "इंटेलिजेंट टर्मिनल AI का उपयोग करता है।"
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ �
 hooks.installed_but_disabled: "⚠ इंस्टॉल है लेकिन अक्षम है"
 hooks.not_installed: "✗ इंस्टॉल नहीं है"
 hooks.uninstall_skipped: "छोड़ दिया गया (CLI PATH पर नहीं है)"
-hooks.install_attempted: "wt-agent-hooks इंस्टॉल का प्रयास किया गया (आइडेम्पोटेंट)। परिणाम की जाँच के लिए `wta hooks status` चलाएँ। ट्रेस लॉग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis} के लिए wt-agent-hooks इंस्टॉल हो गया है"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "अभी-अभी"
@@ -233,8 +233,17 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "इस पेन के लिए मॉडल चुनें (सीधे बदलने के लिए /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "इस एजेंट सत्र को कॉन्फ़िगर करें"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "इस टैब के एजेंट पेन को स्थानांतरित करें (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "मॉडल चुनें (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "कनेक्टेड एजेंट ने कोई चयन योग्य मॉडल घोषित नहीं किया।"
 system.model_set: "इस पेन के लिए मॉडल %{model} पर सेट किया गया।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "सत्र कॉन्फ़िगरेशन (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "कनेक्ट किए गए एजेंट ने किसी भी कॉन्फ़िगर योग्य सत्र विकल्प का विज्ञापन नहीं किया।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} को अपडेट करने में विफल: %{error}"
 system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}

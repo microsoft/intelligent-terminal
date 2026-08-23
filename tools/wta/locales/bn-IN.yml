@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  আবার চেষ্টা করতে 
 chat.activity_thinking: "ভাবছে…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ইন্টেলিজেন্ট টার্মিনাল-এ স্বাগতম!"
-chat.welcome_disclaimer: "ইন্টেলিজেন্ট টার্মিনাল AI ব্যবহার করে। ভুলের জন্য পরীক্ষা করুন।"
+chat.welcome_disclaimer: "ইন্টেলিজেন্ট টার্মিনাল AI ব্যবহার করে।"
 chat.plan_header: "পরিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -204,7 +204,7 @@ hooks.marketplace_path_stale: "⚠ মার্কেটপ্লেস পা�
 hooks.installed_but_disabled: "⚠ ইনস্টল আছে কিন্তু নিষ্ক্রিয়"
 hooks.not_installed: "✗ ইনস্টল নেই"
 hooks.uninstall_skipped: "এড়িয়ে যাওয়া হয়েছে (CLI PATH-এ নেই)"
-hooks.install_attempted: "wt-agent-hooks ইনস্টলের চেষ্টা করা হয়েছে (আইডেম্পোটেন্ট)। ফলাফল পরীক্ষা করতে `wta hooks status` চালান। ট্রেস লগ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis}-এর জন্য wt-agent-hooks ইনস্টল করা হয়েছে"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "এইমাত্র"
@@ -235,8 +235,17 @@ system.agent_switch_unavailable: "উইন্ডোজ টার্মিনা
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনের জন্য মডেল নির্বাচন করুন (সরাসরি পরিবর্তন করতে /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "এই এজেন্ট সেশন কনফিগার করুন"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "এই ট্যাবের এজেন্ট পেনটি সরান (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "মডেল নির্বাচন করুন (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "সেশন কনফিগারেশন (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "সংযুক্ত এজেন্ট কোনো কনফিগারযোগ্য সেশন বিকল্প বিজ্ঞাপন করেনি।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} আপডেট করতে ব্যর্থ হয়েছে: %{error}"
 system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq kuti
 chat.activity_thinking: "Yuyachkan..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Allillanchu Yuyaysapa Terminal!"
-chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin. Pantaykunata qhaway."
+chat.welcome_disclaimer: "Yuyaysapa Terminal AI-ta llamk'achin."
 chat.plan_header: "Ruwana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ qhatu ñan mawkayasqa"
 hooks.installed_but_disabled: "⚠ churasqa ichaqa ñit'isqa"
 hooks.not_installed: "✗ mana churasqachu"
 hooks.uninstall_skipped: "pasasqa (CLI mana PATH nisqapichu)"
-hooks.install_attempted: "wt-agent-hooks churay llamk'achisqa (idempotente). `wta hooks status` purichiy ruwasqata qhawanaykipaq. Qatiy willana: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks churasqa %{clis}-paq"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "kunanlla"
 time.minute_singular: "%{count} minutu ñawpaq"
@@ -231,8 +231,17 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
+commands.config.summary: "Kay agente nisqap t'inkinta allichay"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "T'inki allichay (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "T'inkisqa agente mana ima allichana t'inki akllanatahpas riqsichimurqanchu."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} machkhapay pantarun: %{error}"
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}

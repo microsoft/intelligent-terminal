@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  మళ్లీ ప్రయత్నిం�
 chat.activity_thinking: "ఆలోచిస్తోంది…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ఇంటెలిజెంట్ టెర్మినల్-కు స్వాగతం!"
-chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది. తప్పులు ఉన్నాయా తనిఖీ చేయండి."
+chat.welcome_disclaimer: "ఇంటెలిజెంట్ టెర్మినల్ AI ఉపయోగిస్తుంది."
 chat.plan_header: "ప్లాన్:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ మార్కెట్‌ప్లేస్
 hooks.installed_but_disabled: "⚠ ఇన్‌స్టాల్ చేయబడింది కానీ డిజేబుల్ చేయబడింది"
 hooks.not_installed: "✗ ఇన్‌స్టాల్ చేయబడలేదు"
 hooks.uninstall_skipped: "దాటవేయబడింది (CLI PATH లో లేదు)"
-hooks.install_attempted: "wt-agent-hooks ఇన్‌స్టాల్ ప్రయత్నించబడింది (ఐడెంపోటెంట్). ఫలితాన్ని తనిఖీ చేయడానికి `wta hooks status` అమలు చేయండి. ట్రేస్ లాగ్: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} కోసం ఇన్‌స్టాల్ చేయబడింది"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ఇప్పుడే"
@@ -233,8 +233,17 @@ system.agent_switch_unavailable: "Windows Terminal ట్యాబ్ వెల�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ఈ ఏజెంట్ సెషన్‌ను కాన్ఫిගర్ చేయండి"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ఈ ట్యాబ్ యొక్క ఏజెంట్ పేన్‌ను తరలించండి (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "కనెక్ట్ అయిన ఏజెంట్ ఎంచుకోదగిన ఏ మోడల్‌ను కూడా ప్రకటించలేదు."
 system.model_set: "ఈ పేన్ కోసం మోడల్ %{model} గా సెట్ చేయబడింది."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "సెషన్ కాన్ఫిగరేషన్ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "కనెక్ట్ చేయబడిన ఏజెంట్ కాన్ఫిగర్ చేయదగిన సెషన్ ఎంపికలను ప్రచారం చేయలేదు."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option}ను నవీకరించడం విఫలమైంది: %{error}"
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

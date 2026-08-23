@@ -71,18 +71,45 @@ namespace Microsoft::Terminal::WtaProcess
         return {};
     }
 
-    // Spawn `wta.exe <argsAfterExe>` and return its stdout on exit-0;
-    // empty string otherwise. Synchronous — call from a background thread.
+    // Result of a captured wta run. `completed` is false when the process
+    // could not be launched or had to be killed on timeout — in that case
+    // `output` and `exitCode` carry nothing meaningful.
+    struct CaptureResult
+    {
+        bool completed{ false };
+        DWORD exitCode{ 1 };
+        std::string output;
+    };
+
+    // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
+    // exit code. Synchronous — call from a background thread.
     // Optionally accepts a custom environment block (double-null-terminated
     // wide string); pass nullptr to inherit the current environment.
-    inline std::string RunWtaCaptureStdout(const std::wstring& wtaPath,
-                                           const std::wstring& argsAfterExe,
-                                           DWORD timeoutMs,
-                                           wchar_t* envBlock = nullptr)
+    //
+    // Prefer this over RunWtaCaptureStdout when the interesting payload is
+    // produced by a *failing* run: `wta hooks install --json` prints its
+    // per-CLI report and then exits non-zero, so the exit-0-only helper
+    // would throw away the very breakdown the caller needs.
+    //
+    // `mergeStderr` controls whether the child's stderr joins stdout in the
+    // captured text. Pass false when parsing machine-readable stdout: a wta
+    // subcommand that fails prints its report to stdout and then lets
+    // `main()` return Err, which makes the Rust runtime write `Error: ...`
+    // to stderr. Merged, that trails (or, depending on flush order, leads)
+    // the JSON and defeats the parse. Non-merged stderr goes to NUL rather
+    // than a second pipe — it would otherwise need its own drain to avoid
+    // deadlocking a chatty child, and every wta subcommand already mirrors
+    // its diagnostics into the wta logs.
+    inline CaptureResult RunWtaCapture(const std::wstring& wtaPath,
+                                       const std::wstring& argsAfterExe,
+                                       DWORD timeoutMs,
+                                       wchar_t* envBlock = nullptr,
+                                       bool mergeStderr = true)
     {
+        CaptureResult result;
         if (wtaPath.empty())
         {
-            return {};
+            return result;
         }
 
         SECURITY_ATTRIBUTES sa{};
@@ -93,11 +120,11 @@ namespace Microsoft::Terminal::WtaProcess
         wil::unique_handle writeHandle;
         if (!CreatePipe(readHandle.addressof(), writeHandle.addressof(), &sa, 0))
         {
-            return {};
+            return result;
         }
         if (!SetHandleInformation(readHandle.get(), HANDLE_FLAG_INHERIT, 0))
         {
-            return {};
+            return result;
         }
 
         STARTUPINFOW si{};
@@ -105,8 +132,31 @@ namespace Microsoft::Terminal::WtaProcess
         si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
         si.wShowWindow = SW_HIDE;
         si.hStdOutput = writeHandle.get();
-        si.hStdError = writeHandle.get();
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+        // unique_hfile, not unique_handle: CreateFileW signals failure with
+        // INVALID_HANDLE_VALUE, which unique_handle (whose invalid value is
+        // nullptr) would happily treat as a live handle.
+        wil::unique_hfile nullHandle;
+        if (mergeStderr)
+        {
+            si.hStdError = writeHandle.get();
+        }
+        else
+        {
+            nullHandle.reset(CreateFileW(L"NUL",
+                                         GENERIC_WRITE,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                         &sa,
+                                         OPEN_EXISTING,
+                                         0,
+                                         nullptr));
+            if (!nullHandle)
+            {
+                return result;
+            }
+            si.hStdError = nullHandle.get();
+        }
 
         std::wstring cmdline = L"\"" + wtaPath + L"\" " + argsAfterExe;
         std::wstring mutableCmd = cmdline;
@@ -131,7 +181,7 @@ namespace Microsoft::Terminal::WtaProcess
             &pi);
         if (!launched)
         {
-            return {};
+            return result;
         }
         wil::unique_handle proc{ pi.hProcess };
         wil::unique_handle thread{ pi.hThread };
@@ -172,16 +222,30 @@ namespace Microsoft::Terminal::WtaProcess
             {
                 TerminateProcess(proc.get(), 1);
                 WaitForSingleObject(proc.get(), 1000);
-                return {};
+                return result;
             }
         }
-        DWORD exitCode = 1;
-        GetExitCodeProcess(proc.get(), &exitCode);
-        if (exitCode != 0)
+        GetExitCodeProcess(proc.get(), &result.exitCode);
+        result.completed = true;
+        result.output = std::move(captured);
+        return result;
+    }
+
+    // Spawn `wta.exe <argsAfterExe>` and return its stdout on exit-0;
+    // empty string otherwise. Synchronous — call from a background thread.
+    // Optionally accepts a custom environment block (double-null-terminated
+    // wide string); pass nullptr to inherit the current environment.
+    inline std::string RunWtaCaptureStdout(const std::wstring& wtaPath,
+                                           const std::wstring& argsAfterExe,
+                                           DWORD timeoutMs,
+                                           wchar_t* envBlock = nullptr)
+    {
+        auto result = RunWtaCapture(wtaPath, argsAfterExe, timeoutMs, envBlock);
+        if (!result.completed || result.exitCode != 0)
         {
             return {};
         }
-        return captured;
+        return std::move(result.output);
     }
 
     // Build an environment block that extends PATH with WinGet Links and npm

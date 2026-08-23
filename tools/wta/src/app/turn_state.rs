@@ -18,11 +18,9 @@ pub enum TurnState {
     Idle,
     /// Prompt sent over ACP; awaiting first chunk.
     Submitted(SubmittedPrompt),
-    /// Receiving streamed chunks. `buf` is the accumulated assistant text.
-    Streaming {
-        prompt: SubmittedPrompt,
-        buf: String,
-    },
+    /// The Agent started producing events for this prompt. Visible content
+    /// lives in the tab's ordered active transcript, not in lifecycle state.
+    Streaming { prompt: SubmittedPrompt },
     /// Outcome surfaced to UI (card visible, chat turn committed, or empty).
     /// `end_pending` is true until `AgentMessageEnd` arrives — the UI gate
     /// stays held during that window to align with ACP single-flight.
@@ -64,6 +62,13 @@ pub enum TurnOutcome {
     /// Recommendation card is visible. Unified across autofix Fix and
     /// planner-mode task suggestions.
     Recommendation(RecommendationSet),
+    /// The user acted on a recommendation before the Agent finished. The
+    /// card is hidden, but its history summary is retained until the active
+    /// transcript can be committed at the real turn boundary.
+    ResolvedRecommendation {
+        summary: String,
+        trailing_marker: String,
+    },
     /// Prose / explain text has been committed to `completed_turns`.
     ChatTurn,
     /// No visible response (cancelled, or model returned nothing parseable).
@@ -111,12 +116,14 @@ impl TurnState {
         }
     }
 
-    /// Streaming buffer, if any.
-    pub fn buffer(&self) -> Option<&str> {
-        match self {
-            TurnState::Streaming { buf, .. } => Some(buf.as_str()),
-            _ => None,
-        }
+    /// True while an Agent request can still be attributed to this turn.
+    ///
+    /// A surfaced turn may have released its UI busy gate before a follow-up
+    /// permission or clarification request reaches the App event loop. The
+    /// request itself proves the Agent is still waiting; only `Idle` means
+    /// there is no turn left to service.
+    pub fn can_service_agent_request(&self) -> bool {
+        !matches!(self, TurnState::Idle)
     }
 
     /// The surfaced recommendation set, if the outcome is a card.
@@ -135,7 +142,7 @@ impl TurnState {
         match self {
             TurnState::Idle => None,
             TurnState::Submitted(p) => Some(p),
-            TurnState::Streaming { prompt, .. } => Some(prompt),
+            TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
         }
     }
@@ -147,7 +154,7 @@ impl TurnState {
         match self {
             TurnState::Idle => None,
             TurnState::Submitted(p) => Some(p),
-            TurnState::Streaming { prompt, .. } => Some(prompt),
+            TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
         }
     }
@@ -211,7 +218,6 @@ mod tests {
         assert!(s.is_idle());
         assert!(!s.is_streaming());
         assert!(s.accepts_new_prompt());
-        assert!(s.buffer().is_none());
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_none());
         assert!(s.autofix_generation().is_none());
@@ -225,7 +231,6 @@ mod tests {
         assert!(!s.is_idle());
         assert!(!s.is_streaming());
         assert!(!s.accepts_new_prompt());
-        assert!(s.buffer().is_none());
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_some());
         assert!(s.is_in_flight());
@@ -235,12 +240,10 @@ mod tests {
     fn streaming_state_predicates() {
         let s = TurnState::Streaming {
             prompt: prompt(),
-            buf: "partial".into(),
         };
         assert!(!s.is_idle());
         assert!(s.is_streaming());
         assert!(!s.accepts_new_prompt());
-        assert_eq!(s.buffer(), Some("partial"));
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_some());
         assert!(s.is_in_flight());
@@ -309,7 +312,6 @@ mod tests {
 
         let s = TurnState::Streaming {
             prompt: autofix_prompt(7),
-            buf: String::new(),
         };
         assert_eq!(s.autofix_generation(), Some(7));
 
@@ -331,5 +333,18 @@ mod tests {
     #[test]
     fn idle_has_no_autofix_generation() {
         assert_eq!(TurnState::Idle.autofix_generation(), None);
+    }
+
+    #[test]
+    fn surfaced_turn_can_service_late_agent_request() {
+        let state = TurnState::Surfaced {
+            prompt: prompt(),
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: false,
+        };
+
+        assert!(!state.is_in_flight());
+        assert!(state.can_service_agent_request());
+        assert!(!TurnState::Idle.can_service_agent_request());
     }
 }

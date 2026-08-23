@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tryk på Enter for at prøve igen, eller Esc 
 chat.activity_thinking: "Tænker..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Velkommen til Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal bruger AI. Tjek for fejl."
+chat.welcome_disclaimer: "Intelligent Terminal bruger AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -188,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installeret for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "lige nu"
@@ -234,8 +234,17 @@ system.agent_switch_unavailable: "Agentskift er ikke tilgængeligt uden for en W
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vælg modellen til denne panel (/model <id> for at skifte direkte)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurer denne agentsession"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flyt denne fanes agentpanel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
 system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Den tilsluttede agent annoncerede ingen konfigurerbare sessionsindstillinger."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Kunne ikke opdatere %{option}: %{error}"
 system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}

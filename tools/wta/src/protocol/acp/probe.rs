@@ -171,7 +171,11 @@ async fn probe_models_impl(
 
     let cwd = std::env::current_dir().unwrap_or_default();
     let session_started = std::time::Instant::now();
-    let session_timeout_secs = 10;
+    // Native CLIs may fetch their cloud model catalog during session/new.
+    // Copilot can legitimately take longer than 10 seconds under load, while
+    // adapter probes already receive a larger initialize budget and must keep
+    // the full three-attempt probe within the Settings caller's 120s ceiling.
+    let session_timeout_secs = if spawned.is_npx { 10 } else { 20 };
     let session_result = tokio::time::timeout(
         Duration::from_secs(session_timeout_secs),
         conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),

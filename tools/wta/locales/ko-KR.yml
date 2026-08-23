@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  Enter 키를 눌러 다시 시도하거나 Es
 # ── 채팅 보기 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "생각 중…"
 chat.welcome_title: "지능형 터미널에 오신 것을 환영합니다!"
-chat.welcome_disclaimer: "지능형 터미널은 AI를 사용합니다. 실수가 있는지 확인하세요."
+chat.welcome_disclaimer: "지능형 터미널은 AI를 사용합니다."
 chat.plan_header: "계획:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -182,7 +182,7 @@ hooks.marketplace_path_stale: "⚠ 마켓플레이스 경로가 오래됨"
 hooks.installed_but_disabled: "⚠ 설치되었지만 사용하지 않도록 설정됨"
 hooks.not_installed: "✗ 설치되지 않음"
 hooks.uninstall_skipped: "건너뜀(CLI가 PATH에 없음)"
-hooks.install_attempted: "wt-agent-hooks 설치가 시도되었습니다(멱등). 결과를 확인하려면 `wta hooks status`를 실행하세요. 추적 로그: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis}에 대해 wt-agent-hooks가 설치됨"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "방금"
 time.minute_singular: "%{count}분 전"
@@ -227,8 +227,17 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+commands.config.summary: "이 에이전트 세션 구성"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "세션 구성 (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "연결된 에이전트가 구성 가능한 세션 옵션을 알리지 않았습니다."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} 업데이트 실패: %{error}"
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

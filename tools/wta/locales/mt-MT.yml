@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Agħfas Enter biex terġa' tipprova, jew Esc 
 chat.activity_thinking: "Qed jaħseb…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Merħba fl-Terminal Intelliġenti!"
-chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI. Iċċekkja għall-iżbalji."
+chat.welcome_disclaimer: "Terminal Intelliġenti juża l-AI."
 chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ triq tal-marketplace skaduta"
 hooks.installed_but_disabled: "⚠ installat imma diżattivat"
 hooks.not_installed: "✗ mhux installat"
 hooks.uninstall_skipped: "maqbuż (CLI mhix fuq PATH)"
-hooks.install_attempted: "Saret tentattiv biex jiġi installat wt-agent-hooks (idempotenti). Ħaddem `wta hooks status` biex tispezzjona r-riżultat. Log tat-trace: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installat għal %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "issa stess"
 time.minute_singular: "%{count} minuta ilu"
@@ -231,8 +231,17 @@ system.agent_switch_unavailable: "L-iswiċċjar tal-aġent mhuwiex disponibbli b
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
+commands.config.summary: "Ikkonfigura din is-sessjoni tal-aġent"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mexxi l-pannell tal-aġent ta' dan it-tab (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfigurazzjoni tas-sessjoni (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ sessjoni konfigurabbli."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

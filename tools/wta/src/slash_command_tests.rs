@@ -247,14 +247,272 @@ fn slash_model_without_models_notes_none() {
     assert_eq!(last_notice(&app).0, NoticeKind::Info);
 }
 
+fn config_option(
+    id: &str,
+    name: &str,
+    category: &str,
+    current_value: &str,
+) -> crate::app_contracts::AcpSessionConfigOption {
+    crate::app_contracts::AcpSessionConfigOption {
+        id: id.into(),
+        name: name.into(),
+        description: Some(format!("Configure {name}")),
+        category: Some(category.into()),
+        current_value: current_value.into(),
+        values: vec![
+            crate::app_contracts::AcpSessionConfigValue {
+                id: "ask".into(),
+                name: "Ask".into(),
+                description: None,
+            },
+            crate::app_contracts::AcpSessionConfigValue {
+                id: "code".into(),
+                name: "Code".into(),
+                description: Some("Write code".into()),
+            },
+        ],
+    }
+}
+
+#[test]
+fn slash_config_without_options_notes_none() {
+    let mut app = test_app();
+
+    run_slash(&mut app, "config");
+
+    assert!(!app.current_tab().config_picker.is_open());
+    assert_eq!(last_notice(&app).0, NoticeKind::Info);
+}
+
+#[test]
+fn slash_config_opens_ordered_session_options() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![
+            config_option("mode", "Mode", "mode", "ask"),
+            config_option("reasoning", "Reasoning", "thought_level", "code"),
+        ],
+    });
+
+    run_slash(&mut app, "config");
+
+    let state = app.config_popup_state().expect("config picker state");
+    assert_eq!(state.options[0].name, "Mode");
+    assert_eq!(state.options[1].name, "Reasoning");
+    assert!(state.value_option.is_none());
+}
+
+#[test]
+fn slash_model_opens_the_standard_model_config_option() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+
+    assert!(!app.current_tab().model_picker_open);
+    assert!(app.current_tab().config_picker.is_open());
+    assert_eq!(
+        app.current_tab().config_picker.option_id(),
+        Some("agent-model")
+    );
+}
+
+#[test]
+fn escape_from_slash_model_closes_the_config_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_escape();
+
+    assert!(!app.current_tab().config_picker.is_open());
+}
+
+#[test]
+fn escape_from_config_value_picker_returns_to_option_list() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "config");
+    app.config_picker_enter();
+    app.config_picker_escape();
+
+    assert!(app.current_tab().config_picker.is_open());
+    assert!(app.current_tab().config_picker.option_id().is_none());
+}
+
+#[test]
+fn slash_model_selection_uses_the_generic_config_request_lifecycle() {
+    let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_down();
+    app.config_picker_enter();
+
+    match master_rx.try_recv().expect("model config update request") {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+            session_id,
+            config_id,
+            value,
+        } => {
+            assert_eq!(session_id.to_string(), "session-1");
+            assert_eq!(config_id, "agent-model");
+            assert_eq!(value, "code");
+        }
+        other => panic!("expected SetSessionConfigOption, got {other:?}"),
+    }
+    assert!(!app.current_tab().config_picker.is_open());
+    assert_eq!(
+        app.current_tab().config_pending_id.as_deref(),
+        Some("agent-model")
+    );
+    assert!(app.current_tab().model_override.is_none());
+
+    app.handle_event(AppEvent::SessionConfigSetCompleted {
+        session_id: "session-1".into(),
+        config_id: "agent-model".into(),
+        value: "code".into(),
+        model_compat: true,
+    });
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("code"));
+    assert!(
+        app.config_popup_state().is_none(),
+        "the /model deep link remains closed after completion"
+    );
+}
+
+#[test]
+fn failed_model_config_selection_keeps_the_previous_model() {
+    let (mut app, _master_rx) = super::tests::test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("agent-model", "Model", "model", "ask")],
+    });
+
+    run_slash(&mut app, "model");
+    app.config_picker_down();
+    app.config_picker_enter();
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "session-1".into(),
+        config_id: "agent-model".into(),
+        message: "rejected".into(),
+    });
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(app.current_tab().model_override.is_none());
+    assert_eq!(last_notice(&app).0, NoticeKind::Error);
+}
+
+#[test]
+fn config_picker_select_sends_session_scoped_option_request() {
+    let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("mode", "Mode", "mode", "ask")],
+    });
+    run_slash(&mut app, "config");
+
+    app.config_picker_enter();
+    assert_eq!(app.current_tab().config_picker.option_id(), Some("mode"));
+    app.config_picker_down();
+    app.config_picker_enter();
+
+    match master_rx.try_recv().expect("config update request") {
+        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+            session_id,
+            config_id,
+            value,
+        } => {
+            assert_eq!(session_id.to_string(), "session-1");
+            assert_eq!(config_id, "mode");
+            assert_eq!(value, "code");
+        }
+        other => panic!("expected SetSessionConfigOption, got {other:?}"),
+    }
+    assert_eq!(app.current_tab().config_pending_id.as_deref(), Some("mode"));
+
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("mode", "Mode", "mode", "code")],
+    });
+    app.handle_event(AppEvent::SessionConfigSetCompleted {
+        session_id: "session-1".into(),
+        config_id: "mode".into(),
+        value: "code".into(),
+        model_compat: false,
+    });
+
+    assert_eq!(
+        app.config_popup_state().unwrap().options[0].current_value,
+        "code"
+    );
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert_eq!(last_notice(&app).0, NoticeKind::Success);
+    assert!(last_notice(&app).1.contains("Mode: Code"));
+}
+
+#[test]
+fn unbound_background_config_update_does_not_close_current_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("current-session".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "current-session".into(),
+        options: vec![config_option("mode", "Mode", "mode", "ask")],
+    });
+    run_slash(&mut app, "config");
+
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "background-session".into(),
+        options: Vec::new(),
+    });
+
+    assert!(app.current_tab().config_picker.is_open());
+    assert_eq!(app.config_popup_state().unwrap().options[0].id, "mode");
+}
+
+#[test]
+fn unbound_background_config_failure_does_not_pollute_current_tab() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("current-session".into());
+    let message_count = app.current_tab().messages.len();
+
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "closed-session".into(),
+        config_id: "mode".into(),
+        message: "the session is no longer active".into(),
+    });
+
+    assert_eq!(app.current_tab().messages.len(), message_count);
+}
+
 #[test]
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
     let selected = "custom:provider:local";
-    app.set_custom_model_config(
-        vec![custom_model(selected, "local")],
-        Some(selected.into()),
-    );
+    app.set_custom_model_config(vec![custom_model(selected, "local")], Some(selected.into()));
 
     run_slash(&mut app, "model");
 
@@ -280,7 +538,7 @@ fn slash_model_shows_cloud_models() {
 }
 
 #[test]
-fn custom_provider_models_replace_agent_duplicates_and_use_byom_labels() {
+fn custom_provider_models_replace_agent_duplicates_and_use_byok_labels() {
     let mut app = test_app();
     app.set_custom_model_config(
         vec![
@@ -309,11 +567,11 @@ fn custom_provider_models_replace_agent_duplicates_and_use_byom_labels() {
     assert_eq!(merged.len(), 3);
     assert!(merged.iter().any(|model| model.id == "native"));
     assert!(merged.iter().any(|model| {
-        model.id == "custom:provider-one:qwen/qwen3.5-9b" && model.name == "qwen/qwen3.5-9b (BYOM)"
+        model.id == "custom:provider-one:qwen/qwen3.5-9b" && model.name == "qwen/qwen3.5-9b (BYOK)"
     }));
     assert!(merged.iter().any(|model| {
         model.id == "custom:provider-two:deepseek/deepseek-v4-flash"
-            && model.name == "deepseek/deepseek-v4-flash (BYOM)"
+            && model.name == "deepseek/deepseek-v4-flash (BYOK)"
     }));
     assert_eq!(
         app.current_model_id.as_deref(),
@@ -339,7 +597,7 @@ fn custom_provider_models_normalize_metadata_and_drop_empty_entries() {
     );
     assert_eq!(app.available_models.len(), 1);
     assert_eq!(app.available_models[0].id, "custom:provider:model");
-    assert_eq!(app.available_models[0].name, "provider/model (BYOM)");
+    assert_eq!(app.available_models[0].name, "provider/model (BYOK)");
     assert_eq!(
         app.current_model_id.as_deref(),
         Some("custom:provider:model")
@@ -389,7 +647,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         .available_models
         .iter()
         .any(|model| model.id == "custom:provider-one:shared-model"
-            && model.name == "shared-model (BYOM)"));
+            && model.name == "shared-model (BYOK)"));
     assert_eq!(app.model_picker_models.len(), 2);
     assert!(app
         .model_picker_models
@@ -437,10 +695,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
     let selected = "custom:provider:local";
-    app.set_custom_model_config(
-        vec![custom_model(selected, "local")],
-        Some(selected.into()),
-    );
+    app.set_custom_model_config(vec![custom_model(selected, "local")], Some(selected.into()));
 
     app.open_model_picker();
     assert!(app.current_tab().model_picker_open);
@@ -740,87 +995,6 @@ fn unknown_agent_prefix_does_not_open_completion() {
     assert_eq!(app.command_ghost_suffix(), None);
 }
 
-#[test]
-fn agent_argument_completion_is_hidden_when_transport_is_lost() {
-    let mut app = test_app();
-    seed_completion_agents(&mut app);
-    type_input(&mut app, "/agent co");
-    app.transport_lost = true;
-
-    assert!(app.command_popup_state().is_none());
-    assert_eq!(app.command_ghost_suffix(), None);
-}
-
-// ---- Degraded (transport-lost) gating: only /restart runs ----
-
-#[test]
-fn degraded_blocks_non_restart_command() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.current_tab_mut().session_id = Some("sid-1".into());
-
-    run_slash(&mut app, "new");
-
-    // /new must NOT have reset the session — it was refused before dispatch
-    // because every command but /restart would hit the dead master pipe.
-    assert_eq!(
-        app.current_tab().session_id,
-        Some("sid-1".into()),
-        "while the transport is lost, /new must be refused, not run"
-    );
-    // ...and the user is steered to /restart (the locked token is present in
-    // every locale, so this holds regardless of the active language).
-    let (kind, message) = last_notice(&app);
-    assert_eq!(kind, NoticeKind::Warning);
-    assert!(
-        message.contains("/restart"),
-        "the degraded hint must point the user at /restart, got: {message}"
-    );
-}
-
-#[test]
-fn degraded_blocks_model_command_too() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.available_models = vec![AcpModelInfo {
-        id: "fast".into(),
-        name: "Fast".into(),
-        description: None,
-    }];
-
-    run_slash(&mut app, "model");
-
-    assert!(
-        !app.current_tab().model_picker_open,
-        "/model must be refused while the transport is lost"
-    );
-    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
-}
-
-#[test]
-fn degraded_still_allows_restart() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.state = ConnectionState::Connected;
-    app.session_id = "live-sid".to_string();
-    app.current_tab_mut().session_id = Some("tab-sid".into());
-
-    run_slash(&mut app, "restart");
-
-    // /restart is the one command exempt from the degraded guard — it ran and
-    // moved the connection into Connecting while the stack respawns.
-    assert!(
-        matches!(app.state, ConnectionState::Connecting(_)),
-        "/restart must run even while degraded — it recovers the dead transport"
-    );
-    assert!(
-        app.session_id.is_empty(),
-        "/restart must clear the process-level session id even while degraded"
-    );
-}
-
-// ---- Degraded popup effective-visibility (key-swallow regression) ----
-
 /// Type `text` char-by-char through the real input path so the command popup
 /// candidates refresh exactly as they do live.
 fn type_input(app: &mut App, text: &str) {
@@ -830,52 +1004,23 @@ fn type_input(app: &mut App, text: &str) {
 }
 
 #[test]
-fn degraded_popup_hidden_when_prefix_excludes_restart() {
-    // Regression: in degraded mode the popup is filtered to /restart only.
-    // When the typed prefix can't match /restart (e.g. "/ne"), nothing is
-    // drawn — and command_popup_visible() must report false so Up/Down/Tab
-    // fall through to their normal handling instead of being swallowed against
-    // an invisible popup.
-    let mut app = test_app();
-    app.transport_lost = true;
-    type_input(&mut app, "/ne"); // matches /new, NOT /restart
-
-    assert!(
-        app.command_popup_state().is_none(),
-        "degraded popup must not render when the prefix excludes /restart"
-    );
-    assert!(
-        !app.command_popup_visible(),
-        "command_popup_visible() must be false when the degraded popup isn't drawn, \
-         so arrow/Tab keys aren't swallowed"
-    );
-}
-
-#[test]
-fn degraded_popup_visible_when_prefix_matches_restart() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    type_input(&mut app, "/r"); // matches /restart
-
-    assert!(
-        app.command_popup_state().is_some(),
-        "degraded popup must render when /restart is a prefix match"
-    );
-    assert!(
-        app.command_popup_visible(),
-        "command_popup_visible() must be true when /restart is shown"
-    );
-}
-
-#[test]
 fn connected_popup_visible_for_any_prefix() {
-    // Sanity: when connected the popup behaves normally — "/ne" shows /new.
     let mut app = test_app();
-    assert!(!app.transport_lost);
     type_input(&mut app, "/ne");
 
     assert!(
         app.command_popup_visible(),
-        "a healthy connection must keep the normal popup behavior"
+        "a matching command prefix must keep the popup visible"
+    );
+}
+
+#[test]
+fn connected_popup_matches_command_name_substrings() {
+    let mut app = test_app();
+    type_input(&mut app, "/lear");
+
+    assert!(
+        app.command_popup_visible(),
+        "typing a substring of /clear must show the command popup"
     );
 }

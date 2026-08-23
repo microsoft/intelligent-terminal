@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pwyswch Enter i roi cynnig arall, neu Esc i f
 chat.activity_thinking: "Yn meddwl…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Croeso i Terfynell Ddeallus!"
-chat.welcome_disclaimer: "Mae Terfynell Ddeallus yn defnyddio AI. Gwiriwch am gamgymeriadau."
+chat.welcome_disclaimer: "Mae Terfynell Ddeallus yn defnyddio AI."
 chat.plan_header: "Cynllun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -188,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ llwybr marchnadfa yn hen"
 hooks.installed_but_disabled: "⚠ wedi'i osod ond wedi'i analluogi"
 hooks.not_installed: "✗ heb ei osod"
 hooks.uninstall_skipped: "wedi'i hepgor (CLI ddim ar PATH)"
-hooks.install_attempted: "Ceisiwyd gosod wt-agent-hooks (idempotent). Rhedwch `wta hooks status` i archwilio'r canlyniad. Log olrhain: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks wedi'i osod ar gyfer %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "newydd ddigwydd"
 time.minute_singular: "%{count} munud yn ôl"
@@ -233,8 +233,17 @@ system.agent_switch_unavailable: "Nid yw newid asiant ar gael y tu allan i dab W
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
+commands.config.summary: "Ffurfweddu sesiwn yr asiant hwn"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Symud paen asiant y tab hwn (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Ffurfweddiad sesiwn (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Nid oedd yr asiant cysylltiedig yn hysbysebu unrhyw opsiynau sesiwn ffurfweddadwy."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Methwyd â diupdate %{option}: %{error}"
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}

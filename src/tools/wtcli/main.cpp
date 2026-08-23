@@ -18,12 +18,15 @@
 
 #include <wil/resource.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
-#include <sstream>
+#include <fcntl.h>
+#include <io.h>
+#include <iostream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -69,8 +72,9 @@ struct EventSink : ITerminalProtocolEventSink
 // ── Helpers ──
 
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
-                                                          std::string* outVersion = nullptr,
-                                                          bool skipAuthenticate = false)
+                                                           std::string* outVersion = nullptr,
+                                                           bool skipAuthenticate = false,
+                                                           bool quiet = false)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -80,14 +84,16 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     wchar_t clsid[128]{};
     if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
     {
-        fprintf(stderr, "[wtcli] WT_COM_CLSID not set. Must run inside a Windows Terminal pane.\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] WT_COM_CLSID not set. Must run inside an Intelligent Terminal pane.\n");
         return nullptr;
     }
 
     CLSID cls{};
     if (FAILED(CLSIDFromString(clsid, &cls)))
     {
-        fprintf(stderr, "[wtcli] Invalid CLSID: %ls\n", clsid);
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Invalid CLSID: %ls\n", clsid);
         return nullptr;
     }
 
@@ -95,7 +101,8 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
     }
     if (skipAuthenticate)
@@ -127,19 +134,22 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
 
     if (FAILED(hr))
     {
-        fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
     }
     if (!parsed)
     {
         // Success HRESULT but a null/malformed auth payload is a broken
         // server contract — don't misreport it as a server rejection.
-        fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication response missing or malformed (server contract error)\n");
         return nullptr;
     }
     if (!authenticated)
     {
-        fprintf(stderr, "[wtcli] Authentication rejected by server\n");
+        if (!quiet)
+            fprintf(stderr, "[wtcli] Authentication rejected by server\n");
         return nullptr;
     }
 
@@ -189,7 +199,7 @@ static std::string GuidToString(const GUID& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
-static GUID GuidFromString(const std::string& target)
+static GUID GuidFromString(const std::string& target, bool quiet = false)
 {
     auto wstr = winrt::to_hstring(target);
     std::wstring guidStr{ wstr };
@@ -198,7 +208,7 @@ static GUID GuidFromString(const std::string& target)
     GUID g{};
     if (FAILED(CLSIDFromString(guidStr.c_str(), &g)))
     {
-        if (!target.empty())
+        if (!quiet && !target.empty())
             fprintf(stderr, "[wtcli] Invalid session ID: %s\n", target.c_str());
         return GUID{};
     }
@@ -251,6 +261,37 @@ static BSTR Bstr(const std::string& s)
     return SysAllocString(winrt::to_hstring(s).c_str());
 }
 
+static std::string EnvironmentValue(const wchar_t* name)
+{
+    const auto required = GetEnvironmentVariableW(name, nullptr, 0);
+    if (required == 0)
+    {
+        return {};
+    }
+
+    std::wstring value(required, L'\0');
+    const auto written = GetEnvironmentVariableW(name, value.data(), required);
+    if (written == 0 || written >= required)
+    {
+        return {};
+    }
+    value.resize(written);
+    return winrt::to_string(winrt::hstring{ value });
+}
+
+static std::string AgentSessionIdFromEnvironment(const std::string& cliSource)
+{
+    if (cliSource == "copilot")
+        return EnvironmentValue(L"COPILOT_SESSION_ID");
+    if (cliSource == "claude")
+        return EnvironmentValue(L"CLAUDE_SESSION_ID");
+    if (cliSource == "gemini")
+        return EnvironmentValue(L"GEMINI_SESSION_ID");
+    if (cliSource == "codex")
+        return EnvironmentValue(L"CODEX_SESSION_ID");
+    return {};
+}
+
 // Parse a base-10 unsigned 64-bit integer without throwing (unlike std::stoull,
 // which aborts wtcli on non-numeric input). Returns false on empty, non-numeric,
 // trailing-garbage, or overflowing input.
@@ -270,7 +311,24 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
 
 // ── Main ──
 
-int main()
+// `wmain` — deliberately NOT `main`. Almost every string this tool forwards to
+// the terminal arrives as an argument: `new-tab -d` starting directories,
+// `-n` tab titles, `-c` command lines, `send-keys` payloads and the JSON blobs
+// of `publish` / `send-event`. All of them may hold non-ASCII text.
+//
+// The CRT's narrow `__argv` is transcoded from the real UTF-16 command line
+// through the *process ANSI code page*, so anything outside that code page is
+// destroyed before we ever see it — on ACP 936 `D:\Obsidian\我的笔记` turns
+// into GBK bytes that `Bstr()` below then decodes as UTF-8 (mojibake), and on
+// a Latin ACP it degrades to literal `?`. Either way `CreateProcessW` on the
+// terminal side fails the starting directory with 0x8007010b ERROR_DIRECTORY
+// (GH#641), and titles / keystrokes / JSON silently lose characters.
+//
+// Taking `wchar_t**` keeps the original UTF-16 and lets CLI11's wide `parse`
+// overload narrow it with `codecvt_utf8_utf16`, so every `std::string` bound
+// to an option really is UTF-8 — which is exactly what `Bstr()` and
+// `winrt::to_hstring` already assume.
+int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
@@ -411,6 +469,22 @@ int main()
         {
             FormatPanesHuman(panes);
         }
+    });
+
+    // ── get-settings ──
+    auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    getSettingsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value settings;
+        const auto hr = CallJson([&](BSTR* j) { return server->GetSettings(j); }, settings);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(settings);
     });
 
     // ── active-pane ──
@@ -772,9 +846,41 @@ int main()
     // ── publish ──
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
+    bool publishFromStdin = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
-    publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
+    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
+    auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishJsonOption->excludes(publishStdinOption);
+    publishCmd->require_option(1, 1);
     publishCmd->callback([&]() {
+        if (publishFromStdin)
+        {
+            if (_setmode(_fileno(stdin), _O_BINARY) == -1)
+            {
+                fprintf(stderr, "[wtcli] publish: failed to configure stdin for binary input.\n");
+                exitCode = 1;
+                return;
+            }
+            std::string input;
+            std::array<char, 8192> buffer;
+            while (std::cin.read(buffer.data(), buffer.size()) || std::cin.gcount() > 0)
+            {
+                input.append(buffer.data(), static_cast<size_t>(std::cin.gcount()));
+            }
+            if (!std::cin.eof())
+            {
+                fprintf(stderr, "[wtcli] publish: failed to read JSON from stdin.\n");
+                exitCode = 1;
+                return;
+            }
+            publishJson = std::move(input);
+        }
+        if (publishJson.empty())
+        {
+            fprintf(stderr, "[wtcli] publish: JSON input must not be empty.\n");
+            exitCode = 1;
+            return;
+        }
         auto server = connect();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
@@ -783,6 +889,14 @@ int main()
     });
 
     // ── send-event ──
+    //
+    // Also the transport every hook bundle installed before the native
+    // `agent-hook` bridge still uses. Those bundles live in each CLI's own
+    // plugin cache, which a Terminal upgrade never rewrites and whose
+    // auto-refresh can fail outright, so they keep calling this subcommand
+    // indefinitely. Removing it as superseded would silently stop tracking
+    // every user whose hooks never refreshed.
+    // Guarded by Feature.LegacyHookBundle.Tests.ps1 (C270).
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
     sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
@@ -790,7 +904,8 @@ int main()
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
         auto server = connect();
-        if (!server) return;
+        if (!server)
+            return;
         std::string resolvedSessionId;
         if (!sendEventPaneTarget.empty())
         {
@@ -821,18 +936,114 @@ int main()
         wb["indentation"] = "";
         wil::unique_bstr evtB{ Bstr(Json::writeString(wb, evt)) };
         auto hr = server->SendEvent(evtB.get());
-        if (FAILED(hr)) { fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; }
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "SendEvent failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+        }
+    });
+
+    // ── agent-hook ──
+    // Native hook bridge. It deliberately never writes to stdout/stderr and
+    // never returns a failure because hook failures can block agent actions.
+    std::string agentHookEventType, agentHookCliSource;
+    auto* agentHookCmd = app.add_subcommand("agent-hook", "Forward an agent lifecycle hook from stdin");
+    agentHookCmd->add_option("-e,--event", agentHookEventType, "WTA agent event type")->required();
+    agentHookCmd->add_option("-c,--cli-source", agentHookCliSource, "Source agent CLI")->required();
+    agentHookCmd->callback([&]() {
+        try
+        {
+            // A shell-pane session always has both values. The shared ACP
+            // process has no pane identity and is already tracked over ACP, so
+            // dropping it here also prevents events from binding to the active
+            // user pane.
+            const auto paneGuid = GuidFromString(EnvironmentValue(L"WT_SESSION"), true);
+            if (EnvironmentValue(L"WT_COM_CLSID").empty() || IsEqualGUID(paneGuid, GUID{}))
+            {
+                return;
+            }
+            const auto paneId = GuidToString(paneGuid);
+
+            // Read a bounded amount. `BuildAgentHookEventJson` caps what goes
+            // on the wire, but that happens *after* the whole of stdin is in
+            // memory and parsed, so an oversized hook payload still costs
+            // memory and parse time first. The ceiling is deliberately far
+            // above the event budget rather than equal to it: payloads larger
+            // than the budget are normal and still produce a useful event
+            // (truncated body, routing fields intact), so capping at the
+            // budget would drop events that work today.
+            constexpr std::streamsize kMaxHookStdinChars = 1024 * 1024;
+            std::string input(static_cast<size_t>(kMaxHookStdinChars) + 1, '\0');
+            std::cin.read(input.data(), static_cast<std::streamsize>(input.size()));
+            const auto readChars = std::cin.gcount();
+            if (readChars > kMaxHookStdinChars)
+            {
+                // Anything this large is a broken or hostile producer, not a
+                // hook. Drop it rather than parse it; the callback still exits
+                // 0 so a fail-closed CLI is unaffected.
+                return;
+            }
+            input.resize(static_cast<size_t>(readChars));
+
+            Json::Value event;
+            if (!wtcli::BuildAgentHookEventJson(
+                    agentHookEventType,
+                    agentHookCliSource,
+                    input,
+                    paneId,
+                    AgentSessionIdFromEnvironment(agentHookCliSource),
+                    event))
+            {
+                return;
+            }
+
+            auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate, true);
+            if (!server)
+            {
+                return;
+            }
+
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            wil::unique_bstr eventJson{ Bstr(Json::writeString(writer, event)) };
+            if (eventJson)
+            {
+                server->SendEvent(eventJson.get());
+            }
+        }
+        catch (...)
+        {
+            // Session tracking must never affect the parent agent CLI.
+        }
     });
 
     // ── listen ──
     std::string listenTarget;
     std::string listenEventFilter;
+    DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
+    listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->callback([&]() {
+        wil::unique_handle parentProcess;
+        if (listenParentPid != 0)
+        {
+            parentProcess.reset(OpenProcess(SYNCHRONIZE, FALSE, listenParentPid));
+            if (!parentProcess)
+            {
+                fprintf(stderr, "[wtcli] listen: failed to open parent process %lu (0x%08X)\n", listenParentPid, GetLastError());
+                exitCode = 1;
+                return;
+            }
+        }
+
         auto server = connect();
-        if (!server) { exitCode = 1; return; }
+        if (!server)
+        {
+            exitCode = 1;
+            return;
+        }
 
         static HANDLE s_stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!s_stopEvent)
@@ -869,7 +1080,21 @@ int main()
             return;
         }
 
-        WaitForSingleObject(s_stopEvent, INFINITE);
+        DWORD waitResult = WAIT_OBJECT_0;
+        if (parentProcess)
+        {
+            const HANDLE waitHandles[]{ s_stopEvent, parentProcess.get() };
+            waitResult = WaitForMultipleObjects(ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
+        }
+        else
+        {
+            waitResult = WaitForSingleObject(s_stopEvent, INFINITE);
+        }
+        if (waitResult == WAIT_FAILED)
+        {
+            fprintf(stderr, "[wtcli] listen: wait failed (0x%08X)\n", GetLastError());
+            exitCode = 1;
+        }
         server->Unsubscribe();
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda
@@ -889,7 +1114,8 @@ int main()
 
     try
     {
-        app.parse(__argc, __argv);
+        // CLI11's wide overload; see the comment on `wmain` above.
+        app.parse(argc, argv);
     }
     catch (const CLI::ParseError& e)
     {

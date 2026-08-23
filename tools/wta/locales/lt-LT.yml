@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Paspauskite Enter, kad bandytumėte dar kart�
 chat.activity_thinking: "Mąsto..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Sveiki atvykę į Išmanusis Terminalas!"
-chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI. Tikrinkite klaidas."
+chat.welcome_disclaimer: "Išmanusis Terminalas naudoja AI."
 chat.plan_header: "Planas:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "ką tik"
@@ -232,8 +232,17 @@ system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Window
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigūruoti šią agento sesiją"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Perkelti šios kortelės agento skydelį (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
 system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sesijos konfigūracija (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Prijungtas agentas nepaskelbė jokių konfigūruojamų sesijos parinkčių."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Nepavyko atnaujinti %{option}: %{error}"
 system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}

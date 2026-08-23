@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Qayta urinish uchun Enter tugmasini bosing yo
 chat.activity_thinking: "Oʻylayapman…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Aqlli terminal-ga xush kelibsiz!"
-chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi. Xatolarni tekshiring."
+chat.welcome_disclaimer: "Aqlli terminal AI-dan foydalanadi."
 chat.plan_header: "Reja:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ marketplace yoʻli eskirgan"
 hooks.installed_but_disabled: "⚠ oʻrnatilgan lekin oʻchirilgan"
 hooks.not_installed: "✗ oʻrnatilmagan"
 hooks.uninstall_skipped: "oʻtkazib yuborildi (CLI PATH-da emas)"
-hooks.install_attempted: "wt-agent-hooks oʻrnatish urinildi (idempotent). Natijani tekshirish uchun `wta hooks status` bajaring. Iz jurnali: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} uchun oʻrnatilgan"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "hozirgina"
 time.minute_singular: "%{count} daqiqa oldin"
@@ -232,8 +232,17 @@ system.agent_switch_unavailable: "Agentni almashtirish Windows Terminal ilovasid
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "Ushbu agent seansini sozlash"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu tabning agent panelini koʻchirish (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
 system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Seans konfiguratsiyasi (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Ulanmagan agent hech qanday sozlanishi mumkin boʻlgan seans parametrlarini eʼlon qilmadi."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} yangilanmadi: %{error}"
 system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  மீண்டும் முயற்ச�
 chat.activity_thinking: "யோசிக்கிறது…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "அறிவாண் முனையம்-க்கு வரவேற்கிறோம்!"
-chat.welcome_disclaimer: "அறிவாண் முனையம் AI-ஐப் பயன்படுத்துகிறது. பிழைகளைச் சரிபார்க்கவும்."
+chat.welcome_disclaimer: "அறிவாண் முனையம் AI-ஐப் பயன்படுத்துகிறது."
 chat.plan_header: "திட்டம்:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ சந்தைப் பாதை கால�
 hooks.installed_but_disabled: "⚠ நிறுவப்பட்டுள்ளது ஆனால் முடக்கப்பட்டுள்ளது"
 hooks.not_installed: "✗ நிறுவப்படவில்லை"
 hooks.uninstall_skipped: "தவிர்க்கப்பட்டது (CLI PATH-ல் இல்லை)"
-hooks.install_attempted: "wt-agent-hooks நிறுவல் முயற்சிக்கப்பட்டது (இடம்போடென்ட்). முடிவை ஆய்வு செய்ய `wta hooks status` இயக்கவும். தடயப் பதிவு: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis} க்காக wt-agent-hooks நிறுவப்பட்டுள்ளது"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "இப்போதுதான்"
@@ -233,8 +233,17 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "இந்த ஏஜென்ட் அமர்வை காண்ஃபிகர் செய்யவும்"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "அமர்வு காண்ஃபிகரேஷன் (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "இணைக்கப்பட்ட ஏஜென்ட் எந்த உள்ளமைக்கக்கூடிய அமர்வு விருப்பங்களையும் விளம்பரம் செய்யவில்லை."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} ஐப் புதுப்பிப்பது தோல்வியடைந்தது: %{error}"
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}

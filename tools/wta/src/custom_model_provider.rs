@@ -1,6 +1,7 @@
 //! Custom model provider isolation and Credential Manager resolution.
 
 use anyhow::{bail, Context, Result};
+use std::sync::atomic::{compiler_fence, Ordering};
 use tokio::process::Command;
 
 use crate::agent_registry::ByokMode;
@@ -54,6 +55,7 @@ const CLOUD_DISCOVERY_ENV_KEYS: &[&str] = &[
     PROVIDER_API_KEY,
 ];
 
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Config {
     pub(crate) base_url: String,
     pub(crate) model: String,
@@ -62,8 +64,27 @@ pub(crate) struct Config {
     pub(crate) credential_resource: &'static str,
 }
 
+struct SensitiveString(String);
+
+impl SensitiveString {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Drop for SensitiveString {
+    fn drop(&mut self) {
+        // Replacing UTF-8 bytes with zeroes preserves String's validity.
+        clear_sensitive_bytes(unsafe { self.0.as_bytes_mut() });
+    }
+}
+
 impl Config {
-    fn shared_from_env() -> Self {
+    pub(crate) fn shared_from_env() -> Self {
         Self {
             base_url: trimmed_env(SHARED_BASE_URL).unwrap_or_default(),
             model: trimmed_env(SHARED_MODEL).unwrap_or_default(),
@@ -73,11 +94,80 @@ impl Config {
         }
     }
 
+    pub(crate) fn from_settings(
+        settings: &serde_json::Value,
+        selection_id: &str,
+    ) -> Result<Config> {
+        let Some(rest) = selection_id.strip_prefix("custom:") else {
+            bail!("custom model selection is malformed");
+        };
+        let Some((provider_id, model_id)) = rest.split_once(':') else {
+            bail!("custom model selection is malformed");
+        };
+        if provider_id.trim().is_empty() || model_id.trim().is_empty() {
+            bail!("custom model selection is malformed");
+        }
+
+        let providers = settings
+            .get("customModelProviders")
+            .and_then(serde_json::Value::as_array)
+            .context("custom model providers are missing from Terminal settings")?;
+        let provider = providers
+            .iter()
+            .find(|provider| {
+                provider.get("id").and_then(serde_json::Value::as_str) == Some(provider_id)
+            })
+            .context("selected custom model provider no longer exists")?;
+        let api_contract = provider
+            .get("apiContract")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        normalize_api_contract(api_contract)
+            .context("selected custom model provider uses an unsupported API contract")?;
+        let model_exists = provider
+            .get("models")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|models| {
+                models.iter().any(|model| {
+                    model.get("id").and_then(serde_json::Value::as_str) == Some(model_id)
+                })
+            });
+        if !model_exists {
+            bail!("selected custom model no longer exists");
+        }
+
+        let base_url = provider
+            .get("baseUrl")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .context("selected custom model provider has no endpoint")?
+            .to_string();
+        let credential_id = provider
+            .get("apiKeyCredential")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let api_key_required = provider
+            .get("apiKeyRequired")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(credential_id.is_some());
+
+        Ok(Config {
+            base_url,
+            model: model_id.to_string(),
+            credential_id,
+            api_key_required,
+            credential_resource: "IntelligentTerminal.LocalModelProvider",
+        })
+    }
+
     pub(crate) fn is_complete(&self) -> bool {
         !self.base_url.is_empty() && !self.model.is_empty()
     }
 
-    fn resolve_api_key(&self) -> Result<Option<String>> {
+    fn resolve_api_key(&self) -> Result<Option<SensitiveString>> {
         let api_key = match self.credential_id.as_deref() {
             Some(id) => read_api_key(self.credential_resource, id),
             None => Ok(None),
@@ -85,10 +175,19 @@ impl Config {
         self.validate_resolved_api_key(api_key)
     }
 
-    fn validate_resolved_api_key(&self, api_key: Option<String>) -> Result<Option<String>> {
+    fn validate_resolved_api_key(
+        &self,
+        api_key: Option<SensitiveString>,
+    ) -> Result<Option<SensitiveString>> {
         if self.api_key_required && api_key.is_none() {
+            if let Some(credential_id) = self.credential_id.as_deref() {
+                bail!(
+                    "BYOK API key missing. Re-add the provider in Settings. Credential: \"{}/{credential_id}\".",
+                    self.credential_resource
+                );
+            }
             bail!(
-                "API key credential for the selected BYOK provider is missing. Re-enter the API key in Settings, then restart the agent."
+                "BYOK API key missing. Re-add the provider in Settings."
             );
         }
         Ok(api_key)
@@ -118,7 +217,7 @@ pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<
     configure_child_with_config(cmd, byok_mode, &shared)
 }
 
-fn configure_child_with_config(
+pub(crate) fn configure_child_with_config(
     cmd: &mut Command,
     byok_mode: ByokMode,
     shared: &Config,
@@ -177,7 +276,7 @@ fn configure_copilot(cmd: &mut Command, config: &Config) -> Result<()> {
         .env(COPILOT_OFFLINE, "true")
         .env_remove(COPILOT_API_KEY);
     if let Some(api_key) = config.resolve_api_key()? {
-        cmd.env(COPILOT_API_KEY, api_key);
+        cmd.env(COPILOT_API_KEY, api_key.as_str());
     }
     Ok(())
 }
@@ -189,7 +288,7 @@ fn configure_opencode(cmd: &mut Command, config: &Config) -> Result<()> {
         render_opencode_config(config, api_key.is_some())?,
     );
     if let Some(api_key) = api_key {
-        cmd.env(PROVIDER_API_KEY, api_key);
+        cmd.env(PROVIDER_API_KEY, api_key.as_str());
     }
     Ok(())
 }
@@ -239,7 +338,16 @@ fn bool_env(key: &str) -> bool {
     trimmed_env(key).is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
 }
 
-fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option<String>> {
+fn clear_sensitive_bytes(bytes: &mut [u8]) {
+    for byte in bytes {
+        // Volatile writes prevent the compiler from eliding this best-effort
+        // cleanup before the allocation is released.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
+}
+
+fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option<SensitiveString>> {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
     use windows_sys::Win32::Security::Credentials::{
         CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
@@ -268,10 +376,12 @@ fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option
         bail!("model provider credential is empty");
     }
     let mut bytes = unsafe { std::slice::from_raw_parts(blob, blob_size).to_vec() };
+    clear_sensitive_bytes(unsafe { std::slice::from_raw_parts_mut(blob, blob_size) });
     unsafe { CredFree(credential.cast()) };
 
-    let api_key = std::str::from_utf8(&bytes).map(|value| value.trim().to_string());
-    bytes.fill(0);
+    let api_key =
+        std::str::from_utf8(&bytes).map(|value| SensitiveString(value.trim().to_string()));
+    clear_sensitive_bytes(&mut bytes);
     let api_key = api_key.context("model provider credential is not valid UTF-8")?;
     if api_key.is_empty() {
         bail!("model provider credential is empty");
@@ -282,6 +392,15 @@ fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sensitive_bytes_are_overwritten() {
+        let mut bytes = b"provider-secret".to_vec();
+
+        clear_sensitive_bytes(&mut bytes);
+
+        assert!(bytes.iter().all(|byte| *byte == 0));
+    }
 
     #[test]
     fn opencode_config_uses_shared_provider_without_persisting_secret() {
@@ -327,6 +446,63 @@ mod tests {
             ..complete
         }
         .is_complete());
+    }
+
+    #[test]
+    fn settings_selection_resolves_only_non_secret_launch_metadata() {
+        let settings = serde_json::json!({
+            "customModelProviders": [{
+                "id": "provider-openrouter",
+                "baseUrl": "https://openrouter.ai/api/v1",
+                "apiContract": "openai-compatible",
+                "apiKeyCredential": "credential-reference",
+                "apiKeyRequired": true,
+                "models": [
+                    { "id": "qwen/qwen3.5-9b" },
+                    { "id": "deepseek/deepseek-v3" }
+                ]
+            }]
+        });
+
+        let config = Config::from_settings(
+            &settings,
+            "custom:provider-openrouter:qwen/qwen3.5-9b",
+        )
+        .expect("configured provider/model should resolve");
+
+        assert_eq!(config.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(config.model, "qwen/qwen3.5-9b");
+        assert_eq!(config.credential_id.as_deref(), Some("credential-reference"));
+        assert!(config.api_key_required);
+    }
+
+    #[test]
+    fn settings_selection_rejects_missing_or_unsupported_entries() {
+        let settings = serde_json::json!({
+            "customModelProviders": [{
+                "id": "unsupported",
+                "baseUrl": "https://example.test/v1",
+                "apiContract": "future-contract",
+                "models": [{ "id": "model-a" }]
+            }, {
+                "id": "supported",
+                "baseUrl": "https://example.test/v1",
+                "apiContract": "openai-compatible",
+                "models": [{ "id": "model-a" }]
+            }]
+        });
+
+        for selection in [
+            "not-custom",
+            "custom:missing:model-a",
+            "custom:supported:missing",
+            "custom:unsupported:model-a",
+        ] {
+            assert!(
+                Config::from_settings(&settings, selection).is_err(),
+                "{selection} must not resolve"
+            );
+        }
     }
 
     #[test]
@@ -514,8 +690,14 @@ mod tests {
 
         let error = config
             .resolve_api_key()
-            .expect_err("a configured cloud BYOK key must not silently become keyless");
-        assert!(error.to_string().contains("API key credential"));
+            .err()
+            .expect("a configured cloud BYOK key must not silently become keyless");
+        let message = error.to_string();
+        assert!(message.contains("BYOK API key missing"));
+        assert!(message.contains(
+            "IntelligentTerminal.TestMissingModelProviderCredential/{79000049-9af3-4ea8-b773-wta-missing-test}"
+        ));
+        assert!(message.contains("Re-add the provider in Settings"));
     }
 
     #[test]
@@ -528,11 +710,9 @@ mod tests {
             credential_resource: "test",
         };
 
-        assert_eq!(
-            config
-                .validate_resolved_api_key(None)
-                .expect("a keyless local provider should remain supported"),
-            None
-        );
+        assert!(config
+            .validate_resolved_api_key(None)
+            .expect("a keyless local provider should remain supported")
+            .is_none());
     }
 }

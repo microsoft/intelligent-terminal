@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  ចុច Enter ដើម្បីព្យ�
 chat.activity_thinking: "កំពុងគិត…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "សូមស្វាគមន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
-chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។ ពិនិត្យមើលកំហុស។"
+chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។"
 # Header label for the AI agent’s step-by-step plan section
 chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -202,7 +202,7 @@ hooks.marketplace_path_stale: "⚠ ផ្លូវ marketplace ហួសសម�
 hooks.installed_but_disabled: "⚠ បានតំឡើងប៉ុន្តែត្រូវបានបិទ"
 hooks.not_installed: "✗ មិនត្រូវបានតំឡើង"
 hooks.uninstall_skipped: "រំលង (CLI មិននៅលើ PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks បានតំឡើងសម្រាប់ %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ទើបតែឥឡូវនេះ"
@@ -248,8 +248,17 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
+commands.config.summary: "កំណត់រចនាសម្ព័ន្ធសម័យភ្នាក់ងារនេះ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ការកំណត់រចនាសម្ព័ន្ធសម័យ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ភ្នាក់ងារដែលបានភ្ជាប់មិនបានផ្សព្វផ្សាយជម្រើសសម័យដែលកែសម្រួលបានឡើយ។"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាព %{option}: %{error}"
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

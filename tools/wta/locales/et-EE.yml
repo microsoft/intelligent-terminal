@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Vajutage Enter uuesti proovimiseks või Esc t
 chat.activity_thinking: "Mõtleb..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Tere tulemast Nutikas Terminali!"
-chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d. Kontrollige vigu."
+chat.welcome_disclaimer: "Nutikas Terminal kasutab AI-d."
 chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks on paigaldatud %{clis} jaoks"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "just praegu"
@@ -232,8 +232,17 @@ system.agent_switch_unavailable: "Agendi vahetamine pole väljaspool Windows Ter
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigureerige see agendiseanss"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Teisalda selle vahekaardi agendipaneel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Seansi konfigureerimine (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Ühendatud agent ei teavitanud ühestki konfigureeritavast seansisuvandist."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Valiku %{option} värskendamine nurjus: %{error}"
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

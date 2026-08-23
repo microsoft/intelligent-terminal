@@ -1,8 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #447: a Settings-selected OpenAI-compatible provider reaches the real
-# Copilot ACP process, and leaving BYOM restores its native cloud catalog.
+# Copilot ACP process, and leaving BYOK restores its native cloud catalog.
 #
-#   Invoke-Pester test/e2e/tests/Feature.ByomProvider.Tests.ps1 -Tag Feature
+#   Invoke-Pester test/e2e/tests/Feature.ByokProvider.Tests.ps1 -Tag Feature
 
 BeforeDiscovery {
     $script:Ready = [bool](
@@ -13,7 +13,7 @@ BeforeDiscovery {
     )
 }
 
-Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: BYOK provider lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-OpenAIChatServer.ps1')).Path
@@ -24,7 +24,7 @@ Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:R
         $script:port = ([System.Net.IPEndPoint]$portProbe.LocalEndpoint).Port
         $portProbe.Stop()
 
-        $script:requestLog = Join-Path $env:TEMP "ite2e-byom-$([guid]::NewGuid().ToString('N')).log"
+        $script:requestLog = Join-Path $env:TEMP "ite2e-byok-$([guid]::NewGuid().ToString('N')).log"
         $script:fixtureProcess = Start-Process pwsh -ArgumentList @(
             '-NoProfile',
             '-File', "`"$script:fixture`"",
@@ -52,7 +52,7 @@ Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:R
         }
         Initialize-LogOffsets -App $script:app | Out-Null
         Open-AgentPane -App $script:app | Out-Null
-        Assert-Log -App $script:app -Name 'terminal-agent-pane.log' -Pattern 'ite2e-model \(BYOM\).*state.:.connected' -TimeoutSec 60
+        Assert-Log -App $script:app -Name 'terminal-agent-pane.log' -Pattern 'ite2e-model \(BYOK\).*state.:.connected' -TimeoutSec 60
     }
     AfterEach {
         if ($script:app) {
@@ -69,11 +69,11 @@ Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:R
         }
     }
 
-    It 'BYOM provider serves the selected model end to end' {
+    It 'BYOK provider serves the selected model end to end' {
         Clear-AgentInput -App $script:app | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/model'
         $picker = Get-AgentPaneText -App $script:app -MaxLines 40
-        $picker | Should -Match '(?m)^\s*[│║|]\s*>\s+ite2e-model \(BYOM\)\s*[│║|]\s*$'
+        $picker | Should -Match '(?m)^\s*[│║|]\s*>\s+ite2e-model \(BYOK\)\s*[│║|]\s*$'
         $picker | Should -Not -Match '(?m)^\s*[│║|]\s+(Auto|GPT-|Claude)'
         Send-AgentKey -App $script:app -Key Escape | Out-Null
 
@@ -89,13 +89,13 @@ Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:R
         }
         $request.path | Should -Be '/v1/chat/completions'
         ($request.body | ConvertFrom-Json).model | Should -Be 'ite2e-model'
-        Assert-AgentPaneText -App $script:app -Pattern 'BYOM fixture response' -TimeoutSec 30
+        Assert-AgentPaneText -App $script:app -Pattern 'BYOK fixture response' -TimeoutSec 30
     }
 
-    It 'Leaving BYOM restarts and restores cloud models' {
+    It 'Leaving BYOK restarts and restores cloud models' {
         Clear-AgentInput -App $script:app | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/model'
-        Assert-AgentPaneText -App $script:app -Pattern 'ite2e-model \(BYOM\)' -TimeoutSec 10
+        Assert-AgentPaneText -App $script:app -Pattern 'ite2e-model \(BYOK\)' -TimeoutSec 10
         Send-AgentKey -App $script:app -Key Escape | Out-Null
 
         Initialize-LogOffsets -App $script:app | Out-Null
@@ -107,6 +107,6 @@ Describe 'Feature: BYOM provider lifecycle' -Tag 'Feature' -Skip:(-not $script:R
         Invoke-AgentMenuItem -App $script:app -Name '/model'
         $picker = Get-AgentPaneText -App $script:app -MaxLines 50
         $picker | Should -Match '(?m)^\s*[│║|]\s*>?\s*Auto\s*[│║|]\s*$'
-        $picker | Should -Not -Match 'BYOM'
+        $picker | Should -Not -Match 'BYOK'
     }
 }

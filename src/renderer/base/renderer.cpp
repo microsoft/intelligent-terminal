@@ -407,6 +407,8 @@ DWORD Renderer::_timerToMillis(TimerRepr t) noexcept
 
         _scheduleRenditionBlink();
 
+        _hyperlinkUnderlineDecisions.clear();
+
         // Add the previous cursor / composition to the dirty rect.
         _invalidateCurrentCursor();
         _invalidateOldComposition();
@@ -1456,9 +1458,14 @@ void Renderer::_PaintBufferOutputGridLineHelper(_In_ IRenderEngine* const pEngin
 {
     // Convert console grid line representations into rendering engine enum representations.
     auto lines = Renderer::s_GetGridlines(textAttribute);
+    const auto suppressHyperlinkUnderline = _shouldSuppressHyperlinkUnderline(textAttribute);
+    if (suppressHyperlinkUnderline)
+    {
+        lines.reset(GridLines::HyperlinkUnderline);
+    }
 
     // For now, we dash underline patterns and switch to regular underline on hover
-    if (_isHoveredHyperlink(textAttribute) || _isInHoveredInterval(coordTarget))
+    if (!suppressHyperlinkUnderline && (_isHoveredHyperlink(textAttribute) || _isInHoveredInterval(coordTarget)))
     {
         lines.reset(GridLines::HyperlinkUnderline);
         lines.set(GridLines::Underline);
@@ -1475,9 +1482,39 @@ void Renderer::_PaintBufferOutputGridLineHelper(_In_ IRenderEngine* const pEngin
     }
 }
 
+bool Renderer::_shouldSuppressHyperlinkUnderline(const TextAttribute& textAttribute) noexcept
+try
+{
+    if (!textAttribute.IsHyperlink())
+    {
+        return false;
+    }
+
+    const auto id = textAttribute.GetHyperlinkId();
+    for (const auto& [cachedId, suppress] : _hyperlinkUnderlineDecisions)
+    {
+        if (cachedId == id)
+        {
+            return suppress;
+        }
+    }
+
+    const auto suppress = !ShouldUnderlineHyperlink(_pData->GetHyperlinkUri(id));
+    _hyperlinkUnderlineDecisions.emplace_back(id, suppress);
+    return suppress;
+}
+CATCH_LOG_RETURN_FALSE()
+
 bool Renderer::_isHoveredHyperlink(const TextAttribute& textAttribute) const noexcept
 {
     return _hyperlinkHoveredId && _hyperlinkHoveredId == textAttribute.GetHyperlinkId();
+}
+
+bool Renderer::ShouldUnderlineHyperlink(const std::wstring_view uri) noexcept
+{
+    // These private links carry host action metadata; the hand cursor is the
+    // affordance, so rendering them as links would add redundant row lines.
+    return uri != L"wta-action://collapse" && uri != L"wta-action://expand";
 }
 
 bool Renderer::_isInHoveredInterval(const til::point coordTarget) const noexcept

@@ -46,26 +46,6 @@ use std::time::SystemTime;
 #[allow(dead_code)]
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
-/// Whether to scan WSL distros for historical sessions. Single
-/// choke point + env opt-in (`WTA_WSL_SESSIONS=1|true|yes|on`).
-/// Defaults to **disabled**: WSL sessions are intentionally hidden from
-/// the session view until the mixed host/WSL TUI is designed. Flip the
-/// `Err(_)` default back to `true` (or wire up the future `wslSessions`
-/// setting through this same function) to re-enable — no other call site
-/// changes.
-pub(crate) fn wsl_sessions_enabled() -> bool {
-    // Trim + case-fold so the opt-in is forgiving in scripts / CI
-    // (` True `, `YES`, `on`, …), mirroring the env-bool parsing in
-    // `resolve_sessions_origin_filter`.
-    match std::env::var("WTA_WSL_SESSIONS") {
-        Ok(v) => matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        ),
-        Err(_) => false,
-    }
-}
-
 // ─── Codex per-key helpers ──────────────────────────────────────────────
 
 /// True if a Codex rollout record is the `session_meta` of an internal
@@ -669,31 +649,5 @@ mod tests {
         // 2024 IS a leap year; 2023 is not.
         assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
         assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
-    }
-
-    static WSL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    fn wsl_gate_defaults_off_and_honors_env() {
-        let _g = WSL_ENV_LOCK.lock().unwrap();
-        std::env::remove_var("WTA_WSL_SESSIONS");
-        assert!(!wsl_sessions_enabled(), "default must be disabled");
-        std::env::set_var("WTA_WSL_SESSIONS", "1");
-        assert!(wsl_sessions_enabled());
-        std::env::set_var("WTA_WSL_SESSIONS", "true");
-        assert!(wsl_sessions_enabled());
-        // Forgiving parsing: trimmed, case-insensitive, extra truthy spellings.
-        std::env::set_var("WTA_WSL_SESSIONS", "  True ");
-        assert!(wsl_sessions_enabled(), "trimmed + case-insensitive True");
-        std::env::set_var("WTA_WSL_SESSIONS", "YES");
-        assert!(wsl_sessions_enabled());
-        std::env::set_var("WTA_WSL_SESSIONS", "on");
-        assert!(wsl_sessions_enabled());
-        // Anything else (incl. the old falsey spellings) stays disabled.
-        std::env::set_var("WTA_WSL_SESSIONS", "0");
-        assert!(!wsl_sessions_enabled());
-        std::env::set_var("WTA_WSL_SESSIONS", "false");
-        assert!(!wsl_sessions_enabled());
-        std::env::remove_var("WTA_WSL_SESSIONS");
     }
 }

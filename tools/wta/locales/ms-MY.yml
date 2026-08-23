@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tekan Enter untuk mencuba semula, atau Esc un
 chat.activity_thinking: "Sedang berfikir…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Selamat datang ke Terminal Pintar!"
-chat.welcome_disclaimer: "Terminal Pintar menggunakan AI. Semak kesilapan."
+chat.welcome_disclaimer: "Terminal Pintar menggunakan AI."
 chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -186,7 +186,7 @@ hooks.marketplace_path_stale: "⚠ laluan marketplace sudah lapuk"
 hooks.installed_but_disabled: "⚠ dipasang tetapi dinyahdayakan"
 hooks.not_installed: "✗ belum dipasang"
 hooks.uninstall_skipped: "dilangkau (CLI tiada dalam PATH)"
-hooks.install_attempted: "Pemasangan wt-agent-hooks dicuba (idempotent). Jalankan `wta hooks status` untuk memeriksa keputusan. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks dipasang untuk %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "baru sahaja"
@@ -232,8 +232,17 @@ system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Wind
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurasi sesi ejen ini"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Alihkan anak tetingkap ejen tab ini (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfigurasi sesi (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Ejen yang disambungkan tidak mengiklankan sebarang pilihan sesi yang boleh dikonfigurasi."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Gagal mengemas kini %{option}: %{error}"
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}

@@ -6,6 +6,7 @@ pub mod probe;
 pub mod prompt;
 pub(crate) mod prompt_builder;
 pub(crate) mod prompt_context;
+pub(crate) mod session_config;
 pub(crate) mod session_list;
 pub mod soft_stop;
 pub(crate) mod spawn;
