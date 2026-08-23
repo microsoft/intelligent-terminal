@@ -2262,6 +2262,21 @@ namespace winrt::TerminalApp::implementation
                     {
                         strongThis->_OpenOrReuseAgentPane(false, L"AgentSwitch");
                     }
+                    else
+                    {
+                        // The old helper may already have closed and removed
+                        // its pane before this switch reached the tab. Restore
+                        // the background tab's normal pre-warmed state without
+                        // making the replacement pane visible.
+                        strongThis->_AutoCreateHiddenAgentPaneShared(
+                            currentTab,
+                            /*intoSessionsView*/ false,
+                            /*autoStash*/ true,
+                            {},
+                            {},
+                            {},
+                            /*focusPane*/ false);
+                    }
                 }
             });
     }
