@@ -17,6 +17,8 @@ Abstract:
 
 #pragma once
 
+#include <mutex>
+
 class AppHost;
 struct TerminalProtocolComServer;
 
@@ -57,7 +59,7 @@ public:
 
     // Protocol server access
     const std::wstring& GetComClsid() const noexcept { return _comClsid; }
-    const std::vector<std::shared_ptr<::AppHost>>& GetWindows() const noexcept { return _windows; }
+    std::vector<std::shared_ptr<::AppHost>> GetWindows() const;
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
 
 private:
@@ -97,6 +99,7 @@ private:
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
+    mutable std::mutex _windowsMutex;
     std::vector<std::shared_ptr<::AppHost>> _windows;
 
     // Protocol server for AI CLI integration

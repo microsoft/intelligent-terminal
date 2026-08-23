@@ -5813,6 +5813,62 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
 
+        // A transferred helper can still be starting while WT moves its
+        // TermControl to another window. In that race, the one-shot
+        // tab_renamed event precedes the helper's WT event subscription, so
+        // its first status still carries the source StableId. Match that
+        // temporary alias to the destination wrapper, then replay the rename
+        // now that this status proves the helper listener is ready.
+        winrt::com_ptr<Tab> statusTab;
+        bool recoveredTransferredTab = false;
+        if (!statusTabId.empty())
+        {
+            statusTab = _FindTabByStableId(statusTabId);
+            if (!statusTab)
+            {
+                for (const auto& candidate : _tabs)
+                {
+                    const auto candidateImpl = _GetTabImpl(candidate);
+                    if (!candidateImpl)
+                    {
+                        continue;
+                    }
+                    const auto content = candidateImpl->FindAgentPaneContent();
+                    if (!content)
+                    {
+                        continue;
+                    }
+                    const auto contentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+                    if (contentImpl->TransferSourceTabId() == statusTabId)
+                    {
+                        statusTab = candidateImpl;
+                        recoveredTransferredTab = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const auto effectiveStatusTabId = statusTab ? statusTab->StableId() : statusTabId;
+        if (recoveredTransferredTab)
+        {
+            Json::Value renameParams;
+            renameParams["old_tab_id"] = winrt::to_string(statusTabId);
+            renameParams["new_tab_id"] = winrt::to_string(effectiveStatusTabId);
+            renameParams["window_id"] = std::to_string(_WindowProperties.WindowId());
+            _agentPaneLog(
+                std::string{ "OnAgentStatusChanged: replaying tab_renamed after helper readiness old=" } +
+                winrt::to_string(statusTabId) + " new=" + winrt::to_string(effectiveStatusTabId));
+            _RaiseProtocolEvent("tab_renamed", renameParams);
+            if (const auto content = statusTab->FindAgentPaneContent())
+            {
+                if (const auto contentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content))
+                {
+                    contentImpl->ClearTransferSourceTabId();
+                }
+            }
+        }
+
         // If WTA signals a new agent selection (e.g. from FRE or preflight),
         // persist it to settings so the next launch uses the same agent.
         // BUT: never let a tab that the user pinned to a per-tab agent
@@ -5822,12 +5878,9 @@ namespace winrt::TerminalApp::implementation
         // behavior); a missing tab_id (broadcast context) also persists.
         const auto selectedAgent = pickStr("selected_agent");
         bool emittingTabHasOverride = false;
-        if (!statusTabId.empty())
+        if (statusTab)
         {
-            if (const auto srcTab = _FindTabByStableId(statusTabId))
-            {
-                emittingTabHasOverride = srcTab->HasAgentOverride();
-            }
+            emittingTabHasOverride = statusTab->HasAgentOverride();
         }
         if (!selectedAgent.empty() && !emittingTabHasOverride)
         {
@@ -5905,15 +5958,15 @@ namespace winrt::TerminalApp::implementation
             state == L"connected" &&
             !hostCatalogReady &&
             !agentId.empty() &&
-            !statusTabId.empty() &&
-            _FindTabByStableId(statusTabId))
+            !effectiveStatusTabId.empty() &&
+            statusTab)
         {
             const auto& globals = _settings.GlobalSettings();
             const auto customModels =
                 ::Microsoft::Terminal::CustomModels::CaptureCatalog(
                     globals.CustomModelProviders());
             Json::Value config{ Json::objectValue };
-            config["tab_id"] = winrt::to_string(statusTabId);
+            config["tab_id"] = winrt::to_string(effectiveStatusTabId);
             config["target_agent_id"] = winrt::to_string(agentId);
             config["cloud_models"] = _CloudModelOptionsToJson(agentId);
             config["custom_models"] =
@@ -5941,9 +5994,9 @@ namespace winrt::TerminalApp::implementation
         };
         if (!tabId.empty())
         {
-            if (const auto tab = _FindTabByStableId(tabId))
+            if (statusTab)
             {
-                update(tab);
+                update(statusTab);
             }
             return;
         }
@@ -9228,6 +9281,8 @@ namespace winrt::TerminalApp::implementation
                     {
                         agentContent.SetAgentPanePosition(_settings.GlobalSettings().AgentPanePosition());
                         _WireAgentPaneEvents(agentContent, winrt::com_ptr<Tab>{ nullptr });
+                        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+                        impl->SetTransferSourceTabId(oldTabId);
                         if (focusedTab)
                         {
                             if (sourceProfileGuid)
@@ -9248,13 +9303,10 @@ namespace winrt::TerminalApp::implementation
                                 _RaiseProtocolEvent("tab_renamed", params);
                             }
                         }
-                        if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent))
+                        if (!focusedTab)
                         {
-                            if (!focusedTab)
-                            {
-                                impl->SetPendingRenameFromTabId(oldTabId);
-                                impl->SetPendingAgentSourceProfileGuid(sourceProfileGuid);
-                            }
+                            impl->SetPendingRenameFromTabId(oldTabId);
+                            impl->SetPendingAgentSourceProfileGuid(sourceProfileGuid);
                         }
                     }
 

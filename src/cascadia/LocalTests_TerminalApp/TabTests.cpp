@@ -90,6 +90,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
+        TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -1097,6 +1098,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(agentContent);
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
             VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId() == oldTabId);
+            VERIFY_IS_TRUE(impl->TransferSourceTabId() == oldTabId);
             const auto pendingSourceProfileGuid = impl->TakePendingAgentSourceProfileGuid();
             VERIFY_IS_TRUE(pendingSourceProfileGuid.has_value());
             VERIFY_IS_TRUE(pendingSourceProfileGuid.value() == sourceProfileGuid);
@@ -1226,7 +1228,79 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(agentContent);
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
             VERIFY_IS_TRUE(impl->TakePendingRenameFromTabId().empty());
+            VERIFY_IS_TRUE(impl->TransferSourceTabId() == oldTabId);
             VERIFY_IS_FALSE(impl->TakePendingAgentSourceProfileGuid().has_value());
+        });
+    }
+
+    void TabTests::TransferredAgentStatusReplaysMissedTabRekey()
+    {
+        auto page = _commonSetup();
+        const auto oldTabId = winrt::hstring{ L"source-tab-id" };
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, agentPane);
+
+            const auto agentContent = focusedTab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            impl->SetTransferSourceTabId(oldTabId);
+
+            std::vector<Json::Value> protocolEvents;
+            const auto token = page->ProtocolVtSequenceReceived(
+                [&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder readerBuilder;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (Json::parseFromStream(readerBuilder, stream, &event, &errors))
+                    {
+                        protocolEvents.emplace_back(std::move(event));
+                    }
+                });
+
+            const auto sendStatus = [&](const winrt::hstring& tabId, const char* model) {
+                Json::Value event{ Json::objectValue };
+                event["type"] = "event";
+                event["method"] = "agent_status";
+                event["params"]["agent_id"] = "copilot";
+                event["params"]["name"] = "Copilot";
+                event["params"]["version"] = "v1";
+                event["params"]["model"] = model;
+                event["params"]["state"] = "connected";
+                event["params"]["backend"] = "Windows";
+                event["params"]["host_catalog_ready"] = true;
+                event["params"]["tab_id"] = winrt::to_string(tabId);
+
+                Json::StreamWriterBuilder writerBuilder;
+                writerBuilder["indentation"] = "";
+                page->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(writerBuilder, event)));
+            };
+
+            sendStatus(oldTabId, "model-a");
+
+            VERIFY_IS_TRUE(impl->IsHelperEventReady());
+            VERIFY_IS_TRUE(impl->IsAgentConnected());
+            VERIFY_IS_TRUE(impl->GetAgentName() == L"Copilot");
+            VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-a");
+            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_IS_TRUE(protocolEvents[0]["method"].asString() == "tab_renamed");
+            VERIFY_IS_TRUE(protocolEvents[0]["params"]["old_tab_id"].asString() == winrt::to_string(oldTabId));
+            VERIFY_IS_TRUE(protocolEvents[0]["params"]["new_tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
+            VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
+
+            sendStatus(focusedTab->StableId(), "model-b");
+
+            VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-b");
+            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+
+            page->ProtocolVtSequenceReceived(token);
         });
     }
 
