@@ -454,6 +454,34 @@ namespace winrt::TerminalApp::implementation::details
     {
         return _currentGeneration;
     }
+
+    void UnexpectedExitRecoveryPolicy::Arm(const Generation generation) noexcept
+    {
+        _armedGeneration = generation;
+    }
+
+    void UnexpectedExitRecoveryPolicy::Retire() noexcept
+    {
+        _armedGeneration = 0;
+    }
+
+    bool UnexpectedExitRecoveryPolicy::ShouldRespawn(
+        const Generation generation,
+        const size_t refCount,
+        const bool spawnSuppressed,
+        const bool hasCachedArgs) noexcept
+    {
+        if (generation == 0 || generation != _armedGeneration)
+        {
+            return false;
+        }
+
+        // One automatic recovery attempt belongs to each explicit spawn.
+        // The replacement is intentionally not armed, so another unexpected
+        // exit cannot create an unbounded respawn loop.
+        Retire();
+        return refCount > 0 && !spawnSuppressed && hasCachedArgs;
+    }
 }
 
 namespace winrt::TerminalApp::implementation
@@ -522,6 +550,7 @@ namespace winrt::TerminalApp::implementation
         {
             std::lock_guard lock{ _mtx };
             _waitGeneration.Retire();
+            _unexpectedExitRecovery.Retire();
             waitToCancel = _waitHandle;
             _waitHandle = nullptr;
         }
@@ -717,9 +746,11 @@ namespace winrt::TerminalApp::implementation
         return _SpawnLocked(nextWtaPath, nextExtraArgs, nextEnvironment);
     }
 
-    bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,
-                                 std::span<const std::wstring> extraArgs,
-                                 std::span<const std::pair<std::wstring, std::wstring>> environment)
+    bool SharedWta::_SpawnLocked(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment,
+        const bool armUnexpectedExitRecovery)
     {
         // Lazily allocate the master pipe name once per process. We
         // intentionally keep it across master respawns: helpers
@@ -910,6 +941,14 @@ namespace winrt::TerminalApp::implementation
         _job = std::move(job);
         _pid = pid;
         _waitHandle = waitHandle;
+        if (waitHandle && armUnexpectedExitRecovery)
+        {
+            _unexpectedExitRecovery.Arm(waitGeneration);
+        }
+        else
+        {
+            _unexpectedExitRecovery.Retire();
+        }
 
         // Cache the spawn inputs so `Restart()` can replay them. Overwrites
         // any prior cache: if a respawn after crash used different
@@ -938,12 +977,14 @@ namespace winrt::TerminalApp::implementation
             // callback can run after a replacement is spawned, but its
             // retired generation cannot claim the replacement state.
             _waitGeneration.Retire();
+            _unexpectedExitRecovery.Retire();
             UnregisterWaitEx(_waitHandle, nullptr);
             _waitHandle = nullptr;
         }
         else
         {
             _waitGeneration.Retire();
+            _unexpectedExitRecovery.Retire();
         }
         _pid = 0;
         return process;
@@ -958,11 +999,9 @@ namespace winrt::TerminalApp::implementation
     void SharedWta::_OnProcessExited(const details::ProcessWaitGenerationTracker::Generation generation)
     {
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
-        // OOM, manual kill). Clear our process record so the next
-        // AcquirePane respawns. Existing panes that still hold refs
-        // become zombies until their Closed handlers call
-        // ReleasePane (which will then no-op the cleanup since
-        // _process is already invalid).
+        // OOM, manual kill). Retained helpers reconnect to the stable pipe,
+        // so give the current explicitly-spawned generation one automatic
+        // replacement while pane references remain.
         std::lock_guard lock{ _mtx };
 
         // Claiming also retires the current generation. A callback queued
@@ -978,6 +1017,7 @@ namespace winrt::TerminalApp::implementation
         {
             // Race: Release already cleaned up before our callback
             // ran. Nothing to do.
+            _unexpectedExitRecovery.Retire();
             return;
         }
         // The master exited on its own — crash, OOM, or an external kill
@@ -997,5 +1037,22 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+
+        if (_unexpectedExitRecovery.ShouldRespawn(
+                generation,
+                _refCount,
+                _spawnSuppressed,
+                !_cachedWtaPath.empty()))
+        {
+            const std::wstring wtaPath{ _cachedWtaPath };
+            const std::vector<std::wstring> extraArgs{ _cachedExtraArgs };
+            const std::vector<std::pair<std::wstring, std::wstring>> environment{ _cachedEnvironment };
+            if (!_SpawnLocked(wtaPath, extraArgs, environment, false))
+            {
+                _agentPaneLog(
+                    "failed to respawn wta-master after unexpected exit pid=" +
+                    std::to_string(*observedPid) + "; retained helpers may remain disconnected");
+            }
+        }
     }
 }

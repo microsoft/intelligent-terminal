@@ -190,6 +190,23 @@ namespace winrt::TerminalApp::implementation
             Generation _currentGeneration{ 0 };
             DWORD _pid{ 0 };
         };
+
+        class UnexpectedExitRecoveryPolicy
+        {
+        public:
+            using Generation = ProcessWaitGenerationTracker::Generation;
+
+            void Arm(Generation generation) noexcept;
+            void Retire() noexcept;
+            bool ShouldRespawn(
+                Generation generation,
+                size_t refCount,
+                bool spawnSuppressed,
+                bool hasCachedArgs) noexcept;
+
+        private:
+            Generation _armedGeneration{ 0 };
+        };
     }
 
     class SharedWta
@@ -318,7 +335,8 @@ namespace winrt::TerminalApp::implementation
         // All `*Locked` helpers assume the caller already holds `_mtx`.
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
-                          std::span<const std::pair<std::wstring, std::wstring>> environment);
+                          std::span<const std::pair<std::wstring, std::wstring>> environment,
+                          bool armUnexpectedExitRecovery = true);
         bool _RestartLocked(const std::wstring_view wtaPath,
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
@@ -337,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         wil::unique_handle _job;
         HANDLE _waitHandle{ nullptr };
         details::ProcessWaitGenerationTracker _waitGeneration;
+        details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
         size_t _refCount{ 0 };
         // Generated lazily on first AcquirePane; reused across

@@ -7,6 +7,13 @@
 
 use super::*;
 
+pub(super) const AUTH_RECOVERY_CONNECTION_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(8);
+// SharedWta grants retirement 16 seconds before replacing the master. Allow
+// one second for replacement readiness plus one second of scheduling margin.
+pub(super) const AUTH_RECOVERY_MASTER_READY_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(18);
+
 #[derive(serde::Deserialize)]
 struct AgentReconnectWire {
     operation_id: String,
@@ -21,6 +28,27 @@ struct AgentReconnectWire {
 }
 
 impl App {
+    fn arm_auth_recovery_timeout(
+        &self,
+        agent_id: String,
+        generation: u64,
+        timeout: std::time::Duration,
+    ) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        tokio::task::spawn_local(async move {
+            tokio::time::sleep(timeout).await;
+            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
+                agent_id,
+                generation,
+            });
+        });
+    }
+
     fn handle_agent_rebind(&mut self, params: serde_json::Value) {
         let Ok(wire) = serde_json::from_value::<AgentReconnectWire>(params.clone()) else {
             tracing::warn!(
@@ -1095,7 +1123,7 @@ impl App {
                 // master restart below reconnects this retained helper, so the
                 // common path never flashes the setup screen. Only a dropped
                 // or slow restart leaves us in this state long enough for the
-                // `AuthRecoveryTimedOut` fallback to surface the sign-in screen.
+                // `AuthRecoveryTimedOut` handler to fall back to the sign-in screen.
                 self.mode = AppMode::Chat;
                 self.setup = None;
                 self.auth = None;
@@ -1116,24 +1144,15 @@ impl App {
                         &restart_request_id,
                     ),
                 );
-                // (iii) Dead-man fallback: a successful retained-helper
-                // reconnect advances the recovery generation before this
-                // timer fires. A dropped/slow restart surfaces the sign-in
-                // screen instead of stranding the user on "Reconnecting…".
-                // Guarded on a live async runtime so unit tests (no LocalSet)
-                // don't panic in `spawn_local`.
-                if let Some(ref tx) = self.event_tx {
-                    if tokio::runtime::Handle::try_current().is_ok() {
-                        let tx = tx.clone();
-                        tokio::task::spawn_local(async move {
-                            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
-                            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
-                                agent_id: resolved,
-                                generation: recovery_generation,
-                            });
-                        });
-                    }
-                }
+                // (iii) Dead-man fallback for replacement-master readiness.
+                // This phase must cover SharedWta's retirement budget. Once
+                // readiness arrives, a fresh generation gets the usual,
+                // shorter connection deadline.
+                self.arm_auth_recovery_timeout(
+                    resolved,
+                    recovery_generation,
+                    AUTH_RECOVERY_MASTER_READY_TIMEOUT,
+                );
             }
             AppEvent::AuthRecoveryTimedOut {
                 agent_id,
@@ -1147,15 +1166,25 @@ impl App {
                 // started, or the reconnect already succeeded (AgentConnected
                 // bumps the generation), this no longer matches the current
                 // recovery and must not force the sign-in screen.
-                if generation == self.auth_recovery_generation
+                let timed_out_phase = if generation == self.auth_recovery_generation
                     && self.mode != AppMode::Setup
                     && matches!(self.state, ConnectionState::Connecting(_))
                 {
+                    match &self.auth_recovery_state {
+                        AuthRecoveryState::WaitingForMaster { .. } => Some("master readiness"),
+                        AuthRecoveryState::Connecting => Some("retained-helper connection"),
+                        AuthRecoveryState::Idle => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some(phase) = timed_out_phase {
                     self.auth_recovery_state = AuthRecoveryState::Idle;
                     tracing::warn!(
                         target: "auth_recovery",
                         agent_id = %agent_id,
-                        "auth-recovery restart did not take effect within the window; \
+                        %phase,
+                        "auth recovery phase did not complete within its deadline; \
                          falling back to the sign-in screen"
                     );
                     let resolved = if !agent_id.is_empty() {
@@ -1903,7 +1932,28 @@ impl App {
                         "replacement master is ready; reconnecting retained helper"
                     );
                     if completes_auth_recovery {
+                        // Invalidate the longer master-readiness timer and arm
+                        // the normal connection deadline for this new phase.
+                        self.auth_recovery_generation =
+                            self.auth_recovery_generation.wrapping_add(1);
                         self.auth_recovery_state = AuthRecoveryState::Connecting;
+                        let agent_id = self
+                            .deferred_acp
+                            .as_ref()
+                            .and_then(|params| params.agent_id.clone())
+                            .filter(|agent_id| !agent_id.is_empty())
+                            .unwrap_or_else(|| {
+                                if self.current_agent_id.is_empty() {
+                                    "copilot".to_string()
+                                } else {
+                                    self.current_agent_id.clone()
+                                }
+                            });
+                        self.arm_auth_recovery_timeout(
+                            agent_id,
+                            self.auth_recovery_generation,
+                            AUTH_RECOVERY_CONNECTION_TIMEOUT,
+                        );
                     }
                     self.reset_agent_scoped_state();
                     self.pending_acp_start = true;

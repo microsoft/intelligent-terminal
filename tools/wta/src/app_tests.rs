@@ -5688,31 +5688,136 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         &app.auth_recovery_state,
         AuthRecoveryState::Connecting
     ));
+    let connecting_generation = app.auth_recovery_generation;
+    assert_ne!(
+        connecting_generation, generation,
+        "master readiness must start a separately correlated connection phase"
+    );
     app.pending_acp_start = false;
     app.handle_event(AppEvent::MasterDisconnected);
     assert!(
         !app.pending_acp_start,
         "a late disconnect from the replaced master must not start a duplicate ACP client"
     );
-    // A STALE timer (older generation) must be ignored — it must not force
-    // the sign-in screen onto the current Connecting state.
-    app.handle_event(AppEvent::AuthRecoveryTimedOut {
-        agent_id: "copilot".to_string(),
-        generation: generation.wrapping_sub(1),
-    });
-    assert!(
-        !matches!(app.mode, AppMode::Setup),
-        "a stale-generation timeout must be ignored"
-    );
-    // Dead-man fallback (restart never took effect) → sign-in screen.
+    // The master-readiness timer is stale after the matching restart event.
     app.handle_event(AppEvent::AuthRecoveryTimedOut {
         agent_id: "copilot".to_string(),
         generation,
     });
     assert!(
+        !matches!(app.mode, AppMode::Setup),
+        "a stale-generation timeout must be ignored"
+    );
+    // The connection-phase dead-man still surfaces the sign-in screen.
+    app.handle_event(AppEvent::AuthRecoveryTimedOut {
+        agent_id: "copilot".to_string(),
+        generation: connecting_generation,
+    });
+    assert!(
         matches!(app.mode, AppMode::Setup),
         "timeout fallback must surface the sign-in screen"
     );
+}
+
+fn start_timed_auth_recovery() -> (App, String) {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.handle_event(AppEvent::PostLoginAuthRecovery {
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "auth".to_string(),
+        },
+        tab_id: None,
+        agent_id: "copilot".to_string(),
+    });
+    let request_id = match &app.auth_recovery_state {
+        AuthRecoveryState::WaitingForMaster { request_id } => request_id.clone(),
+        _ => panic!("auth recovery should wait for its replacement master"),
+    };
+    (app, request_id)
+}
+
+#[test]
+fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let readiness_generation = app.auth_recovery_generation;
+    assert!(
+        super::app_events::AUTH_RECOVERY_MASTER_READY_TIMEOUT
+            > super::app_events::AUTH_RECOVERY_CONNECTION_TIMEOUT,
+        "waiting for master must extend beyond the eight-second connection timeout"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": request_id }),
+    });
+
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        app.auth_recovery_state,
+        AuthRecoveryState::Connecting
+    ));
+    assert_ne!(
+        app.auth_recovery_generation, readiness_generation,
+        "master readiness must invalidate the readiness deadline"
+    );
+}
+
+#[test]
+fn auth_recovery_missing_master_readiness_times_out_after_retirement_budget() {
+    let (mut app, _) = start_timed_auth_recovery();
+    assert_eq!(
+        super::app_events::AUTH_RECOVERY_MASTER_READY_TIMEOUT,
+        std::time::Duration::from_secs(18),
+        "readiness deadline must cover the 17-second retirement path plus margin"
+    );
+    let generation = app.auth_recovery_generation;
+    app.handle_event(AppEvent::AuthRecoveryTimedOut {
+        agent_id: "copilot".into(),
+        generation,
+    });
+
+    assert!(matches!(app.mode, AppMode::Setup));
+    assert!(matches!(app.auth_recovery_state, AuthRecoveryState::Idle));
+}
+
+#[test]
+fn auth_recovery_connection_timeout_starts_when_master_is_ready() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let readiness_generation = app.auth_recovery_generation;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": request_id }),
+    });
+    let connection_generation = app.auth_recovery_generation;
+    assert_eq!(
+        super::app_events::AUTH_RECOVERY_CONNECTION_TIMEOUT,
+        std::time::Duration::from_secs(8)
+    );
+    assert_ne!(connection_generation, readiness_generation);
+
+    app.handle_event(AppEvent::AuthRecoveryTimedOut {
+        agent_id: "copilot".into(),
+        generation: connection_generation,
+    });
+
+    assert!(matches!(app.mode, AppMode::Setup));
+    assert!(matches!(app.auth_recovery_state, AuthRecoveryState::Idle));
 }
 
 #[test]

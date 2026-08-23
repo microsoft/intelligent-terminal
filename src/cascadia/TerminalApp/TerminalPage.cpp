@@ -6911,8 +6911,11 @@ namespace winrt::TerminalApp::implementation
                     }
 
                     strongThis->_agentLifecycleOperationInProgress = false;
-                    strongThis->_pendingAgentStackRestart.Clear();
-                    if (std::exchange(strongThis->_pendingAgentSettingsReconciliation, false))
+                    if (const auto pendingRestart = strongThis->_pendingAgentStackRestart.Take())
+                    {
+                        strongThis->_RestartAgentStack(*pendingRestart);
+                    }
+                    else if (std::exchange(strongThis->_pendingAgentSettingsReconciliation, false))
                     {
                         auto pendingRequest = std::exchange(strongThis->_pendingAgentSettingsRequestId, std::nullopt);
                         strongThis->_ReconcileAgentSettings(pendingRequest ? std::move(*pendingRequest) : std::string{});

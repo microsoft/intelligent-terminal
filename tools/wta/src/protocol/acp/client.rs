@@ -193,6 +193,24 @@ fn claim_unexpected_transport_loss(
     transport_ended && !already_suppressed
 }
 
+fn complete_transport_io_task(
+    io_result: std::result::Result<(), tokio::task::JoinError>,
+    suppress_transport_error: &AtomicBool,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+) -> AcpClientExit {
+    if let Err(error) = io_result {
+        tracing::warn!(
+            target: "helper",
+            %error,
+            "ACP I/O task to master failed"
+        );
+    }
+    if claim_unexpected_transport_loss(true, suppress_transport_error) {
+        let _ = event_tx.send(AppEvent::MasterDisconnected);
+    }
+    AcpClientExit::ChannelsClosed
+}
+
 #[derive(Debug, Clone)]
 pub enum MasterExtRequest {
     SessionsList {
@@ -2651,10 +2669,8 @@ pub async fn run_acp_client_over_pipe(
         suppress_transport_error: Arc::clone(&intentional_shutdown),
         event_tx: event_tx.clone(),
     };
-    let io_intentional_shutdown = Arc::clone(&intentional_shutdown);
     let io_probe = startup_probe.clone();
-    let io_event_tx = event_tx.clone();
-    let mut io_task = Some(tokio::task::spawn_local(async move {
+    let mut io_task = tokio::task::spawn_local(async move {
         io_probe.log("ACP handle_io task started (over pipe)");
         // The I/O loop only ends when the pipe to wta-master is gone. Crucially,
         // a *killed* master resolves this as **Ok(())** (clean EOF on the pipe),
@@ -2672,13 +2688,7 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        if claim_unexpected_transport_loss(true, &io_intentional_shutdown) {
-            // An unexpected transport loss reconnects the retained helper over
-            // the stable master pipe. Agent rebind owns its intentional
-            // transport retirement and reconnect sequence separately.
-            let _ = io_event_tx.send(AppEvent::MasterDisconnected);
-        }
-    }));
+    });
 
     // Initialize — same as the child-process path. We use a 60s timeout
     // here because the first helper to connect to a fresh master may
@@ -3267,12 +3277,23 @@ pub async fn run_acp_client_over_pipe(
                         .await;
                         intentional_shutdown.store(true, Ordering::Release);
                         conn.shutdown();
-                        if let Some(task) = io_task.take() {
-                            let _ = task.await;
-                        }
+                        let _ = (&mut io_task).await;
                         return Ok(AcpClientExit::RebindAgent(request));
                     }
                 }
+            }
+            io_result = &mut io_task => {
+                let exit = complete_transport_shutdown(
+                    io_result,
+                    &intentional_shutdown,
+                    &event_tx,
+                    &mut prompt_tasks,
+                    &in_flight_tabs,
+                    &cancel_signals,
+                )
+                .await;
+                startup_probe.log("run_acp_client_over_pipe transport ended");
+                return Ok(exit);
             }
             Some(req) = cancel_rx.recv() => {
                 dispatch_cancel(req, &conn, &cancel_signals);
@@ -3345,6 +3366,9 @@ pub async fn run_acp_client_over_pipe(
     }
 
     stop_prompt_tasks(&mut prompt_tasks, &in_flight_tabs, &cancel_signals).await;
+    intentional_shutdown.store(true, Ordering::Release);
+    conn.shutdown();
+    let _ = io_task.await;
     startup_probe.log("run_acp_client_over_pipe loop ended");
     Ok(AcpClientExit::ChannelsClosed)
 }
@@ -4196,6 +4220,18 @@ async fn stop_prompt_tasks(
     cancel_signals.lock().unwrap().clear();
 }
 
+async fn complete_transport_shutdown(
+    io_result: std::result::Result<(), tokio::task::JoinError>,
+    suppress_transport_error: &AtomicBool,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
+    in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
+    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+) -> AcpClientExit {
+    stop_prompt_tasks(prompt_tasks, in_flight_tabs, cancel_signals).await;
+    complete_transport_io_task(io_result, suppress_transport_error, event_tx)
+}
+
 fn dispatch_prompt(
     prompt: PromptSubmission,
     conn: &conn::ClientLink,
@@ -4543,10 +4579,10 @@ mod tests {
     use super::acp;
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
-        claim_unexpected_transport_loss, complete_prompt_request, inject_wta_pane_meta,
-        is_redundant_startup_model_error, post_login_authenticate_error,
+        claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
+        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
         session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
+        tool_call_exit_code, tool_call_kind_label, AcpClientExit, ClientState, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
@@ -4570,6 +4606,84 @@ mod tests {
 
         assert!(!claim_unexpected_transport_loss(false, &claimed));
         assert!(!claim_unexpected_transport_loss(true, &claimed));
+    }
+
+    #[tokio::test]
+    async fn transport_completion_exits_despite_perpetual_refetch_and_cleans_prompts() {
+        struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::Release);
+            }
+        }
+
+        let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let dropped_for_task = Arc::clone(&dropped);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let mut prompt_tasks = vec![tokio::spawn(async move {
+            let _flag = DropFlag(dropped_for_task);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        })];
+        started_rx.await.expect("prompt task started");
+
+        let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
+        let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
+        let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+            "session-1".to_string(),
+            cancel_tx,
+        )])));
+        let intentional_shutdown = std::sync::atomic::AtomicBool::new(false);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let mut io_task = tokio::spawn(async {});
+
+        let io_result = tokio::select! {
+            result = &mut io_task => result,
+            _ = std::future::pending::<()>() => unreachable!("perpetual refetch cannot win"),
+        };
+        let exit = complete_transport_shutdown(
+            io_result,
+            &intentional_shutdown,
+            &event_tx,
+            &mut prompt_tasks,
+            &in_flight_tabs,
+            &cancel_signals,
+        )
+        .await;
+
+        assert_eq!(exit, AcpClientExit::ChannelsClosed);
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::MasterDisconnected)
+        ));
+        assert!(event_rx.try_recv().is_err(), "disconnect must be sent once");
+        assert!(prompt_tasks.is_empty());
+        assert!(in_flight_tabs.lock().unwrap().is_empty());
+        assert!(cancel_signals.lock().unwrap().is_empty());
+        assert!(dropped.load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn intentional_transport_completion_exits_without_disconnect_notification() {
+        let intentional_shutdown = std::sync::atomic::AtomicBool::new(true);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let mut prompt_tasks = Vec::new();
+        let in_flight_tabs = Arc::new(Mutex::new(HashSet::new()));
+        let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
+        let io_result = tokio::spawn(async {}).await;
+
+        let exit = complete_transport_shutdown(
+            io_result,
+            &intentional_shutdown,
+            &event_tx,
+            &mut prompt_tasks,
+            &in_flight_tabs,
+            &cancel_signals,
+        )
+        .await;
+
+        assert_eq!(exit, AcpClientExit::ChannelsClosed);
+        assert!(event_rx.try_recv().is_err());
     }
 
     #[test]

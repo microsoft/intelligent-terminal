@@ -127,6 +127,10 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartFailsWhenForcedProcessReapTimesOut);
         TEST_METHOD(StaleWaitCallbackCannotClaimReplacementWithReusedPid);
         TEST_METHOD(RetiredWaitCallbackCannotClaimAfterCleanup);
+        TEST_METHOD(CurrentUnexpectedExitWithRetainedRefsRespawnsOnce);
+        TEST_METHOD(UnexpectedExitWithoutRecoveryConditionsDoesNotRespawn);
+        TEST_METHOD(DeliberateOrStaleExitDoesNotRespawn);
+        TEST_METHOD(RecoveryReplacementExitDoesNotLoop);
         TEST_METHOD(AllScopeRetirementJoinsSameRequest);
         TEST_METHOD(LiveSettingsObjectSharesGeneration);
         TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
@@ -374,6 +378,53 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(details::ProcessWaitGenerationTracker::Generation{ 0 }, tracker.Current());
     }
 
+    void SharedWtaTests::CurrentUnexpectedExitWithRetainedRefsRespawnsOnce()
+    {
+        details::UnexpectedExitRecoveryPolicy policy;
+        policy.Arm(7);
+
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 2, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(7, 2, false, true));
+    }
+
+    void SharedWtaTests::UnexpectedExitWithoutRecoveryConditionsDoesNotRespawn()
+    {
+        details::UnexpectedExitRecoveryPolicy policy;
+        policy.Arm(7);
+        VERIFY_IS_FALSE(policy.ShouldRespawn(7, 0, false, true));
+
+        policy.Arm(8);
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, true, true));
+
+        policy.Arm(9);
+        VERIFY_IS_FALSE(policy.ShouldRespawn(9, 1, false, false));
+    }
+
+    void SharedWtaTests::DeliberateOrStaleExitDoesNotRespawn()
+    {
+        details::UnexpectedExitRecoveryPolicy policy;
+        policy.Arm(7);
+
+        VERIFY_IS_FALSE(policy.ShouldRespawn(6, 1, false, true));
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 1, false, true));
+
+        policy.Arm(8);
+        policy.Retire();
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, false, true));
+    }
+
+    void SharedWtaTests::RecoveryReplacementExitDoesNotLoop()
+    {
+        details::UnexpectedExitRecoveryPolicy policy;
+        policy.Arm(7);
+
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 1, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, false, true));
+
+        policy.Arm(9);
+        VERIFY_IS_TRUE(policy.ShouldRespawn(9, 1, false, true));
+    }
+
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()
     {
         details::RetirementCoordinator coordinator;
@@ -576,7 +627,15 @@ namespace TerminalAppUnitTests
         pending.Queue("restart-1");
         pending.Queue("restart-2");
         VERIFY_IS_TRUE(pending.Pending());
-        pending.Clear();
+
+        std::vector<std::string> restarted;
+        if (const auto pendingRestart = pending.Take())
+        {
+            restarted.emplace_back(*pendingRestart);
+        }
+
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), restarted.size());
+        VERIFY_ARE_EQUAL(std::string{ "restart-2" }, restarted.front());
         VERIFY_IS_FALSE(pending.Pending());
         VERIFY_IS_FALSE(pending.Take().has_value());
     }
