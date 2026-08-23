@@ -41,8 +41,7 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
-        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { & $script:CardShown }) |
+        (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { & $script:CardShown }) |
             Should -BeTrue -Because 'Autofix must submit a valid Direct Helper Proposal for an obvious typo'
     }
     It 'Autofix suggests a runnable fix (AI oracle on the card)' {
@@ -50,8 +49,12 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
         Assert-AI -Claim 'The displayed card presents a shell command that the user can Run or Insert into the terminal (it has Run and Insert action buttons).' -Context (Get-AgentPaneText -App $script:app -MaxLines 60)
     }
     It 'Reject/dismiss works (Esc closes the card)' {
-        for ($i = 0; $i -lt 5 -and (& $script:CardShown); $i++) { Send-AgentKey -App $script:app -Key Escape | Out-Null; Start-Sleep -Milliseconds 800 }
-        (& $script:CardShown) | Should -BeFalse
+        $dismissed = Test-Until -TimeoutSec 12 -IntervalSec 1 -Condition {
+            if (-not (& $script:CardShown)) { return $true }
+            Send-AgentKey -App $script:app -Key Escape | Out-Null
+            return $false
+        }
+        $dismissed | Should -BeTrue -Because 'Esc must eventually dismiss the rendered recommendation card'
     }
     It 'Autofix target pane is correct (active shell pane is the fix target)' {
         (Get-ActivePane -App $script:app).session_id | Should -Match '[0-9A-Fa-f-]{36}'
@@ -80,8 +83,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
-        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+        (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Insert'
         Send-AgentKey -App $script:app -Key Right | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
@@ -109,8 +111,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
-        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+        (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Run'
         Send-AgentKey -App $script:app -Key Left | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null

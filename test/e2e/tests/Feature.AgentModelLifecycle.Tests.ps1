@@ -70,36 +70,9 @@ Describe 'Feature: agent model switching lifecycle' -Tag 'Feature' -Skip:(-not $
     }
 
     It 'Settings model changes restart and reconnect the agent' {
-        Stop-Terminal -App $script:app
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
-            acpAgent = 'copilot'
-            acpModel = ''
-        }
-        Open-AgentPane -App $script:app | Out-Null
-        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'Copilot must connect before changing its configured model'
-
-        Clear-AgentInput -App $script:app | Out-Null
-        Invoke-AgentMenuItem -App $script:app -Name '/model'
-        $picker = Get-AgentPaneText -App $script:app -MaxLines 50
-        $targetRows = [regex]::Matches(
-            $picker,
-            '(?m)^\s*[│║|]\s{2}(?<name>\S.*?)\s*[│║|]\s*$'
-        )
-        $targetRow = $targetRows |
-            Where-Object { $_.Groups['name'].Value.Trim() -ne 'Auto' } |
-            Select-Object -First 1
-        if (-not $targetRow) {
-            Set-ItResult -Skipped -Because 'the installed Copilot agent did not advertise multiple selectable cloud models'
-            return
-        }
-        $targetName = $targetRow.Groups['name'].Value.Trim()
-        $targetId = (($targetName.ToLowerInvariant() -replace '[^a-z0-9.]+', '-').Trim('-'))
-        Send-AgentKey -App $script:app -Key Escape | Out-Null
-        Clear-AgentInput -App $script:app | Out-Null
-
         $beforeSession = (Get-AgentPaneSession -App $script:app).PaneSessionId
         Initialize-LogOffsets -App $script:app | Out-Null
-        Set-WtSetting -App $script:app -Key 'acpModel' -Value $targetId | Out-Null
+        Set-WtSetting -App $script:app -Key 'acpModel' -Value 'effective-model' | Out-Null
 
         Assert-Log -App $script:app -Name 'terminal-agent-pane.log' -Pattern '_RebuildAgentStack: agent settings changed, rebuilding' -TimeoutSec 20
         $sessionChanged = Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition {
@@ -111,10 +84,9 @@ Describe 'Feature: agent model switching lifecycle' -Tag 'Feature' -Skip:(-not $
 
         Clear-AgentInput -App $script:app | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/model'
-        $selectedModel = [regex]::Escape($targetName)
         $newModelApplied = Test-Until -TimeoutSec 15 -Condition {
             (Get-AgentPaneText -App $script:app -MaxLines 40) -match
-                "(?m)^\s*[│║|]\s*>\s+$selectedModel\s*[│║|]\s*$"
+                '(?m)^\s*[│║|]\s*>\s+Effective Model\s*[│║|]\s*$'
         }
         $newModelApplied | Should -BeTrue -Because 'the rebuilt stack must select the newly configured model'
     }

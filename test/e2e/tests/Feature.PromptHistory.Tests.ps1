@@ -66,7 +66,7 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
     It 'Prompt history recall works' {
         $tab = New-HistoryTestTab -Title 'prompt-history-order'
-        $id = [guid]::NewGuid().ToString('N')
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
         $older = "HISTORY_OLDER_$id reply OK"
         $newer = "HISTORY_NEWER_$id reply OK"
 
@@ -89,7 +89,7 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
     It 'Prompt history preserves drafts and multiline prompts' {
         $tab = New-HistoryTestTab -Title 'prompt-history-multiline'
-        $id = [guid]::NewGuid().ToString('N')
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
         $lineOne = "HISTORY_LINE_ONE_$id"
         $lineTwo = "HISTORY_LINE_TWO_$id reply OK"
         $draft = "HISTORY_DRAFT_$id"
@@ -119,7 +119,7 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
     It 'Completed turns restore multiline prompts when expanded' {
         $tab = New-HistoryTestTab -Title 'completed-turn-multiline'
-        $id = [guid]::NewGuid().ToString('N')
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
         $lineOne = "COMPLETED_LINE_ONE_$id"
         $lineTwo = "COMPLETED_LINE_TWO_$id"
         $paneId = $tab.Pane.PaneSessionId
