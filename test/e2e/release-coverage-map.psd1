@@ -116,7 +116,7 @@
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
     # §10 diagnostics — native hook bridge (Feature.HookTrace).
     'Native hook bridge publishes events' = 'wtcli agent-hook publishes a pane-scoped, redacted agent event'
-    # §8 legacy (pre-#571) hook bundle compatibility (Feature.LegacyHookBundle). The pane-less
+    # §8 legacy PowerShell hook bundle compatibility (Feature.LegacyHookBundle). The pane-less
     # case pins that `wtcli send-event` without -p publishes an EMPTY pane_id rather than
     # resolving the focused pane, which used to evict that pane's real session.
     'Legacy hook bundle without WT_SESSION stays unattributed' = 'without WT_SESSION publishes unattributed'
