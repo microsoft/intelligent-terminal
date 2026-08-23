@@ -20,6 +20,15 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # Snapshot the real copilot config so install/uninstall during these tests is reverted.
         $script:cfgBackup = Backup-CopilotConfig
+        $script:RemoveHooksThroughProduct = {
+            $setupApp = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+            try {
+                Invoke-Wta -App $setupApp -Arguments @('hooks', 'uninstall', '--cli', 'copilot', '--json') -TimeoutSec 30 -Raw | Out-Null
+            }
+            finally {
+                Stop-Terminal -App $setupApp
+            }
+        }
     }
     AfterAll {
         if ($script:cfgBackup) { Restore-CopilotConfig -State $script:cfgBackup }
@@ -27,7 +36,7 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
 
     It 'Session management on installs agent hooks (FRE Save)' {
         # Start from a deterministic not-installed baseline.
-        Remove-CopilotHooksEntry
+        & $script:RemoveHooksThroughProduct
         Get-CopilotHooksInstalled | Should -BeFalse -Because 'the baseline must be not-installed so a later true proves the FRE installed it'
 
         $app = Start-TerminalFre -Package (Get-ItTestPackage)
@@ -57,7 +66,7 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
 
     It 'Session management off does not install hooks and leaves a usable terminal' {
         # Not-installed baseline; with the toggle OFF, Save must NOT install hooks.
-        Remove-CopilotHooksEntry
+        & $script:RemoveHooksThroughProduct
         Get-CopilotHooksInstalled | Should -BeFalse
 
         $app = Start-TerminalFre -Package (Get-ItTestPackage)

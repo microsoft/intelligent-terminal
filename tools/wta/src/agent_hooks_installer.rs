@@ -1054,12 +1054,7 @@ fn install_for_copilot(home: &Path) -> InstallOutcome {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli(
-        "copilot",
-        &["plugin", "install", &plugin_ref],
-        "copilot_hooks",
-        &[],
-    ) {
+    if let Err(e) = install_copilot_plugin_with_locked_dir_retry(home, &plugin_ref) {
         tracing::warn!(
             target: "copilot_hooks",
             err = %e,
@@ -1090,6 +1085,63 @@ fn install_for_copilot(home: &Path) -> InstallOutcome {
         }
     }
     InstallOutcome::Installed
+}
+
+fn install_copilot_plugin_with_locked_dir_retry(
+    home: &Path,
+    plugin_ref: &str,
+) -> std::io::Result<()> {
+    let args = ["plugin", "install", plugin_ref];
+    let outcome = run_plugin_cli_capture("copilot", &args)?;
+    if outcome.success {
+        return Ok(());
+    }
+    if !matches_idempotency_substring(
+        &outcome.stdout,
+        &outcome.stderr,
+        &["access is denied", "os error 5"],
+    ) {
+        return Err(std::io::Error::other(format!(
+            "copilot {} exited {}",
+            args.join(" "),
+            outcome
+                .status_code
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "?".into())
+        )));
+    }
+    if matches!(
+        read_installed_copilot(home),
+        Ok(Some(InstalledInfo { enabled: true, .. }))
+    ) && copilot_plugin_dir(home).is_dir()
+    {
+        tracing::info!(
+            target: "copilot_hooks",
+            "Copilot plugin files are locked but the plugin is already registered and enabled",
+        );
+        return Ok(());
+    }
+
+    let mut messages = Vec::new();
+    let detached = detach_locked_copilot_plugin(Some(home), &mut messages);
+    if !cleanup_copilot_plugin_config(Some(home), &mut messages) {
+        messages.push("failed to clean Copilot plugin registration before retry".into());
+    }
+    let restored = !detached
+        && restore_deferred_copilot_registration(home, &mut messages)
+        && copilot_plugin_dir(home).is_dir();
+    for message in messages {
+        tracing::info!(
+            target: "copilot_hooks",
+            message,
+            "preparing locked plugin install retry",
+        );
+    }
+    if restored {
+        return Ok(());
+    }
+
+    run_plugin_cli("copilot", &args, "copilot_hooks", &[])
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
@@ -2228,6 +2280,10 @@ fn copilot_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     if which::which("copilot").is_ok() {
         out.attempted = true;
+        let detached = detach_locked_copilot_plugin(home, &mut out.messages);
+        if !detached {
+            preserve_copilot_registration(home, &mut out.messages);
+        }
         let cli_removed = spawn_step(
             &mut out.messages,
             "copilot",
@@ -2235,7 +2291,11 @@ fn copilot_uninstall(home: Option<&Path>) -> CliUninstallResult {
             &["is not installed"],
         );
         let config_clean = cleanup_copilot_plugin_config(home, &mut out.messages);
-        out.plugin_uninstalled = Some(cli_removed && config_clean);
+        // When an active Copilot process holds the plugin directory without
+        // delete sharing, removing its registration is the only possible
+        // uninstall until that process exits. The preserved entry lets a
+        // later install re-enable the still-valid locked copy.
+        out.plugin_uninstalled = Some((cli_removed || !detached) && config_clean);
         // `--force`: marketplace removal would otherwise refuse if
         // anything is still installed under it (e.g. previous step
         // failed). Belt-and-braces.
@@ -2258,6 +2318,159 @@ fn copilot_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     out.staging_dir_removed = sweep_legacy_staging_dirs(&mut out.messages, CliKind::Copilot);
     out
+}
+
+fn copilot_plugin_dir(home: &Path) -> PathBuf {
+    home.join(".copilot")
+        .join("installed-plugins")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME)
+}
+
+fn copilot_deferred_registration_path(home: &Path) -> PathBuf {
+    home.join(".copilot")
+        .join(format!(".{PLUGIN_NAME}.wta-deferred.json"))
+}
+
+fn detach_locked_copilot_plugin(home: Option<&Path>, messages: &mut Vec<String>) -> bool {
+    let Some(home) = home else {
+        return false;
+    };
+    let plugin_dir = copilot_plugin_dir(home);
+    if !plugin_dir.is_dir() {
+        return true;
+    }
+
+    for suffix in 0..100 {
+        let stale_dir = plugin_dir.with_file_name(format!(
+            "{PLUGIN_NAME}.wta-stale-{}-{suffix}",
+            std::process::id()
+        ));
+        if stale_dir.exists() {
+            continue;
+        }
+        match fs::rename(&plugin_dir, &stale_dir) {
+            Ok(()) => {
+                messages.push(format!(
+                    "detached active Copilot plugin directory to {} before plugin update",
+                    stale_dir.display()
+                ));
+                return true;
+            }
+            Err(error) => {
+                messages.push(format!(
+                    "failed to detach active Copilot plugin directory {}: {}",
+                    plugin_dir.display(),
+                    error
+                ));
+                return false;
+            }
+        }
+    }
+
+    messages.push(format!(
+        "failed to detach active Copilot plugin directory {}: no stale name available",
+        plugin_dir.display()
+    ));
+    false
+}
+
+fn preserve_copilot_registration(home: Option<&Path>, messages: &mut Vec<String>) -> bool {
+    let Some(home) = home else {
+        return false;
+    };
+    let config_path = home.join(".copilot").join("config.json");
+    let Ok(text) = fs::read_to_string(&config_path) else {
+        return false;
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)) else {
+        return false;
+    };
+    let Some(entry) = config
+        .get("installedPlugins")
+        .and_then(Value::as_array)
+        .and_then(|entries| {
+            entries.iter().find(|entry| {
+                entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str)
+                        == Some(MARKETPLACE_NAME)
+            })
+        })
+    else {
+        return false;
+    };
+    let path = copilot_deferred_registration_path(home);
+    let serialized = match serde_json::to_string_pretty(entry) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            messages.push(format!(
+                "failed to preserve locked Copilot plugin registration: {}",
+                error
+            ));
+            return false;
+        }
+    };
+    match fs::write(&path, serialized) {
+        Ok(()) => {
+            messages.push(format!(
+                "preserved locked Copilot plugin registration in {}",
+                path.display()
+            ));
+            true
+        }
+        Err(error) => {
+            messages.push(format!(
+                "failed to preserve locked Copilot plugin registration: {}",
+                error
+            ));
+            false
+        }
+    }
+}
+
+fn restore_deferred_copilot_registration(home: &Path, messages: &mut Vec<String>) -> bool {
+    let deferred_path = copilot_deferred_registration_path(home);
+    let Ok(deferred_text) = fs::read_to_string(&deferred_path) else {
+        return false;
+    };
+    let Ok(entry) = serde_json::from_str::<Value>(&deferred_text) else {
+        return false;
+    };
+    let config_path = home.join(".copilot").join("config.json");
+    let mut config = match fs::read_to_string(&config_path) {
+        Ok(text) => match serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)) {
+            Ok(config) => config,
+            Err(_) => return false,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            serde_json::json!({ "installedPlugins": [] })
+        }
+        Err(_) => return false,
+    };
+    let Some(entries) = config
+        .get_mut("installedPlugins")
+        .and_then(Value::as_array_mut)
+    else {
+        return false;
+    };
+    entries.retain(|current| {
+        current.get("name").and_then(Value::as_str) != Some(PLUGIN_NAME)
+            || current.get("marketplace").and_then(Value::as_str) != Some(MARKETPLACE_NAME)
+    });
+    entries.push(entry);
+    let Ok(serialized) = serde_json::to_string_pretty(&config) else {
+        return false;
+    };
+    if let Err(error) = fs::write(&config_path, serialized) {
+        messages.push(format!(
+            "failed to restore locked Copilot plugin registration: {}",
+            error
+        ));
+        return false;
+    }
+    let _ = fs::remove_file(&deferred_path);
+    messages.push("restored locked Copilot plugin registration without replacing its files".into());
+    true
 }
 
 fn cleanup_copilot_plugin_config(home: Option<&Path>, messages: &mut Vec<String>) -> bool {

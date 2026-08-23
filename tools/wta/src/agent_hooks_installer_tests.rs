@@ -19,6 +19,92 @@ fn unique_dir(label: &str) -> PathBuf {
     p
 }
 
+#[test]
+fn copilot_plugin_update_detaches_a_directory_that_may_be_locked() {
+    let home = unique_dir("copilot-detach");
+    let plugin_dir = home
+        .join(".copilot")
+        .join("installed-plugins")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(plugin_dir.join("plugin.json"), "{}").unwrap();
+
+    let mut messages = Vec::new();
+    assert!(detach_locked_copilot_plugin(Some(&home), &mut messages));
+
+    assert!(!plugin_dir.exists());
+    let parent = plugin_dir.parent().unwrap();
+    let detached = fs::read_dir(parent)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("wt-agent-hooks.wta-stale-"))
+        })
+        .expect("detached plugin directory");
+    assert!(detached.join("plugin.json").is_file());
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("before plugin update")));
+
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn copilot_registration_can_be_deferred_across_a_locked_uninstall() {
+    let home = unique_dir("copilot-deferred");
+    let copilot_dir = home.join(".copilot");
+    fs::create_dir_all(&copilot_dir).unwrap();
+    fs::write(
+        copilot_dir.join("config.json"),
+        r#"{
+            "installedPlugins": [
+                {
+                    "name": "wt-agent-hooks",
+                    "marketplace": "wt-local",
+                    "version": "0.1.6",
+                    "cache_path": "locked"
+                },
+                {
+                    "name": "other",
+                    "marketplace": "example",
+                    "version": "1.0.0"
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    let mut messages = Vec::new();
+    assert!(preserve_copilot_registration(
+        Some(&home),
+        &mut messages
+    ));
+    assert!(cleanup_copilot_plugin_config(
+        Some(&home),
+        &mut messages
+    ));
+    assert!(restore_deferred_copilot_registration(
+        &home,
+        &mut messages
+    ));
+
+    let config: Value =
+        serde_json::from_str(&fs::read_to_string(copilot_dir.join("config.json")).unwrap())
+            .unwrap();
+    let entries = config["installedPlugins"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().any(|entry| {
+        entry["name"] == PLUGIN_NAME && entry["marketplace"] == MARKETPLACE_NAME
+    }));
+    assert!(!copilot_deferred_registration_path(&home).exists());
+
+    fs::remove_dir_all(home).unwrap();
+}
+
 // ---- bundle resolver -------------------------------------------------
 
 /// `bundle::find_loose_dir` returns the per-CLI subdirectory when it
