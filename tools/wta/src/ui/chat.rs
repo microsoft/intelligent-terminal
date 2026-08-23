@@ -1,22 +1,31 @@
 use std::borrow::Cow;
 #[cfg(test)]
 use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use tui_markdown::{Options as MarkdownOptions, StyleSheet};
+#[cfg(test)]
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::app::{
     App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput,
 };
-#[cfg(test)]
-use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
+fn activity_label() -> String {
+    t!("chat.activity_thinking").into_owned()
+}
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
@@ -24,10 +33,145 @@ const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
 const MAX_TOOL_PREVIEW_LINES: usize = 2;
 const MAX_TOOL_DETAIL_OUTPUT_LINES: usize = 12;
 const MAX_TOOL_DETAIL_LINES: usize = 32;
+const MAX_COMPLETED_TURN_CACHE_ENTRIES: usize = 512;
+const MAX_COMPLETED_TURN_CACHE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES: usize = 256 * 1024;
+const MAX_STREAMING_MARKDOWN_CACHE_BYTES: usize = 256 * 1024;
+const MAX_RETAINED_COMPLETED_TURN_INDICES: usize = 16;
+
+pub struct PreparedChatLayout {
+    wrap_width: usize,
+    natural_height: u16,
+    pending_lines: Vec<Line<'static>>,
+    message_lines: Vec<Vec<Line<'static>>>,
+    completed_turns: Rc<Vec<PreparedCompletedTurn>>,
+    welcome_lines: Vec<Line<'static>>,
+}
+
+impl PreparedChatLayout {
+    pub fn natural_height(&self) -> u16 {
+        self.natural_height
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PreparedCompletedTurn {
+    index: usize,
+    key: CompletedTurnCacheKey,
+    height: usize,
+}
+
+struct RetainedCompletedTurnIndex {
+    namespace: u64,
+    generation: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+    selected: Option<usize>,
+    turns: Rc<Vec<PreparedCompletedTurn>>,
+    total_height: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CompletedTurnCacheKey {
+    namespace: u64,
+    item_id: u64,
+    revision: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    expanded: bool,
+    selected: bool,
+    pane_focused: bool,
+}
+
+#[derive(Clone)]
+struct CachedCompletedTurn {
+    lines: Vec<Line<'static>>,
+    height: usize,
+    expanded: bool,
+    prompt_rows: Vec<PromptRowGeometry>,
+}
+
+struct CompletedTurnCacheEntry {
+    key: CompletedTurnCacheKey,
+    value: Rc<CachedCompletedTurn>,
+    bytes: usize,
+}
+
+#[derive(Default)]
+struct CompletedTurnLayoutCache {
+    entries: VecDeque<CompletedTurnCacheEntry>,
+    bytes: usize,
+}
+
+impl CompletedTurnLayoutCache {
+    fn get(&mut self, key: CompletedTurnCacheKey) -> Option<Rc<CachedCompletedTurn>> {
+        let index = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(index)?;
+        let value = Rc::clone(&entry.value);
+        self.entries.push_back(entry);
+        Some(value)
+    }
+
+    fn insert(
+        &mut self,
+        key: CompletedTurnCacheKey,
+        value: CachedCompletedTurn,
+        bytes: usize,
+    ) -> Rc<CachedCompletedTurn> {
+        let value = Rc::new(value);
+        if bytes > MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES {
+            return value;
+        }
+        if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
+            if let Some(previous) = self.entries.remove(index) {
+                self.bytes = self.bytes.saturating_sub(previous.bytes);
+            }
+        }
+        while self.entries.len() >= MAX_COMPLETED_TURN_CACHE_ENTRIES
+            || self.bytes.saturating_add(bytes) > MAX_COMPLETED_TURN_CACHE_BYTES
+        {
+            let Some(evicted) = self.entries.pop_front() else {
+                break;
+            };
+            self.bytes = self.bytes.saturating_sub(evicted.bytes);
+        }
+        self.bytes = self.bytes.saturating_add(bytes);
+        self.entries.push_back(CompletedTurnCacheEntry {
+            key,
+            value: Rc::clone(&value),
+            bytes,
+        });
+        value
+    }
+}
+
+thread_local! {
+    static COMPLETED_TURN_LAYOUT_CACHE: RefCell<CompletedTurnLayoutCache> =
+        RefCell::new(CompletedTurnLayoutCache::default());
+    static RETAINED_COMPLETED_TURN_INDICES: RefCell<VecDeque<RetainedCompletedTurnIndex>> =
+        const { RefCell::new(VecDeque::new()) };
+    static STREAMING_MARKDOWN_PROJECTION_CACHE: RefCell<Option<StreamingMarkdownProjectionCache>> =
+        const { RefCell::new(None) };
+}
+
+struct StreamingMarkdownProjectionCache {
+    generation: u64,
+    revision: u64,
+    visible_source_len: usize,
+    stable_source_len: usize,
+    stable_lines: Vec<Line<'static>>,
+    projected_lines: Vec<Line<'static>>,
+    has_reference_definitions: bool,
+}
 
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static COMPLETED_TURN_LINE_MATERIALIZATION_COUNT: Cell<usize> = const { Cell::new(0) };
+    static COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT: Cell<usize> = const { Cell::new(0) };
+    static STREAMING_MARKDOWN_PARSED_BYTES: Cell<usize> = const { Cell::new(0) };
+    static STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -43,6 +187,79 @@ pub(crate) fn completed_turn_line_build_count() -> usize {
 #[cfg(test)]
 fn record_completed_turn_line_build() {
     COMPLETED_TURN_LINE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_line_materialization_count() {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_line_materialization_count() -> usize {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_line_materialization() {
+    COMPLETED_TURN_LINE_MATERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_completed_turn_descriptor_lookup_count() {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn completed_turn_descriptor_lookup_count() -> usize {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn record_completed_turn_descriptor_lookup() {
+    COMPLETED_TURN_DESCRIPTOR_LOOKUP_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(crate) fn reset_retained_completed_turn_indices() {
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| retained.borrow_mut().clear());
+}
+
+#[cfg(test)]
+pub(crate) fn retained_completed_turn_index_count() -> usize {
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| retained.borrow().len())
+}
+
+#[cfg(test)]
+fn reset_streaming_markdown_projection_cache() {
+    STREAMING_MARKDOWN_PROJECTION_CACHE.with(|cache| *cache.borrow_mut() = None);
+}
+
+#[cfg(test)]
+fn reset_streaming_markdown_parsed_bytes() {
+    STREAMING_MARKDOWN_PARSED_BYTES.with(|count| count.set(0));
+    STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn streaming_markdown_parsed_bytes() -> usize {
+    STREAMING_MARKDOWN_PARSED_BYTES.with(Cell::get)
+}
+
+#[cfg(test)]
+fn streaming_markdown_full_recompute_count() -> usize {
+    STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(Cell::get)
+}
+
+fn record_streaming_markdown_parse(bytes: usize, full_recompute: bool) {
+    #[cfg(test)]
+    {
+        STREAMING_MARKDOWN_PARSED_BYTES.with(|count| count.set(count.get() + bytes));
+        if full_recompute {
+            STREAMING_MARKDOWN_FULL_RECOMPUTE_COUNT.with(|count| count.set(count.get() + 1));
+        }
+    }
+    #[cfg(not(test))]
+    let _ = (bytes, full_recompute);
 }
 
 fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
@@ -123,7 +340,9 @@ fn tool_detail_lines(
     let mut omitted = false;
     if detailed {
         for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
-            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            let suffix = location
+                .line
+                .map_or_else(String::new, |line| format!(":{line}"));
             lines.push(format!("    {}{suffix}", location.path));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
@@ -168,7 +387,9 @@ fn tool_detail_lines(
                 }
             }
             ToolCallContent::Attachment { label, uri } => {
-                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                let target = uri
+                    .as_deref()
+                    .map_or_else(String::new, |uri| format!(" · {uri}"));
                 lines.push(format!("    ↳ {label}{target}"));
             }
         }
@@ -184,65 +405,590 @@ fn tool_detail_lines(
     lines
 }
 
-/// Estimate the chat block's natural height (in visual rows) given the
-/// rendering width. Counts wraps for each message + completed turn. Used by
-/// `layout::render` to size the
-/// chat area so the rec panel sits directly below content instead of being
-/// pushed to the pane bottom by a `Min(1)` spacer.
-pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
-    let tab = app.current_tab();
-    let wrap_width = (area_width as usize).max(1);
-    // Fetch once for the pending-height calculation.
-    let pending_text = pending_render_text(tab);
+fn completed_turn_cache_key(
+    tab: &crate::app::TabSession,
+    index: usize,
+    namespace: u64,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+) -> Option<CompletedTurnCacheKey> {
+    let turn = tab.completed_turns.get(index)?;
+    let (item_id, revision) = tab.completed_turn_layout_item(index)?;
+    Some(CompletedTurnCacheKey {
+        namespace,
+        item_id,
+        revision,
+        wrap_width,
+        render_agent_markdown,
+        expanded: turn.expanded,
+        selected: tab.selected_completed_turn_idx == Some(index),
+        pane_focused,
+    })
+}
 
+fn cached_completed_turn_layout(
+    tab: &crate::app::TabSession,
+    index: usize,
+    key: CompletedTurnCacheKey,
+) -> Option<Rc<CachedCompletedTurn>> {
+    if let Some(cached) = COMPLETED_TURN_LAYOUT_CACHE.with(|cache| cache.borrow_mut().get(key)) {
+        return Some(cached);
+    }
+    let turn = tab.completed_turns.get(index)?;
+    let (lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows_for_mode(
+        turn,
+        key.selected,
+        key.pane_focused,
+        key.wrap_width,
+        key.render_agent_markdown,
+    );
+    let lines = own_lines(lines);
+    let value = CachedCompletedTurn {
+        height: rendered_lines_height(&lines, key.wrap_width),
+        expanded: turn.expanded,
+        prompt_rows,
+        lines,
+    };
+    let bytes = completed_turn_cache_bytes(&value);
+    Some(COMPLETED_TURN_LAYOUT_CACHE.with(|cache| cache.borrow_mut().insert(key, value, bytes)))
+}
+
+fn prepare_completed_turn_index(
+    app: &mut App,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+    pane_focused: bool,
+) -> (Rc<Vec<PreparedCompletedTurn>>, usize) {
+    let (namespace, _) = app.current_tab_mut().completed_turn_layout_identity();
+    let previous = RETAINED_COMPLETED_TURN_INDICES.with(|retained| {
+        retained.borrow().iter().find_map(|index| {
+            (index.namespace == namespace
+                && index.wrap_width == wrap_width
+                && index.render_agent_markdown == render_agent_markdown
+                && index.pane_focused == pane_focused)
+                .then_some((namespace, index.generation))
+        })
+    });
+    let changes = app
+        .current_tab_mut()
+        .completed_turn_layout_changes_since(previous);
+    let tab = app.current_tab();
+    let selected = tab.selected_completed_turn_idx;
+
+    RETAINED_COMPLETED_TURN_INDICES.with(|retained| {
+        let mut retained = retained.borrow_mut();
+        let position = retained
+            .iter()
+            .position(|index| index.namespace == changes.namespace);
+        let mut current = position.and_then(|position| retained.remove(position));
+        let compatible = current.as_ref().is_some_and(|index| {
+            index.namespace == changes.namespace
+                && index.wrap_width == wrap_width
+                && index.render_agent_markdown == render_agent_markdown
+                && index.pane_focused == pane_focused
+                && changes.dirty_indices.is_some()
+        });
+
+        if !compatible {
+            let mut turns = Vec::with_capacity(changes.len);
+            let mut total_height = 0usize;
+            for index in 0..changes.len {
+                #[cfg(test)]
+                record_completed_turn_descriptor_lookup();
+                let Some(key) = completed_turn_cache_key(
+                    tab,
+                    index,
+                    changes.namespace,
+                    wrap_width,
+                    render_agent_markdown,
+                    pane_focused,
+                ) else {
+                    continue;
+                };
+                let Some(layout) = cached_completed_turn_layout(tab, index, key) else {
+                    continue;
+                };
+                total_height = total_height.saturating_add(layout.height);
+                turns.push(PreparedCompletedTurn {
+                    index,
+                    key,
+                    height: layout.height,
+                });
+            }
+            current = Some(RetainedCompletedTurnIndex {
+                namespace: changes.namespace,
+                generation: changes.generation,
+                wrap_width,
+                render_agent_markdown,
+                pane_focused,
+                selected,
+                turns: Rc::new(turns),
+                total_height,
+            });
+        } else if let Some(index) = current.as_mut() {
+            let turns = Rc::make_mut(&mut index.turns);
+            let dirty_indices = changes.dirty_indices.as_deref().unwrap_or_default();
+            for &dirty_index in dirty_indices {
+                #[cfg(test)]
+                record_completed_turn_descriptor_lookup();
+                let Some(key) = completed_turn_cache_key(
+                    tab,
+                    dirty_index,
+                    changes.namespace,
+                    wrap_width,
+                    render_agent_markdown,
+                    pane_focused,
+                ) else {
+                    continue;
+                };
+                let Some(layout) = cached_completed_turn_layout(tab, dirty_index, key) else {
+                    continue;
+                };
+                let descriptor = PreparedCompletedTurn {
+                    index: dirty_index,
+                    key,
+                    height: layout.height,
+                };
+                if let Some(existing) = turns.get_mut(dirty_index) {
+                    index.total_height = index
+                        .total_height
+                        .saturating_sub(existing.height)
+                        .saturating_add(descriptor.height);
+                    *existing = descriptor;
+                } else if dirty_index == turns.len() {
+                    index.total_height = index.total_height.saturating_add(descriptor.height);
+                    turns.push(descriptor);
+                }
+            }
+            turns.truncate(changes.len);
+
+            if index.selected != selected {
+                let previous_selected = index.selected;
+                for changed_selection in [previous_selected, selected].into_iter().flatten() {
+                    if let Some(descriptor) = turns.get_mut(changed_selection) {
+                        descriptor.key.selected = selected == Some(changed_selection);
+                    }
+                }
+            }
+            index.generation = changes.generation;
+            index.selected = selected;
+        }
+
+        let result = current.as_ref().map_or_else(
+            || (Rc::new(Vec::new()), 0),
+            |index| (Rc::clone(&index.turns), index.total_height),
+        );
+        if let Some(current) = current {
+            retained.push_back(current);
+        }
+        while retained.len() > MAX_RETAINED_COMPLETED_TURN_INDICES {
+            retained.pop_front();
+        }
+        result
+    })
+}
+
+pub fn prepare(app: &mut App, area_width: u16) -> PreparedChatLayout {
+    let render_agent_markdown = app.render_agent_markdown;
+    let pane_focused = app.pane_focused;
+    let wrap_width = (area_width as usize).max(1);
+    let (completed_turns, completed_turn_height) =
+        prepare_completed_turn_index(app, wrap_width, render_agent_markdown, pane_focused);
+    let tab = app.current_tab();
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
-    let messages: usize = tab
+    let message_lines: Vec<Vec<Line<'static>>> = tab
         .messages
         .iter()
         .enumerate()
         .filter(|(index, _)| Some(*index) != streaming_index)
         .map(|(index, message)| {
-            rendered_lines_height(
-                &build_message_lines(
-                    message,
-                    index + 1 == tab.messages.len(),
-                    tab.turn.is_streaming(),
-                    permission_tool_call_id,
-                    tab.activity_frame,
-                    wrap_width,
-                ),
+            own_lines(build_message_lines_for_mode(
+                message,
+                index + 1 == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
                 wrap_width,
-            )
+                app.render_agent_markdown,
+            ))
         })
-        .sum();
-    let turns: usize = tab
-        .completed_turns
-        .iter()
-        .map(|turn| {
-            rendered_lines_height(
-                &build_completed_turn_lines(turn, false, false, wrap_width),
-                wrap_width,
-            )
-        })
-        .sum();
-    let pending = pending_text
-        .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
-        .unwrap_or(0);
+        .collect();
+    let pending_lines = own_lines(build_pending_stream_lines(app, wrap_width));
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
-    // it off the top of the visible chat block. Always a single row —
-    // terminal min-width guarantees the localized title fits without
-    // wrapping.
-    let welcome = if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        1
-    } else {
-        0
-    };
+    // it off the top of the visible chat block.
+    let welcome_lines =
+        if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+            vec![Line::from(vec![
+                Span::styled(
+                    "● ",
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    t!("chat.welcome_title").into_owned(),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+            ])]
+        } else {
+            Vec::new()
+        };
 
-    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    let natural_height = (message_lines
+        .iter()
+        .map(|lines| rendered_lines_height(lines, wrap_width))
+        .sum::<usize>()
+        + completed_turn_height
+        + rendered_lines_height(&pending_lines, wrap_width)
+        + rendered_lines_height(&welcome_lines, wrap_width))
+    .max(1)
+    .min(u16::MAX as usize) as u16;
+
+    PreparedChatLayout {
+        wrap_width,
+        natural_height,
+        pending_lines,
+        message_lines,
+        completed_turns,
+        welcome_lines,
+    }
+}
+
+/// Estimate the chat block's natural height (in visual rows) given the
+/// rendering width. Standalone callers prepare a temporary layout; the main
+/// frame planner reuses one prepared layout for both height and rendering.
+pub fn estimated_block_height(app: &mut App, area_width: u16) -> u16 {
+    prepare(app, area_width).natural_height()
+}
+
+#[derive(Clone)]
+struct AgentMarkdownStyleSheet;
+
+impl StyleSheet for AgentMarkdownStyleSheet {
+    fn heading(&self, _level: u8) -> Style {
+        theme::MARKDOWN_HEADING
+    }
+
+    fn code(&self) -> Style {
+        theme::MARKDOWN_CODE
+    }
+
+    fn link(&self) -> Style {
+        theme::MARKDOWN_LINK
+    }
+
+    fn blockquote(&self) -> Style {
+        theme::MARKDOWN_QUOTE
+    }
+
+    fn heading_meta(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn metadata_block(&self) -> Style {
+        theme::MARKDOWN_META
+    }
+
+    fn table_header(&self) -> Style {
+        theme::MARKDOWN_TABLE_HEADER
+    }
+
+    fn table_cell(&self) -> Style {
+        theme::AGENT_TEXT
+    }
+
+    fn table_border(&self) -> Style {
+        theme::MARKDOWN_TABLE_BORDER
+    }
+
+    fn heading_marker(&self, _level: u8) -> &str {
+        ""
+    }
+
+    fn code_block_fence(&self) -> &str {
+        ""
+    }
+}
+
+#[derive(Clone, Copy)]
+struct StyledChar {
+    value: char,
+    style: Style,
+}
+
+fn styled_chars_to_line(chars: &[StyledChar]) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for styled in chars {
+        if let Some(span) = spans.last_mut().filter(|span| span.style == styled.style) {
+            span.content.to_mut().push(styled.value);
+        } else {
+            spans.push(Span::styled(styled.value.to_string(), styled.style));
+        }
+    }
+    Line::from(spans)
+}
+
+fn wrap_markdown_line(line: Line<'_>, width: usize) -> Vec<Line<'static>> {
+    let base_style = theme::AGENT_TEXT.patch(line.style);
+    let chars: Vec<StyledChar> = line
+        .spans
+        .into_iter()
+        .flat_map(|span| {
+            let style = base_style.patch(span.style);
+            span.content
+                .into_owned()
+                .chars()
+                .map(move |value| StyledChar { value, style })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    if chars.is_empty() {
+        return vec![Line::default()];
+    }
+
+    let width = width.max(1);
+    let mut wrapped = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let mut end = start;
+        let mut cells = 0;
+        let mut last_whitespace = None;
+        while end < chars.len() {
+            let char_width = UnicodeWidthChar::width(chars[end].value).unwrap_or(0);
+            if end > start && cells + char_width > width {
+                break;
+            }
+            cells += char_width;
+            if chars[end].value.is_whitespace() {
+                last_whitespace = Some(end);
+            }
+            end += 1;
+            if cells >= width {
+                break;
+            }
+        }
+
+        let next = if end < chars.len() {
+            last_whitespace
+                .filter(|index| *index > start)
+                .unwrap_or(end)
+        } else {
+            end
+        };
+        wrapped.push(styled_chars_to_line(&chars[start..next]));
+        start = next;
+        while start < chars.len() && chars[start].value.is_whitespace() {
+            start += 1;
+        }
+    }
+    wrapped
+}
+
+fn agent_markdown_lines(text: &str, wrap_width: usize, dot_style: Style) -> Vec<Line<'static>> {
+    let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+    let markdown = tui_markdown::from_str_with_options(text.trim_start_matches('\n'), &options);
+    wrap_agent_markdown_lines(markdown.lines, wrap_width, dot_style)
+}
+
+fn wrap_agent_markdown_lines(
+    markdown_lines: Vec<Line<'_>>,
+    wrap_width: usize,
+    dot_style: Style,
+) -> Vec<Line<'static>> {
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let mut lines = Vec::new();
+    let mut first_row = true;
+
+    for logical_line in markdown_lines {
+        for mut line in wrap_markdown_line(logical_line, body_width) {
+            if line.width() == 0 {
+                if !first_row {
+                    lines.push(Line::default());
+                }
+                continue;
+            }
+
+            let mut spans = Vec::with_capacity(line.spans.len() + 1);
+            if first_row {
+                spans.push(Span::styled("● ", dot_style));
+                first_row = false;
+            } else {
+                spans.push(Span::raw("  "));
+            }
+            spans.append(&mut line.spans);
+            lines.push(Line::from(spans));
+        }
+    }
+    lines
+}
+
+fn streaming_markdown_cache_bytes(cache: &StreamingMarkdownProjectionCache) -> usize {
+    fn line_bytes(lines: &[Line<'_>], capacity: usize) -> usize {
+        capacity * std::mem::size_of::<Line<'static>>()
+            + lines
+                .iter()
+                .map(|line| {
+                    line.spans.capacity() * std::mem::size_of::<Span<'static>>()
+                        + line
+                            .spans
+                            .iter()
+                            .map(|span| match &span.content {
+                                Cow::Borrowed(_) => 0,
+                                Cow::Owned(content) => content.capacity(),
+                            })
+                            .sum::<usize>()
+                })
+                .sum::<usize>()
+    }
+
+    std::mem::size_of::<StreamingMarkdownProjectionCache>()
+        + line_bytes(&cache.stable_lines, cache.stable_lines.capacity())
+        + line_bytes(&cache.projected_lines, cache.projected_lines.capacity())
+}
+
+fn bounded_streaming_markdown_cache(
+    cache: StreamingMarkdownProjectionCache,
+) -> Option<StreamingMarkdownProjectionCache> {
+    (streaming_markdown_cache_bytes(&cache) <= MAX_STREAMING_MARKDOWN_CACHE_BYTES).then_some(cache)
+}
+
+fn source_mapped_markdown(source: &str) -> tui_markdown::SourceMappedText<'_> {
+    let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+    tui_markdown::from_str_with_options_and_source_map(source, &options)
+}
+
+fn cache_from_full_markdown_projection(
+    generation: u64,
+    revision: u64,
+    source_len: usize,
+    projection: tui_markdown::SourceMappedText<'_>,
+) -> StreamingMarkdownProjectionCache {
+    let projected_lines = own_lines(projection.text.lines);
+    let mutable_tail = projection.blocks.len().saturating_sub(2);
+    let (stable_source_len, stable_line_end) = projection
+        .blocks
+        .get(mutable_tail)
+        .map(|block| (block.source.start, block.lines.start))
+        .unwrap_or((0, 0));
+    StreamingMarkdownProjectionCache {
+        generation,
+        revision,
+        visible_source_len: source_len,
+        stable_source_len,
+        stable_lines: projected_lines[..stable_line_end].to_vec(),
+        projected_lines,
+        has_reference_definitions: projection.has_reference_definitions,
+    }
+}
+
+fn streaming_agent_markdown_lines(
+    tab: &crate::app::TabSession,
+    source: &str,
+    wrap_width: usize,
+    dot_style: Style,
+) -> Vec<Line<'static>> {
+    let generation = tab.streaming_source_generation();
+    let revision = tab.streaming_source_revision();
+    if generation == 0 {
+        return agent_markdown_lines(source, wrap_width, dot_style);
+    }
+    let logical_lines = STREAMING_MARKDOWN_PROJECTION_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.as_ref().filter(|cached| {
+            cached.generation == generation
+                && cached.revision <= revision
+                && cached.visible_source_len == source.len()
+        }) {
+            return cached.projected_lines.clone();
+        }
+
+        let can_append = cache.as_ref().is_some_and(|cached| {
+            cached.generation == generation
+                && cached.revision <= revision
+                && !cached.has_reference_definitions
+                && cached.visible_source_len <= source.len()
+                && cached.stable_source_len <= source.len()
+                && source.is_char_boundary(cached.stable_source_len)
+        });
+        if !can_append {
+            let reference_fallback = cache.as_ref().is_some_and(|cached| {
+                cached.generation == generation && cached.has_reference_definitions
+            });
+            record_streaming_markdown_parse(source.len(), reference_fallback);
+            let next = cache_from_full_markdown_projection(
+                generation,
+                revision,
+                source.len(),
+                source_mapped_markdown(source),
+            );
+            let result = next.projected_lines.clone();
+            *cache = bounded_streaming_markdown_cache(next);
+            return result;
+        }
+
+        let cached = cache.as_mut().expect("append-compatible cache");
+        let suffix = &source[cached.stable_source_len..];
+        record_streaming_markdown_parse(suffix.len(), false);
+        let projection = source_mapped_markdown(suffix);
+        if projection.has_reference_definitions {
+            record_streaming_markdown_parse(source.len(), true);
+            let next = cache_from_full_markdown_projection(
+                generation,
+                revision,
+                source.len(),
+                source_mapped_markdown(source),
+            );
+            let result = next.projected_lines.clone();
+            *cache = bounded_streaming_markdown_cache(next);
+            return result;
+        }
+
+        let suffix_lines = own_lines(projection.text.lines);
+        let mut projected_lines = cached.stable_lines.clone();
+        projected_lines.extend(suffix_lines.iter().cloned());
+        let mutable_tail = projection.blocks.len().saturating_sub(2);
+        if let Some(first_mutable_block) = projection.blocks.get(mutable_tail) {
+            cached.stable_lines.extend(
+                suffix_lines[..first_mutable_block.lines.start]
+                    .iter()
+                    .cloned(),
+            );
+            cached.stable_source_len += first_mutable_block.source.start;
+        }
+        cached.visible_source_len = source.len();
+        cached.revision = revision;
+        cached.projected_lines = projected_lines.clone();
+        cached.has_reference_definitions = false;
+        if streaming_markdown_cache_bytes(cached) > MAX_STREAMING_MARKDOWN_CACHE_BYTES {
+            *cache = None;
+        }
+        projected_lines
+    });
+
+    wrap_agent_markdown_lines(logical_lines, wrap_width, dot_style)
+}
+
+fn agent_response_lines(
+    text: &str,
+    wrap_width: usize,
+    dot_style: Style,
+    render_markdown: bool,
+) -> Vec<Line<'static>> {
+    if render_markdown {
+        agent_markdown_lines(text, wrap_width, dot_style)
+    } else {
+        let mut lines = Vec::new();
+        push_prefixed_lines(
+            &mut lines,
+            "●",
+            text.trim_start_matches('\n'),
+            wrap_width,
+            theme::AGENT_TEXT,
+        );
+        lines
+    }
 }
 
 #[cfg(test)]
@@ -288,6 +1034,39 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
         .sum()
 }
 
+fn own_lines(lines: Vec<Line<'_>>) -> Vec<Line<'static>> {
+    lines
+        .into_iter()
+        .map(|line| Line {
+            style: line.style,
+            alignment: line.alignment,
+            spans: line
+                .spans
+                .into_iter()
+                .map(|span| Span::styled(span.content.into_owned(), span.style))
+                .collect(),
+        })
+        .collect()
+}
+
+fn completed_turn_cache_bytes(value: &CachedCompletedTurn) -> usize {
+    std::mem::size_of::<CachedCompletedTurn>()
+        + value.lines.capacity() * std::mem::size_of::<Line<'static>>()
+        + value.prompt_rows.capacity() * std::mem::size_of::<PromptRowGeometry>()
+        + value
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans.capacity() * std::mem::size_of::<Span<'static>>()
+                    + line
+                        .spans
+                        .iter()
+                        .map(|span| span.content.len())
+                        .sum::<usize>()
+            })
+            .sum::<usize>()
+}
+
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
     value
         .get(..prefix.len())
@@ -299,7 +1078,8 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+    {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -348,13 +1128,14 @@ fn breathing_dot(frame: usize) -> &'static str {
     }
 }
 
-pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, area: Rect, prepared: PreparedChatLayout) {
     let render_started = std::time::Instant::now();
 
     let inner = Block::default().borders(Borders::NONE);
     let inner_area = inner.inner(area);
     let visible_height = inner_area.height as usize;
     let wrap_width = inner_area.width as usize;
+    debug_assert_eq!(prepared.wrap_width, wrap_width.max(1));
     let selection_pending = app.current_tab().completed_turn_selection_visible_pending;
     let selection_target_idx = selection_pending
         .then_some(app.current_tab().selected_completed_turn_idx)
@@ -365,31 +1146,22 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .saturating_add(effective_offset)
         .saturating_add(32);
 
+    let PreparedChatLayout {
+        mut pending_lines,
+        message_lines,
+        completed_turns,
+        mut welcome_lines,
+        ..
+    } = prepared;
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();
 
-    let mut pending_lines = build_pending_stream_lines(app, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
 
     let mut truncated = false;
 
-    let tab = app.current_tab();
-    let permission_tool_call_id = permission_tool_call_id(tab);
-    let streaming_index = tab.streaming_agent_message_index();
-    for (idx, msg) in tab.messages.iter().enumerate().rev() {
-        if Some(idx) == streaming_index {
-            continue;
-        }
-        let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_message_lines(
-            msg,
-            is_last_message,
-            tab.turn.is_streaming(),
-            permission_tool_call_id,
-            tab.activity_frame,
-            wrap_width,
-        );
-        reversed_lines.extend(message_lines.drain(..).rev());
+    for mut lines in message_lines.into_iter().rev() {
+        reversed_lines.extend(lines.drain(..).rev());
         if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
             truncated = true;
             break;
@@ -397,26 +1169,22 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if !truncated {
-        let selected_idx = app.current_tab().selected_completed_turn_idx;
-        let pane_focused = app.pane_focused;
         let mut selection_reached = selection_target_idx.is_none();
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
-        for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
-            let is_selected = selected_idx == Some(idx);
-            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
-                turn,
-                is_selected,
-                pane_focused,
-                wrap_width,
-            );
-            let turn_height = rendered_lines_height(&turn_lines, wrap_width);
-            turn_hit_offsets.push((
-                idx,
-                rendered_rows_below,
-                turn_height,
-                turn.expanded,
-                prompt_rows,
-            ));
+        for prepared_turn in completed_turns.iter().rev() {
+            let PreparedCompletedTurn {
+                index: idx,
+                key,
+                height: turn_height,
+            } = *prepared_turn;
+            let Some(layout) = cached_completed_turn_layout(app.current_tab(), idx, key) else {
+                continue;
+            };
+            #[cfg(test)]
+            record_completed_turn_line_materialization();
+            let expanded = layout.expanded;
+            let prompt_rows = layout.prompt_rows.clone();
+            turn_hit_offsets.push((idx, rendered_rows_below, turn_height, expanded, prompt_rows));
             if selection_target_idx == Some(idx) {
                 let selected_end = rendered_rows_below.saturating_add(turn_height);
                 let viewport_height = visible_height.max(1);
@@ -432,7 +1200,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                     .saturating_add(32);
                 selection_reached = true;
             }
-            reversed_lines.extend(turn_lines.drain(..).rev());
+            reversed_lines.extend(layout.lines.iter().rev().cloned());
             rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
             if reversed_lines.len() >= requested_lines && selection_reached {
                 truncated = true;
@@ -441,21 +1209,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
-        reversed_lines.extend(welcome_lines.drain(..).rev());
-    }
+    // First-run welcome: shown once until user sends first message.
+    reversed_lines.extend(welcome_lines.drain(..).rev());
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
@@ -474,12 +1229,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let buffer = frame.buffer_mut();
     for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
-        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
+        if let Some(header_row) = header_from_top
+            .checked_sub(scroll)
+            .filter(|row| *row < visible_height)
         {
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
             if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+                .find(|column| {
+                    buffer
+                        .cell((*column, row))
+                        .is_some_and(|cell| cell.symbol() == symbol)
+                })
             {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
                     start_column: column,
@@ -626,14 +1387,32 @@ fn build_completed_turn_lines<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
-    build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
+    build_completed_turn_lines_for_mode(turn, is_selected, pane_focused, wrap_width, true)
 }
 
-fn build_completed_turn_lines_with_prompt_rows<'a>(
+fn build_completed_turn_lines_for_mode<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
+    render_agent_markdown: bool,
+) -> Vec<Line<'a>> {
+    build_completed_turn_lines_with_prompt_rows_for_mode(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        render_agent_markdown,
+    )
+    .0
+}
+
+fn build_completed_turn_lines_with_prompt_rows_for_mode<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+    render_agent_markdown: bool,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
@@ -719,7 +1498,14 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
             lines.extend(build_message_lines_with_details(
-                msg, false, false, None, 0, wrap_width, true,
+                msg,
+                false,
+                false,
+                None,
+                0,
+                wrap_width,
+                true,
+                render_agent_markdown,
             ));
         }
     }
@@ -761,10 +1547,7 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(
-        &label,
-        tab.activity_frame,
-    ));
+    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -775,39 +1558,64 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
     (!text.trim().is_empty()).then_some(Cow::Borrowed(text))
 }
 
-fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    user_visible_stream_text(tab.streaming_agent_text()?)
+fn pending_render_text(tab: &crate::app::TabSession) -> Option<&str> {
+    let text = tab.streaming_agent_text()?;
+    user_visible_stream_text(text)?;
+    Some(text)
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
-    let tab = app.current_tab();
+    build_pending_stream_lines_for_tab_with_mode(
+        app.current_tab(),
+        wrap_width,
+        app.render_agent_markdown,
+    )
+}
+
+fn build_pending_stream_lines_for_tab<'a>(
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+) -> Vec<Line<'a>> {
+    build_pending_stream_lines_for_tab_with_mode(tab, wrap_width, true)
+}
+
+fn build_pending_stream_lines_for_tab_with_mode<'a>(
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+) -> Vec<Line<'a>> {
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
-    // Typewriter smoothing: only reveal the first `reveal_chars` characters of
-    // the streaming text. The reveal cursor is advanced toward the full length
+    // Typewriter smoothing: only reveal the first `reveal_graphemes` grapheme
+    // clusters of the streaming text. The reveal cursor advances toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
     // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
     // full text is always in the ordered transcript, and finalize moves that
     // transcript to history unchanged.
     let revealed: Cow<'_, str> = {
-        let total = text.chars().count();
-        let shown = tab.reveal_chars.max(1).min(total);
+        let total = tab.streaming_grapheme_count().unwrap_or_default();
+        let shown = tab.reveal_graphemes.max(1).min(total);
         if shown >= total {
-            text
+            Cow::Borrowed(text)
         } else {
-            Cow::Owned(text.chars().take(shown).collect())
+            let end = tab
+                .streaming_prefix_byte_end(shown)
+                .unwrap_or(text.len())
+                .min(text.len());
+            Cow::Borrowed(&text[..end])
         }
     };
-    let mut lines = Vec::new();
-    push_dot_prefixed_lines(
-        &mut lines,
-        &revealed,
-        wrap_width,
-        theme::DOT_AGENT,
-        theme::AGENT_TEXT,
-    );
-    lines
+    if render_agent_markdown {
+        streaming_agent_markdown_lines(
+            tab,
+            revealed.trim_start_matches('\n'),
+            wrap_width,
+            theme::DOT_AGENT,
+        )
+    } else {
+        agent_response_lines(&revealed, wrap_width, theme::DOT_AGENT, false)
+    }
 }
 
 fn build_message_lines<'a>(
@@ -818,6 +1626,26 @@ fn build_message_lines<'a>(
     activity_frame: usize,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
+    build_message_lines_for_mode(
+        msg,
+        is_last_message,
+        agent_streaming,
+        permission_tool_call_id,
+        activity_frame,
+        wrap_width,
+        true,
+    )
+}
+
+fn build_message_lines_for_mode<'a>(
+    msg: &'a ChatMessage,
+    is_last_message: bool,
+    agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
+    wrap_width: usize,
+    render_agent_markdown: bool,
+) -> Vec<Line<'a>> {
     build_message_lines_with_details(
         msg,
         is_last_message,
@@ -826,6 +1654,7 @@ fn build_message_lines<'a>(
         activity_frame,
         wrap_width,
         false,
+        render_agent_markdown,
     )
 }
 
@@ -837,6 +1666,7 @@ fn build_message_lines_with_details<'a>(
     activity_frame: usize,
     wrap_width: usize,
     detailed_tools: bool,
+    render_agent_markdown: bool,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
@@ -845,13 +1675,12 @@ fn build_message_lines_with_details<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
-            push_dot_prefixed_lines(
-                &mut lines,
+            lines.extend(agent_response_lines(
                 text,
                 wrap_width,
                 theme::DOT_AGENT,
-                theme::AGENT_TEXT,
-            );
+                render_agent_markdown,
+            ));
             if !agent_streaming || !is_last_message {
                 lines.push(Line::default());
             }
@@ -999,7 +1828,10 @@ fn build_message_lines_with_details<'a>(
             }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(
+                t!("chat.plan_header").into_owned(),
+                theme::PLAN_STYLE,
+            )));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -1253,6 +2085,74 @@ mod tests {
     }
 
     #[test]
+    fn completed_turn_layout_cache_enforces_all_memory_bounds() {
+        let value = CachedCompletedTurn {
+            lines: vec![Line::from("cached")],
+            height: 1,
+            expanded: false,
+            prompt_rows: Vec::new(),
+        };
+        let key = |item_id| CompletedTurnCacheKey {
+            namespace: 1,
+            item_id,
+            revision: 0,
+            wrap_width: 80,
+            render_agent_markdown: true,
+            expanded: false,
+            selected: false,
+            pane_focused: true,
+        };
+        let mut cache = CompletedTurnLayoutCache::default();
+
+        cache.insert(
+            key(0),
+            value.clone(),
+            MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES + 1,
+        );
+        assert!(cache.entries.is_empty(), "oversized entries are not cached");
+
+        for item_id in 0..=MAX_COMPLETED_TURN_CACHE_ENTRIES as u64 {
+            cache.insert(key(item_id), value.clone(), 1);
+        }
+        assert_eq!(cache.entries.len(), MAX_COMPLETED_TURN_CACHE_ENTRIES);
+        assert!(
+            cache.get(key(0)).is_none(),
+            "the least-recent entry is evicted"
+        );
+
+        let mut cache = CompletedTurnLayoutCache::default();
+        for item_id in 0..32 {
+            cache.insert(
+                key(item_id),
+                value.clone(),
+                MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES,
+            );
+        }
+        assert!(cache.bytes <= MAX_COMPLETED_TURN_CACHE_BYTES);
+        assert!(cache
+            .entries
+            .iter()
+            .all(|entry| entry.bytes <= MAX_COMPLETED_TURN_CACHE_ENTRY_BYTES));
+    }
+
+    #[test]
+    fn streaming_markdown_cache_bypasses_oversized_projection() {
+        let oversized = StreamingMarkdownProjectionCache {
+            generation: 1,
+            revision: 1,
+            visible_source_len: MAX_STREAMING_MARKDOWN_CACHE_BYTES + 1,
+            stable_source_len: 0,
+            stable_lines: Vec::new(),
+            projected_lines: vec![Line::from(
+                "x".repeat(MAX_STREAMING_MARKDOWN_CACHE_BYTES + 1),
+            )],
+            has_reference_definitions: false,
+        };
+
+        assert!(bounded_streaming_markdown_cache(oversized).is_none());
+    }
+
+    #[test]
     fn notices_render_distinct_markers_and_hanging_indents() {
         let cases = [
             (NoticeKind::Success, "✓"),
@@ -1299,6 +2199,65 @@ mod tests {
         let lines = vec![Line::from("aaa aaa aaa aaa")];
 
         assert_eq!(rendered_lines_height(&lines, 5), 4);
+    }
+
+    #[test]
+    fn agent_message_renders_multiline_markdown_with_theme_relative_styles() {
+        let message =
+            ChatMessage::Agent("# Heading\n\nFirst **bold** line\n\nSecond paragraph".into());
+
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+
+        assert_eq!(line_text(&lines[0]), "● Heading");
+        assert!(lines
+            .iter()
+            .any(|line| line_text(line) == "  Second paragraph"));
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold"
+                && span.style.fg == Some(Color::Reset)
+                && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
+    }
+
+    #[test]
+    fn agent_markdown_can_be_disabled_for_finalized_and_pending_responses() {
+        reset_streaming_markdown_projection_cache();
+        reset_streaming_markdown_parsed_bytes();
+        let raw = "# Heading\n\nFirst **bold** line";
+        let message = ChatMessage::Agent(raw.into());
+
+        let finalized = build_message_lines_for_mode(
+            &message, false, false, None, 0, 80, false,
+        );
+        assert_eq!(line_text(&finalized[0]), "● # Heading");
+        assert!(finalized
+            .iter()
+            .any(|line| line_text(line) == "  First **bold** line"));
+        assert!(matches!(&message, ChatMessage::Agent(text) if text == raw));
+
+        let pending_tab = streaming_tab(raw, raw.chars().count());
+        let pending = build_pending_stream_lines_for_tab_with_mode(&pending_tab, 80, false);
+        assert_eq!(line_text(&pending[0]), "● # Heading");
+        assert!(pending
+            .iter()
+            .any(|line| line_text(line) == "  First **bold** line"));
+
+        let completed = CompletedTurn {
+            prompt: "Summarize the result".into(),
+            details: vec![message],
+            expanded: true,
+            trailing_marker: None,
+        };
+        let history = build_completed_turn_lines_for_mode(&completed, false, true, 80, false);
+        assert!(history
+            .iter()
+            .any(|line| line_text(line) == "● # Heading"));
+        assert!(matches!(&completed.details[0], ChatMessage::Agent(text) if text == raw));
+        assert_eq!(
+            streaming_markdown_parsed_bytes(),
+            0,
+            "raw projection must bypass the Markdown parser and cache",
+        );
     }
 
     #[test]
@@ -1414,7 +2373,10 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+        assert_eq!(
+            line.spans.get(3).map(|span| span.style),
+            expected_detail_style
+        );
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1609,7 +2571,9 @@ mod tests {
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
         assert_eq!(lines[0], "    │ …");
-        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+        assert!(lines
+            .last()
+            .is_some_and(|line| line.ends_with("object-199.o")));
     }
 
     #[test]
@@ -1725,7 +2689,7 @@ mod tests {
         assert_eq!(user_visible_stream_text("   \n  "), None);
     }
 
-    fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
+    fn streaming_tab(buf: &str, reveal_graphemes: usize) -> crate::app::TabSession {
         let mut tab = crate::app::TabSession::default();
         tab.turn = crate::app::TurnState::Streaming {
             prompt: crate::app::SubmittedPrompt {
@@ -1737,10 +2701,215 @@ mod tests {
             },
         };
         if !buf.is_empty() {
-            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+            tab.append_agent_chunk(buf);
         }
-        tab.reveal_chars = reveal_chars;
+        tab.reveal_graphemes = reveal_graphemes;
         tab
+    }
+
+    #[test]
+    fn pending_stream_renders_markdown_and_preserves_partial_syntax() {
+        let complete = "# Heading\n\nStreaming **bold** text";
+        let complete_tab = streaming_tab(complete, complete.chars().count());
+
+        let lines = build_pending_stream_lines_for_tab(&complete_tab, 80);
+        assert_eq!(line_text(&lines[0]), "● Heading");
+        assert!(lines.iter().flat_map(|line| &line.spans).any(|span| {
+            span.content == "bold" && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
+
+        let partial = "# Heading\n\nStreaming **bo";
+        let partial_tab = streaming_tab(partial, partial.chars().count());
+        let partial_text = build_pending_stream_lines_for_tab(&partial_tab, 80)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(partial_text.contains("bo"));
+    }
+
+    #[test]
+    fn pending_stream_reveal_does_not_split_grapheme_clusters() {
+        let text = "👩‍💻 ready";
+        let tab = streaming_tab(text, 1);
+
+        let rendered = build_pending_stream_lines_for_tab(&tab, 80)
+            .iter()
+            .map(line_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(rendered, "● 👩‍💻");
+    }
+
+    #[test]
+    fn canonical_markdown_projection_exposes_top_level_source_ranges() {
+        let source = "# Heading\n\nParagraph\n\n- one\n- two";
+        let options = MarkdownOptions::new(AgentMarkdownStyleSheet);
+
+        let projection = tui_markdown::from_str_with_options_and_source_map(source, &options);
+
+        assert_eq!(projection.blocks.len(), 3);
+        assert_eq!(projection.blocks[0].source, 0..10);
+        assert_eq!(projection.blocks[1].source, 11..21);
+        assert_eq!(projection.blocks[2].source, 22..33);
+        assert_eq!(projection.last_top_level_block_start, Some(22));
+        assert_eq!(projection.blocks[0].lines, 0..1);
+        assert!(projection
+            .blocks
+            .iter()
+            .all(|block| block.lines.end <= projection.text.lines.len()));
+        assert_eq!(
+            projection.text.to_string(),
+            tui_markdown::from_str_with_options(source, &options).to_string()
+        );
+
+        let references = "[docs]: https://example.com\n\nRead [docs].";
+        let reference_projection =
+            tui_markdown::from_str_with_options_and_source_map(references, &options);
+        assert!(reference_projection.has_reference_definitions);
+        assert_eq!(reference_projection.blocks.len(), 1);
+        assert_eq!(
+            reference_projection.last_top_level_block_start,
+            references.find("Read")
+        );
+
+        for block_source in [
+            "| A | B |\n|---|---|\n| 1 | 2 |",
+            "```rust\nfn main() {}\n```",
+            "<div>html</div>",
+            "---",
+        ] {
+            let block_projection =
+                tui_markdown::from_str_with_options_and_source_map(block_source, &options);
+            assert_eq!(block_projection.blocks.len(), 1, "{block_source:?}");
+            assert_eq!(
+                block_projection.blocks[0].source,
+                0..block_source.len(),
+                "{block_source:?}",
+            );
+            assert_eq!(
+                block_projection.blocks[0].lines.start, 0,
+                "{block_source:?}"
+            );
+            assert!(
+                block_projection.blocks[0].lines.end <= block_projection.text.lines.len(),
+                "{block_source:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn streaming_markdown_reuses_stable_blocks_and_matches_cold_projection() {
+        reset_streaming_markdown_projection_cache();
+        reset_streaming_markdown_parsed_bytes();
+        let mut tab = streaming_tab("", 0);
+        let chunks = [
+            "# Heading\n\nFirst paragraph.",
+            "\n\nSecond **bo",
+            "ld** paragraph.",
+        ];
+        let mut cold_bytes = 0usize;
+
+        for chunk in chunks {
+            tab.append_agent_chunk(chunk);
+            tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+            let source = tab.streaming_agent_text().expect("streaming source");
+            cold_bytes += source.len();
+
+            let incremental = build_pending_stream_lines_for_tab(&tab, 80);
+            let cold = agent_markdown_lines(source, 80, theme::DOT_AGENT);
+            assert_eq!(incremental, cold, "growth point source: {source:?}");
+        }
+
+        assert!(
+            streaming_markdown_parsed_bytes() < cold_bytes,
+            "stable blocks must avoid parsing every complete prefix again",
+        );
+
+        let completed_source = tab.streaming_agent_text().expect("completed source");
+        let pending = build_pending_stream_lines_for_tab(&tab, 80);
+        let parsed_before_same_prefix = streaming_markdown_parsed_bytes();
+        assert_eq!(build_pending_stream_lines_for_tab(&tab, 80), pending);
+        assert_eq!(streaming_markdown_parsed_bytes(), parsed_before_same_prefix);
+        let completed_message = ChatMessage::Agent(completed_source.to_string());
+        let finalized = build_message_lines(&completed_message, false, false, None, 0, 80);
+        assert_eq!(pending, finalized[..finalized.len() - 1]);
+
+        let before_reference = streaming_markdown_full_recompute_count();
+        tab.append_agent_chunk("\n\n[docs]: https://example.com");
+        tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+        let source = tab.streaming_agent_text().expect("reference source");
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&tab, 80),
+            agent_markdown_lines(source, 80, theme::DOT_AGENT),
+        );
+        assert!(streaming_markdown_full_recompute_count() > before_reference);
+
+        let after_reference = streaming_markdown_full_recompute_count();
+        tab.append_agent_chunk("\n\nAfter reference.");
+        tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+        let source = tab.streaming_agent_text().expect("post-reference source");
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&tab, 80),
+            agent_markdown_lines(source, 80, theme::DOT_AGENT),
+        );
+        assert!(streaming_markdown_full_recompute_count() > after_reference);
+    }
+
+    #[test]
+    fn streaming_markdown_matches_cold_projection_across_chunk_boundaries() {
+        let corpora = [
+            "# Heading\n\nParagraph without trailing newline",
+            "- alpha\n- beta\n  - nested\n\nAfter list.",
+            "| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter table.",
+            "Before code.\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```",
+            "CRLF heading\r\n============\r\n\r\nCRLF paragraph.",
+            "Unicode 👩‍💻 and e\u{301}.\n\nSecond paragraph.",
+            "Read [docs].\n\n[docs]: https://example.com\n\nAfter reference.",
+        ];
+
+        for source in corpora {
+            reset_streaming_markdown_projection_cache();
+            let mut tab = streaming_tab("", 0);
+            let mut chunk = String::new();
+            let graphemes = source.graphemes(true).collect::<Vec<_>>();
+            for (index, grapheme) in graphemes.iter().enumerate() {
+                chunk.push_str(grapheme);
+                if index % 3 != 2 && index + 1 != graphemes.len() {
+                    continue;
+                }
+                tab.append_agent_chunk(&chunk);
+                chunk.clear();
+                tab.reveal_graphemes = tab.streaming_grapheme_count().unwrap_or_default();
+                let visible = tab.streaming_agent_text().expect("streaming source");
+                assert_eq!(
+                    build_pending_stream_lines_for_tab(&tab, 48),
+                    agent_markdown_lines(visible, 48, theme::DOT_AGENT),
+                    "source growth: {visible:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_markdown_cache_isolates_equal_length_sources() {
+        reset_streaming_markdown_projection_cache();
+        let first = streaming_tab("# Alpha", 7);
+        let second = streaming_tab("# Bravo", 7);
+
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&first, 80),
+            agent_markdown_lines("# Alpha", 80, theme::DOT_AGENT),
+        );
+        assert_eq!(
+            build_pending_stream_lines_for_tab(&second, 80),
+            agent_markdown_lines("# Bravo", 80, theme::DOT_AGENT),
+        );
+        assert_ne!(
+            first.streaming_source_generation(),
+            second.streaming_source_generation(),
+        );
     }
 
     #[test]
@@ -1758,10 +2927,7 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(
-            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
-            "●"
-        );
+        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
     }
 
     #[test]
@@ -1793,8 +2959,7 @@ mod tests {
             locations: Vec::new(),
         };
 
-        let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1879,8 +3044,9 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String =
-            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let over: String = std::iter::repeat('é')
+            .take(MAX_RENDER_LINE_CHARS + 10)
+            .collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1891,7 +3057,13 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "\n\nHello",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1899,9 +3071,18 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "A\n\nB",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["● A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
@@ -1916,7 +3097,10 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[0]).starts_with("● "),
+            "first row gets the dot"
+        );
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
@@ -1935,7 +3119,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> line one".to_string(), "  line two".to_string()]
+        );
     }
 
     #[test]
@@ -1951,7 +3138,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]

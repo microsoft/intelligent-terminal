@@ -122,6 +122,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
+        render_agent_markdown: !cli.no_agent_markdown,
         setup: cli.setup,
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,

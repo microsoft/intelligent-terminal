@@ -554,6 +554,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "diff",
+          "version": "0.1.13"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "digest",
           "version": "0.10.7"
         }
@@ -833,6 +842,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "futures-timer",
+          "version": "3.0.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "futures-util",
           "version": "0.3.32"
         }
@@ -844,6 +862,15 @@
         "cargo": {
           "name": "generic-array",
           "version": "0.14.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "getopts",
+          "version": "0.2.24"
         }
       }
     },
@@ -1015,6 +1042,15 @@
         "cargo": {
           "name": "itertools",
           "version": "0.14.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "itertools",
+          "version": "0.15.0"
         }
       }
     },
@@ -1445,8 +1481,44 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "pretty_assertions",
+          "version": "1.4.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "proc-macro-crate",
+          "version": "3.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "proc-macro2",
           "version": "1.0.106"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pulldown-cmark",
+          "version": "0.13.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pulldown-cmark-escape",
+          "version": "0.11.0"
         }
       }
     },
@@ -1582,6 +1654,33 @@
         "cargo": {
           "name": "regex-syntax",
           "version": "0.8.10"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "relative-path",
+          "version": "1.9.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rstest",
+          "version": "0.26.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rstest_macros",
+          "version": "0.26.1"
         }
       }
     },
@@ -2120,8 +2219,35 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "toml_datetime",
+          "version": "1.1.1+spec-1.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "toml_edit",
           "version": "0.22.27"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml_edit",
+          "version": "0.25.13+spec-1.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "toml_parser",
+          "version": "1.1.3+spec-1.1.0"
         }
       }
     },
@@ -2219,6 +2345,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "tui-markdown",
+          "version": "0.3.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "typenum",
           "version": "1.19.0"
         }
@@ -2230,6 +2365,15 @@
         "cargo": {
           "name": "ucd-trie",
           "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicase",
+          "version": "2.9.0"
         }
       }
     },
@@ -2471,8 +2615,26 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "winnow",
+          "version": "1.0.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "winsafe",
           "version": "0.0.19"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "yansi",
+          "version": "1.0.1"
         }
       }
     },

@@ -3651,6 +3651,41 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
 }
 
 #[test]
+fn markdown_rendering_hot_update_preserves_helper_and_session_identity() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("tab-owner".into());
+    app.current_agent_id = "copilot".into();
+    app.session_id = "session-1".into();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::Agent("# Raw **response**".into()));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({ "render_agent_markdown": false }),
+    });
+
+    assert!(!app.render_agent_markdown);
+    assert_eq!(app.owner_tab_id.as_deref(), Some("tab-owner"));
+    assert_eq!(app.current_agent_id, "copilot");
+    assert_eq!(app.session_id, "session-1");
+    assert!(matches!(
+        &app.current_tab().messages[0],
+        ChatMessage::Agent(text) if text == "# Raw **response**"
+    ));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({ "render_agent_markdown": true }),
+    });
+    assert!(app.render_agent_markdown);
+}
+
+#[test]
 fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
     let mut app = test_app();
     app.current_agent_id = "copilot".into();
@@ -7480,7 +7515,7 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         session_id: DEFAULT_TAB_ID.into(),
         text: "I will update the file.".into(),
     });
-    app.current_tab_mut().reveal_chars = 12;
+    app.current_tab_mut().reveal_graphemes = 12;
     app.handle_event(AppEvent::ToolCall {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool-1".into(),
@@ -7500,7 +7535,7 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         text: "The update is complete.".into(),
     });
     assert_eq!(
-        app.current_tab().reveal_chars,
+        app.current_tab().reveal_graphemes,
         0,
         "a new prose segment after a tool must start its own reveal cursor"
     );
@@ -9496,7 +9531,7 @@ fn completed_turn_prompt_rows_expose_state_aware_action_links() {
             && link.end_column > triangle.start_column
     }));
 
-    app.current_tab_mut().completed_turns[0].expanded = false;
+    assert!(app.current_tab_mut().set_completed_turn_expanded(0, false));
     render_to_text(&mut app, 80, 16);
     assert_eq!(app.completed_turn_action_links.len(), 1);
     assert_eq!(
@@ -9920,9 +9955,9 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
         .push(ChatMessage::User("hello".into()));
 
     app.state = ConnectionState::Disconnected;
-    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let without_activity = crate::ui::chat::estimated_block_height(&mut app, 80);
     app.state = ConnectionState::Connecting("Starting agent".into());
-    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let with_activity = crate::ui::chat::estimated_block_height(&mut app, 80);
 
     assert_eq!(with_activity, without_activity);
     assert!(
@@ -10182,6 +10217,60 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
         !app.current_tab().should_show_thinking(),
         "revealing response text remains the visible progress indicator"
     );
+}
+
+#[test]
+fn reveal_backlog_and_cursor_count_extended_grapheme_clusters() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "👩‍💻x");
+
+    assert_eq!(App::tab_visible_stream_len(app.current_tab()), Some(2));
+    app.current_tab_mut().reveal_graphemes = 1;
+    assert!(app.has_reveal_backlog());
+
+    app.advance_reveal();
+    assert_eq!(app.current_tab().reveal_graphemes, 2);
+    assert!(!app.has_reveal_backlog());
+}
+
+#[test]
+fn streaming_append_lineage_repairs_cross_chunk_grapheme_boundaries() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    crate::app::tab_state::reset_streaming_grapheme_fallback_scan_count();
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "👩");
+    let generation = app.current_tab().streaming_source_generation();
+    let first_revision = app.current_tab().streaming_source_revision();
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(1));
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "‍💻x");
+
+    assert_eq!(app.current_tab().streaming_source_generation(), generation);
+    assert!(app.current_tab().streaming_source_revision() > first_revision);
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(2));
+    assert_eq!(
+        app.current_tab().streaming_prefix_byte_end(1),
+        Some("👩‍💻".len())
+    );
+    assert_eq!(
+        crate::app::tab_state::streaming_grapheme_fallback_scan_count(),
+        0,
+        "normal append lineage must not rescan the full stream prefix",
+    );
+
+    let replaced_generation = app.current_tab().streaming_source_generation();
+    if let Some(ChatMessage::Agent(text)) = app.current_tab_mut().messages.last_mut() {
+        *text = "e\u{301}".into();
+    }
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "x");
+    assert_ne!(
+        app.current_tab().streaming_source_generation(),
+        replaced_generation,
+        "source replacement must renew append lineage",
+    );
+    assert_eq!(app.current_tab().streaming_grapheme_count(), Some(2));
+    assert_eq!(app.current_tab().streaming_prefix_byte_end(1), Some(3));
 }
 
 #[test]
@@ -11625,15 +11714,61 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
 
     crate::ui::chat::reset_completed_turn_line_build_count();
     let after = render_to_text(&mut app, 80, 16);
-    assert_eq!(
-        crate::ui::chat::completed_turn_line_build_count(),
-        app.current_tab().completed_turns.len() * 2,
-        "selection-follow rendering must not add a third completed-turn layout pass",
+    let first_frame_builds = crate::ui::chat::completed_turn_line_build_count();
+    assert!(
+        first_frame_builds > 0 && first_frame_builds <= app.current_tab().completed_turns.len(),
+        "a frame may build each dirty completed turn at most once; built {first_frame_builds}",
     );
     assert!(
         after.contains("SELECT_SCROLL_TURN_00"),
         "the viewport must follow keyboard selection to the oldest completed turn; rendered:\n{after}",
     );
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let retained = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        0,
+        "an identical second frame must reuse retained completed-turn layouts",
+    );
+    assert_eq!(retained, after);
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let collapsed = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "collapsing one completed turn must invalidate only that item",
+    );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
+    assert_ne!(collapsed, retained);
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let expanded = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "expanding one completed turn must invalidate only that item",
+    );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
+    assert!(expanded.contains("ACK_SELECT_SCROLL_TURN_00"));
+
+    assert!(app
+        .current_tab_mut()
+        .set_last_completed_turn_trailing_marker("CACHED_MARKER".into()));
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let _ = render_to_text(&mut app, 80, 16);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "updating one trailing marker must invalidate only that item",
+    );
+    assert_eq!(crate::ui::chat::completed_turn_descriptor_lookup_count(), 1);
 
     for _ in 0..11 {
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -11650,6 +11785,164 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
         "a later manual scroll must not be overridden after selection visibility is consumed",
     );
     assert!(!manually_scrolled.contains("SELECT_SCROLL_TURN_11"));
+}
+
+#[test]
+fn clearing_completed_turns_renews_retained_layout_identity() {
+    let turn = CompletedTurn {
+        prompt: "same prompt".into(),
+        details: vec![ChatMessage::Agent("same response".into())],
+        expanded: true,
+        trailing_marker: None,
+    };
+    let mut tab = TabSession::default();
+    tab.completed_turns.push(turn.clone());
+    let (namespace, before) = tab.completed_turn_layout_metadata();
+
+    tab.clear_completed_turns();
+    tab.completed_turns.push(turn);
+    let (same_namespace, after) = tab.completed_turn_layout_metadata();
+
+    assert_ne!(same_namespace, namespace);
+    assert_ne!(after[0].0, before[0].0);
+}
+
+#[test]
+fn completed_turn_layout_change_log_wrap_and_overflow_force_safe_rebuilds() {
+    let mut tab = TabSession::default();
+    tab.completed_turns.push(CompletedTurn {
+        prompt: "turn".into(),
+        details: Vec::new(),
+        expanded: false,
+        trailing_marker: None,
+    });
+    let (namespace, _) = tab.completed_turn_layout_metadata();
+
+    tab.completed_turn_layout_generation = u64::MAX;
+    tab.mark_completed_turn_layout_dirty(0);
+    let wrapped = tab.completed_turn_layout_changes_since(Some((namespace, u64::MAX)));
+    assert_ne!(wrapped.namespace, namespace);
+    assert!(wrapped.dirty_indices.is_none());
+
+    let baseline = (wrapped.namespace, wrapped.generation);
+    for _ in 0..=2048 {
+        tab.mark_completed_turn_layout_dirty(0);
+    }
+    let overflowed = tab.completed_turn_layout_changes_since(Some(baseline));
+    assert!(
+        overflowed.dirty_indices.is_none(),
+        "falling behind the bounded change log must force a full rebuild",
+    );
+}
+
+#[test]
+fn render_chat_materializes_only_viewport_plus_retained_margin_turns() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..200 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("RETAINED_VIEWPORT_TURN_{index:03}"),
+            details: vec![ChatMessage::Agent(format!("ACK_{index:03}"))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    crate::ui::chat::reset_completed_turn_line_materialization_count();
+    let rendered = render_to_text(&mut app, 80, 16);
+    let materialized = crate::ui::chat::completed_turn_line_materialization_count();
+
+    assert!(rendered.contains("RETAINED_VIEWPORT_TURN_199"));
+    assert!(
+        (1..=48).contains(&materialized),
+        "a 16-row viewport plus 32 retained rows should materialize at most 48 turns; materialized {materialized}",
+    );
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let retained = render_to_text(&mut app, 80, 16);
+    assert_eq!(retained, rendered);
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        0,
+        "an unchanged bottom frame must reuse the retained height index without scanning history",
+    );
+
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "RETAINED_VIEWPORT_TURN_200".into(),
+        details: vec![ChatMessage::Agent("ACK_200".into())],
+        expanded: false,
+        trailing_marker: None,
+    });
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    let appended = render_to_text(&mut app, 80, 16);
+    assert!(appended.contains("RETAINED_VIEWPORT_TURN_200"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        1,
+        "appending one turn must update only the new height-index item",
+    );
+}
+
+#[test]
+fn render_chat_retains_height_indices_across_tab_switches() {
+    crate::ui::chat::reset_retained_completed_turn_indices();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for tab_id in ["RETAINED-TAB-A", "RETAINED-TAB-B"] {
+        for index in 0..100 {
+            app.tab_mut(tab_id).completed_turns.push(CompletedTurn {
+                prompt: format!("{tab_id}_TURN_{index:03}"),
+                details: Vec::new(),
+                expanded: false,
+                trailing_marker: None,
+            });
+        }
+    }
+
+    app.tab_id = Some("RETAINED-TAB-A".into());
+    render_to_text(&mut app, 80, 16);
+    app.tab_id = Some("RETAINED-TAB-B".into());
+    render_to_text(&mut app, 80, 16);
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    app.tab_id = Some("RETAINED-TAB-A".into());
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("RETAINED-TAB-A_TURN_099"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        0,
+        "switching back to an unchanged tab must reuse its retained height index",
+    );
+}
+
+#[test]
+fn retained_completed_turn_height_indices_are_bounded() {
+    crate::ui::chat::reset_retained_completed_turn_indices();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    for tab_index in 0..17 {
+        let tab_id = format!("RETAINED-LRU-{tab_index:02}");
+        app.tab_mut(&tab_id).completed_turns.push(CompletedTurn {
+            prompt: tab_id.clone(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_id = Some(tab_id);
+        render_to_text(&mut app, 80, 16);
+    }
+    assert_eq!(crate::ui::chat::retained_completed_turn_index_count(), 16);
+
+    crate::ui::chat::reset_completed_turn_descriptor_lookup_count();
+    app.tab_id = Some("RETAINED-LRU-00".into());
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("RETAINED-LRU-00"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_descriptor_lookup_count(),
+        1,
+        "an evicted tab must rebuild safely when revisited",
+    );
 }
 
 #[test]

@@ -85,6 +85,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
+        TEST_METHOD(RenderAgentMarkdownRoundtripsAndDefaultsOn);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
 
@@ -617,6 +618,15 @@ namespace SettingsModelUnitTests
 
         const auto defaulted = MakeSettings({});
         VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
+    }
+
+    void CustomAgentAndPolicyTests::RenderAgentMarkdownRoundtripsAndDefaultsOn()
+    {
+        const auto disabled = MakeSettings(R"("renderAgentMarkdown": false)");
+        VERIFY_IS_FALSE(disabled->GlobalSettings().RenderAgentMarkdown());
+
+        const auto defaulted = MakeSettings({});
+        VERIFY_IS_TRUE(defaulted->GlobalSettings().RenderAgentMarkdown());
     }
 
     void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()

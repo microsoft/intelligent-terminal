@@ -233,10 +233,9 @@ impl App {
             return;
         };
         let tab = self.current_tab_mut();
-        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+        if !tab.set_completed_turn_expanded(click.turn_index, click.previous_expanded) {
             return;
-        };
-        turn.expanded = click.previous_expanded;
+        }
         tab.selected_completed_turn_idx = click.previous_selected_index;
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
@@ -2009,6 +2008,19 @@ impl App {
                         self.autofix_enabled = enabled;
                     }
 
+                    if let Some(enabled) = params
+                        .get("render_agent_markdown")
+                        .and_then(|value| value.as_bool())
+                    {
+                        tracing::info!(
+                            target: "markdown",
+                            old = self.render_agent_markdown,
+                            new = enabled,
+                            "agent Markdown rendering hot-reloaded from settings change",
+                        );
+                        self.render_agent_markdown = enabled;
+                    }
+
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
                     if params.get("delegate_agent").is_some()
@@ -2321,7 +2333,7 @@ impl App {
                         tab.clear_chat_history();
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
-                        tab.completed_turns.clear();
+                        tab.clear_completed_turns();
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

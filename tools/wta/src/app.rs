@@ -1104,6 +1104,8 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    /// Whether agent responses are projected as Markdown instead of raw text.
+    pub render_agent_markdown: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1399,6 +1401,7 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            render_agent_markdown: true,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -1442,6 +1445,10 @@ impl App {
         >,
     ) {
         self.proposal_channels = proposal_channels;
+    }
+
+    pub fn set_render_agent_markdown(&mut self, render_agent_markdown: bool) {
+        self.render_agent_markdown = render_agent_markdown;
     }
 
     /// Stash pipe-mode launch parameters on App so that a post-FRE-login
@@ -4700,17 +4707,17 @@ impl App {
         }
     }
 
-    /// Number of user-visible characters in the active assistant segment.
+    /// Number of user-visible grapheme clusters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
-            .map(|text| text.chars().count())
+        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)?;
+        tab.streaming_grapheme_count()
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal
     /// cursor hasn't caught up to yet. Used to gate `RevealTick` redraws.
     fn has_reveal_backlog(&self) -> bool {
         let tab = self.current_tab();
-        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
+        matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_graphemes < len)
     }
 
     /// Advance the typewriter reveal cursor on every streaming tab. The step
@@ -4731,15 +4738,15 @@ impl App {
             let Some(len) = Self::tab_visible_stream_len(tab) else {
                 continue;
             };
-            if tab.reveal_chars >= len {
+            if tab.reveal_graphemes >= len {
                 // Clamp down if the visible text shrank (e.g. a fenced JSON
                 // block replaced the streamed prose).
-                tab.reveal_chars = len;
+                tab.reveal_graphemes = len;
                 continue;
             }
-            let backlog = len - tab.reveal_chars;
+            let backlog = len - tab.reveal_graphemes;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
-            tab.reveal_chars = (tab.reveal_chars + step).min(len);
+            tab.reveal_graphemes = (tab.reveal_graphemes + step).min(len);
         }
     }
 }
@@ -5151,7 +5158,7 @@ impl App {
     fn cmd_clear(&mut self) {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.scroll_to_bottom();
     }
 
@@ -5207,7 +5214,7 @@ impl App {
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -5383,7 +5390,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
@@ -5772,7 +5779,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
