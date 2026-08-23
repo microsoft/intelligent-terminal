@@ -91,7 +91,7 @@
 // Public surface for `wta hooks <action>` (Track 2 / #18)
 // -------------------------------------------------------
 //
-// In addition to the install entry point [`ensure_installed`], this module
+// In addition to the install entry point [`apply_install_plan`], this module
 // exposes two read-only / best-effort APIs the Settings UI and
 // `Verify-AgentHooks.ps1` consume:
 //
@@ -773,9 +773,11 @@ fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
     }
 }
 
-/// Run the installer against a specific home directory. Split out from
-/// [`ensure_installed`] so tests can drive it with an isolated tempdir
-/// without mutating `USERPROFILE`/`HOME` for the whole process.
+/// Run every per-CLI install flow against a specific home directory.
+///
+/// Test-only: it exists so tests can drive the installers against an isolated
+/// tempdir without mutating `USERPROFILE`/`HOME` for the whole process.
+#[cfg(test)]
 fn ensure_installed_in(home: &Path) {
     install_for_claude(home);
     install_for_copilot(home);
