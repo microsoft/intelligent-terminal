@@ -221,6 +221,12 @@ impl ClientLink {
     pub fn shutdown(&self) {
         self.shutdown.signal();
     }
+
+    /// Whether the transport latch has already observed peer death or an
+    /// intentional shutdown.
+    pub fn transport_ended(&self) -> bool {
+        self.shutdown.dead.load(std::sync::atomic::Ordering::Acquire)
+    }
 }
 
 /// Agent-side connection handle (master → one helper). Forwards server→client
@@ -811,8 +817,10 @@ mod transport_death_tests {
             shutdown: death.clone(),
         };
 
+        assert!(!link.transport_ended());
         link.shutdown();
 
+        assert!(link.transport_ended());
         assert!(is_dead(&death));
     }
 }

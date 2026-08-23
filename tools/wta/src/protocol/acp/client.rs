@@ -165,15 +165,32 @@ pub enum AcpClientExit {
 struct ClientTransportGuard {
     conn: conn::ClientLink,
     suppress_transport_error: Arc<AtomicBool>,
+    event_tx: mpsc::UnboundedSender<AppEvent>,
 }
 
 impl Drop for ClientTransportGuard {
     fn drop(&mut self) {
-        // Direct setup failures are reported by this task's caller. Close the
-        // separately owned connection task without a second TransportLost.
-        self.suppress_transport_error.store(true, Ordering::Release);
+        // A master can disappear while a setup request is in flight. In that
+        // race the request fails and unwinds this guard before the separately
+        // scheduled I/O task reports EOF. Claim and report the already-tripped
+        // transport latch here so the retained helper still reconnects.
+        let report_master_disconnect = claim_unexpected_transport_loss(
+            self.conn.transport_ended(),
+            &self.suppress_transport_error,
+        );
         self.conn.shutdown();
+        if report_master_disconnect {
+            let _ = self.event_tx.send(AppEvent::MasterDisconnected);
+        }
     }
+}
+
+fn claim_unexpected_transport_loss(
+    transport_ended: bool,
+    suppress_transport_error: &AtomicBool,
+) -> bool {
+    let already_suppressed = suppress_transport_error.swap(true, Ordering::AcqRel);
+    transport_ended && !already_suppressed
 }
 
 #[derive(Debug, Clone)]
@@ -2632,6 +2649,7 @@ pub async fn run_acp_client_over_pipe(
     let _transport_guard = ClientTransportGuard {
         conn: conn.clone(),
         suppress_transport_error: Arc::clone(&intentional_shutdown),
+        event_tx: event_tx.clone(),
     };
     let io_intentional_shutdown = Arc::clone(&intentional_shutdown);
     let io_probe = startup_probe.clone();
@@ -2654,10 +2672,10 @@ pub async fn run_acp_client_over_pipe(
                 tracing::warn!(target: "helper", "ACP I/O loop to master ended — pipe closed (master gone)");
             }
         }
-        if !io_intentional_shutdown.load(Ordering::Acquire) {
-            // An unexpected transport loss terminates the helper so Terminal
-            // can recover its pane. An Agent rebind closes this transport
-            // intentionally and reconnects in the existing helper process.
+        if claim_unexpected_transport_loss(true, &io_intentional_shutdown) {
+            // An unexpected transport loss reconnects the retained helper over
+            // the stable master pipe. Agent rebind owns its intentional
+            // transport retirement and reconnect sequence separately.
             let _ = io_event_tx.send(AppEvent::MasterDisconnected);
         }
     }));
@@ -4525,10 +4543,11 @@ mod tests {
     use super::acp;
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
-        complete_prompt_request, inject_wta_pane_meta, is_redundant_startup_model_error,
-        post_login_authenticate_error, session_mcp_tool_from_title, stop_prompt_tasks,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label, ClientState,
-        PromptTimingState, PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        claim_unexpected_transport_loss, complete_prompt_request, inject_wta_pane_meta,
+        is_redundant_startup_model_error, post_login_authenticate_error,
+        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4536,6 +4555,22 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn unexpected_transport_loss_is_claimed_exactly_once() {
+        let claimed = std::sync::atomic::AtomicBool::new(false);
+
+        assert!(claim_unexpected_transport_loss(true, &claimed));
+        assert!(!claim_unexpected_transport_loss(true, &claimed));
+    }
+
+    #[test]
+    fn direct_setup_failure_suppresses_guard_induced_transport_loss() {
+        let claimed = std::sync::atomic::AtomicBool::new(false);
+
+        assert!(!claim_unexpected_transport_loss(false, &claimed));
+        assert!(!claim_unexpected_transport_loss(true, &claimed));
+    }
 
     #[test]
     fn stop_prompt_tasks_aborts_pre_prompt_work_and_clears_tracking() {

@@ -5785,6 +5785,64 @@ fn master_disconnect_without_binding_terminates_helper() {
     assert!(app.should_quit);
 }
 
+#[test]
+fn replacement_master_recovers_helper_failed_during_session_retirement() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.state = ConnectionState::Failed("old master retired the startup session".into());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "normal-restart" }),
+    });
+
+    assert!(app.pending_acp_start);
+    assert!(matches!(app.state, ConnectionState::Connecting(_)));
+    assert!(matches!(&app.auth_recovery_state, AuthRecoveryState::Idle));
+}
+
+#[test]
+fn replacement_master_does_not_duplicate_connected_helper() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.state = ConnectionState::Connected;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "normal-restart" }),
+    });
+
+    assert!(!app.pending_acp_start);
+}
+
 /// A one-off protocol error ends the turn while preserving the live session.
 #[test]
 fn protocol_error_ends_turn_without_failing_connection() {

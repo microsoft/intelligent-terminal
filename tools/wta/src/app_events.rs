@@ -1870,17 +1870,27 @@ impl App {
                         .get("operation_id")
                         .and_then(|value| value.as_str())
                         .unwrap_or("");
-                    if !matches!(
+                    if request_id.is_empty() {
+                        return;
+                    }
+                    let completes_auth_recovery = matches!(
                         &self.auth_recovery_state,
                         AuthRecoveryState::WaitingForMaster {
                             request_id: expected
                         } if expected == request_id
-                    ) {
+                    );
+                    // Session retirement can fail an in-flight startup before
+                    // the old master exits, so no later transport-loss event
+                    // remains to trigger the retained helper's reconnect.
+                    let recovers_retirement_failure =
+                        matches!(&self.auth_recovery_state, AuthRecoveryState::Idle)
+                            && matches!(&self.state, ConnectionState::Failed(_));
+                    if !completes_auth_recovery && !recovers_retirement_failure {
                         return;
                     }
                     if self.deferred_acp.is_none() {
                         tracing::warn!(
-                            target: "auth_recovery",
+                            target: "helper",
                             %request_id,
                             "replacement master is ready but helper binding is unavailable"
                         );
@@ -1888,11 +1898,13 @@ impl App {
                     }
 
                     tracing::info!(
-                        target: "auth_recovery",
+                        target: "helper",
                         %request_id,
                         "replacement master is ready; reconnecting retained helper"
                     );
-                    self.auth_recovery_state = AuthRecoveryState::Connecting;
+                    if completes_auth_recovery {
+                        self.auth_recovery_state = AuthRecoveryState::Connecting;
+                    }
                     self.reset_agent_scoped_state();
                     self.pending_acp_start = true;
                     return;
