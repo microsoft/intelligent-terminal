@@ -230,6 +230,12 @@ HWND WindowEmperor::GetMainWindow() const noexcept
     return _window.get();
 }
 
+std::vector<std::shared_ptr<::AppHost>> WindowEmperor::GetWindows() const
+{
+    std::lock_guard lock{ _windowsMutex };
+    return _windows;
+}
+
 AppHost* WindowEmperor::GetWindowById(uint64_t id) const noexcept
 {
     _assertIsMainThread();
@@ -282,14 +288,18 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     host->Initialize();
 
     _windowCount += 1;
-    _windows.emplace_back(std::move(host));
+    auto* const addedHost = host.get();
+    {
+        std::lock_guard lock{ _windowsMutex };
+        _windows.emplace_back(std::move(host));
+    }
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
     // (agent-pane attach_pane / detach_pane, autofix OSC 133;D, etc.)
     // actually reach connected wta clients. Without this, only the
     // first-opened window's events propagate.
-    TerminalProtocolComServer::s_OnWindowAdded(_windows.back().get());
+    TerminalProtocolComServer::s_OnWindowAdded(addedHost);
 
     if (_windowCount == 1)
     {
@@ -1119,7 +1129,10 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // anyway (since we threw and exited this message handler) so this at least gives back our
                         // deterministic window count management.
                         const auto strong = *it;
-                        _windows.erase(it);
+                        {
+                            std::lock_guard lock{ _windowsMutex };
+                            _windows.erase(it);
+                        }
                         try
                         {
                             strong->Close();

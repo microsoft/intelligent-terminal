@@ -136,7 +136,8 @@ namespace TerminalApp
 
         // Inbound event from `/agent` carrying
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.
-        // Applies a runtime override and rebuilds only the target tab.
+        // Applies a runtime override and rebinds the target tab's helper when
+        // the execution source is unchanged.
         void OnAgentSwitchRequested(String eventJson);
 
         // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.
@@ -179,12 +180,8 @@ namespace TerminalApp
         // fresh agent CLI session under the same stable master pipe.
         void OnRestartAgentStackRequested(String eventJson);
 
-        // Inbound event from WTA carrying
-        // {method:"restart_agent_pane",params:{tab_id, session_id?, reason}}.
-        // Emitted by wta-master when a helper's pipe disconnects (crash or
-        // clean exit). The page resolves the owning tab by StableId and
-        // re-warms a fresh helper, resuming `session_id`. Suppressed when
-        // the pane was torn down deliberately (Ctrl+C×2, tab close).
-        void OnAgentPaneRestartRequested(String eventJson);
+        // Inbound completion for a destructive agent-session retirement:
+        // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
+        void OnAgentSessionsRetired(String eventJson);
     }
 }

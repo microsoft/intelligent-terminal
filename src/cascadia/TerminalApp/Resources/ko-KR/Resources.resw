@@ -1283,4 +1283,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
 사용 가능한 모든 옵션에 대해 'wt new-tab --help'를 실행합니다.</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
+  <data name="AgentPane_DefaultTitle" xml:space="preserve">
+    <value>AI 어시스턴트</value>
+    <comment>Default title shown in the agent pane title bar before an agent reports its name. "AI assistant" refers to the built-in AI coding assistant, not a human assistant.</comment>
+  </data>
+  <data name="AgentPane_ConnectingTitle" xml:space="preserve">
+    <value>AI 어시스턴트 · 연결 중</value>
+    <comment>Status shown in the agent pane title bar while the built-in AI coding assistant is connecting. Preserve the centered dot separator.</comment>
+  </data>
 </root>

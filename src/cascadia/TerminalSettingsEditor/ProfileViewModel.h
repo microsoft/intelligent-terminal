@@ -10,6 +10,8 @@
 #include "Utils.h"
 #include "ViewModelHelpers.h"
 
+#include <unordered_set>
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     struct BellSoundViewModel : BellSoundViewModelT<BellSoundViewModel>, ViewModelHelper<BellSoundViewModel>
@@ -91,6 +93,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> CommandPaletteAgentList() const noexcept { return _commandPaletteAgentList; }
         Editor::AgentEntry CurrentCommandPaletteAgent();
         void CurrentCommandPaletteAgent(const Editor::AgentEntry& value);
+        void SetAvailableHostAgents(const std::unordered_set<std::wstring>& availableHostAgents);
 
         // general profile knowledge
         winrt::guid OriginalProfileGuid() const noexcept;
@@ -174,6 +177,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::UI::Core::CoreDispatcher _dispatcher;
         Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _agentPaneBackendList;
         Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _commandPaletteAgentList;
+        std::unordered_set<std::wstring> _availableHostAgents;
+        std::wstring _availableWslDistro;
+        std::vector<std::wstring> _availableWslAgents;
         uint64_t _agentPaneBackendProbeGeneration{ 0 };
 
         winrt::Windows::UI::Xaml::Thickness _parsedPadding;
@@ -181,8 +187,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _InitializeCurrentBellSounds();
         void _PrepareModelForBellSoundModification();
         void _MarkDuplicateBellSoundDirectories();
-        void _RebuildAgentBackendLists(std::wstring_view wslDistro,
-                                       const std::vector<std::wstring>& availableWslAgents);
+        void _RebuildAgentBackendLists();
         void _RefreshAgentPaneBackendList();
         winrt::fire_and_forget _ProbeWslAgentPaneBackendsAsync(std::wstring commandline,
                                                                uint64_t generation);

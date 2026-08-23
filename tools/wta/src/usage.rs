@@ -59,18 +59,6 @@ impl UsageStaleness {
             self.provider_metrics = false;
         }
     }
-
-    pub fn mark_present_stale(&mut self, snapshot: &UsageSnapshot) {
-        if snapshot.context.is_some() {
-            self.context = true;
-        }
-        if snapshot.cost.is_some() {
-            self.cost = true;
-        }
-        if !snapshot.provider_metrics.is_empty() {
-            self.provider_metrics = true;
-        }
-    }
 }
 
 impl UsageSnapshot {

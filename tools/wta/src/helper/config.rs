@@ -23,7 +23,6 @@ pub(crate) struct HelperConfig {
     pub(crate) initial_load_session_id: Option<String>,
     pub(crate) initial_load_cwd: Option<String>,
     pub(crate) start_stashed: bool,
-    pub(crate) assume_master_down: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

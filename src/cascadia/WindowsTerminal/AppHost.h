@@ -6,6 +6,7 @@
 #include "pch.h"
 #include "NonClientIslandWindow.h"
 #include <ThrottledFunc.h>
+#include <mutex>
 
 class WindowEmperor;
 
@@ -38,6 +39,7 @@ private:
     WindowEmperor* _windowManager = nullptr;
     std::unique_ptr<IslandWindow> _window;
     winrt::TerminalApp::AppLogic _appLogic{ nullptr };
+    mutable std::mutex _stateMutex;
     winrt::TerminalApp::TerminalWindow _windowLogic{ nullptr };
     std::shared_ptr<ThrottledFunc<bool>> _showHideWindowThrottler;
     SafeDispatcherTimer _frameTimer;
