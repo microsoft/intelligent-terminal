@@ -3484,6 +3484,27 @@ fn locked_plugin_dir_failure_matches_sharing_violation() {
     ));
 }
 
+/// The WindowsApps bundle-source denial that `install_for_claude`
+/// documents is an `EPERM` too, but it names `scandir` — it is a failure
+/// to *read the source*, not a lock on the installed plugin directory.
+/// Matching it would clear a perfectly good install, so the predicate has
+/// to keep the two apart.
+#[test]
+fn locked_plugin_dir_failure_ignores_the_windowsapps_scandir_denial() {
+    assert!(!is_locked_plugin_dir_failure(
+        "",
+        "EPERM: operation not permitted, scandir \
+         'C:\\Program Files\\WindowsApps\\IntelligentTerminal_0.7.0.11_x64__rd9vj3e6a2mbr'",
+    ));
+}
+
+/// Bare libuv prose with no operation named is not enough on its own.
+#[test]
+fn locked_plugin_dir_failure_ignores_unpaired_libuv_prose() {
+    assert!(!is_locked_plugin_dir_failure("", "operation not permitted"));
+    assert!(!is_locked_plugin_dir_failure("", "resource busy"));
+}
+
 /// Failures we cannot fix by clearing the directory must not trigger
 /// the destructive recovery path.
 #[test]
@@ -3705,4 +3726,25 @@ fn plugin_cli_exit_error_carries_the_cli_message() {
 fn plugin_cli_exit_error_omits_the_detail_when_the_cli_said_nothing() {
     let err = plugin_cli_exit_error("codex", &["plugin", "add"], &outcome(false, None, "", ""));
     assert_eq!(err.to_string(), "codex plugin add exited ?");
+}
+
+/// A spawn failure has to name the command too: `spawn_step_unlocking`
+/// prints the error verbatim, so anything missing here is lost from the
+/// uninstall report.
+#[test]
+fn plugin_cli_spawn_error_names_the_command() {
+    let err = plugin_cli_spawn_error(
+        "copilot",
+        &["plugin", "uninstall", "wt-agent-hooks@wt-local"],
+        std::io::Error::new(std::io::ErrorKind::NotFound, "program not found"),
+    );
+    assert_eq!(
+        err.to_string(),
+        "copilot plugin uninstall wt-agent-hooks@wt-local failed to start: program not found",
+    );
+    assert_eq!(
+        err.kind(),
+        std::io::ErrorKind::NotFound,
+        "kind is preserved"
+    );
 }

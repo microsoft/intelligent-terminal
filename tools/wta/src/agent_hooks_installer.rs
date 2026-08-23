@@ -2955,6 +2955,17 @@ fn plugin_cli_reached_goal(
     false
 }
 
+/// Error returned when the plugin CLI could not be started at all — the
+/// binary is missing from `PATH`, or the OS refused the spawn. Named the
+/// same way as [`plugin_cli_exit_error`] so callers can surface either
+/// without adding a command prefix of their own.
+fn plugin_cli_spawn_error(exe: &str, args: &[&str], error: std::io::Error) -> std::io::Error {
+    std::io::Error::new(
+        error.kind(),
+        format!("{} {} failed to start: {}", exe, args.join(" "), error),
+    )
+}
+
 /// Error returned for a plugin CLI that ran to completion but did not
 /// reach its goal state. Carries the CLI's own message so the reason is
 /// visible wherever the error is logged or surfaced to the user.
@@ -3027,16 +3038,12 @@ fn matches_idempotency_substring(stdout: &str, stderr: &str, needles: &[&str]) -
 /// the copy taken before a locked plugin directory is cleared.
 const PLUGIN_DIR_RECOVERY_SUBDIR: &str = "hook-plugin-recovery";
 
-/// Output snippets that identify the locked-directory failure. The exact
-/// spelling depends on which operation the CLI attempted and on its
-/// runtime: Copilot CLI 1.0.81 reports `Access is denied. (os error 5)`
-/// against a plugin directory a sibling `copilot` process loaded, while
-/// a plain sharing violation on the same directory surfaces as `The
-/// process cannot access the file because it is being used by another
-/// process. (os error 32)`. Node-based CLIs (Claude, Gemini) report the
-/// same conditions through libuv, which always spells the error code
-/// out in prose — `operation not permitted` and `resource busy` — so
-/// matching the prose also covers the bare error codes that precede it.
+/// Win32 spellings of the locked-directory failure. Copilot CLI 1.0.81
+/// reports `Access is denied. (os error 5)` against a plugin directory a
+/// sibling `copilot` process loaded, while a plain sharing violation on
+/// the same directory surfaces as `The process cannot access the file
+/// because it is being used by another process. (os error 32)`. These
+/// only arise for this condition, so a match is conclusive on its own.
 ///
 /// Matching is case-insensitive, so these are written lower-cased.
 const LOCKED_PLUGIN_DIR_NEEDLES: &[&str] = &[
@@ -3044,9 +3051,21 @@ const LOCKED_PLUGIN_DIR_NEEDLES: &[&str] = &[
     "os error 5",
     "os error 32",
     "being used by another process",
-    "operation not permitted",
-    "resource busy",
 ];
+
+/// libuv's prose for the same conditions, used by the Node-based CLIs
+/// (Claude, Gemini). Ambiguous on its own: `install_for_claude` documents
+/// a completely unrelated `EPERM: operation not permitted, scandir '...'`
+/// raised while *reading* a WindowsApps bundle source. Treating that as a
+/// lock would clear a perfectly good plugin directory, so these only
+/// count when paired with [`LOCKED_PLUGIN_DIR_OPERATIONS`].
+const LOCKED_PLUGIN_DIR_PROSE: &[&str] = &["operation not permitted", "resource busy"];
+
+/// Operations that mutate the directory itself — the ones a live CLI's
+/// handle actually blocks. libuv names the syscall right after the prose
+/// (`EPERM: operation not permitted, rename '...'`), which is what lets
+/// us separate a directory lock from an unrelated `scandir` denial.
+const LOCKED_PLUGIN_DIR_OPERATIONS: &[&str] = &["rename", "rmdir", "unlink"];
 
 /// Directory the CLI copies our plugin into, and therefore the one it
 /// must replace on install / update / uninstall.
@@ -3080,8 +3099,17 @@ fn installed_plugin_dir(cli: CliKind, home: &Path) -> Option<PathBuf> {
 
 /// True when the CLI output looks like the locked-directory failure
 /// described above.
+///
+/// A Win32 spelling is conclusive. libuv prose has to additionally name
+/// an operation that mutates the directory, so an unrelated denial such
+/// as the WindowsApps `scandir` case never reaches the destructive
+/// recovery path.
 fn is_locked_plugin_dir_failure(stdout: &str, stderr: &str) -> bool {
-    matches_idempotency_substring(stdout, stderr, LOCKED_PLUGIN_DIR_NEEDLES)
+    if matches_idempotency_substring(stdout, stderr, LOCKED_PLUGIN_DIR_NEEDLES) {
+        return true;
+    }
+    matches_idempotency_substring(stdout, stderr, LOCKED_PLUGIN_DIR_PROSE)
+        && matches_idempotency_substring(stdout, stderr, LOCKED_PLUGIN_DIR_OPERATIONS)
 }
 
 /// Delete every entry inside `dir` while leaving `dir` itself in place.
@@ -3198,7 +3226,8 @@ fn run_plugin_cli_unlocking(
     cli: CliKind,
     plugin_dir: Option<&Path>,
 ) -> std::io::Result<()> {
-    let outcome = run_plugin_cli_capture_with_env(exe, args, env)?;
+    let outcome = run_plugin_cli_capture_with_env(exe, args, env)
+        .map_err(|e| plugin_cli_spawn_error(exe, args, e))?;
     if plugin_cli_reached_goal(&outcome, exe, args, idempotency_substrings) {
         return Ok(());
     }
@@ -3248,7 +3277,7 @@ fn run_plugin_cli_unlocking(
     restore_plugin_dir_contents(&stash, dir);
     match retry {
         Ok(retry) => Err(plugin_cli_exit_error(exe, args, &retry)),
-        Err(e) => Err(e),
+        Err(e) => Err(plugin_cli_spawn_error(exe, args, e)),
     }
 }
 
@@ -3268,8 +3297,10 @@ fn spawn_step_unlocking(
             messages.push(format!("ok: {} {}", exe, args.join(" ")));
             true
         }
+        // Both error shapes from `run_plugin_cli_unlocking` already name
+        // the command, so repeating it here would only double it up.
         Err(e) => {
-            messages.push(format!("fail: {} {} :: {}", exe, args.join(" "), e));
+            messages.push(format!("fail: {}", e));
             false
         }
     }
