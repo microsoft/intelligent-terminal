@@ -124,8 +124,14 @@ if ($env:WT_COM_CLSID -and (Get-Command wtcli -ErrorAction SilentlyContinue)) {
         default       { "agent.hook" }
     }
     $wtPayload = @{ cli_source = $CliSource; payload = $data } | ConvertTo-Json -Compress -Depth 5
+    # Pass this pane's GUID so the event is attributed to the pane the CLI is
+    # really running in. Omitting -p publishes an unattributed event, which is
+    # correct when WT_SESSION is absent (an agent-pane CLI is spawned outside
+    # the conpty chain and has none) -- and far better than letting the event
+    # land on whichever pane the user happens to be focused on.
+    $paneArgs = if ($env:WT_SESSION) { @('-p', $env:WT_SESSION) } else { @() }
     try {
-        wtcli send-event -e $eventType $wtPayload 2>$null
+        wtcli send-event @paneArgs -e $eventType $wtPayload 2>$null
     } catch { }
 }
 
