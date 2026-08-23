@@ -2241,7 +2241,7 @@ fn install_action_installs_any_partial_bridge() {
     }
 }
 
-/// A partial bridge that is also out of date must still be installed, not
+/// An out-of-date bridge that is also partial must still be installed, not
 /// upgraded: the upgrade flow refuses a disabled or unregistered plugin, so
 /// routing it there would leave it broken.
 #[test]
