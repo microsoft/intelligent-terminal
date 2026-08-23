@@ -582,11 +582,20 @@ namespace winrt::TerminalApp::implementation
         static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneSettingsRebind(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
             bool helperEventReady) noexcept;
+        static AgentPaneSettingsRebindDisposition _ClassifyAgentPaneAgentSwitch(
+            const AgentPaneSettingsBinding& current,
+            const AgentPaneSettingsBinding& target,
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState,
+            bool helperEventReady) noexcept;
+        static bool _CanRetainAgentPaneForMasterRestart(
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
         static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
             const AgentPaneSettingsBindingRequest& request);
+        AgentPaneSettingsBinding _ResolveAgentPaneSettingsBindingForTab(
+            const winrt::com_ptr<Tab>& tab);
         static bool _IsAgentPaneSettingsRebindAffected(
             const AgentPaneSettingsBinding& binding,
             bool globalAgentChanged,
@@ -604,6 +613,11 @@ namespace winrt::TerminalApp::implementation
             bool agentConnected) noexcept;
         static Json::Value _BuildAgentPaneSettingsRebindPayload(
             const AgentPaneSettingsBinding& binding);
+        void _RaiseAgentPaneRebindRequest(
+            const winrt::com_ptr<Tab>& tab,
+            const AgentPaneSettingsBinding& binding,
+            std::string_view operationId,
+            uint64_t generation);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
         // Diffs the hot-updatable runtime config against the last snapshot
@@ -624,9 +638,13 @@ namespace winrt::TerminalApp::implementation
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab);
         void _RebuildAgentStack(std::string requestId = {});
         void _RestartAgentStack(std::string requestId);
-        // Scoped per-tab rebuild after a tab's agent override changes
-        // (agent-bar chip flyout). Does not restart the shared master.
+        // Scoped per-tab fallback when an agent override cannot be rebound
+        // through the existing helper. Does not restart the shared master.
         void _RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab);
+        void _RebindAgentPaneForTab(
+            const winrt::com_ptr<Tab>& tab,
+            const AgentPaneSettingsBinding& current,
+            const AgentPaneSettingsBinding& target);
         void _FlushPendingAgentRebuild();
         // Build the per-process flag/value pairs that the wta-master
         // inherits at spawn time (--agent, --agent-id, --no-autofix,

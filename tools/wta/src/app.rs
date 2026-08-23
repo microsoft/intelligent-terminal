@@ -5366,17 +5366,11 @@ impl App {
     ///   `Connecting("Restarting agent...")` state lasts until the
     ///   new `initialize` round-trip lands.
     ///
-    /// * Helper mode: master owns the agent CLI lifetime, so a
-    ///   single helper cannot restart it in-process. The helper's
-    ///   `restart_rx` arm asks the C++ side to force-restart the
-    ///   whole agent stack (`restart_agent_stack` SendEvent →
-    ///   TerminalPage tears down every agent pane,
-    ///   `SharedWta::Restart` respawns master on the same stable
-    ///   pipe name, then the active tab's pane is re-opened). The
-    ///   user briefly sees the agent pane flash closed and reopen
-    ///   with a clean session. The `Connecting("Restarting...")`
-    ///   state set below is short-lived — this helper process is
-    ///   on its way out as part of the pane teardown.
+    /// * Helper mode: master owns the agent CLI lifetime, so a single helper
+    ///   cannot restart it in-process. The helper's `restart_rx` arm asks C++
+    ///   to replace the shared master. Viable panes, ConPTYs, and helpers stay
+    ///   alive, then reconnect over the stable master pipe with clean ACP
+    ///   sessions.
     fn cmd_restart(&mut self) {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();

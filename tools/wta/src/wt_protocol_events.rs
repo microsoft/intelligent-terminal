@@ -3,6 +3,27 @@ pub fn send(json_payload: String) {
     let _ = publisher_sender().send(json_payload);
 }
 
+pub(crate) fn restart_agent_stack_event(reason: Option<&str>, tab_id: Option<&str>) -> String {
+    let mut params = serde_json::Map::new();
+    params.insert(
+        "request_id".into(),
+        serde_json::Value::String(uuid::Uuid::new_v4().to_string()),
+    );
+    if let Some(reason) = reason {
+        params.insert("reason".into(), serde_json::Value::String(reason.into()));
+    }
+    if let Some(tab_id) = tab_id {
+        params.insert("tab_id".into(), serde_json::Value::String(tab_id.into()));
+    }
+
+    serde_json::json!({
+        "type": "event",
+        "method": "restart_agent_stack",
+        "params": params,
+    })
+    .to_string()
+}
+
 fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
     static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
         std::sync::OnceLock::new();
@@ -131,6 +152,24 @@ fn publish_blocking(json_payload: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restart_event_has_unique_shared_request_id_and_optional_scope() {
+        let first: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event(None, None)).unwrap();
+        let second: serde_json::Value = serde_json::from_str(
+            &super::restart_agent_stack_event(Some("auth_recovery"), Some("tab-1")),
+        )
+        .unwrap();
+
+        let first_request_id = first["params"]["request_id"].as_str().unwrap();
+        let second_request_id = second["params"]["request_id"].as_str().unwrap();
+        assert!(uuid::Uuid::parse_str(first_request_id).is_ok());
+        assert!(uuid::Uuid::parse_str(second_request_id).is_ok());
+        assert_ne!(first_request_id, second_request_id);
+        assert_eq!(second["params"]["reason"], "auth_recovery");
+        assert_eq!(second["params"]["tab_id"], "tab-1");
+    }
+
     #[test]
     fn publish_command_selects_stdin_transport() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));

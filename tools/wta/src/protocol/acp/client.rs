@@ -143,7 +143,7 @@ pub struct AgentReconnectRequest {
 /// Control requests that end or replace the helper's current ACP connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestartRequest {
-    /// `/restart` still asks C++ to replace the complete shared stack.
+    /// `/restart` asks C++ to replace the shared master and agent CLI pool.
     RestartStack { agent_cmd: Option<String> },
     /// Settings agent changes keep the helper process and reconnect it to the
     /// same master with a fresh immutable per-connection agent binding.
@@ -2125,12 +2125,11 @@ async fn probe_private_usage(
 /// `pipe_name` and speaks ACP over that pipe. The master (from this
 /// helper's perspective) plays the role of the agent.
 ///
-/// Wires the App-facing select-loop, minus the
-/// restart-loop wrapper: helper mode doesn't own the agent CLI lifetime
-/// (master does). `/restart` is delegated to the C++ side via a
-/// `restart_agent_stack` `SendEvent`; that path tears down every agent
-/// pane, force-restarts master under the same stable pipe name, and
-/// re-toggles the active pane so the user lands on a fresh session.
+/// Wires the App-facing select-loop, minus the restart-loop wrapper: helper
+/// mode doesn't own the agent CLI lifetime (master does). `/restart` is
+/// delegated to C++ via `restart_agent_stack`; C++ replaces the master while
+/// retaining viable panes, and each helper reconnects its saved binding over
+/// the stable pipe when the old transport closes.
 ///
 /// See doc/specs/Multi-window-agent-pane.md for the helper+master
 /// architecture, and `tools/wta/src/master/mod.rs` for the peer.
@@ -3191,11 +3190,8 @@ pub async fn run_acp_client_over_pipe(
 
     // Main event loop. The select arms are extracted into `dispatch_*`
     // free fns (so they're unit-testable). No restart-loop wrapper here:
-    // helper mode can't restart in-process — master
-    // owns the agent CLI. `/restart` fires a `restart_agent_stack`
-    // `SendEvent` to the C++ side; that path force-restarts the whole
-    // agent stack (tear down panes → `SharedWta::Restart()` → respawn on
-    // the same stable pipe name → re-toggle active pane).
+    // helper mode can't restart the master in-process, so `/restart` asks C++
+    // to replace it. The retained helper reconnects when the old pipe closes.
     loop {
         tokio::select! {
             biased;
@@ -3232,14 +3228,11 @@ pub async fn run_acp_client_over_pipe(
                         tracing::info!(
                             target: "helper",
                             new_agent = ?agent_cmd,
-                            "restart requested — asking WT to force-restart the agent stack"
+                            "restart requested — asking WT to replace the shared master"
                         );
-                        let evt = serde_json::json!({
-                            "type": "event",
-                            "method": "restart_agent_stack",
-                            "params": {},
-                        });
-                        crate::wt_protocol_events::send(evt.to_string());
+                        crate::wt_protocol_events::send(
+                            crate::wt_protocol_events::restart_agent_stack_event(None, None),
+                        );
                     }
                     RestartRequest::RebindAgent(request) => {
                         tracing::info!(

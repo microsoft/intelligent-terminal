@@ -26,11 +26,10 @@ pub enum CommandKind {
     ///
     /// * Standalone wta: tears down + respawns the agent CLI in-process;
     ///   tabs lazily get fresh sessions on the next prompt.
-    /// * Helper mode: fires a `restart_agent_stack` `SendEvent` to the C++
-    ///   side. This explicit recovery command tears down every agent pane,
-    ///   force-restarts the shared master on the same stable pipe name, and
-    ///   recreates the panes with clean sessions. Normal Settings agent/model
-    ///   changes use the non-destructive rebind or live-switch paths instead.
+    /// * Helper mode: fires a `restart_agent_stack` event to C++, which
+    ///   replaces the shared master; each viable helper reconnects its existing
+    ///   immutable binding over the stable pipe with a clean session. Only a
+    ///   pane whose helper process is already unavailable requires recreation.
     Restart,
     Sessions,
     /// Pick the ACP agent for this Windows Terminal tab.

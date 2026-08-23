@@ -305,14 +305,11 @@ fn spawn_restart_agent_stack_forwarder(
                     tracing::info!(
                         target: "helper",
                         new_agent = ?agent_cmd,
-                        "restart requested before ACP task is running; asking WT to force-restart the agent stack"
+                        "restart requested before ACP task is running; asking WT to replace the shared master"
                     );
-                    let evt = serde_json::json!({
-                        "type": "event",
-                        "method": "restart_agent_stack",
-                        "params": {},
-                    });
-                    crate::wt_protocol_events::send(evt.to_string());
+                    crate::wt_protocol_events::send(
+                        crate::wt_protocol_events::restart_agent_stack_event(None, None),
+                    );
                 }
                 protocol::acp::client::RestartRequest::RebindAgent(request) => {
                     let _ = event_tx.send(app::AppEvent::AgentReconnectReady(request));

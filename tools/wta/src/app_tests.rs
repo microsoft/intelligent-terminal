@@ -149,7 +149,13 @@ fn test_app_with_drop_session_rx() -> (
 }
 
 fn agent_rebind_event(tab_id: &str, generation: u64, agent_id: &str) -> AppEvent {
-    agent_rebind_event_for_window("window-1", tab_id, generation, agent_id)
+    agent_rebind_event_for_window(
+        "window-1",
+        tab_id,
+        generation,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+    )
 }
 
 fn agent_rebind_event_for_window(
@@ -157,6 +163,7 @@ fn agent_rebind_event_for_window(
     tab_id: &str,
     generation: u64,
     agent_id: &str,
+    source: &crate::agent_source::AgentSource,
 ) -> AppEvent {
     AppEvent::WtEvent {
         method: "rebind_agent".into(),
@@ -168,7 +175,8 @@ fn agent_rebind_event_for_window(
             "window_id": window_id,
             "tab_id": tab_id,
             "agent_id": agent_id,
-            "agent_source": "host",
+            "agent_source": source.kind(),
+            "wsl_distro": source.distro(),
             "acp_model": ""
         }),
     }
@@ -3128,6 +3136,77 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
 }
 
 #[test]
+fn agent_rebind_accepts_only_the_helpers_current_execution_source() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        app.current_agent_source.clone(),
+        Some("/home/user/project".into()),
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event_for_window(
+        "window-1",
+        "owner-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Wsl {
+            distro: "Debian".into(),
+        },
+    ));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event_for_window(
+        "window-1",
+        "owner-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    ));
+    let request = match restart_rx
+        .try_recv()
+        .expect("same-distro WSL rebind should reuse the helper")
+    {
+        RestartRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(
+        request.agent_source,
+        crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+    assert_eq!(app.current_agent_id, "claude");
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.source_cwd.as_deref()),
+        Some("/home/user/project")
+    );
+}
+
+#[test]
 fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());
@@ -3437,6 +3516,7 @@ fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target
         "owner-tab",
         1,
         "codex",
+        &crate::agent_source::AgentSource::Host,
     ));
     assert_eq!(app.current_agent_id, "codex");
     assert!(matches!(
@@ -5571,16 +5651,58 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
 }
 
 #[test]
-fn master_disconnect_terminates_helper_without_recovery() {
+fn master_disconnect_reconnects_retained_custom_wsl_helper() {
     let mut app = test_app();
+    app.current_agent_id = "custom:local".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "custom-agent --serve".into(),
+        Some("custom:local".into()),
+        Some("custom-model".into()),
+        None,
+        app.current_agent_source.clone(),
+        Some("/home/user/project".into()),
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
     assert!(!app.should_quit);
 
     app.handle_event(AppEvent::MasterDisconnected);
 
+    assert!(!app.should_quit);
     assert!(
-        app.should_quit,
-        "master disconnect must terminate the helper instead of retaining a recoverable pane"
+        app.pending_acp_start,
+        "master disconnect must reconnect the existing immutable binding"
     );
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("custom:local")
+    );
+    let deferred = app.deferred_acp.as_ref().unwrap();
+    assert_eq!(deferred.agent_cmd, "custom-agent --serve");
+    assert_eq!(deferred.acp_model.as_deref(), Some("custom-model"));
+    assert_eq!(deferred.source_cwd.as_deref(), Some("/home/user/project"));
+    assert_eq!(
+        deferred.agent_source,
+        crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+}
+
+#[test]
+fn master_disconnect_without_binding_terminates_helper() {
+    let mut app = test_app();
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(app.should_quit);
 }
 
 /// A one-off protocol error ends the turn while preserving the live session.

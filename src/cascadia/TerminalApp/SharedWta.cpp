@@ -618,20 +618,22 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        // Nothing running → nothing to restart. Caller's surrounding
-        // teardown+reopen path will trigger the usual lazy `AcquirePane`
-        // spawn anyway, so this is a benign no-op (not an error).
-        if (!_process.is_valid())
-        {
-            return true;
-        }
-
         // No cached args means we've never successfully spawned in this
-        // process, which contradicts `_process.is_valid()` — defensive
-        // bail rather than spawning with empty wtaPath.
+        // process, so there is no trusted command line to restart.
         if (_cachedWtaPath.empty())
         {
             return false;
+        }
+
+        // A crashed master leaves retained helpers waiting on the stable pipe.
+        // Respawn it directly; there is no pane recreation/AcquirePane cycle
+        // in the normal restart path anymore.
+        if (!_process.is_valid())
+        {
+            return _SpawnLocked(
+                std::wstring_view{ _cachedWtaPath },
+                _cachedExtraArgs,
+                _cachedEnvironment);
         }
 
         return _RestartLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
@@ -710,9 +712,8 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        // Refcount is deliberately untouched. The surrounding pane teardown
-        // and reopen balances its outgoing ReleasePane and incoming
-        // AcquirePane after the replacement has claimed the shared pipe.
+        // Refcount is deliberately untouched. Existing panes and helpers stay
+        // alive and reconnect after the replacement claims the stable pipe.
         return _SpawnLocked(nextWtaPath, nextExtraArgs, nextEnvironment);
     }
 

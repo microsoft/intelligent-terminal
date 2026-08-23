@@ -75,6 +75,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneSettingsRebindClassification);
+        TEST_METHOD(TestAgentPaneAgentSwitchClassification);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
         TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
 
@@ -2039,6 +2040,75 @@ namespace TerminalAppLocalTests
                     payload["custom_model_selection"].asString());
             }
         }
+    }
+
+    void SettingsTests::TestAgentPaneAgentSwitchClassification()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Binding = Page::AgentPaneSettingsBinding;
+        using Disposition = Page::AgentPaneSettingsRebindDisposition;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+
+        Binding hostCopilot{
+            .agentId = L"copilot",
+            .agentSource = L"host",
+            .launchable = true,
+        };
+        auto hostCodex = hostCopilot;
+        hostCodex.agentId = L"codex";
+        VERIFY_ARE_EQUAL(
+            Disposition::Rebind,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connecting, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Rebind,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connected, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Connected, false));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, hostCodex, State::Closed, true));
+
+        auto wslCopilot = hostCopilot;
+        wslCopilot.agentSource = L"wsl";
+        wslCopilot.agentWslDistro = L"Ubuntu";
+        auto wslCodex = wslCopilot;
+        wslCodex.agentId = L"codex";
+        VERIFY_ARE_EQUAL(
+            Disposition::Rebind,
+            Page::_ClassifyAgentPaneAgentSwitch(wslCopilot, wslCodex, State::Connected, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, wslCodex, State::Connected, true));
+
+        auto otherDistro = wslCodex;
+        otherDistro.agentWslDistro = L"Debian";
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(wslCopilot, otherDistro, State::Connected, true));
+
+        auto customAgent = hostCopilot;
+        customAgent.agentId = L"custom:local";
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(customAgent, hostCodex, State::Connected, true));
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, customAgent, State::Connected, true));
+
+        auto unavailableTarget = hostCodex;
+        unavailableTarget.launchable = false;
+        VERIFY_ARE_EQUAL(
+            Disposition::Recreate,
+            Page::_ClassifyAgentPaneAgentSwitch(hostCopilot, unavailableTarget, State::Connected, true));
+
+        VERIFY_IS_TRUE(Page::_CanRetainAgentPaneForMasterRestart(State::Connecting));
+        VERIFY_IS_TRUE(Page::_CanRetainAgentPaneForMasterRestart(State::Connected));
+        VERIFY_IS_FALSE(Page::_CanRetainAgentPaneForMasterRestart(State::Closed));
+
+        const auto payload = Page::_BuildAgentPaneSettingsRebindPayload(wslCodex);
+        VERIFY_ARE_EQUAL(std::string{ "wsl" }, payload["agent_source"].asString());
+        VERIFY_ARE_EQUAL(std::string{ "Ubuntu" }, payload["wsl_distro"].asString());
     }
 
     void SettingsTests::TestAgentPaneModelHotUpdateRouting()
