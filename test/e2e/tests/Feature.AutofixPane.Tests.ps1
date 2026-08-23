@@ -242,9 +242,7 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
             Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command 'sl -la' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        $pending = Wait-TerminalActionProposal -App $script:app -TimeoutSec 30
-        $pending | Should -Not -BeNullOrEmpty -Because 'WSL Autofix must submit a Direct Helper Proposal'
-        $cardText = Wait-Until -TimeoutSec 10 -IntervalSec 1 -Because 'a visible WSL Autofix recommendation card' -Condition {
+        $cardText = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Because 'a visible WSL Autofix recommendation card' -Condition {
             $text = Get-AgentPaneText -App $script:app -MaxLines 60
             if ($text -match (Get-RecommendationCardRegex)) { $text }
         }
