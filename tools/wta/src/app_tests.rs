@@ -765,6 +765,114 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
     );
 }
 
+/// The WTA-side half of the `wtcli send-event` pane contract: an event whose
+/// `pane_id` is empty must not touch any *other* session's pane binding.
+///
+/// `send-event` publishes an empty `pane_id` when the caller could not
+/// identify its pane (a legacy hook bundle whose CLI never inherited
+/// `WT_SESSION`). It used to substitute `GetActivePane()` instead, which fed
+/// the focused pane's GUID into exactly this reducer — and `SessionStarted`'s
+/// orphan-handover branch then demoted the focused pane's real session to
+/// `Ended` and unbound it, because a new key appeared to claim its pane.
+///
+/// This pins the property that makes publishing empty safe: `pane_known` is
+/// false, so no handover runs, `active_by_pane` is untouched, and the
+/// bystander session survives intact.
+#[test]
+fn empty_pane_session_start_does_not_evict_a_bound_session() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    let bystander_pane = "11111111-1111-1111-1111-111111111111";
+    reg.apply(SessionEvent::SessionStarted {
+        key: "bystander-sid".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: bystander_pane.into(),
+        cwd: std::path::PathBuf::from("/work"),
+        title: "bystander".into(),
+    });
+    reg.take_dirty();
+
+    // A different session starts, carrying a real agent_session_id but no pane
+    // — the agent-pane / pane-less hook shape.
+    let params = json!({
+        "event": "agent.session.start",
+        "cli_source": "copilot",
+        "agent_session_id": "paneless-sid",
+        "payload": { "cwd": "C:\\elsewhere" }
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+
+    let bystander = reg
+        .get(&"bystander-sid".to_string())
+        .expect("bystander row preserved");
+    assert_eq!(
+        bystander.status,
+        AgentStatus::Idle,
+        "a pane-less session start must not end an unrelated session",
+    );
+    assert_eq!(
+        bystander.pane_session_id.as_deref(),
+        Some(bystander_pane),
+        "a pane-less session start must not steal another session's pane binding",
+    );
+
+    let paneless = reg
+        .get(&"paneless-sid".to_string())
+        .expect("pane-less row created");
+    assert_eq!(
+        paneless.pane_session_id, None,
+        "an empty pane_id must stay unbound rather than adopt some other pane",
+    );
+}
+
+/// Counterpart: the pane-less row must not be reachable through
+/// `active_by_pane` either, or a later `PaneClosed` for an unrelated pane
+/// could end it. The empty string is not a pane, so it must never become a
+/// key in that map.
+#[test]
+fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    let params = json!({
+        "event": "agent.session.start",
+        "cli_source": "copilot",
+        "agent_session_id": "paneless-sid",
+        "payload": {}
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+    reg.take_dirty();
+
+    // A PaneClosed for the empty "pane" must not resolve to the row.
+    reg.apply(SessionEvent::PaneClosed {
+        pane_session_id: String::new(),
+    });
+
+    assert_eq!(
+        reg.get(&"paneless-sid".to_string()).unwrap().status,
+        AgentStatus::Idle,
+        "an empty pane id must not be a lookup key, so it cannot end the row",
+    );
+
+    // And a second pane-less session must not collide with the first through
+    // the pane map.
+    let params2 = json!({
+        "event": "agent.session.start",
+        "cli_source": "claude",
+        "agent_session_id": "paneless-sid-2",
+        "payload": {}
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_| {});
+    assert_eq!(
+        reg.get(&"paneless-sid".to_string()).unwrap().status,
+        AgentStatus::Idle,
+        "two pane-less sessions must coexist; neither may evict the other",
+    );
+    assert_eq!(
+        reg.get(&"paneless-sid-2".to_string()).unwrap().status,
+        AgentStatus::Idle,
+    );
+}
+
 /// Claude's `Notification` hook fires for two unrelated situations and only
 /// `notification_type` tells them apart. `idle_prompt` arrives ~60s *after*
 /// `agent.stop` already moved the row to Idle, so routing it to Attention
