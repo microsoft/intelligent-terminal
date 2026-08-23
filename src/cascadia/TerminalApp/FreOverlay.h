@@ -129,7 +129,8 @@ namespace winrt::TerminalApp::implementation
         // after a save) and preserves the current selection.
         void _PopulateAgentComboBox();
 
-        // Detect whether an executable is on PATH.
+        // Detect whether a generic executable is on PATH. ACP agent choices
+        // use WTA's authoritative Host availability probe instead.
         static bool _IsAgentInstalled(const wchar_t* name);
         static bool _IsNodeInstalled();
         static bool _IsWingetInstalled();

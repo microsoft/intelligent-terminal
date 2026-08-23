@@ -84,6 +84,40 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         return GetByokMode(agentId) != ByokMode::Unsupported;
     }
 
+    inline constexpr bool AgentIdEquals(const std::wstring_view lhs, const std::wstring_view rhs) noexcept
+    {
+        if (lhs.size() != rhs.size())
+        {
+            return false;
+        }
+
+        for (size_t i = 0; i < lhs.size(); ++i)
+        {
+            const auto lower = [](const wchar_t ch) {
+                return ch >= L'A' && ch <= L'Z' ? ch + (L'a' - L'A') : ch;
+            };
+            if (lower(lhs[i]) != lower(rhs[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    inline constexpr bool SupportsLiveModelSwitch(const std::wstring_view agentId) noexcept
+    {
+        for (const auto& agent : BuiltinAcpAgents)
+        {
+            if (AgentIdEquals(agent.id, agentId))
+            {
+                // Gemini accepts --model at process launch but its ACP server
+                // does not implement either model-switch request.
+                return agent.id != L"gemini";
+            }
+        }
+        return false;
+    }
+
     // Return only agents whose IDs are permitted by GPO policy.
     // When AllowedAgents is not configured, returns all agents.
     // Consumers should always use these instead of iterating the raw arrays.

@@ -272,8 +272,11 @@ liveness model, hooks auto-upgrade, third-party notice generation).
   this is what lets autofix work on a stashed pane.
 - Toggling an agent pane **stashes** it (helper + conpty + ACP session survive);
   the pane is only destroyed on tab close or `Ctrl+C ×2` in the TUI.
-- If master dies, helpers see `TransportLost` and the only recovery is `/restart`
-  (routes via `wtcli publish` → C++ `SharedWta::Restart`, bypassing the dead pipe).
+- If master dies, helpers exit on pipe EOF and `closeOnExit:"always"` closes
+  their panes. There is no reconnect or automatic `session/load`; a later
+  user-initiated pane open creates a fresh master, helper, and ACP session.
+  `/restart` applies only while a live helper can explicitly request a fresh
+  stack.
 
 ### Two paths for shell command execution
 

@@ -148,7 +148,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C060` `[UT✓]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `auth_error_routes_to_signin_not_connection_lost` (AuthRequired → sign-in, not a generic failure) + the in-pane auth screen renders `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message` (login guidance + post-sign-in checking state). Driving a real sign-out stays MANUAL.)_
 - [ ] `C216` `[new]` `[E2E]` **GitHub Enterprise Copilot sign-in works:** On the auth screen, pressing **E** lets the user enter a GHE domain (e.g. `*.ghe.com`) and sign in; the last-used host is remembered and the device-verification URL targets that host. _(#362.)_
 - [ ] `C061` `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
-- [ ] `C217` `[new]` `[UT~]` `[E2E]` **Master death is a consistent degraded state:** If `wta-master` exits, the agent pane shows a single consistent degraded state and requires `/restart` to recover — no silent "split-brain" where it looks half-alive. _(#329.)_
+- [ ] `C217` `[new]` `[UT~]` `[E2E]` **Master death fails closed and a later pane open starts fresh:** If `wta-master` exits, its helpers and panes exit without automatic session load; a later explicit pane open creates a fresh master, helper, and ACP session. _(#329; E2E: `Feature.AgentMasterDeath`.)_
 
 ### Input and rendering
 
@@ -351,9 +351,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C162` `[E2E]` **Multiple agent panes work:** Opening agent panes in multiple tabs does not mix conversations.
 - [ ] `C227` `[E2E]` **Per-tab agent switching is isolated:** `/agent <id>` can switch one tab to a different built-in agent without rebuilding sibling tabs, losing either conversation, or restarting the shared master.
 - [ ] `C228` `[E2E]` **Global agent defaults respect per-tab overrides:** New tabs inherit the global agent; changing that default rebuilds follower tabs while preserving tabs with an explicit runtime override.
-- [ ] `C163` `[E2E]` **Move tab to new window preserves chat:** Dragging/tearing a tab to another window preserves agent pane state.
+- [ ] `C163` `[UT~]` `[E2E]` **Move tab to new window preserves chat:** Both the `moveTab` action and tab-strip drag preserve the live helper, ACP SessionId, chat history, and routing identity; neither path performs crash recovery or `session/load`. _(UT: `tab_renamed_rekeys_active_tab_and_session_map`, `tab_renamed_sends_rename_session_request_to_acp_client`.)_
 - [ ] `C224` `[new]` `[E2E]` **Agent-created terminals inherit the active profile:** A terminal/tab the agent opens inherits the active pane's profile (e.g. an agent working in an Ubuntu session spawns new tabs in Ubuntu, not the default PowerShell profile). _(#366, closes #351.)_
-- [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `wt_event_critical_from_owner_tab_raises_banner_not_chat` — events route by owner_tab_id, which survives the window move. E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_
+- [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `tab_renamed_rekeys_active_tab_and_session_map`, `master_tab_rename_rekeys_live_and_orphan_ownership`, and `active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconnect`; E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_
 - [ ] `C165` `[UT~]` `[E2E]` **Move tab to new window preserves autofix:** Autofix still routes to the moved tab/pane.
 - [x] `C166` `[UT✓]` `[E2E]` **Multiple windows do not cross-route:** Events from one window do not mutate another window's agent pane/session UI. _(UT: `wt_event_critical_from_other_tab_does_not_surface_in_owner_tab` — a helper owning tab A DROPS a connection-failure event broadcast from tab B (no banner, no chat, no notification), the exact cross-route isolation contract; helpers filter inbound events by window_id + owner_tab_id.)_
 - [ ] `C167` `[E2E]` **Close source window is safe:** Closing a source window after moving a tab does not kill the moved tab's agent state.
@@ -392,6 +392,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C182` `[E2E]` **`wtcli capture-pane` works:** Pane output capture succeeds.
 - [ ] `C183` `[E2E]` **`wtcli send-keys`/send input path works:** Insert/run operations can send input to the target pane.
 - [ ] `C184` `[E2E]` **`wtcli listen` works:** Event subscription receives shell/agent events.
+- [ ] `C277` `[new]` `[E2E]` **Delivers a 64 KB JSON payload intact through SendEvent:** WTA writes oversized status/model payloads through `wtcli publish --stdin`, and Terminal receives every byte without hitting the Windows command-line limit. _(#652; E2E: `Feature.WtcliPublishStdin`.)_
 - [ ] `C185` `[E2E]` **WTA master starts:** One master process starts per Terminal process when needed.
 - [ ] `C186` `[E2E]` **WTA helper starts per tab/pane:** Agent pane helper starts and connects to master.
 - [ ] `C187` `[E2E]` **Master/helper crash recovery is acceptable:** Crashes or exits recover or surface an actionable error.

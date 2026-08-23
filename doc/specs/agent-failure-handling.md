@@ -41,16 +41,17 @@ are *signals*, not ACP errors, and are handled in yet another place
 taxonomy that unifies "agent said no", "transport died", and "nothing
 answered".
 
-## 2. The taxonomy — one enum, three sources
+## 2. The taxonomy — one enum, transport lifecycle separate
 
-All failures collapse into a single `AgentFailure`, classified at the **helper
-boundary** (the one place that sees `acp::Error`, the pipe signal, and the
-timeout). Three input sources feed it:
+ACP errors and startup/watchdog failures collapse into a single `AgentFailure`,
+classified at the **helper boundary**. Master-pipe closure is a separate
+lifecycle signal and bypasses this taxonomy by posting
+`AppEvent::MasterDisconnected` directly.
 
 ```
-acp::Error (typed)        transport signal          timeout / watchdog
-   │  code: ErrorCode         │ pipe EOF/Err            │ no progress past deadline
-   ▼                          ▼                         ▼
+acp::Error (typed)                                  timeout / watchdog
+   │  code: ErrorCode                                  │ no progress past deadline
+   ▼                                                   ▼
                     ┌───────────────────────┐
                     │   classify_failure()  │   protocol/acp/failure.rs (new)
                     └───────────┬───────────┘
@@ -66,19 +67,14 @@ pub enum AgentFailure {
     /// handshake/new_session that came back auth-coded. → sign-in screen.
     AuthRequired { message: String },
 
-    /// Helper↔master pipe ended (master died, agent CLI death cascaded, OS
-    /// killed it). A *signal*, never an ErrorCode. → auto-reconnect, then
-    /// `/restart`.
-    TransportLost,
-
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` timed out or errored at startup.
     /// `stage` tells the user (and the log) where. → retry w/ backoff.
     HandshakeFailed { stage: HandshakeStage, detail: String },
 
     /// Agent process is ALIVE but produced no progress before the inactivity
-    /// deadline (hop-2 protocol hang). Distinct from TransportLost (which is
-    /// detected) — this is the silent hang. → cancel turn, session survives.
+    /// deadline (hop-2 protocol hang). Distinct from a closed master pipe —
+    /// this is the silent hang. → cancel turn, session survives.
     Unresponsive { stage: Stage },
 
     /// A referenced resource is gone — `session/load` of an expired session,
@@ -135,7 +131,6 @@ to the composer so a resubmit/`/restart` loses nothing.
 | `AgentFailure` | UI surface | `ConnectionState` | Turn | Recovery | Preserve input |
 |---|---|---|---|---|---|
 | `AuthRequired` | Sign-in screen (`AppMode::Setup`, `SetupReason::AgentError`) | `Disconnected` | Idle | run login cmd → auto re-connect | ✅ |
-| `TransportLost` | inline `connection.lost` + reconnect spinner | `Reconnecting` *(new)* → `Connected`/`Failed` | Idle | **auto-reconnect loop** (§5); manual `/restart` always available | ✅ |
 | `HandshakeFailed` | inline raw line w/ `stage`, "retrying…" / `/restart` | `Failed(detail)` | Idle | bounded retry w/ backoff, then manual | ✅ |
 | `Unresponsive` | inline "Agent isn't responding — Esc to cancel" + elapsed | `Connected` | Idle on cancel | cancel turn (session/cancel), keep session | ✅ |
 | `ResourceGone` | inline system "That session is no longer available — starting fresh" | `Connected` | Idle | offer/auto `session/new` | ✅ |
@@ -147,18 +142,17 @@ to the composer so a resubmit/`/restart` loses nothing.
 1. **Never lose input.** On any non-`Cancelled` failure, the in-flight prompt
    text is pushed back into the composer (today it is lost). One place:
    `App::handle_agent_failure`.
-2. **Degrade, don't die.** Only `TransportLost` / `HandshakeFailed` /
-   `AuthRequired` leave `Connected`. `Protocol` / `ResourceGone` /
-   `Unresponsive` keep the session — a bad turn must not nuke the conversation.
-3. **Auto-recover the recoverable first.** `TransportLost` runs the reconnect
-   loop *before* surfacing a manual hint; `AuthRequired` auto-retries the
-   connect after a successful login; `ResourceGone` can auto-`session/new`.
-   The user is only asked to act when automation is exhausted.
+2. **Fail closed at transport boundaries.** `MasterDisconnected` terminates
+   the helper and never reloads its session. `Protocol` / `ResourceGone` /
+   `Unresponsive` keep the session because the transport remains valid.
+3. **Automate only state-preserving recovery.** Auth retry and a recoverable
+   missing resource may stay in-process. Process/transport crashes require a
+   fresh user-initiated pane/session.
 4. **Typed, not string-matched.** Every branch keys on `AgentFailure` /
    `ErrorCode`, never on message text (except the one logged, transitional
    non-compliant-auth shim).
-5. **Always actionable.** Every state that isn't auto-recovering shows exactly
-   one next step (sign in / `/restart` / Esc / Enter to start fresh).
+5. **Always actionable.** Every surviving state shows exactly one next step
+   (sign in / Esc / Enter to start fresh). A terminal transport failure exits.
 6. **Idempotent & deduped.** Identical consecutive lines collapse; *different*
    lines coexist (keep `connection-resilience.md` §2 rule — raw cause + recovery
    hint both show). Keyed on `AgentFailure` discriminant, not string equality.
@@ -184,10 +178,8 @@ everything else.
    the concrete `acp::Error`, runs `classify_acp_error`, and emits
    `AgentFailed { failure, detail }`. (The few non-ACP callers wrap as
    `Protocol`/`HandshakeFailed` explicitly.)
-3. **The watchdog** (`run_acp_client_over_pipe`, both `Ok`/`Err` arms) emits
-   `AgentFailed { failure: TransportLost, … }` instead of a localized string.
-   The localized `connection.lost` text becomes a *render-time* mapping of
-   `TransportLost`, not a value flowing through the event.
+3. **The watchdog** (`run_acp_client_over_pipe`, both `Ok`/`Err` arms) logs the
+   transport result and emits `MasterDisconnected`, which terminates the helper.
 4. **Handshake sites** (`main.rs` raw return, `initialize`/`new_session`/
    `session/load` timeouts in `client.rs`) emit
    `HandshakeFailed { stage, detail }`.
@@ -195,10 +187,9 @@ everything else.
    `match failure { … }` driving the §3 table. `publish_agent_status`,
    `ConnectionState`, dedup, and tab routing all hang off the typed value.
 
-No behavior the user sees regresses; the auth screen now triggers on the
-*typed* `AuthRequired` (covering localized / reworded agent messages the
-substring list misses), and the new `Reconnecting` UI is wired but inert until
-Phase 3.
+The auth screen now triggers on the typed `AuthRequired` (covering localized /
+reworded agent messages the substring list misses). Transport loss remains a
+separate terminal signal.
 
 ## 5. New mechanisms the table requires
 
@@ -215,40 +206,35 @@ surface the actionable line and let the existing Ctrl+C / Esc cancel path
 (already wired through `cancel_signals`, `client.rs` ~3335) tear the turn down —
 the session and pane survive.
 
-### 5.2 Helper auto-reconnect → closes §5 "helper auto-reconnect"
+### 5.2 Helper transport loss → deterministic exit
 
-On `TransportLost`, instead of parking until manual `/restart`, the helper runs
-a bounded reconnect loop against the **stable pipe name** (already GUID-stable
-across master respawns, `SharedWta.cpp` ~189). State machine:
+On `MasterDisconnected`, the helper does not reconnect to the stable pipe or
+call `session/load`. It ends the TUI and drops owned children. This makes the
+process boundary deterministic and prevents a crashed session from being
+replayed automatically.
 
-```
-Connected ──pipe dies──► Reconnecting{attempt} ──connect ok──► (session/load) ──► Connected
-                              │  backoff 0.25→0.5→1→2→4s (cap, jitter)
-                              └── attempts exhausted ──► Failed → manual /restart
-```
+### 5.3 Master/helper crash → terminal cleanup, no automatic recovery
 
-While `Reconnecting`, the composer is disabled with a spinner; autofix stays
-gated off (it already early-returns when `state != Connected`). On success we
-replay `session/load(existing_sid)` so the conversation rehydrates in place; the
-user sees "Reconnected" and the preserved prompt, never a dead pane.
+A helper, master, or agent crash is a terminal lifecycle event. Helpers exit
+when their master pipe closes, and Terminal's `closeOnExit:"always"` closes the
+pane. C++ does not re-warm the pane, and crash handling never passes
+`--initial-load-session-id`.
 
-### 5.3 C++ active master respawn + dead-pane re-warm → closes §5 / F2 / F5
-
-The Rust reconnect loop only heals if *something* re-spawns the master. Today
-`SharedWta::_OnProcessExited` (`SharedWta.cpp` ~385) is lazy (respawns on next
-`AcquirePane`). Change: when **live agent panes exist**, `_OnProcessExited`
-actively re-spawns the master on the same pipe name, so the helper's reconnect
-loop (§5.2) finds a peer. Symmetrically, a helper *conpty* death (F5) triggers a
-fresh pre-warmed helper for that tab instead of leaving a `CloseOnExitInfoBar`
-zombie. Both are C++-side and gated on "an agent pane was live", so idle
-teardown stays cheap.
+The next user-initiated pane open lazily starts a fresh master/helper/session.
+History Resume remains a separate explicit action. This avoids poison-session
+restart loops, cross-agent resume, and duplicate operations after an uncertain
+failure boundary.
 
 ### 5.4 Agent-side session release on disconnect → closes §6 / F8
 
-When a helper disconnects, master currently drops only its local routing entry,
-leaking the session inside the agent CLI. Add: on helper-pipe EOF, master sends
-`session/cancel` (and, where supported, a release) for that helper's sessions
-before dropping them.
+When a helper disconnects, master treats the helper as terminal and fences new
+session transactions for it. While holding the helper's replacement gate,
+master sends bounded `session/cancel` and, where supported, `session/close` for
+each owned ACP session. It then retires the local route, registry entry,
+session-scoped MCP capability, and pending state even if provider-side cleanup
+is unsupported, fails, or times out. Provider history remains available only
+for an explicit user-initiated `session/load`; disconnect never preserves an
+orphan for automatic resume.
 
 ## 6. Phasing
 
@@ -258,9 +244,9 @@ before dropping them.
 | **1.B** ✅ | Soft-stop axis: classify a *successful* turn's `StopReason` (`MaxTokens` / `MaxTurnRequests` / `Refusal`) into `SoftStopReason` and surface a `ChatMessage::System` line via the separate `AppEvent::AgentSoftStop` event — **off** the `AgentFailure` axis, session stays `Connected`. `EndTurn`/`Cancelled` classify to `None`. (`protocol/acp/soft_stop.rs`, `target=soft_stop` log, 89-locale strings.) | silent truncation/refusal | low — pure additive, no new async |
 | **1.5** | Preserve in-flight prompt text on non-`Cancelled` failure (restore to composer only if empty) | principle 1 | low |
 | **2** | Prompt inactivity watchdog | §6 hung-agent | low — reuses cancel path |
-| **3** | Helper auto-reconnect + `Reconnecting` state/UI | §5 helper reconnect | med — new state machine, needs §5.3 to fully heal |
-| **4** | C++ active master respawn + dead-pane re-warm | §5 / F2 / F5 deferred | med — C++ lifecycle |
-| **5** | Master `session/cancel` on disconnect | §6 / F8 leak | low |
+| **3** | Helper exits on master EOF; no reconnect state | §5 helper cleanup | low — terminal failure semantics |
+| **4** | Remove C++ dead-pane re-warm and automatic session load | §5 / F2 / F5 | low — deletes recovery races |
+| **5** ✅ | Master bounded `session/cancel`/`session/close` plus local retirement on disconnect | §6 / F8 leak | low |
 
 Phase 1 stands alone and is worth landing first: it removes the only fragile
 classification in the codebase and is the substrate every later phase keys off.
@@ -272,15 +258,15 @@ state:
 
 | # | Failure point | Target |
 |---|---|---|
-| F1 | agent CLI death → whole master down (single point of failure) | mitigated via §5.3 respawn + Phase 3 reconnect (full in-master agent respawn still future) |
-| F2 | master crash → C++ lazy respawn, zombie panes | **fixed** §5.3 |
-| F3 | idle master death stayed `Connected` | **fixed** (existing watchdog) + typed `TransportLost` |
-| F4 | in-flight prompt death | **fixed** typed `TransportLost`, input preserved |
-| F5 | helper/conpty death → zombie pane | **fixed** §5.3 re-warm |
+| F1 | agent CLI death → whole master down (single point of failure) | **fail closed** via §5.3: master/helpers/panes exit; a later explicit pane open starts a fresh session. In-master agent respawn is deferred and is not current behavior. |
+| F2 | master crash → C++ lazy respawn, zombie panes | **fixed** §5.3 fail-closed helper exit |
+| F3 | idle master death stayed `Connected` | **fixed** by direct `MasterDisconnected` termination |
+| F4 | in-flight prompt death | **fixed** by direct `MasterDisconnected` termination |
+| F5 | helper/conpty death → zombie pane | **fixed** §5.3 close-on-exit, no re-warm |
 | F6 | handshake/timeout failures | **typed** `HandshakeFailed{stage}` + retry |
 | F7 | connecting looked frozen | covered by `Reconnecting`/`Connecting` spinner |
 | F8 | agent-side session leak | **fixed** §5.4 |
 | F9 | routing to a dead helper | already graceful |
-| F10 | autofix dropped in non-`Connected` | unchanged by default; Phase 3 makes the non-`Connected` window short, "replay last failure on reconnect" optional follow-up |
+| F10 | autofix dropped in non-`Connected` | expected after terminal failure; a new explicit session starts clean |
 | — | **auth mis-routing (new)** | **fixed** typed `AuthRequired` |
 | — | **silent hung agent (new)** | **fixed** §5.1 `Unresponsive` |

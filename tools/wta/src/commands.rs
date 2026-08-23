@@ -22,34 +22,25 @@ pub enum CommandKind {
     /// invoked manually. Any text after `/fix` is passed through as an
     /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
     Fix,
-    /// Reset the agent CLI subprocess.
-    ///
-    /// * Standalone wta: tears down + respawns the agent CLI in-process;
-    ///   tabs lazily get fresh sessions on the next prompt.
-    /// * Helper mode: fires a `restart_agent_stack` `SendEvent` to the C++
-    ///   side, which mirrors the path settings reload already takes when
-    ///   `acpAgent` changes: tear down every agent pane (master + helper
-    ///   processes die with them), force `SharedWta::Restart()` to bypass
-    ///   refcount and respawn master on the *same stable pipe name*, and
-    ///   re-toggle the active tab's agent pane. The new helper auto-
-    ///   connects to the new master. Visible UX: agent panes flash closed
-    ///   and reopen with a clean session; nothing requires the user to
-    ///   restart Windows Terminal.
+    /// Replace the shared master and Agent CLI pool. Each viable helper keeps
+    /// its pane and reconnects its immutable binding over the stable pipe with
+    /// a clean session. Only an unavailable helper requires pane recreation.
     Restart,
     Sessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
     /// are both host-policy-allowed and installed on this machine;
-    /// `/agent <id>` switches directly. The helper asks Windows Terminal to
-    /// rebuild only its owning tab, so the choice remains a runtime per-tab
+    /// `/agent <id>` switches directly by rebinding the existing helper when
+    /// the execution source is unchanged. The choice remains a runtime per-tab
     /// override and never changes the global `acpAgent` setting.
     Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing configured BYOK
-    /// models. Cloud/native models are intentionally omitted; model changes
-    /// are made through Settings because they require an agent restart.
+    /// models. Cloud/native models are intentionally omitted; global model
+    /// changes remain managed through Settings and follow each agent's live
+    /// switch or reconnect capability.
     Model,
     /// Configure the current ACP session using Agent-provided config options.
     Config,

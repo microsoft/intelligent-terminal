@@ -182,17 +182,6 @@ pub(crate) struct Cli {
     #[arg(long, hide = true)]
     pub(crate) start_stashed: bool,
 
-    /// Degraded-open mode: the helper is being spawned for a pane the user
-    /// opened *while wta-master is known to be down* (it died unexpectedly and
-    /// hasn't been recovered via /restart — see C++ `SharedWta::IsDegraded`).
-    /// Rather than the helper retrying the dead master pipe for ~75s and
-    /// showing a spinner, it comes up immediately in the disconnected state
-    /// (the same transport-lost view an orphaned pane shows), so the user can
-    /// /restart right there instead of hunting for another pane. Hidden — only
-    /// WT's degraded-open path should set it.
-    #[arg(long, hide = true)]
-    pub(crate) assume_master_down: bool,
-
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
     pub(crate) info: bool,
@@ -418,6 +407,11 @@ pub(crate) enum Command {
         #[arg(long)]
         wsl_distro: String,
     },
+    /// List built-in ACP agents that WTA can launch on the Windows host.
+    /// Used by FRE, Settings, and automatic agent selection so those surfaces
+    /// share WTA's executable resolution with the actual ACP spawn path.
+    #[command(hide = true)]
+    ProbeHostAgents,
     /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
     /// `session/list` (`list_sessions`) and print what it returns.
     /// Used to evaluate whether ACP session enumeration can replace
@@ -437,19 +431,6 @@ pub(crate) enum Command {
         /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
         #[arg(long)]
         agent: String,
-    },
-    /// Diagnostic: run the production WSL history scan
-    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
-    /// currently-running distros and print the discovered sessions as
-    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
-    /// that seeds the `/sessions` view. Prints `[]` when no distro is
-    /// running or none answer.
-    ProbeWslSessions {
-        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
-        /// scans the three ACP-capable built-ins (Gemini has no
-        /// `session/list`).
-        #[arg(long)]
-        cli: Option<String>,
     },
     /// Submit a typed terminal-action proposal directly to the Helper that
     /// owns the current turn. Intended to be run by an agent session using

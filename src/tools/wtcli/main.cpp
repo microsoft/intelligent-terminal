@@ -18,13 +18,15 @@
 
 #include <wil/resource.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <fcntl.h>
+#include <io.h>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -469,6 +471,22 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
+    // ── get-settings ──
+    auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    getSettingsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value settings;
+        const auto hr = CallJson([&](BSTR* j) { return server->GetSettings(j); }, settings);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(settings);
+    });
+
     // ── active-pane ──
     auto* activePaneCmd = app.add_subcommand("active-pane", "Show the currently active pane");
     activePaneCmd->callback([&]() {
@@ -828,9 +846,41 @@ int wmain(int argc, wchar_t** argv)
     // ── publish ──
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
+    bool publishFromStdin = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
-    publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
+    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
+    auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishJsonOption->excludes(publishStdinOption);
+    publishCmd->require_option(1, 1);
     publishCmd->callback([&]() {
+        if (publishFromStdin)
+        {
+            if (_setmode(_fileno(stdin), _O_BINARY) == -1)
+            {
+                fprintf(stderr, "[wtcli] publish: failed to configure stdin for binary input.\n");
+                exitCode = 1;
+                return;
+            }
+            std::string input;
+            std::array<char, 8192> buffer;
+            while (std::cin.read(buffer.data(), buffer.size()) || std::cin.gcount() > 0)
+            {
+                input.append(buffer.data(), static_cast<size_t>(std::cin.gcount()));
+            }
+            if (!std::cin.eof())
+            {
+                fprintf(stderr, "[wtcli] publish: failed to read JSON from stdin.\n");
+                exitCode = 1;
+                return;
+            }
+            publishJson = std::move(input);
+        }
+        if (publishJson.empty())
+        {
+            fprintf(stderr, "[wtcli] publish: JSON input must not be empty.\n");
+            exitCode = 1;
+            return;
+        }
         auto server = connect();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
@@ -970,10 +1020,24 @@ int wmain(int argc, wchar_t** argv)
     // ── listen ──
     std::string listenTarget;
     std::string listenEventFilter;
+    DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
+    listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->callback([&]() {
+        wil::unique_handle parentProcess;
+        if (listenParentPid != 0)
+        {
+            parentProcess.reset(OpenProcess(SYNCHRONIZE, FALSE, listenParentPid));
+            if (!parentProcess)
+            {
+                fprintf(stderr, "[wtcli] listen: failed to open parent process %lu (0x%08X)\n", listenParentPid, GetLastError());
+                exitCode = 1;
+                return;
+            }
+        }
+
         auto server = connect();
         if (!server)
         {
@@ -1016,7 +1080,21 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
 
-        WaitForSingleObject(s_stopEvent, INFINITE);
+        DWORD waitResult = WAIT_OBJECT_0;
+        if (parentProcess)
+        {
+            const HANDLE waitHandles[]{ s_stopEvent, parentProcess.get() };
+            waitResult = WaitForMultipleObjects(ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
+        }
+        else
+        {
+            waitResult = WaitForSingleObject(s_stopEvent, INFINITE);
+        }
+        if (waitResult == WAIT_FAILED)
+        {
+            fprintf(stderr, "[wtcli] listen: wait failed (0x%08X)\n", GetLastError());
+            exitCode = 1;
+        }
         server->Unsubscribe();
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda

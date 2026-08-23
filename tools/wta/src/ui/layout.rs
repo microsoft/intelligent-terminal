@@ -56,6 +56,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let tab_id = app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_string();
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
+        let source_filter = app.current_location_filter();
         let origin_filter = app.sessions_origin_filter;
         let pane_focused = app.pane_focused;
         let tab = app.tab_sessions.entry(tab_id).or_default();
@@ -80,6 +81,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             &mut tab.agents_list_state,
             activity_frame,
             cli_filter.as_ref(),
+            &source_filter,
             origin_filter,
             show_loading,
             &tab.agents_view.search_query,

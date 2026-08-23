@@ -68,8 +68,8 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         },
         Command::ProbeModels { agent } => probes::run_models(&agent).await,
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
+        Command::ProbeHostAgents => probes::run_host_agents(),
         Command::ProbeSessions { agent } => probes::run_sessions(&agent).await,
         Command::ProbeHostSessions { agent } => probes::run_host_sessions(&agent).await,
-        Command::ProbeWslSessions { cli } => probes::run_wsl_sessions(cli.as_deref()).await,
     }
 }

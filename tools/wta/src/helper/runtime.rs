@@ -1,6 +1,6 @@
 //! Per-pane helper runtime bootstrap and orchestration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -14,9 +14,65 @@ use std::sync::Arc;
 
 use crate::shell::wt_channel::{CliChannel, WtChannel};
 use crate::shell::ShellManager;
-use crate::{agent_check, agent_registry, app, event, logging, protocol, shell};
+use crate::{agent_registry, app, event, logging, protocol, shell};
 
 use super::config::{HelperConfig, InitialView};
+
+#[cfg(windows)]
+fn install_descendant_job() -> Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return Err(io::Error::last_os_error())
+                .context("failed to create helper descendant job");
+        }
+        let job = OwnedHandle::from_raw_handle(job);
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job.as_raw_handle(),
+            JobObjectExtendedLimitInformation,
+            std::ptr::addr_of!(limits).cast(),
+            std::mem::size_of_val(&limits) as u32,
+        ) == 0
+        {
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to configure helper descendant job");
+        }
+
+        if AssignProcessToJobObject(job.as_raw_handle(), GetCurrentProcess()) == 0 {
+            let error = io::Error::last_os_error();
+            drop(job);
+            return Err(error).context("failed to assign helper to descendant job");
+        }
+
+        // This process must retain the only job handle for its entire lifetime.
+        // Windows closes it on every exit path, including TerminateProcess, and
+        // KILL_ON_JOB_CLOSE then reclaims wtcli and other helper descendants.
+        std::mem::forget(job);
+        tracing::info!(
+            target: "helper",
+            helper_pid = std::process::id(),
+            "helper descendant job installed"
+        );
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn install_descendant_job() -> Result<()> {
+    Ok(())
+}
 
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
@@ -25,6 +81,7 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
+    install_descendant_job()?;
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
         config.agent_source.as_deref(),
@@ -235,22 +292,28 @@ async fn connect_to_wt_protocol(
     Ok(channel.with_debug_sender(debug_tx))
 }
 
-fn spawn_restart_agent_stack_forwarder(
-    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
+fn spawn_agent_lifecycle_forwarder(
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
+        protocol::acp::client::AgentLifecycleRequest,
+    >,
+    event_tx: tokio::sync::mpsc::UnboundedSender<app::AppEvent>,
 ) {
     tokio::task::spawn_local(async move {
         while let Some(req) = restart_rx.recv().await {
-            tracing::info!(
-                target: "helper",
-                new_agent = ?req.agent_cmd,
-                "restart requested before ACP task is running; asking WT to force-restart the agent stack"
-            );
-            let evt = serde_json::json!({
-                "type": "event",
-                "method": "restart_agent_stack",
-                "params": {},
-            });
-            crate::wt_protocol_events::send(evt.to_string());
+            match req {
+                protocol::acp::client::AgentLifecycleRequest::RestartMaster => {
+                    tracing::info!(
+                        target: "helper",
+                        "restart requested before ACP task is running; asking WT to replace the shared master"
+                    );
+                    crate::wt_protocol_events::send(
+                        crate::wt_protocol_events::restart_agent_stack_event(),
+                    );
+                }
+                protocol::acp::client::AgentLifecycleRequest::RebindAgent(request) => {
+                    let _ = event_tx.send(app::AppEvent::AgentReconnectReady(request));
+                }
+            }
         }
     });
 }
@@ -477,9 +540,9 @@ async fn run_acp_app(
             // its standard runtime arm — no race vs. a separate VT
             // `load_session` broadcast.
             let initial_load_tx = load_session_tx.clone();
-            // /restart channel: App emits a RestartRequest, the ACP client
-            // kills the agent child process, drops the connection, and
-            // respawns from scratch. State is cleaned up on both sides.
+            // Lifecycle channel: App either asks WT to replace the shared
+            // master or retires this helper's ACP transport for an Agent
+            // rebind. The helper process itself stays alive.
             let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
@@ -501,8 +564,7 @@ async fn run_acp_app(
 
             // Seed the process-wide owner tab StableId so `inject_wta_pane_meta`
             // stamps `_meta.wta.owner_tab_id` on every session/new + session/load.
-            // Master needs it to address `restart_agent_pane` crash-recovery
-            // events by the same StableId C++ routes per-tab events with.
+            // Master uses it to resolve close-by-tab ownership.
             protocol::acp::client::set_helper_owner_tab_id(config.owner_tab_id.as_deref());
 
             let explicit_agent_id = config
@@ -532,14 +594,6 @@ async fn run_acp_app(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
             {
-                Some(requested) if config.assume_master_down => {
-                    tracing::warn!(
-                        target: "initial_auth",
-                        requested_agent = %requested,
-                        "--initial-auth-agent ignored because --assume-master-down is active"
-                    );
-                    None
-                }
                 Some(requested) if config.start_stashed => {
                     tracing::warn!(
                         target: "initial_auth",
@@ -617,44 +671,7 @@ async fn run_acp_app(
             // pipe-attached variant immediately. FRE-installed Copilot is the
             // exception: `--initial-auth-agent copilot` starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
-            if config.assume_master_down {
-                // Degraded open: master is known down, so don't even try the
-                // (dead) pipe — go straight to the disconnected view that an
-                // orphaned pane shows, where /restart is the one available
-                // command. /restart routes via wtcli→COM (not the dead pipe),
-                // so it recovers the whole stack from right here.
-                tracing::info!(
-                    target: "helper",
-                    "assume-master-down: starting in disconnected state (master is degraded)"
-                );
-                let _ = event_tx.send(app::AppEvent::AgentError {
-                    session_id: None,
-                    failure: protocol::acp::failure::AgentFailure::TransportLost,
-                    message: t!("connection.lost").into_owned(),
-                });
-                // Keep the /restart path alive even with no master: /restart
-                // doesn't talk to master, it asks the C++ side (via wtcli->COM)
-                // to force-restart the whole agent stack — which respawns
-                // master and reconnects EVERY pane. So we must keep consuming
-                // `restart_rx` and forward it as a `restart_agent_stack` event.
-                // The other receivers (prompt/new_session/…) genuinely have no
-                // master to reach, so they're dropped; they're re-created when
-                // /restart reopens this pane fresh.
-                spawn_restart_agent_stack_forwarder(restart_rx);
-                // The remaining receivers have no master to forward to. They
-                // get re-created when /restart respawns the stack and reopens
-                // this pane fresh.
-                drop((
-                    prompt_rx,
-                    cancel_rx,
-                    new_session_rx,
-                    load_session_rx,
-                    drop_session_rx,
-                    rename_session_rx,
-                    session_hook_rx,
-                    master_ext_rx,
-                ));
-            } else if start_in_initial_auth {
+            if start_in_initial_auth {
                 tracing::info!(
                     target: "initial_auth",
                     agent_id = %canonical_agent_id,
@@ -671,7 +688,7 @@ async fn run_acp_app(
                 // running yet. The boot App holds the sole restart sender; when
                 // LoginComplete calls `try_start_acp`, it replaces that sender
                 // with a fresh channel and this forwarder exits.
-                spawn_restart_agent_stack_forwarder(restart_rx);
+                spawn_agent_lifecycle_forwarder(restart_rx, event_tx.clone());
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -687,6 +704,7 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = config.acp_model.clone();
+                let custom_model_selection = config.custom_model_selection.clone();
                 let cloud_models_for_client = cloud_models.clone();
                 // Pass per-tab agent identity through the initialize handshake.
                 let agent_id = config.agent_id.clone();
@@ -696,9 +714,10 @@ async fn run_acp_app(
                 let initial_load_sid = config.initial_load_session_id.clone();
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
-                    if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
+                    match protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        custom_model_selection,
                         cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
@@ -722,33 +741,44 @@ async fn run_acp_app(
                     )
                     .await
                     {
-                        tracing::error!(
-                            target: "helper",
-                            error = %e,
-                            "run_acp_client_over_pipe failed"
-                        );
-                        // Recover the typed classification: an auth error
-                        // attached at the handshake `new_session` site survives
-                        // the `?`-collapse into `anyhow` via downcast, so it
-                        // still routes to the sign-in screen; other handshake
-                        // failures fall back to `HandshakeFailed`. The raw
-                        // `{e:#}` is also in the log above for diagnosis.
-                        let failure = protocol::acp::failure::classify_anyhow(
-                            &e,
-                            protocol::acp::failure::HandshakeStage::Initialize,
-                        );
-                        let message = match &failure {
-                            protocol::acp::failure::AgentFailure::HandshakeFailed {
-                                detail,
-                                ..
-                            } => detail.clone(),
-                            _ => format!("helper ACP transport failed: {e:#}"),
-                        };
-                        let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
-                            session_id: None,
-                            failure,
-                            message,
-                        });
+                        Ok(protocol::acp::client::AcpClientExit::RebindAgent(request)) => {
+                            let _ = event_tx_for_pipe
+                                .send(app::AppEvent::AgentReconnectReady(request));
+                        }
+                        Ok(protocol::acp::client::AcpClientExit::ChannelsClosed) => {}
+                        Err(e) => {
+                            tracing::error!(
+                                target: "helper",
+                                error = %e,
+                                "run_acp_client_over_pipe failed"
+                            );
+                            // Notify the App before the visible failure so a
+                            // queued Agent rebind can continue with its
+                            // latest target instead of becoming stranded.
+                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
+                            // Recover the typed classification: an auth error
+                            // attached at the handshake `new_session` site survives
+                            // the `?`-collapse into `anyhow` via downcast, so it
+                            // still routes to the sign-in screen; other handshake
+                            // failures fall back to `HandshakeFailed`. The raw
+                            // `{e:#}` is also in the log above for diagnosis.
+                            let failure = protocol::acp::failure::classify_anyhow(
+                                &e,
+                                protocol::acp::failure::HandshakeStage::Initialize,
+                            );
+                            let message = match &failure {
+                                protocol::acp::failure::AgentFailure::HandshakeFailed {
+                                    detail,
+                                    ..
+                                } => detail.clone(),
+                                _ => format!("helper ACP transport failed: {e:#}"),
+                            };
+                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
+                                session_id: None,
+                                failure,
+                                message,
+                            });
+                        }
                     }
                 });
             }
@@ -847,7 +877,9 @@ async fn run_acp_app(
             app_state.set_master_pipe_acp_params(
                 connect_master_pipe.clone(),
                 agent_cmd.clone(),
+                config.agent_id.clone(),
                 config.acp_model.clone(),
+                config.custom_model_selection.clone(),
                 agent_source.clone(),
                 agent_source_cwd.clone(),
                 config.owner_tab_id.clone(),
@@ -876,31 +908,7 @@ async fn run_acp_app(
             if config.setup.is_none() && !start_in_initial_auth {
                 let agent_id = canonical_agent_id.as_str();
                 let preflight_result =
-                    if agent_id.starts_with("custom:") || !agent_registry::is_known_id(agent_id) {
-                        // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
-                        // shell function, …); a PATH probe would lie. The real spawn produces
-                        // the authoritative error via `ConnectionFailed`, so skip preflight.
-                        app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
-                    } else {
-                        let status =
-                            agent_check::check_agent_in_source(agent_id, &agent_source).await;
-                        app::PreflightResult {
-                            agent_id: canonical_agent_id.clone(),
-                            display_name: status.display_name.clone(),
-                            cli_status: if status.cli_found {
-                                app::CheckStatus::Passed
-                            } else {
-                                app::CheckStatus::Failed("Not found on PATH".to_string())
-                            },
-                            cli_path: status.cli_path.clone(),
-                            // Authentication is checked by the ACP handshake rather
-                            // than by a local credential-store preflight.
-                            auth_status: app::CheckStatus::Skipped,
-                            install_hint: status.install_hint.clone(),
-                            install_url: String::new(),
-                            auth_hint: status.auth_hint.clone(),
-                        }
-                    };
+                    app::preflight_agent_in_source(agent_id, &agent_source).await;
                 tracing::info!(
                     target: "preflight",
                     agent_id = %preflight_result.agent_id,

@@ -407,23 +407,17 @@ async fn delegate_with_context(
             "delegate WSL tab created",
         );
 
-        // Born-bound registration for the WSL delegate session — but only
-        // when WSL sessions are enabled. The whole WSL surface is gated on
-        // `WTA_WSL_SESSIONS`; with it off we must not surface any WSL
-        // session, born-bound delegate rows included. The tab still opens
-        // and the CLI still runs — it's just untracked, exactly like every
-        // other WSL session while the flag is off.
+        // Born-bound registration for the WSL delegate session. The row is
+        // stamped with this distro, and a session view only lists its own
+        // pane's execution source, so registering it can no longer leak an
+        // in-distro session into a host pane's list — it is simply the WSL
+        // pane's own history.
         //
         // `wsl_cwd` (the same POSIX-validated value used for `wsl --cd`
         // above) is reused here rather than falling back to the raw
         // Windows `cwd`, which would be misleading for a WSL session.
-        if crate::history_loader::wsl_sessions_enabled() {
-            if let (Some(sid), Some(pane)) =
-                (pinned_session_id.as_deref(), pane_guid.as_deref())
-            {
-                super::sessions::register_launched(sid, pane, &runtime.id, wsl_cwd, Some(distro))
-                    .await;
-            }
+        if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
+            super::sessions::register_launched(sid, pane, &runtime.id, wsl_cwd, Some(distro)).await;
         }
         return Ok(());
     }
