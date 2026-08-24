@@ -23,6 +23,7 @@
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
 #include "DurableSessionHelpers.h"
+#include "TabAutoNaming.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -707,6 +708,87 @@ namespace winrt::TerminalApp::implementation
         tab->SetDurableTabSession(save.id, save.revision);
     }
 
+    // Picks the shell control whose context best describes the tab: the most
+    // recently used non-agent pane, falling back to the first one in the tree.
+    // Agent panes are skipped because their working directory belongs to the
+    // agent process, not to the user's work.
+    static TermControl _FindDescribingShellControl(Tab* const tab)
+    {
+        TermControl control{ nullptr };
+        for (const auto paneId : tab->GetMruPanes())
+        {
+            if (const auto pane = tab->GetRootPane()->FindPane(paneId);
+                pane && !pane->IsAgentPane())
+            {
+                control = pane->GetTerminalControl();
+                if (control)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (!control)
+        {
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (!control && !pane->IsAgentPane())
+                {
+                    control = pane->GetTerminalControl();
+                }
+            });
+        }
+
+        return control;
+    }
+
+    // Builds the name a durable session is saved under.
+    //
+    // The shell-reported title alone makes the recents list a wall of identical
+    // shell names, so we combine the structured context shell integration
+    // already gives us into "branch · task". The working directory is not part
+    // of the name because the recents list renders it in its own column.
+    //
+    // This runs once, at tab close, which is what makes the git read and the
+    // (comparatively expensive) CommandHistory() call affordable here.
+    static winrt::hstring _BuildDurableTabSessionName(Tab* const tab, const TermControl& shellControl)
+    {
+        const auto fallbackTitle = tab->Title();
+
+        // A tab the user renamed by hand already has the name they wanted.
+        if (!tab->GetTabText().empty() || !shellControl)
+        {
+            return fallbackTitle;
+        }
+
+        std::wstring branch;
+        if (const auto cwd = shellControl.WorkingDirectory(); !cwd.empty())
+        {
+            const std::filesystem::path workingDirectory{ std::wstring_view{ cwd } };
+            if (auto found = TryReadGitBranch(workingDirectory))
+            {
+                branch = std::move(*found);
+            }
+        }
+
+        std::wstring task;
+        if (const auto history = shellControl.CommandHistory())
+        {
+            // A command still running at close time is the best description of
+            // the tab. Otherwise the user is sitting at an idle prompt, and the
+            // most recent completed command describes it instead.
+            if (const auto current = history.CurrentCommandline(); !current.empty())
+            {
+                task = FriendlyCommandLabel(std::wstring_view{ current });
+            }
+            else if (const auto commands = history.History(); commands && commands.Size() > 0)
+            {
+                task = FriendlyCommandLabel(std::wstring_view{ commands.GetAt(commands.Size() - 1) });
+            }
+        }
+
+        return winrt::hstring{ ComposeTabAutoName(branch, task, std::wstring_view{ fallbackTitle }) };
+    }
+
     void TerminalPage::_PersistDurableTabSession(Tab* const tab)
     {
         const auto closeActions = GetDurableTabSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference());
@@ -741,7 +823,10 @@ namespace winrt::TerminalApp::implementation
 
         try
         {
-            const auto sessionName = tab->Title();
+            // Resolve the describing control up front: both the generated name
+            // and the persisted working directory come from the same pane.
+            const auto describingShellControl = _FindDescribingShellControl(tab);
+            const auto sessionName = _BuildDurableTabSessionName(tab, describingShellControl);
             auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
             if (sessionName.empty() || actions.empty())
             {
@@ -832,32 +917,9 @@ namespace winrt::TerminalApp::implementation
                 Json::Value params;
                 params["name"] = winrt::to_string(sessionName);
 
-                TermControl activeShellControl{ nullptr };
-                for (const auto paneId : tab->GetMruPanes())
+                if (describingShellControl)
                 {
-                    if (const auto pane = tab->GetRootPane()->FindPane(paneId);
-                        pane && !pane->IsAgentPane())
-                    {
-                        activeShellControl = pane->GetTerminalControl();
-                        if (activeShellControl)
-                        {
-                            break;
-                        }
-                    }
-                }
-                if (!activeShellControl)
-                {
-                    tab->GetRootPane()->WalkTree([&](const auto& pane) {
-                        if (!activeShellControl && !pane->IsAgentPane())
-                        {
-                            activeShellControl = pane->GetTerminalControl();
-                        }
-                    });
-                }
-
-                if (activeShellControl)
-                {
-                    params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
+                    params["active_pane_cwd"] = winrt::to_string(describingShellControl.WorkingDirectory());
                 }
                 else
                 {
