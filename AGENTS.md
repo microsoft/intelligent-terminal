@@ -226,6 +226,8 @@ needed:
 - PowerShell hooks (`send-event.ps1`) → `hook-trace.log`, via the
   `WTA_HOOK_LOG_DIR` env var set to `LogDirVersioned()` (C++ ConptyConnection
   for shell panes; `spawn.rs` for agent-pane CLIs).
+- Rich Tabs → per-process `rich-tabs-<pid>-<epoch>.jsonl` files. These use a
+  bounded asynchronous C++ sink and contain only structured, redacted state.
 
 `IntelligentTerminal::LogDir()` stays the **root** (`…\logs`, no version) and is
 used only by the bug-report-zip action so it archives every version at once.
@@ -286,6 +288,12 @@ Two files in the per-version dir are **not** written by the Rust wta binary —
 see **All three writers share one per-version dir** above. They live in the
 same `logs\<pkgver>\` and so are cleaned together with the Rust logs when that
 version's dir ages out.
+
+Rich Tab diagnostics are also written by C++ as per-process
+`rich-tabs-<pid>-<epoch>.jsonl` files. Each active file has a 4 MiB cap and one
+backup; closed Rich Tab runs have additional seven-day/32 MiB housekeeping.
+The event chain and privacy contract are documented in
+`doc/rich-tab-providers.md`.
 
 ### Tracking flows by `target` field
 

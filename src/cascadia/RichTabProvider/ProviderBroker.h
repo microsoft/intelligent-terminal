@@ -66,6 +66,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     struct BrokerUpdate
     {
         std::string sessionId;
+        uint64_t sessionIncarnation{ 0 };
         uint64_t contextRevision{ 0 };
         uint64_t updateSequence{ 0 };
         std::optional<Presentation> presentation;
@@ -146,6 +147,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::optional<std::unordered_map<std::string, FieldValue>> fieldBaseline;
             std::unordered_map<std::string, uint64_t> fieldChangeSequences;
             uint64_t publishedGeneration{ 0 };
+            uint64_t publishedUpdateSequence{ 0 };
             uint64_t persistentInstanceGeneration{ 0 };
             std::string activeRequestId;
             ActivationEvent lastActivation{ ActivationEvent::ManualRefresh };
@@ -164,12 +166,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         struct SessionState
         {
             SessionContext context;
+            uint64_t sessionIncarnation{ 0 };
             uint64_t contextRevision{ 0 };
             uint64_t updateSequence{ 0 };
             std::optional<std::chrono::steady_clock::time_point> detachedAt;
             std::unordered_map<AttachmentId, Callback> callbacks;
             std::unordered_map<std::string, ProviderState> providers;
             uint64_t nextFieldChangeSequence{ 0 };
+            std::optional<bool> diagnosticPresentationPresent;
         };
 
         struct CallbackLifetime
@@ -199,6 +203,12 @@ namespace Microsoft::Terminal::RichTab::Provider
             bool forceRestart,
             bool resetBackoff);
         void _OnPersistentProviderEvent(const PersistentProviderEvent& event);
+        static void _DeliverCallback(
+            const Callback& callback,
+            const BrokerUpdate& update) noexcept;
+        static void _DeliverCallbacks(
+            const std::vector<Callback>& callbacks,
+            const BrokerUpdate& update) noexcept;
         BrokerUpdate _UpdateFor(
             const std::string& sessionId,
             const SessionState& state,
@@ -262,6 +272,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::unordered_map<AttachmentId, std::string> _attachmentSessions;
         std::unordered_map<std::string, PublishLease> _publishLeases;
         uint64_t _processEpoch{ 0 };
+        uint64_t _catalogRevision{ 0 };
+        uint64_t _nextSessionIncarnation{ 1 };
         uint64_t _nextAttachment{ 1 };
         uint64_t _nextRequest{ 1 };
         uint64_t _nextGeneration{ 1 };

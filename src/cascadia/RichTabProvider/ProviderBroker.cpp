@@ -3,6 +3,7 @@
 
 #include "ProviderBroker.h"
 #include "BuiltInProviderCatalog.h"
+#include "RichTabDiagnostics.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <numeric>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -23,6 +25,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         constexpr auto PublishLeaseLifetime = std::chrono::seconds{ 10 };
         constexpr auto PersistentPublishLeaseLifetime = std::chrono::seconds{ 90 };
         constexpr auto DetachedSessionRetention = std::chrono::seconds{ 30 };
+
+        RichTabDiagnosticReason _DiagnosticReason(const ActivationEvent event) noexcept
+        {
+            switch (event)
+            {
+            case ActivationEvent::PaneConnected:
+                return RichTabDiagnosticReason::PaneConnected;
+            case ActivationEvent::WorkingDirectoryChanged:
+                return RichTabDiagnosticReason::ContextChanged;
+            case ActivationEvent::CommandFinished:
+                return RichTabDiagnosticReason::CommandFinished;
+            case ActivationEvent::TabActivated:
+                return RichTabDiagnosticReason::TabActivated;
+            case ActivationEvent::ManualRefresh:
+                return RichTabDiagnosticReason::ManualRefresh;
+            }
+            return RichTabDiagnosticReason::None;
+        }
 
         std::optional<std::wstring> _EnvironmentValue(const wchar_t* name)
         {
@@ -224,6 +244,52 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
             }
             return result;
+        }
+
+        RichTabDiagnosticEventData _CatalogDiagnosticEvent(
+            const ProviderDescriptor& descriptor,
+            const uint64_t catalogRevision)
+        {
+            auto state = RichTabDiagnosticState::Eligible;
+            auto reason = RichTabDiagnosticReason::None;
+            if (descriptor.shadowed)
+            {
+                state = RichTabDiagnosticState::Shadowed;
+            }
+            else if (!descriptor.integrityValid)
+            {
+                state = RichTabDiagnosticState::Rejected;
+                reason = RichTabDiagnosticReason::IntegrityFailed;
+            }
+            else if (!descriptor.consentEnabled)
+            {
+                state = RichTabDiagnosticState::Disabled;
+                reason =
+                    ConsentRequirementFor(descriptor.source) == ProviderConsentRequirement::Required ?
+                        RichTabDiagnosticReason::ConsentRequired :
+                        RichTabDiagnosticReason::SourceNotAllowed;
+            }
+            else if (descriptor.effectiveEnabled)
+            {
+                state = RichTabDiagnosticState::Effective;
+            }
+            else if (descriptor.eligible)
+            {
+                state = RichTabDiagnosticState::Disabled;
+                reason = RichTabDiagnosticReason::PreferenceDisabled;
+            }
+            else
+            {
+                state = RichTabDiagnosticState::Rejected;
+                reason = RichTabDiagnosticReason::CatalogLoadFailed;
+            }
+            return RichTabDiagnosticEventData{
+                .event = RichTabDiagnosticEvent::CatalogState,
+                .state = state,
+                .reason = reason,
+                .providerId = descriptor.id,
+                .catalogRevision = catalogRevision,
+            };
         }
     }
 
@@ -513,25 +579,55 @@ namespace Microsoft::Terminal::RichTab::Provider
         const std::string_view snapshotJson)
     {
         PublishLease binding;
+        std::optional<RichTabDiagnosticReason> initialRejection;
         {
             std::lock_guard lock{ _mutex };
             const auto leaseEntry = _publishLeases.find(std::string{ lease });
             if (leaseEntry == _publishLeases.end())
             {
+                initialRejection = RichTabDiagnosticReason::LeaseUnknown;
+            }
+            else
+            {
+                binding = leaseEntry->second;
+                _publishLeases.erase(leaseEntry);
+                if (std::chrono::steady_clock::now() >= binding.expiresAt)
+                {
+                    initialRejection = RichTabDiagnosticReason::LeaseExpired;
+                }
+                else
+                {
+                    SessionState* session = nullptr;
+                    ProviderState* providerState = nullptr;
+                    if (!_ValidatePublishLeaseLocked(binding, session, providerState))
+                    {
+                        initialRejection = RichTabDiagnosticReason::LeaseStale;
+                    }
+                }
+            }
+        }
+        if (initialRejection)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::PublishResult,
+                .state = RichTabDiagnosticState::Rejected,
+                .reason = *initialRejection,
+                .sessionId = binding.request.sessionId,
+                .providerId = binding.provider.manifest.id,
+                .requestId = binding.request.requestId,
+                .contextRevision = binding.request.contextRevision,
+                .generation = binding.generation,
+                .instanceGeneration = binding.instanceGeneration,
+                .persistent = binding.persistent,
+            });
+            switch (*initialRejection)
+            {
+            case RichTabDiagnosticReason::LeaseUnknown:
                 return { false, "publish lease is unknown or already consumed" };
-            }
-
-            binding = leaseEntry->second;
-            _publishLeases.erase(leaseEntry);
-            if (std::chrono::steady_clock::now() >= binding.expiresAt)
-            {
+            case RichTabDiagnosticReason::LeaseExpired:
                 return { false, "publish lease has expired" };
-            }
-
-            SessionState* session = nullptr;
-            ProviderState* providerState = nullptr;
-            if (!_ValidatePublishLeaseLocked(binding, session, providerState))
-            {
+            default:
                 return { false, "publish lease is stale" };
             }
         }
@@ -542,6 +638,19 @@ namespace Microsoft::Terminal::RichTab::Provider
             binding.request.requestId);
         if (!parsed)
         {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::PublishResult,
+                .state = RichTabDiagnosticState::Rejected,
+                .reason = RichTabDiagnosticReason::SnapshotInvalid,
+                .sessionId = binding.request.sessionId,
+                .providerId = binding.provider.manifest.id,
+                .requestId = binding.request.requestId,
+                .contextRevision = binding.request.contextRevision,
+                .generation = binding.generation,
+                .instanceGeneration = binding.instanceGeneration,
+                .persistent = binding.persistent,
+            });
             if (binding.persistent)
             {
                 _ReplenishPersistentGrants(binding);
@@ -551,39 +660,115 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         std::vector<Callback> callbacks;
         BrokerUpdate update;
+        bool staleAfterParsing = false;
+        bool compositionChanged = false;
         {
             std::lock_guard lock{ _mutex };
             SessionState* session = nullptr;
             ProviderState* providerState = nullptr;
             if (!_ValidatePublishLeaseLocked(binding, session, providerState))
             {
-                return { false, "publish lease is stale" };
+                staleAfterParsing = true;
             }
-
-            UpdateFieldChangeSequences(
-                *parsed.value,
-                providerState->fieldBaseline,
-                providerState->fieldChangeSequences,
-                session->nextFieldChangeSequence);
-            providerState->snapshot = *parsed.value;
-            providerState->publishedGeneration = binding.generation;
-            ++session->updateSequence;
-            update = _UpdateFor(binding.request.sessionId, *session);
-            callbacks.reserve(session->callbacks.size());
-            for (const auto& [_, callback] : session->callbacks)
+            else
             {
-                callbacks.emplace_back(callback);
+                UpdateFieldChangeSequences(
+                    *parsed.value,
+                    providerState->fieldBaseline,
+                    providerState->fieldChangeSequences,
+                    session->nextFieldChangeSequence);
+                providerState->snapshot = *parsed.value;
+                providerState->publishedGeneration = binding.generation;
+                ++session->updateSequence;
+                providerState->publishedUpdateSequence = session->updateSequence;
+                update = _UpdateFor(binding.request.sessionId, *session);
+                const auto presentationPresent = update.presentation.has_value();
+                compositionChanged =
+                    !session->diagnosticPresentationPresent ||
+                    *session->diagnosticPresentationPresent != presentationPresent;
+                session->diagnosticPresentationPresent = presentationPresent;
+                callbacks.reserve(session->callbacks.size());
+                for (const auto& [_, callback] : session->callbacks)
+                {
+                    callbacks.emplace_back(callback);
+                }
             }
         }
+        if (staleAfterParsing)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::PublishResult,
+                .state = RichTabDiagnosticState::Rejected,
+                .reason = RichTabDiagnosticReason::LeaseStale,
+                .sessionId = binding.request.sessionId,
+                .providerId = binding.provider.manifest.id,
+                .requestId = binding.request.requestId,
+                .contextRevision = binding.request.contextRevision,
+                .generation = binding.generation,
+                .instanceGeneration = binding.instanceGeneration,
+                .persistent = binding.persistent,
+            });
+            return { false, "publish lease is stale" };
+        }
 
+        EmitRichTabDiagnostic({
+            .level = RichTabDiagnosticLevel::Debug,
+            .event = RichTabDiagnosticEvent::PublishResult,
+            .state = RichTabDiagnosticState::Accepted,
+            .sessionId = binding.request.sessionId,
+            .providerId = binding.provider.manifest.id,
+            .requestId = binding.request.requestId,
+            .sessionIncarnation = update.sessionIncarnation,
+            .contextRevision = binding.request.contextRevision,
+            .updateSequence = update.updateSequence,
+            .generation = binding.generation,
+            .instanceGeneration = binding.instanceGeneration,
+            .fieldCount = parsed.value->fields.size(),
+            .persistent = binding.persistent,
+            .presentationPresent = update.presentation.has_value(),
+        });
+        EmitRichTabDiagnostic({
+            .level = compositionChanged ?
+                         RichTabDiagnosticLevel::Info :
+                         RichTabDiagnosticLevel::Debug,
+            .event = RichTabDiagnosticEvent::CompositionState,
+            .state = update.presentation ? RichTabDiagnosticState::Nonempty : RichTabDiagnosticState::Empty,
+            .reason = update.presentation ? RichTabDiagnosticReason::None : RichTabDiagnosticReason::EmptyMetadata,
+            .sessionId = binding.request.sessionId,
+            .sessionIncarnation = update.sessionIncarnation,
+            .contextRevision = binding.request.contextRevision,
+            .updateSequence = update.updateSequence,
+            .snapshotCount = size_t{ 1 },
+            .fieldCount = parsed.value->fields.size(),
+            .presentationPresent = update.presentation.has_value(),
+        });
         if (binding.persistent)
         {
-            _ReplenishPersistentGrants(binding);
+            try
+            {
+                _ReplenishPersistentGrants(binding);
+            }
+            catch (...)
+            {
+                EmitRichTabDiagnostic({
+                    .level = RichTabDiagnosticLevel::Warning,
+                    .event = RichTabDiagnosticEvent::RequestState,
+                    .state = RichTabDiagnosticState::Failed,
+                    .reason = RichTabDiagnosticReason::LeaseCreationFailed,
+                    .sessionId = binding.request.sessionId,
+                    .providerId = binding.provider.manifest.id,
+                    .requestId = binding.request.requestId,
+                    .sessionIncarnation = update.sessionIncarnation,
+                    .contextRevision = binding.request.contextRevision,
+                    .updateSequence = update.updateSequence,
+                    .generation = binding.generation,
+                    .instanceGeneration = binding.instanceGeneration,
+                    .persistent = true,
+                });
+            }
         }
-        for (const auto& callback : callbacks)
-        {
-            callback(update);
-        }
+        _DeliverCallbacks(callbacks, update);
         return { true, "snapshot committed" };
     }
 
@@ -676,6 +861,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         _persistentSupervisor.SendLease(
             { binding.provider.manifest.id, binding.request.sessionId },
             binding.instanceGeneration,
+            binding.generation,
             std::move(*frame));
     }
 
@@ -815,11 +1001,24 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
         auto merged = BuildCatalog(std::move(candidates));
-
+        std::vector<RichTabDiagnosticEventData> catalogEvents;
+        const auto catalogErrorCount =
+            builtIns.errors.size() +
+            listed.errors.size() +
+            _appExtensionDiscovery.diagnostics.size() +
+            std::accumulate(
+                _appExtensionDiscovery.providers.begin(),
+                _appExtensionDiscovery.providers.end(),
+                size_t{ 0 },
+                [](const size_t total, const auto& provider) {
+                    return total + provider.diagnostics.size();
+                });
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::vector<std::string> sessionsToRefresh;
         std::unordered_set<std::string> refreshProviders;
         std::vector<PersistentProviderKey> persistentProvidersToStop;
+        std::vector<ProviderDescriptor> diagnosticCatalog;
+        uint64_t catalogRevision = 0;
         {
             std::lock_guard lock{ _mutex };
             const auto previous = _providers;
@@ -827,6 +1026,9 @@ namespace Microsoft::Terminal::RichTab::Provider
             _availableProviders = std::move(merged.available);
             _providers = _EffectiveProvidersLocked();
             _UpdateCatalogEffectiveStateLocked();
+            ++_catalogRevision;
+            catalogRevision = _catalogRevision;
+            diagnosticCatalog = _catalog;
             refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
             const auto presentationChanged = !_SameProviders(previous, _providers);
             for (auto& [sessionId, session] : _sessions)
@@ -877,9 +1079,29 @@ namespace Microsoft::Terminal::RichTab::Provider
             _registryStamp = _RegistryStamp();
         }
 
+        catalogEvents.reserve(diagnosticCatalog.size() + 1);
+        for (const auto& descriptor : diagnosticCatalog)
+        {
+            catalogEvents.emplace_back(_CatalogDiagnosticEvent(descriptor, catalogRevision));
+        }
+        if (catalogErrorCount != 0)
+        {
+            catalogEvents.emplace_back(RichTabDiagnosticEventData{
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::CatalogState,
+                .state = RichTabDiagnosticState::Rejected,
+                .reason = RichTabDiagnosticReason::CatalogLoadFailed,
+                .catalogRevision = catalogRevision,
+                .skippedCount = catalogErrorCount,
+            });
+        }
         for (const auto& [callback, update] : notifications)
         {
-            callback(update);
+            _DeliverCallback(callback, update);
+        }
+        for (auto& event : catalogEvents)
+        {
+            EmitRichTabDiagnostic(std::move(event));
         }
         for (const auto& sessionId : sessionsToRefresh)
         {
@@ -986,6 +1208,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::string> sessionsToRefresh;
         std::unordered_set<std::string> refreshProviders;
         std::vector<PersistentProviderKey> persistentProvidersToStop;
+        std::vector<RichTabDiagnosticEventData> catalogEvents;
         {
             std::lock_guard lock{ _mutex };
             if (_preferences == preferences &&
@@ -999,6 +1222,12 @@ namespace Microsoft::Terminal::RichTab::Provider
             _prioritizeRecentlyUpdatedFields = prioritizeRecentlyUpdatedFields;
             _providers = _EffectiveProvidersLocked();
             _UpdateCatalogEffectiveStateLocked();
+            ++_catalogRevision;
+            catalogEvents.reserve(_catalog.size());
+            for (const auto& descriptor : _catalog)
+            {
+                catalogEvents.emplace_back(_CatalogDiagnosticEvent(descriptor, _catalogRevision));
+            }
             refreshProviders = _ProvidersNeedingRefresh(previous, _providers);
 
             for (auto& [sessionId, session] : _sessions)
@@ -1046,7 +1275,11 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         for (const auto& [callback, update] : notifications)
         {
-            callback(update);
+            _DeliverCallback(callback, update);
+        }
+        for (auto& event : catalogEvents)
+        {
+            EmitRichTabDiagnostic(std::move(event));
         }
         for (const auto& sessionId : sessionsToRefresh)
         {
@@ -1136,12 +1369,22 @@ namespace Microsoft::Terminal::RichTab::Provider
         _ReloadProvidersIfChanged();
         if (context.sessionId.empty())
         {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::AttachmentState,
+                .state = RichTabDiagnosticState::Skipped,
+                .reason = RichTabDiagnosticReason::SessionMissing,
+            });
             return 0;
         }
 
         AttachmentId attachment = 0;
         std::optional<BrokerUpdate> existing;
         bool contextChanged = false;
+        bool sessionCreated = false;
+        const auto cwdPresent = !context.workingDirectory.empty();
+        const auto cwdAuthoritative = context.workingDirectoryAuthoritative;
+        const auto shellTypePresent = context.shellType.has_value();
         auto initialCallback = callback;
         std::vector<std::string> prunedSessions;
         {
@@ -1152,10 +1395,13 @@ namespace Microsoft::Terminal::RichTab::Provider
                 _persistentSupervisor.StopSession(sessionId);
             }
             attachment = _nextAttachment++;
-            auto& session = _sessions[context.sessionId];
+            auto [sessionEntry, inserted] = _sessions.try_emplace(context.sessionId);
+            auto& session = sessionEntry->second;
             session.detachedAt.reset();
-            if (session.context.sessionId.empty())
+            if (inserted)
             {
+                sessionCreated = true;
+                session.sessionIncarnation = _nextSessionIncarnation++;
                 session.context = context;
             }
             else if (
@@ -1189,14 +1435,37 @@ namespace Microsoft::Terminal::RichTab::Provider
             existing = _UpdateFor(session.context.sessionId, session);
         }
 
+        for (const auto& prunedSession : prunedSessions)
+        {
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::AttachmentState,
+                .state = RichTabDiagnosticState::GraceExpired,
+                .reason = RichTabDiagnosticReason::DetachedRetentionExpired,
+                .sessionId = prunedSession,
+            });
+        }
         if (contextChanged)
         {
             _persistentSupervisor.StopSession(existing->sessionId);
         }
-        if (contextChanged || existing->presentation)
+        if (sessionCreated || contextChanged || existing->presentation)
         {
-            initialCallback(*existing);
+            _DeliverCallback(initialCallback, *existing);
         }
+        EmitRichTabDiagnostic({
+            .event = RichTabDiagnosticEvent::AttachmentState,
+            .state = RichTabDiagnosticState::Attached,
+            .reason = RichTabDiagnosticReason::PaneConnected,
+            .sessionId = existing->sessionId,
+            .attachmentId = attachment,
+            .sessionIncarnation = existing->sessionIncarnation,
+            .contextRevision = existing->contextRevision,
+            .updateSequence = existing->updateSequence,
+            .cwdPresent = cwdPresent,
+            .cwdAuthoritative = cwdAuthoritative,
+            .shellTypePresent = shellTypePresent,
+            .presentationPresent = existing->presentation.has_value(),
+        });
         _Refresh(
             existing->sessionId,
             ActivationEvent::PaneConnected,
@@ -1210,6 +1479,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::Detach(const AttachmentId attachment)
     {
         std::vector<std::string> prunedSessions;
+        std::string detachedSessionId;
+        bool enteredGrace = false;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -1217,11 +1488,13 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 return;
             }
+            detachedSessionId = attached->second;
             if (const auto session = _sessions.find(attached->second); session != _sessions.end())
             {
                 session->second.callbacks.erase(attachment);
                 if (session->second.callbacks.empty())
                 {
+                    enteredGrace = true;
                     for (auto& [id, provider] : session->second.providers)
                     {
                         const auto registration = _FindProvider(_providers, id);
@@ -1243,6 +1516,29 @@ namespace Microsoft::Terminal::RichTab::Provider
                 _persistentSupervisor.StopSession(sessionId);
             }
         }
+        EmitRichTabDiagnostic({
+            .event = RichTabDiagnosticEvent::AttachmentState,
+            .state = RichTabDiagnosticState::Detached,
+            .sessionId = detachedSessionId,
+            .attachmentId = attachment,
+        });
+        if (enteredGrace)
+        {
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::AttachmentState,
+                .state = RichTabDiagnosticState::GraceStarted,
+                .sessionId = detachedSessionId,
+            });
+        }
+        for (const auto& prunedSession : prunedSessions)
+        {
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::AttachmentState,
+                .state = RichTabDiagnosticState::GraceExpired,
+                .reason = RichTabDiagnosticReason::DetachedRetentionExpired,
+                .sessionId = prunedSession,
+            });
+        }
         _housekeepingCondition.notify_one();
     }
 
@@ -1256,6 +1552,12 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string sessionId;
         std::vector<Callback> callbacks;
         BrokerUpdate update;
+        bool cwdChanged = false;
+        bool authorityChanged = false;
+        bool shellChanged = false;
+        bool compositionChanged = false;
+        const auto cwdPresent = !workingDirectory.empty();
+        const auto shellTypePresent = shellType.has_value();
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -1270,6 +1572,9 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 return;
             }
+            cwdChanged = session.context.workingDirectory != workingDirectory;
+            authorityChanged = session.context.workingDirectoryAuthoritative != authoritative;
+            shellChanged = session.context.shellType != shellType;
             session.context.workingDirectory = std::move(workingDirectory);
             session.context.workingDirectoryAuthoritative = authoritative;
             session.context.shellType = std::move(shellType);
@@ -1291,6 +1596,11 @@ namespace Microsoft::Terminal::RichTab::Provider
             ++session.updateSequence;
             sessionId = session.context.sessionId;
             update = _UpdateFor(sessionId, session);
+            const auto presentationPresent = update.presentation.has_value();
+            compositionChanged =
+                !session.diagnosticPresentationPresent ||
+                *session.diagnosticPresentationPresent != presentationPresent;
+            session.diagnosticPresentationPresent = presentationPresent;
             callbacks.reserve(session.callbacks.size());
             for (const auto& [_, callback] : session.callbacks)
             {
@@ -1298,9 +1608,35 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
         _persistentSupervisor.StopSession(sessionId);
-        for (const auto& callback : callbacks)
+        _DeliverCallbacks(callbacks, update);
+        EmitRichTabDiagnostic({
+            .event = RichTabDiagnosticEvent::ContextState,
+            .state = RichTabDiagnosticState::Changed,
+            .reason = RichTabDiagnosticReason::ContextChanged,
+            .sessionId = sessionId,
+            .sessionIncarnation = update.sessionIncarnation,
+            .contextRevision = update.contextRevision,
+            .updateSequence = update.updateSequence,
+            .cwdPresent = cwdPresent,
+            .cwdAuthoritative = authoritative,
+            .cwdChanged = cwdChanged,
+            .authorityChanged = authorityChanged,
+            .shellTypePresent = shellTypePresent,
+            .shellChanged = shellChanged,
+            .presentationPresent = update.presentation.has_value(),
+        });
+        if (compositionChanged)
         {
-            callback(update);
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::CompositionState,
+                .state = update.presentation ? RichTabDiagnosticState::Nonempty : RichTabDiagnosticState::Empty,
+                .reason = update.presentation ? RichTabDiagnosticReason::None : RichTabDiagnosticReason::EmptyMetadata,
+                .sessionId = sessionId,
+                .sessionIncarnation = update.sessionIncarnation,
+                .contextRevision = update.contextRevision,
+                .updateSequence = update.updateSequence,
+                .presentationPresent = update.presentation.has_value(),
+            });
         }
         _Refresh(
             sessionId,
@@ -1357,70 +1693,218 @@ namespace Microsoft::Terminal::RichTab::Provider
         };
         std::vector<Pending> pending;
         std::vector<Pending> persistent;
+        std::vector<RichTabDiagnosticEventData> requestEvents;
+        size_t eligibleCount = 0;
+        size_t catalogCount = 0;
+        size_t effectiveCount = 0;
+        size_t filterMatchedCount = 0;
+        size_t activationSupportedCount = 0;
+        size_t coalescedCount = 0;
+        size_t skippedCount = 0;
+        bool sessionUnavailable = false;
+        bool sessionMissing = false;
+        uint64_t sessionIncarnation = 0;
+        uint64_t catalogRevision = 0;
         {
             std::lock_guard lock{ _mutex };
             const auto found = _sessions.find(sessionId);
-            if (found == _sessions.end() || found->second.callbacks.empty())
+            catalogCount = _catalog.size();
+            effectiveCount = _providers.size();
+            catalogRevision = _catalogRevision;
+            if (found == _sessions.end())
             {
-                return;
+                sessionUnavailable = true;
+                sessionMissing = true;
             }
-            auto& session = found->second;
-            for (const auto& provider : _providers)
+            else if (found->second.callbacks.empty())
             {
-                if (!providerIds.empty() && !providerIds.contains(provider.manifest.id))
+                sessionUnavailable = true;
+            }
+            else
+            {
+                auto& session = found->second;
+                sessionIncarnation = session.sessionIncarnation;
+                for (const auto& provider : _providers)
                 {
-                    continue;
-                }
-                auto activation = reason;
-                if (!_Handles(provider.manifest, activation))
-                {
-                    if (!initial || !_Handles(provider.manifest, ActivationEvent::ManualRefresh))
+                    if (!providerIds.empty() && !providerIds.contains(provider.manifest.id))
                     {
                         continue;
                     }
-                    activation = ActivationEvent::ManualRefresh;
-                }
+                    ++filterMatchedCount;
+                    ++eligibleCount;
+                    auto activation = reason;
+                    if (!_Handles(provider.manifest, activation))
+                    {
+                        if (!initial || !_Handles(provider.manifest, ActivationEvent::ManualRefresh))
+                        {
+                            ++skippedCount;
+                            continue;
+                        }
+                        activation = ActivationEvent::ManualRefresh;
+                    }
+                    ++activationSupportedCount;
 
-                auto& providerState = session.providers[provider.manifest.id];
-                const auto generation = _nextGeneration++;
-                providerState.generation = generation;
-                Request request;
-                request.requestId =
-                    std::to_string(_processEpoch) + "-" + std::to_string(_nextRequest++);
-                request.protocolVersion = (std::min)(CurrentProtocolVersion, provider.manifest.protocol.maximum);
-                request.providerId = provider.manifest.id;
-                request.processEpoch = _processEpoch;
-                request.sessionId = session.context.sessionId;
-                request.reason = activation;
-                request.workingDirectory = session.context.workingDirectory;
-                request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
-                request.contextRevision = session.contextRevision;
-                request.shellType = session.context.shellType;
-                providerState.activeRequestId = request.requestId;
-                providerState.lastActivation = activation;
-                if (provider.manifest.hosting.kind == HostingKind::Persistent)
-                {
-                    _InvalidatePublishLeasesLocked(
-                        session.context.sessionId,
-                        provider.manifest.id);
-                    providerState.running = false;
-                    providerState.runningGeneration = 0;
-                    providerState.persistentInstanceGeneration = 0;
-                    providerState.pending.reset();
-                    persistent.push_back(Pending{ provider, std::move(request), generation });
-                    continue;
+                    auto& providerState = session.providers[provider.manifest.id];
+                    const auto previousActiveRequestId = providerState.activeRequestId;
+                    const auto previousRunningGeneration = providerState.runningGeneration;
+                    const auto generation = _nextGeneration++;
+                    providerState.generation = generation;
+                    Request request;
+                    request.requestId =
+                        std::to_string(_processEpoch) + "-" + std::to_string(_nextRequest++);
+                    request.protocolVersion = (std::min)(CurrentProtocolVersion, provider.manifest.protocol.maximum);
+                    request.providerId = provider.manifest.id;
+                    request.processEpoch = _processEpoch;
+                    request.sessionId = session.context.sessionId;
+                    request.reason = activation;
+                    request.workingDirectory = session.context.workingDirectory;
+                    request.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
+                    request.contextRevision = session.contextRevision;
+                    request.shellType = session.context.shellType;
+                    providerState.activeRequestId = request.requestId;
+                    providerState.lastActivation = activation;
+                    const auto persistentProvider = provider.manifest.hosting.kind == HostingKind::Persistent;
+                    if (persistentProvider)
+                    {
+                        _InvalidatePublishLeasesLocked(
+                            session.context.sessionId,
+                            provider.manifest.id);
+                        providerState.running = false;
+                        providerState.runningGeneration = 0;
+                        providerState.persistentInstanceGeneration = 0;
+                        providerState.pending.reset();
+                        requestEvents.emplace_back(RichTabDiagnosticEventData{
+                            .level = RichTabDiagnosticLevel::Debug,
+                            .event = RichTabDiagnosticEvent::RequestState,
+                            .state = RichTabDiagnosticState::Dispatched,
+                            .reason = _DiagnosticReason(activation),
+                            .sessionId = request.sessionId,
+                            .providerId = request.providerId,
+                            .requestId = request.requestId,
+                            .contextRevision = request.contextRevision,
+                            .generation = generation,
+                            .persistent = true,
+                        });
+                        persistent.push_back(Pending{ provider, std::move(request), generation });
+                        continue;
+                    }
+                    if (providerState.running)
+                    {
+                        ++coalescedCount;
+                        if (!providerState.pending && !previousActiveRequestId.empty())
+                        {
+                            requestEvents.emplace_back(RichTabDiagnosticEventData{
+                                .event = RichTabDiagnosticEvent::RequestState,
+                                .state = RichTabDiagnosticState::Superseded,
+                                .sessionId = request.sessionId,
+                                .providerId = request.providerId,
+                                .requestId = previousActiveRequestId,
+                                .supersededByRequestId = request.requestId,
+                                .sessionIncarnation = session.sessionIncarnation,
+                                .contextRevision = request.contextRevision,
+                                .generation = previousRunningGeneration,
+                                .persistent = false,
+                            });
+                        }
+                        if (providerState.pending)
+                        {
+                            requestEvents.emplace_back(RichTabDiagnosticEventData{
+                                .event = RichTabDiagnosticEvent::RequestState,
+                                .state = RichTabDiagnosticState::Superseded,
+                                .sessionId = providerState.pending->request.sessionId,
+                                .providerId = providerState.pending->request.providerId,
+                                .requestId = providerState.pending->request.requestId,
+                                .supersededByRequestId = request.requestId,
+                                .sessionIncarnation = session.sessionIncarnation,
+                                .contextRevision = providerState.pending->request.contextRevision,
+                                .generation = providerState.pending->generation,
+                                .persistent = false,
+                            });
+                        }
+                        requestEvents.emplace_back(RichTabDiagnosticEventData{
+                            .level = RichTabDiagnosticLevel::Debug,
+                            .event = RichTabDiagnosticEvent::RequestState,
+                            .state = RichTabDiagnosticState::Coalesced,
+                            .reason = _DiagnosticReason(activation),
+                            .sessionId = request.sessionId,
+                            .providerId = request.providerId,
+                            .requestId = request.requestId,
+                            .sessionIncarnation = session.sessionIncarnation,
+                            .contextRevision = request.contextRevision,
+                            .generation = generation,
+                            .persistent = false,
+                        });
+                        providerState.pending = PendingRequest{ provider, std::move(request), generation };
+                        continue;
+                    }
+                    providerState.running = true;
+                    providerState.runningGeneration = generation;
+                    requestEvents.emplace_back(RichTabDiagnosticEventData{
+                        .level = RichTabDiagnosticLevel::Debug,
+                        .event = RichTabDiagnosticEvent::RequestState,
+                        .state = RichTabDiagnosticState::Dispatched,
+                        .reason = _DiagnosticReason(activation),
+                        .sessionId = request.sessionId,
+                        .providerId = request.providerId,
+                        .requestId = request.requestId,
+                        .sessionIncarnation = session.sessionIncarnation,
+                        .contextRevision = request.contextRevision,
+                        .generation = generation,
+                        .persistent = false,
+                    });
+                    pending.push_back(Pending{ provider, std::move(request), generation });
                 }
-                if (providerState.running)
-                {
-                    providerState.pending = PendingRequest{ provider, std::move(request), generation };
-                    continue;
-                }
-                providerState.running = true;
-                providerState.runningGeneration = generation;
-                pending.push_back(Pending{ provider, std::move(request), generation });
             }
         }
 
+        if (sessionUnavailable)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Info,
+                .event = RichTabDiagnosticEvent::RefreshPlan,
+                .state = RichTabDiagnosticState::Skipped,
+                .reason = sessionMissing ? RichTabDiagnosticReason::SessionMissing : RichTabDiagnosticReason::NoCallbacks,
+                .sessionId = sessionId,
+                .catalogRevision = catalogRevision,
+                .catalogCount = catalogCount,
+                .effectiveCount = effectiveCount,
+            });
+            return;
+        }
+        const auto startedCount = pending.size() + persistent.size();
+        auto planState = RichTabDiagnosticState::Planned;
+        auto planReason = _DiagnosticReason(reason);
+        if (startedCount == 0 && coalescedCount == 0)
+        {
+            planState = RichTabDiagnosticState::Skipped;
+            planReason =
+                effectiveCount == 0 ? RichTabDiagnosticReason::NoEffectiveProvider :
+                filterMatchedCount == 0 ? RichTabDiagnosticReason::ProviderFilterMiss :
+                activationSupportedCount == 0 ? RichTabDiagnosticReason::ActivationUnsupported :
+                                                planReason;
+        }
+        EmitRichTabDiagnostic({
+            .level = RichTabDiagnosticLevel::Info,
+            .event = RichTabDiagnosticEvent::RefreshPlan,
+            .state = planState,
+            .reason = planReason,
+            .sessionId = sessionId,
+            .sessionIncarnation = sessionIncarnation,
+            .catalogRevision = catalogRevision,
+            .catalogCount = catalogCount,
+            .effectiveCount = effectiveCount,
+            .filterMatchedCount = filterMatchedCount,
+            .activationSupportedCount = activationSupportedCount,
+            .eligibleCount = eligibleCount,
+            .startedCount = startedCount,
+            .persistentCount = persistent.size(),
+            .coalescedCount = coalescedCount,
+            .skippedCount = skippedCount,
+        });
+        for (auto& event : requestEvents)
+        {
+            EmitRichTabDiagnostic(std::move(event));
+        }
         for (auto& work : persistent)
         {
             _RunPersistentProvider(
@@ -1476,13 +1960,30 @@ namespace Microsoft::Terminal::RichTab::Provider
              provider,
              request,
              generation](const uint64_t instanceGeneration, const bool started) -> std::optional<std::string> {
-                std::lock_guard lock{ _mutex };
-                return _CreatePersistentControlFrameLocked(
-                    provider,
-                    request,
-                    generation,
-                    instanceGeneration,
-                    started);
+                std::optional<std::string> frame;
+                {
+                    std::lock_guard lock{ _mutex };
+                    frame = _CreatePersistentControlFrameLocked(
+                        provider,
+                        request,
+                        generation,
+                        instanceGeneration,
+                        started);
+                }
+                EmitRichTabDiagnostic({
+                    .level = frame ? RichTabDiagnosticLevel::Debug : RichTabDiagnosticLevel::Warning,
+                    .event = RichTabDiagnosticEvent::RequestState,
+                    .state = frame ? RichTabDiagnosticState::Dispatched : RichTabDiagnosticState::Failed,
+                    .reason = frame ? RichTabDiagnosticReason::None : RichTabDiagnosticReason::ControlFrameFailed,
+                    .sessionId = request.sessionId,
+                    .providerId = provider.manifest.id,
+                    .requestId = request.requestId,
+                    .contextRevision = request.contextRevision,
+                    .generation = generation,
+                    .instanceGeneration = instanceGeneration,
+                    .persistent = true,
+                });
+                return frame;
             },
             generation,
             forceRestart,
@@ -1498,10 +1999,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         const auto serialized = SerializeRequest(request, provider.manifest);
         std::optional<Snapshot> snapshot;
         std::optional<std::string> publishLease;
+        std::optional<RichTabDiagnosticReason> failureReason;
+        CommandResult command;
         const auto publishProtocol = request.protocolVersion >= 2;
         if (!serialized)
         {
             diagnostics = serialized.errors;
+            failureReason = RichTabDiagnosticReason::SerializationFailed;
         }
         else
         {
@@ -1513,6 +2017,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (!clsid || !cli)
                 {
                     diagnostics.emplace_back("Rich Tab publish routing is unavailable");
+                    failureReason = RichTabDiagnosticReason::PublishRoutingUnavailable;
                 }
                 else
                 {
@@ -1526,6 +2031,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                     {
                         publishLease.reset();
                         diagnostics.emplace_back("Failed to create a secure Rich Tab publish lease");
+                        failureReason = RichTabDiagnosticReason::LeaseCreationFailed;
                     }
                     else
                     {
@@ -1538,11 +2044,44 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
             }
 
-            const auto command = diagnostics.empty() ?
-                                     _runner.Run(provider.manifest, *serialized.value, ProviderTimeout, environment) :
-                                     CommandResult{};
+            command = diagnostics.empty() ?
+                          _runner.Run(provider.manifest, *serialized.value, ProviderTimeout, environment) :
+                          CommandResult{};
             if (command.status != CommandResult::Status::Completed || command.exitCode != 0)
             {
+                if (!failureReason)
+                {
+                    switch (command.status)
+                    {
+                    case CommandResult::Status::InvalidRequest:
+                        failureReason = RichTabDiagnosticReason::InvalidRequest;
+                        break;
+                    case CommandResult::Status::ResolveFailed:
+                        failureReason = RichTabDiagnosticReason::ResolveFailed;
+                        break;
+                    case CommandResult::Status::LaunchFailed:
+                        failureReason = RichTabDiagnosticReason::LaunchFailed;
+                        break;
+                    case CommandResult::Status::InputWriteFailed:
+                        failureReason = RichTabDiagnosticReason::InputWriteFailed;
+                        break;
+                    case CommandResult::Status::WaitFailed:
+                        failureReason = RichTabDiagnosticReason::WaitFailed;
+                        break;
+                    case CommandResult::Status::TimedOut:
+                        failureReason = RichTabDiagnosticReason::TimedOut;
+                        break;
+                    case CommandResult::Status::OutputLimitExceeded:
+                        failureReason = RichTabDiagnosticReason::OutputLimitExceeded;
+                        break;
+                    case CommandResult::Status::ExitCodeUnavailable:
+                        failureReason = RichTabDiagnosticReason::ExitCodeUnavailable;
+                        break;
+                    case CommandResult::Status::Completed:
+                        failureReason = RichTabDiagnosticReason::ExitNonzero;
+                        break;
+                    }
+                }
                 diagnostics.emplace_back(
                     "Provider '" + provider.manifest.id + "' failed with status " +
                     std::to_string(static_cast<int>(command.status)) +
@@ -1565,6 +2104,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 else
                 {
                     diagnostics = parsed.errors;
+                    failureReason = RichTabDiagnosticReason::SnapshotInvalid;
                 }
             }
         }
@@ -1572,6 +2112,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<Callback> callbacks;
         BrokerUpdate update;
         std::optional<PendingRequest> next;
+        std::optional<uint64_t> committedUpdateSequence;
+        std::optional<uint64_t> completedSessionIncarnation;
+        std::optional<bool> committedPresentationPresent;
+        bool compositionChanged = false;
+        const auto snapshotProduced = snapshot.has_value();
         {
             std::lock_guard lock{ _mutex };
             const auto session = _sessions.find(request.sessionId);
@@ -1597,13 +2142,16 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 if (publishProtocol && state->second.publishedGeneration == generation)
                 {
-                    // Publish already committed and notified callbacks.
+                    committedUpdateSequence = state->second.publishedUpdateSequence;
+                    completedSessionIncarnation = session->second.sessionIncarnation;
+                    committedPresentationPresent = session->second.diagnosticPresentationPresent;
                 }
                 else
                 {
                     if (publishProtocol && diagnostics.empty())
                     {
                         diagnostics.emplace_back("Provider exited without publishing a Snapshot");
+                        failureReason = RichTabDiagnosticReason::ExitedWithoutPublish;
                     }
                     if (snapshot)
                     {
@@ -1616,6 +2164,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                     }
                     ++session->second.updateSequence;
                     update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
+                    const auto presentationPresent = update.presentation.has_value();
+                    compositionChanged =
+                        !session->second.diagnosticPresentationPresent ||
+                        *session->second.diagnosticPresentationPresent != presentationPresent;
+                    session->second.diagnosticPresentationPresent = presentationPresent;
                     callbacks.reserve(session->second.callbacks.size());
                     for (const auto& [_, callback] : session->second.callbacks)
                     {
@@ -1633,9 +2186,63 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
 
-        for (const auto& callback : callbacks)
+        _DeliverCallbacks(callbacks, update);
+        if (compositionChanged)
         {
-            callback(update);
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::CompositionState,
+                .state = update.presentation ? RichTabDiagnosticState::Nonempty : RichTabDiagnosticState::Empty,
+                .reason = update.presentation ? RichTabDiagnosticReason::None : RichTabDiagnosticReason::EmptyMetadata,
+                .sessionId = request.sessionId,
+                .sessionIncarnation = update.sessionIncarnation,
+                .contextRevision = request.contextRevision,
+                .updateSequence = update.updateSequence,
+                .snapshotCount = snapshotProduced ? size_t{ 1 } : size_t{ 0 },
+                .presentationPresent = update.presentation.has_value(),
+            });
+        }
+        if (failureReason)
+        {
+            EmitRichTabDiagnostic({
+                .level = *failureReason == RichTabDiagnosticReason::TimedOut ?
+                             RichTabDiagnosticLevel::Error :
+                             RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::RequestState,
+                .state = RichTabDiagnosticState::Failed,
+                .reason = *failureReason,
+                .sessionId = request.sessionId,
+                .providerId = provider.manifest.id,
+                .requestId = request.requestId,
+                .sessionIncarnation = callbacks.empty() ? completedSessionIncarnation : std::optional<uint64_t>{ update.sessionIncarnation },
+                .contextRevision = request.contextRevision,
+                .updateSequence = callbacks.empty() ?
+                                      committedUpdateSequence :
+                                      std::optional<uint64_t>{ update.updateSequence },
+                .generation = generation,
+                .win32Error = command.win32Error,
+                .exitCode = command.exitCode,
+                .persistent = false,
+                .presentationPresent = callbacks.empty() ?
+                                           committedPresentationPresent :
+                                           std::optional<bool>{ update.presentation.has_value() },
+            });
+        }
+        else if (!callbacks.empty() || committedUpdateSequence)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Info,
+                .event = RichTabDiagnosticEvent::RequestState,
+                .state = RichTabDiagnosticState::Completed,
+                .sessionId = request.sessionId,
+                .providerId = provider.manifest.id,
+                .requestId = request.requestId,
+                .sessionIncarnation = callbacks.empty() ? completedSessionIncarnation : std::optional<uint64_t>{ update.sessionIncarnation },
+                .contextRevision = request.contextRevision,
+                .updateSequence = callbacks.empty() ? committedUpdateSequence : std::optional<uint64_t>{ update.updateSequence },
+                .generation = generation,
+                .persistent = false,
+                .presentationPresent = callbacks.empty() ? committedPresentationPresent : std::optional<bool>{ update.presentation.has_value() },
+            });
         }
         if (next)
         {
@@ -1652,6 +2259,59 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::_OnPersistentProviderEvent(
         const PersistentProviderEvent& event)
     {
+        if (event.kind == PersistentProviderEventKind::Stopped)
+        {
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::InstanceState,
+                .state = RichTabDiagnosticState::Stopped,
+                .sessionId = event.key.sessionId,
+                .providerId = event.key.providerId,
+                .generation = event.requestGeneration,
+                .instanceGeneration = event.instanceGeneration,
+                .persistent = true,
+            });
+            return;
+        }
+        if (event.kind == PersistentProviderEventKind::LeaseDropped ||
+            event.kind == PersistentProviderEventKind::StopFrameFailed)
+        {
+            auto reason = RichTabDiagnosticReason::ControlFrameFailed;
+            if (event.kind == PersistentProviderEventKind::LeaseDropped)
+            {
+                reason =
+                    event.win32Error == ERROR_REVISION_MISMATCH ? RichTabDiagnosticReason::GenerationStale :
+                    event.win32Error == ERROR_NOT_FOUND ? RichTabDiagnosticReason::InstanceMissing :
+                                                         RichTabDiagnosticReason::ProcessExited;
+            }
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = event.kind == PersistentProviderEventKind::LeaseDropped ?
+                             RichTabDiagnosticEvent::RequestState :
+                             RichTabDiagnosticEvent::InstanceState,
+                .state = RichTabDiagnosticState::Failed,
+                .reason = reason,
+                .sessionId = event.key.sessionId,
+                .providerId = event.key.providerId,
+                .generation = event.requestGeneration,
+                .instanceGeneration = event.instanceGeneration,
+                .win32Error = event.win32Error,
+                .persistent = true,
+            });
+            return;
+        }
+        if (event.kind == PersistentProviderEventKind::Started)
+        {
+            EmitRichTabDiagnostic({
+                .event = RichTabDiagnosticEvent::InstanceState,
+                .state = RichTabDiagnosticState::Running,
+                .sessionId = event.key.sessionId,
+                .providerId = event.key.providerId,
+                .generation = event.requestGeneration,
+                .instanceGeneration = event.instanceGeneration,
+                .persistent = true,
+            });
+            return;
+        }
         if (event.kind == PersistentProviderEventKind::RestartRequested)
         {
             ActivationEvent reason{ ActivationEvent::ManualRefresh };
@@ -1677,6 +2337,16 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             if (restart)
             {
+                EmitRichTabDiagnostic({
+                    .event = RichTabDiagnosticEvent::InstanceState,
+                    .state = RichTabDiagnosticState::Restarted,
+                    .reason = RichTabDiagnosticReason::ProcessExited,
+                    .sessionId = event.key.sessionId,
+                    .providerId = event.key.providerId,
+                    .generation = event.requestGeneration,
+                    .instanceGeneration = event.instanceGeneration,
+                    .persistent = true,
+                });
                 _Refresh(
                     event.key.sessionId,
                     reason,
@@ -1737,10 +2407,51 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
 
-        for (const auto& callback : callbacks)
+        _DeliverCallbacks(callbacks, update);
+        auto reason = RichTabDiagnosticReason::ProcessExited;
+        if (event.kind == PersistentProviderEventKind::LaunchFailed)
         {
-            callback(update);
+            reason = event.win32Error == ERROR_ENVVAR_NOT_FOUND ?
+                         RichTabDiagnosticReason::PublishRoutingUnavailable :
+                         RichTabDiagnosticReason::LaunchFailed;
         }
+        else if (event.kind == PersistentProviderEventKind::ControlWriteFailed)
+        {
+            reason = RichTabDiagnosticReason::ControlWriteFailed;
+        }
+        if (event.kind == PersistentProviderEventKind::ProcessExited)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::InstanceState,
+                .state = RichTabDiagnosticState::Exited,
+                .reason = RichTabDiagnosticReason::ProcessExited,
+                .sessionId = event.key.sessionId,
+                .providerId = event.key.providerId,
+                .sessionIncarnation = update.sessionIncarnation,
+                .updateSequence = update.updateSequence,
+                .generation = event.requestGeneration,
+                .instanceGeneration = event.instanceGeneration,
+                .win32Error = event.win32Error,
+                .persistent = true,
+            });
+        }
+        EmitRichTabDiagnostic({
+            .level = RichTabDiagnosticLevel::Error,
+            .event = RichTabDiagnosticEvent::InstanceState,
+            .state = RichTabDiagnosticState::Backoff,
+            .reason = reason,
+            .sessionId = event.key.sessionId,
+            .providerId = event.key.providerId,
+            .sessionIncarnation = update.sessionIncarnation,
+            .updateSequence = update.updateSequence,
+            .generation = event.requestGeneration,
+            .instanceGeneration = event.instanceGeneration,
+            .retryAfterMilliseconds = static_cast<uint64_t>(event.retryAfter.count()),
+            .win32Error = event.win32Error,
+            .persistent = true,
+            .presentationPresent = update.presentation.has_value(),
+        });
     }
 
     std::vector<std::string> ProviderBroker::_PruneDetachedSessionsLocked()
@@ -1820,6 +2531,15 @@ namespace Microsoft::Terminal::RichTab::Provider
                     current = _publishLeases.erase(current);
                 }
             }
+            for (const auto& sessionId : removed)
+            {
+                EmitRichTabDiagnostic({
+                    .event = RichTabDiagnosticEvent::AttachmentState,
+                    .state = RichTabDiagnosticState::GraceExpired,
+                    .reason = RichTabDiagnosticReason::DetachedRetentionExpired,
+                    .sessionId = sessionId,
+                });
+            }
             for (const auto& binding : grantsToRenew)
             {
                 _ReplenishPersistentGrants(binding);
@@ -1847,6 +2567,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         return BrokerUpdate{
             sessionId,
+            state.sessionIncarnation,
             state.contextRevision,
             state.updateSequence,
             ComposePresentation(
@@ -1857,6 +2578,40 @@ namespace Microsoft::Terminal::RichTab::Provider
                 _prioritizeRecentlyUpdatedFields),
             std::move(diagnostics)
         };
+    }
+
+    void ProviderBroker::_DeliverCallback(
+        const Callback& callback,
+        const BrokerUpdate& update) noexcept
+    {
+        try
+        {
+            callback(update);
+        }
+        catch (...)
+        {
+            EmitRichTabDiagnostic({
+                .level = RichTabDiagnosticLevel::Warning,
+                .event = RichTabDiagnosticEvent::PageHandoff,
+                .state = RichTabDiagnosticState::Failed,
+                .reason = RichTabDiagnosticReason::CallbackFailed,
+                .sessionId = update.sessionId,
+                .sessionIncarnation = update.sessionIncarnation,
+                .contextRevision = update.contextRevision,
+                .updateSequence = update.updateSequence,
+                .presentationPresent = update.presentation.has_value(),
+            });
+        }
+    }
+
+    void ProviderBroker::_DeliverCallbacks(
+        const std::vector<Callback>& callbacks,
+        const BrokerUpdate& update) noexcept
+    {
+        for (const auto& callback : callbacks)
+        {
+            _DeliverCallback(callback, update);
+        }
     }
 
     std::optional<Presentation> ProviderBroker::ComposePresentation(

@@ -15,6 +15,7 @@
 #include <propvarutil.h>
 
 #include "AppHost.h"
+#include "../TerminalApp/RichTabPublisherBridge.h"
 #include "TerminalProtocolComServer.h"
 #include "resource.h"
 #include "VirtualDesktopUtils.h"
@@ -575,6 +576,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         LOG_IF_FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataFolder));
     }
 
+    RichTabStartDiagnostics();
+
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
 
@@ -770,6 +773,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     // We also need to ensure that all UI threads exit before WindowEmperor leaves the scope on the main thread (MSFT:46744208).
     // Both problems can be solved and the shutdown accelerated by using TerminateProcess.
     // std::exit(), etc., cannot be used here, because those use ExitProcess for unpackaged applications.
+    RichTabShutdownDiagnostics(2000);
     TerminateProcess(GetCurrentProcess(), gsl::narrow_cast<UINT>(0));
     __assume(false);
 }

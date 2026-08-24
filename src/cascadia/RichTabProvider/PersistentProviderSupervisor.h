@@ -54,9 +54,13 @@ namespace Microsoft::Terminal::RichTab::Provider
 
     enum class PersistentProviderEventKind
     {
+        Started,
         LaunchFailed,
         ProcessExited,
         ControlWriteFailed,
+        LeaseDropped,
+        StopFrameFailed,
+        Stopped,
         RestartRequested,
     };
 
@@ -98,6 +102,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         void SendLease(
             PersistentProviderKey key,
             uint64_t instanceGeneration,
+            uint64_t requestGeneration,
             std::string frame);
         void Stop(PersistentProviderKey key);
         void StopProvider(std::string providerId);
@@ -138,9 +143,12 @@ namespace Microsoft::Terminal::RichTab::Provider
         void _SendLease(
             const PersistentProviderKey& key,
             uint64_t instanceGeneration,
+            uint64_t requestGeneration,
             std::string frame);
         void _StopMatching(const std::function<bool(const PersistentProviderKey&)>& predicate);
-        void _StopInstance(Instance& instance) noexcept;
+        void _StopInstance(
+            const PersistentProviderKey& key,
+            Instance& instance) noexcept;
         void _ScheduleRestart(
             const PersistentProviderKey& key,
             Instance& instance,

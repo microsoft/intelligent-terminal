@@ -153,6 +153,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(StopsPersistentProcessWhenFrameIsRejected);
         TEST_METHOD(RunsRepeatedFramesInOnePersistentProcess);
         TEST_METHOD(QuotesWindowsArguments);
+        TEST_METHOD(ClassifiesInvalidCommandRequest);
         TEST_METHOD(TimesOutProviderThatDoesNotReadStdin);
 
         static constexpr std::string_view ValidManifest{
@@ -642,6 +643,17 @@ namespace TerminalAppUnitTests
         commandLine.clear();
         CommandRunner::QuoteArgument(LR"(value\"quoted")", commandLine);
         VERIFY_ARE_EQUAL(std::wstring{ LR"("value\\\"quoted\"")" }, commandLine);
+    }
+
+    void RichTabProviderContractTests::ClassifiesInvalidCommandRequest()
+    {
+        const auto result = CommandRunner{}.Run(
+            Manifest{},
+            {},
+            std::chrono::seconds{ 1 });
+
+        VERIFY_ARE_EQUAL(CommandResult::Status::InvalidRequest, result.status);
+        VERIFY_ARE_EQUAL(static_cast<uint32_t>(ERROR_INVALID_PARAMETER), result.win32Error);
     }
 
     void RichTabProviderContractTests::TimesOutProviderThatDoesNotReadStdin()

@@ -520,14 +520,16 @@ namespace Microsoft::Terminal::RichTab::Provider
     void PersistentProviderSupervisor::SendLease(
         PersistentProviderKey key,
         const uint64_t instanceGeneration,
+        const uint64_t requestGeneration,
         std::string frame)
     {
         _Queue(
             [this,
              key = std::move(key),
              instanceGeneration,
+             requestGeneration,
              frame = std::move(frame)]() mutable {
-                _SendLease(key, instanceGeneration, std::move(frame));
+                _SendLease(key, instanceGeneration, requestGeneration, std::move(frame));
             });
     }
 
@@ -604,7 +606,14 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             if (action)
             {
-                action();
+                try
+                {
+                    action();
+                }
+                catch (...)
+                {
+                    OutputDebugStringW(L"Rich Tabs persistent provider action failed.\n");
+                }
             }
             _CheckProcesses();
         }
@@ -622,6 +631,10 @@ namespace Microsoft::Terminal::RichTab::Provider
         const bool resetBackoff)
     {
         auto& instance = _instances[key];
+        if (forceRestart && instance.process)
+        {
+            _StopInstance(key, instance);
+        }
         instance.manifest = std::move(manifest);
         instance.environment = std::move(environment);
         instance.requestGeneration = requestGeneration;
@@ -629,10 +642,6 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             instance.consecutiveFailures = 0;
             instance.restartAt.reset();
-        }
-        if (forceRestart && instance.process)
-        {
-            _StopInstance(instance);
         }
         if (instance.process && !instance.process->IsRunning())
         {
@@ -711,20 +720,59 @@ namespace Microsoft::Terminal::RichTab::Provider
         else
         {
             instance.controlStarted = true;
+            if (started)
+            {
+                _Emit(PersistentProviderEvent{
+                    PersistentProviderEventKind::Started,
+                    key,
+                    instance.instanceGeneration,
+                    instance.requestGeneration,
+                });
+            }
         }
     }
 
     void PersistentProviderSupervisor::_SendLease(
         const PersistentProviderKey& key,
         const uint64_t instanceGeneration,
+        const uint64_t requestGeneration,
         std::string frame)
     {
         const auto found = _instances.find(key);
-        if (found == _instances.end() ||
-            found->second.instanceGeneration != instanceGeneration ||
-            !found->second.process ||
-            !found->second.process->IsRunning())
+        if (found == _instances.end())
         {
+            _Emit(PersistentProviderEvent{
+                PersistentProviderEventKind::LeaseDropped,
+                key,
+                instanceGeneration,
+                requestGeneration,
+                std::chrono::milliseconds{ 0 },
+                ERROR_NOT_FOUND,
+            });
+            return;
+        }
+        if (found->second.instanceGeneration != instanceGeneration)
+        {
+            _Emit(PersistentProviderEvent{
+                PersistentProviderEventKind::LeaseDropped,
+                key,
+                instanceGeneration,
+                requestGeneration,
+                std::chrono::milliseconds{ 0 },
+                ERROR_REVISION_MISMATCH,
+            });
+            return;
+        }
+        if (!found->second.process || !found->second.process->IsRunning())
+        {
+            _Emit(PersistentProviderEvent{
+                PersistentProviderEventKind::LeaseDropped,
+                key,
+                instanceGeneration,
+                requestGeneration,
+                std::chrono::milliseconds{ 0 },
+                ERROR_PROCESS_ABORTED,
+            });
             return;
         }
         if (!found->second.process->Send(std::move(frame)))
@@ -748,7 +796,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             if (predicate(current->first))
             {
-                _StopInstance(current->second);
+                _StopInstance(current->first, current->second);
                 current = _instances.erase(current);
             }
             else
@@ -758,7 +806,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
     }
 
-    void PersistentProviderSupervisor::_StopInstance(Instance& instance) noexcept
+    void PersistentProviderSupervisor::_StopInstance(
+        const PersistentProviderKey& key,
+        Instance& instance) noexcept
     {
         if (!instance.process)
         {
@@ -773,10 +823,27 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             stopFrame = *serialized.value;
         }
+        else
+        {
+            _Emit(PersistentProviderEvent{
+                PersistentProviderEventKind::StopFrameFailed,
+                key,
+                instance.instanceGeneration,
+                instance.requestGeneration,
+                std::chrono::milliseconds{ 0 },
+                ERROR_INVALID_DATA,
+            });
+        }
         instance.process->Stop(std::move(stopFrame), GracefulStopTimeout);
         instance.process.reset();
         instance.controlStarted = false;
         instance.restartAt.reset();
+        _Emit(PersistentProviderEvent{
+            PersistentProviderEventKind::Stopped,
+            key,
+            instance.instanceGeneration,
+            instance.requestGeneration,
+        });
     }
 
     void PersistentProviderSupervisor::_ScheduleRestart(
@@ -848,7 +915,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         if (callback)
         {
-            callback(event);
+            try
+            {
+                callback(event);
+            }
+            catch (...)
+            {
+                OutputDebugStringW(L"Rich Tabs persistent provider callback failed.\n");
+            }
         }
     }
 }

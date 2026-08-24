@@ -17,10 +17,15 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         enum class Status
         {
-            Completed,
-            TimedOut,
+            InvalidRequest,
+            ResolveFailed,
             LaunchFailed,
+            InputWriteFailed,
+            WaitFailed,
+            TimedOut,
             OutputLimitExceeded,
+            ExitCodeUnavailable,
+            Completed,
         };
 
         Status status{ Status::LaunchFailed };

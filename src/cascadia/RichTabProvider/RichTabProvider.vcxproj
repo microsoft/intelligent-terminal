@@ -21,6 +21,7 @@
     <ClInclude Include="PersistentProviderSupervisor.h" />
     <ClInclude Include="ProviderBroker.h" />
     <ClInclude Include="ProviderContracts.h" />
+    <ClInclude Include="RichTabDiagnostics.h" />
     <ClInclude Include="ProviderRegistry.h" />
     <ClInclude Include="ProviderSourcePolicy.h" />
   </ItemGroup>
@@ -31,6 +32,7 @@
     <ClCompile Include="PersistentProviderSupervisor.cpp" />
     <ClCompile Include="ProviderBroker.cpp" />
     <ClCompile Include="ProviderContracts.cpp" />
+    <ClCompile Include="RichTabDiagnostics.cpp" />
     <ClCompile Include="ProviderRegistry.cpp" />
     <ClCompile Include="ProviderSourcePolicy.cpp" />
   </ItemGroup>

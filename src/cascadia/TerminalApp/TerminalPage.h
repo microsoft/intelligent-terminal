@@ -359,11 +359,18 @@ namespace winrt::TerminalApp::implementation
         {
             ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId id{ 0 };
             std::string sessionId;
+            uint64_t reservation{ 0 };
+        };
+        struct RichTabPresentationState
+        {
+            uint64_t sessionIncarnation{ 0 };
+            uint64_t updateSequence{ 0 };
+            std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> presentation;
         };
         std::mutex _richTabAttachmentsMutex;
         std::unordered_map<uintptr_t, RichTabAttachment> _richTabAttachments;
-        std::unordered_map<std::string, std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>> _richTabPresentations;
-        std::unordered_map<std::string, uint64_t> _richTabUpdateSequences;
+        std::unordered_map<std::string, RichTabPresentationState> _richTabPresentations;
+        uint64_t _nextRichTabAttachmentReservation{ 1 };
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };

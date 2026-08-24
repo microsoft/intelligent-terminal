@@ -325,6 +325,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             timeout.count() <= 0 ||
             timeout > std::chrono::minutes{ 5 })
         {
+            result.status = CommandResult::Status::InvalidRequest;
             result.win32Error = ERROR_INVALID_PARAMETER;
             return result;
         }
@@ -332,6 +333,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         LaunchInfo launch;
         if (!BuildLaunchInfo(manifest, launch, result.win32Error))
         {
+            result.status = CommandResult::Status::ResolveFailed;
             return result;
         }
 
@@ -490,6 +492,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         if (wait != WAIT_OBJECT_0)
         {
+            result.status = CommandResult::Status::WaitFailed;
             result.win32Error = GetLastError();
             TerminateJobObject(job.get(), result.win32Error);
             stdinWriter.join();
@@ -504,13 +507,19 @@ namespace Microsoft::Terminal::RichTab::Provider
         if (const auto inputError = writeError.load(std::memory_order_acquire);
             inputError != ERROR_SUCCESS && inputError != ERROR_BROKEN_PIPE && inputError != ERROR_NO_DATA)
         {
+            result.status = CommandResult::Status::InputWriteFailed;
             result.win32Error = inputError;
             TerminateJobObject(job.get(), inputError);
             return result;
         }
 
         DWORD exitCode = 0;
-        GetExitCodeProcess(process.get(), &exitCode);
+        if (!GetExitCodeProcess(process.get(), &exitCode))
+        {
+            result.status = CommandResult::Status::ExitCodeUnavailable;
+            result.win32Error = GetLastError();
+            return result;
+        }
         result.exitCode = exitCode;
         stdoutReader.join();
         stderrReader.join();

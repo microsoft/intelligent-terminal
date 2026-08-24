@@ -11,6 +11,7 @@
 #include "Tab.g.cpp"
 #include "Utils.h"
 #include "AppLogic.h"
+#include "../RichTabProvider/RichTabDiagnostics.h"
 #include "../../types/inc/ColorFix.hpp"
 #include "../../types/inc/utils.hpp"
 
@@ -109,6 +110,7 @@ namespace winrt::TerminalApp::implementation
         _headerControl.RenameEnded([weakThis = get_weak()](auto&&, auto&&) {
             if (auto tab{ weakThis.get() })
             {
+                tab->_LogRichTabHeaderState(::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason::None);
                 tab->RequestFocusActiveControl.raise();
             }
         });
@@ -638,6 +640,7 @@ namespace winrt::TerminalApp::implementation
             _headerControl.MetadataText({});
             _headerControl.MetadataAutomationName({});
             _headerControl.IsMetadataVisible(false);
+            _LogRichTabHeaderState(::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason::FeatureDisabled);
             _UpdateAutomationName();
             _UpdateToolTip();
             return;
@@ -693,8 +696,51 @@ namespace winrt::TerminalApp::implementation
         _headerControl.MetadataText(text);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
         _headerControl.IsMetadataVisible(!text.empty());
+        _LogRichTabHeaderState(
+            text.empty() ?
+                ::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason::EmptyMetadata :
+                ::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason::None);
         _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::_LogRichTabHeaderState(
+        const ::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason reason)
+    {
+        using namespace ::Microsoft::Terminal::RichTab::Provider;
+        const auto requestedVisible = _headerControl.IsMetadataVisible();
+        const auto effectiveVisible = requestedVisible && !_headerControl.InRename();
+        const auto textPresent = !_headerControl.MetadataText().empty();
+        const auto automationNamePresent = !_headerControl.MetadataAutomationName().empty();
+        const auto overrideActive = _richTabMetadataOverride.has_value();
+        if (_richTabHeaderDiagnosticInitialized &&
+            _richTabHeaderDiagnosticRequestedVisible == requestedVisible &&
+            _richTabHeaderDiagnosticEffectiveVisible == effectiveVisible &&
+            _richTabHeaderDiagnosticTextPresent == textPresent &&
+            _richTabHeaderDiagnosticAutomationNamePresent == automationNamePresent &&
+            _richTabHeaderDiagnosticOverrideActive == overrideActive)
+        {
+            return;
+        }
+
+        _richTabHeaderDiagnosticInitialized = true;
+        _richTabHeaderDiagnosticRequestedVisible = requestedVisible;
+        _richTabHeaderDiagnosticEffectiveVisible = effectiveVisible;
+        _richTabHeaderDiagnosticTextPresent = textPresent;
+        _richTabHeaderDiagnosticAutomationNamePresent = automationNamePresent;
+        _richTabHeaderDiagnosticOverrideActive = overrideActive;
+        EmitRichTabDiagnostic({
+            .event = RichTabDiagnosticEvent::HeaderMetadataState,
+            .state = RichTabDiagnosticState::Changed,
+            .reason = reason,
+            .tabId = winrt::to_string(_stableId),
+            .presentationPresent = _richTabPresentation.has_value(),
+            .requestedVisible = requestedVisible,
+            .effectiveVisible = effectiveVisible,
+            .textPresent = textPresent,
+            .automationNamePresent = automationNamePresent,
+            .overrideActive = overrideActive,
+        });
     }
 
     void Tab::_UpdateAutomationName()
@@ -1376,6 +1422,7 @@ namespace winrt::TerminalApp::implementation
         ASSERT_UI_THREAD();
 
         _headerControl.BeginRename();
+        _LogRichTabHeaderState(::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason::Rename);
     }
 
     // Method Description:

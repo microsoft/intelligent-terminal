@@ -5,6 +5,7 @@
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
 #include "../RichTabProvider/ProviderBroker.h"
+#include "../RichTabProvider/RichTabDiagnostics.h"
 #include "Tab.h"
 #include "Tab.g.h"
 
@@ -327,6 +328,12 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::DispatcherTimer _richTabMetadataOverrideTimer{ nullptr };
         winrt::hstring _richTabTooltipText{};
         winrt::hstring _richTabAccessibilityText{};
+        bool _richTabHeaderDiagnosticInitialized{ false };
+        bool _richTabHeaderDiagnosticRequestedVisible{ false };
+        bool _richTabHeaderDiagnosticEffectiveVisible{ false };
+        bool _richTabHeaderDiagnosticTextPresent{ false };
+        bool _richTabHeaderDiagnosticAutomationNamePresent{ false };
+        bool _richTabHeaderDiagnosticOverrideActive{ false };
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
@@ -367,6 +374,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateSwitchToTabKeyChord();
         void _UpdateToolTip();
         void _UpdateRichTabPresentation();
+        void _LogRichTabHeaderState(::Microsoft::Terminal::RichTab::Provider::RichTabDiagnosticReason reason);
         void _UpdateAutomationName();
 
         void _RecalculateAndApplyTabColor();

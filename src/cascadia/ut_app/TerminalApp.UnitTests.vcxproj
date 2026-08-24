@@ -25,6 +25,7 @@
     <ClCompile Include="RichTabProviderAppExtensionCatalogTests.cpp" />
     <ClCompile Include="RichTabProviderContractTests.cpp" />
     <ClCompile Include="RichTabProviderBrokerTests.cpp" />
+    <ClCompile Include="RichTabDiagnosticsTests.cpp" />
     <ClCompile Include="RichTabProviderRegistryTests.cpp" />
     <ClCompile Include="RichTabProviderSourcePolicyTests.cpp" />
     <ClCompile Include="FzfTests.cpp" />
