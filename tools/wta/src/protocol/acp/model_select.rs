@@ -313,10 +313,10 @@ pub(crate) async fn apply_session_model(
             {
                 Ok(response) => Ok(Some(response.config_options)),
                 Err(e) if e.code == acp::ErrorCode::MethodNotFound => {
-                    MODEL_SWITCHES
-                        .write()
-                        .unwrap()
-                        .insert(session_key, ModelSwitchChannel::LegacyFallback { config_id });
+                    MODEL_SWITCHES.write().unwrap().insert(
+                        session_key,
+                        ModelSwitchChannel::LegacyFallback { config_id },
+                    );
                     apply_legacy_set_model(conn, session_id, model_id)
                         .await
                         .map(|()| None)
@@ -459,9 +459,9 @@ mod tests {
                     "options": [{"value": "haiku", "name": "Haiku"}]
                 }]
             }))
-        .expect("valid config option update");
+            .expect("valid config option update");
         let (models, current) = models_from_config_options("background", &update.config_options)
-                .expect("model selector");
+            .expect("model selector");
         assert_eq!(models[0].id, "haiku");
         assert_eq!(current.as_deref(), Some("haiku"));
         assert_eq!(
@@ -650,7 +650,7 @@ mod tests {
                         "options": [{"value": "haiku", "name": "Haiku"}]
                     }]
                 }))
-            .expect("valid load_session response");
+                .expect("valid load_session response");
             let _ = models_from_load_session("s-fallback", &loaded);
             assert_eq!(
                 channel_for("s-fallback"),

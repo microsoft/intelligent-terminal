@@ -269,8 +269,6 @@ unsafe fn clipboard_bytes(format: u32) -> Option<Vec<u8>> {
     }
 }
 
-
-
 #[cfg(windows)]
 unsafe fn register_format(name: &str) -> u32 {
     use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
@@ -316,10 +314,10 @@ pub(crate) fn sample_screenshot_dib() -> Vec<u8> {
 /// test instead of failing where no clipboard is available.
 #[cfg(all(test, windows))]
 pub(crate) unsafe fn set_clipboard_dib(dib: &[u8]) -> bool {
+    use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
-    use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
     };
@@ -437,10 +435,14 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn live_clipboard_dib_reads_back_as_screenshot_png() {
-        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let dib = sample_screenshot_dib();
         if !unsafe { set_clipboard_dib(&dib) } {
-            eprintln!("skipping live_clipboard_dib_reads_back_as_screenshot_png: clipboard unavailable");
+            eprintln!(
+                "skipping live_clipboard_dib_reads_back_as_screenshot_png: clipboard unavailable"
+            );
             return;
         }
 
@@ -452,12 +454,14 @@ mod tests {
         // The captured bytes must be exactly what the pure pipeline yields for
         // the same DIB (proves the clipboard read path, not just that *some*
         // image came back).
-        let expected =
-            base64_encode(&bmp_to_png(&dib_to_bmp(&dib).unwrap()).unwrap());
+        let expected = base64_encode(&bmp_to_png(&dib_to_bmp(&dib).unwrap()).unwrap());
         assert_eq!(pasted.data_base64, expected);
 
         // And the base64 decodes to real PNG bytes (signature check).
         let png = bmp_to_png(&dib_to_bmp(&dib).unwrap()).unwrap();
-        assert_eq!(&png[0..8], &[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']);
+        assert_eq!(
+            &png[0..8],
+            &[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']
+        );
     }
 }

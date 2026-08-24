@@ -265,14 +265,14 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().agents_view.search_query.push(*character);
+                        self.current_tab_mut()
+                            .agents_view
+                            .search_query
+                            .push(*character);
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::F(5) => {}
+                    KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -395,8 +395,8 @@ impl App {
                         request.selected = request.selected.saturating_sub(1);
                     }
                     KeyCode::Down => {
-                        request.selected = (request.selected + 1)
-                            .min(request.selection_count().saturating_sub(1));
+                        request.selected =
+                            (request.selected + 1).min(request.selection_count().saturating_sub(1));
                     }
                     KeyCode::Char(character)
                         if request.request.allow_freeform
@@ -420,9 +420,7 @@ impl App {
                                     selected_index: None,
                                 });
                             }
-                        } else if let Some(answer) =
-                            request.request.choices.get(request.selected)
-                        {
+                        } else if let Some(answer) = request.request.choices.get(request.selected) {
                             resolved = Some(UserInputResponse::Answered {
                                 answer: answer.clone(),
                                 selected_index: Some(request.selected),
@@ -536,8 +534,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
                         .current_tab()
@@ -566,8 +563,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() => {
                 let choices_len = self
                     .current_tab()
                     .turn
@@ -597,8 +593,7 @@ impl App {
             }
             KeyCode::Right
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_next_recommendation_action();
             }
@@ -629,8 +624,7 @@ impl App {
             }
             KeyCode::Left
                 if self.current_tab().turn.recommendations().is_some()
-                    && self.current_tab().recommendation_focus
-                        == RecommendationFocus::Button =>
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 self.focus_previous_recommendation_action();
             }

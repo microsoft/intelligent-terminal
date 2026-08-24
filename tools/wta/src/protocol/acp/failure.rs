@@ -48,7 +48,10 @@ pub enum AgentFailure {
 
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` failed or timed out at startup.
-    HandshakeFailed { stage: HandshakeStage, detail: String },
+    HandshakeFailed {
+        stage: HandshakeStage,
+        detail: String,
+    },
 
     /// A referenced resource is gone (`ErrorCode::ResourceNotFound` / -32002):
     /// e.g. `session/load` of an expired session. The session survives; the

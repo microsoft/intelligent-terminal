@@ -23,12 +23,7 @@ impl PendingAttachments {
         self.images.is_empty()
     }
 
-    pub fn insert_image(
-        &mut self,
-        input: &mut String,
-        cursor_pos: &mut usize,
-        image: PastedImage,
-    ) {
+    pub fn insert_image(&mut self, input: &mut String, cursor_pos: &mut usize, image: PastedImage) {
         self.next_image_id += 1;
         let token = format!(
             "[image: {}]",
@@ -166,7 +161,6 @@ impl PendingAttachments {
             .collect();
         (input, images)
     }
-
 }
 
 fn image_display_name(image: &PastedImage, image_id: usize) -> String {
@@ -180,9 +174,7 @@ fn image_display_name(image: &PastedImage, image_id: usize) -> String {
         "image/bmp" => "bmp",
         _ => "png",
     };
-    if image.label.eq_ignore_ascii_case("image")
-        || image.label.eq_ignore_ascii_case("screenshot")
-    {
+    if image.label.eq_ignore_ascii_case("image") || image.label.eq_ignore_ascii_case("screenshot") {
         return format!("image-{image_id}.{extension}");
     }
     format!("{}.{}", image.label, extension)

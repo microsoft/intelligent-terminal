@@ -186,9 +186,7 @@ impl Config {
                     self.credential_resource
                 );
             }
-            bail!(
-                "BYOK API key missing. Re-add the provider in Settings."
-            );
+            bail!("BYOK API key missing. Re-add the provider in Settings.");
         }
         Ok(api_key)
     }
@@ -464,15 +462,15 @@ mod tests {
             }]
         });
 
-        let config = Config::from_settings(
-            &settings,
-            "custom:provider-openrouter:qwen/qwen3.5-9b",
-        )
-        .expect("configured provider/model should resolve");
+        let config = Config::from_settings(&settings, "custom:provider-openrouter:qwen/qwen3.5-9b")
+            .expect("configured provider/model should resolve");
 
         assert_eq!(config.base_url, "https://openrouter.ai/api/v1");
         assert_eq!(config.model, "qwen/qwen3.5-9b");
-        assert_eq!(config.credential_id.as_deref(), Some("credential-reference"));
+        assert_eq!(
+            config.credential_id.as_deref(),
+            Some("credential-reference")
+        );
         assert!(config.api_key_required);
     }
 

@@ -3176,10 +3176,7 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
     ));
     assert!(app.current_tab().config_pending_id.is_none());
     assert!(!app.current_tab().agent_picker_open);
-    assert!(app
-        .current_tab()
-        .pending_terminal_action_proposal
-        .is_none());
+    assert!(app.current_tab().pending_terminal_action_proposal.is_none());
     assert!(app.current_tab().active_direct_proposal_id.is_none());
     assert_eq!(app.current_tab().autofix.generation, 8);
     assert!(app.current_tab().autofix.pane_id.is_none());
@@ -3379,7 +3376,10 @@ fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() 
         &app.agent_reconnect_state,
         AgentReconnectState::Idle
     ));
-    let setup = app.setup.as_ref().expect("missing target should show Setup");
+    let setup = app
+        .setup
+        .as_ref()
+        .expect("missing target should show Setup");
     assert_eq!(setup.reason, SetupReason::AgentMissing);
     assert!(setup.options.iter().any(
         |option| matches!(option, SetupOption::Install { agent_id, .. } if agent_id == "copilot")

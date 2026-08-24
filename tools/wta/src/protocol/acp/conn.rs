@@ -225,7 +225,9 @@ impl ClientLink {
     /// Whether the transport latch has already observed peer death or an
     /// intentional shutdown.
     pub fn transport_ended(&self) -> bool {
-        self.shutdown.dead.load(std::sync::atomic::Ordering::Acquire)
+        self.shutdown
+            .dead
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 }
 
