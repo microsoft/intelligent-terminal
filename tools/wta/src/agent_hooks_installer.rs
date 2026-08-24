@@ -1171,12 +1171,16 @@ fn install_copilot_plugin_with_locked_dir_retry(
 
     let mut messages = Vec::new();
     let detached = detach_locked_copilot_plugin(Some(home), &mut messages);
-    if !cleanup_copilot_plugin_config(Some(home), &mut messages) {
-        messages.push("failed to clean Copilot plugin registration before retry".into());
-    }
-    let restored = !detached
-        && restore_deferred_copilot_registration(home, &mut messages)
-        && copilot_plugin_dir(home).is_dir();
+    let restored = if detached {
+        if !cleanup_copilot_plugin_config(Some(home), &mut messages) {
+            messages.push("failed to clean Copilot plugin registration before retry".into());
+        }
+        false
+    } else {
+        preserve_copilot_registration(Some(home), &mut messages);
+        restore_deferred_copilot_registration(home, &mut messages)
+            && copilot_plugin_dir(home).is_dir()
+    };
     for message in messages {
         tracing::info!(
             target: "copilot_hooks",

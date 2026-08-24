@@ -55,7 +55,7 @@ fn copilot_plugin_update_detaches_a_directory_that_may_be_locked() {
 }
 
 #[test]
-fn copilot_registration_can_be_deferred_across_a_locked_uninstall() {
+fn copilot_registration_restore_replaces_matching_entries_in_place() {
     let home = unique_dir("copilot-deferred");
     let copilot_dir = home.join(".copilot");
     fs::create_dir_all(&copilot_dir).unwrap();
@@ -73,6 +73,11 @@ fn copilot_registration_can_be_deferred_across_a_locked_uninstall() {
                     "name": "other",
                     "marketplace": "example",
                     "version": "1.0.0"
+                },
+                {
+                    "name": "wt-agent-hooks",
+                    "marketplace": "wt-local",
+                    "version": "stale"
                 }
             ]
         }"#,
@@ -81,7 +86,6 @@ fn copilot_registration_can_be_deferred_across_a_locked_uninstall() {
 
     let mut messages = Vec::new();
     assert!(preserve_copilot_registration(Some(&home), &mut messages));
-    assert!(cleanup_copilot_plugin_config(Some(&home), &mut messages));
     assert!(restore_deferred_copilot_registration(&home, &mut messages));
 
     let config: Value =
@@ -89,9 +93,70 @@ fn copilot_registration_can_be_deferred_across_a_locked_uninstall() {
             .unwrap();
     let entries = config["installedPlugins"].as_array().unwrap();
     assert_eq!(entries.len(), 2);
+    let matching: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry["name"] == PLUGIN_NAME && entry["marketplace"] == MARKETPLACE_NAME)
+        .collect();
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0]["version"], "0.1.6");
     assert!(entries
         .iter()
-        .any(|entry| { entry["name"] == PLUGIN_NAME && entry["marketplace"] == MARKETPLACE_NAME }));
+        .any(|entry| entry["name"] == "other" && entry["marketplace"] == "example"));
+    assert!(!copilot_deferred_registration_path(&home).exists());
+
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn copilot_registration_restore_uses_existing_snapshot_when_current_is_absent() {
+    let home = unique_dir("copilot-existing-deferred");
+    let copilot_dir = home.join(".copilot");
+    fs::create_dir_all(&copilot_dir).unwrap();
+    fs::write(
+        copilot_dir.join("config.json"),
+        r#"{
+            "installedPlugins": [
+                {
+                    "name": "other",
+                    "marketplace": "example",
+                    "version": "1.0.0"
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+    fs::write(
+        copilot_deferred_registration_path(&home),
+        r#"{
+            "name": "wt-agent-hooks",
+            "marketplace": "wt-local",
+            "version": "0.1.6",
+            "cache_path": "locked"
+        }"#,
+    )
+    .unwrap();
+
+    let mut messages = Vec::new();
+    assert!(!preserve_copilot_registration(Some(&home), &mut messages));
+    assert!(restore_deferred_copilot_registration(&home, &mut messages));
+
+    let config: Value =
+        serde_json::from_str(&fs::read_to_string(copilot_dir.join("config.json")).unwrap())
+            .unwrap();
+    let entries = config["installedPlugins"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| {
+                entry["name"] == PLUGIN_NAME && entry["marketplace"] == MARKETPLACE_NAME
+            })
+            .count(),
+        1
+    );
+    assert!(entries
+        .iter()
+        .any(|entry| entry["name"] == "other" && entry["marketplace"] == "example"));
     assert!(!copilot_deferred_registration_path(&home).exists());
 
     fs::remove_dir_all(home).unwrap();
