@@ -8,7 +8,6 @@
 //!
 //! Composite functions (combine basics):
 //!   - `check_agent`       — find_exe → AgentStatus
-//!   - `ensure_installed`  — find_exe → install if missing → refresh_path → find_exe
 
 use crate::agent_registry;
 use std::ffi::OsStr;
@@ -499,21 +498,6 @@ pub async fn check_agent_in_source(
             }
         }
     }
-}
-
-/// Ensure an agent is installed: find → install if missing → refresh PATH → find again.
-pub async fn ensure_installed(
-    agent_id: &str,
-    on_line: impl FnMut(String) + Send + 'static,
-) -> Result<Option<String>, String> {
-    if let Some(path) = find_exe(agent_id) {
-        return Ok(Some(path));
-    }
-
-    install(agent_id, on_line).await?;
-    refresh_path();
-
-    Ok(find_exe(agent_id))
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────

@@ -14,9 +14,7 @@ use std::sync::Arc;
 
 use crate::shell::wt_channel::{CliChannel, WtChannel};
 use crate::shell::ShellManager;
-use crate::{
-    agent_hooks_installer, agent_registry, app, event, logging, protocol, shell,
-};
+use crate::{agent_registry, app, event, logging, protocol, shell};
 
 use super::config::{HelperConfig, InitialView};
 
@@ -920,25 +918,6 @@ async fn run_acp_app(
                 );
                 let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
             }
-
-            // ── install-hooks request channel ─────────────────────────────
-            // The Settings UI / in-TUI install button signals via this
-            // channel; main.rs runs `agent_hooks_installer::ensure_installed`
-            // off the UI thread so the TUI stays responsive.
-            let (install_req_tx, mut install_req_rx) =
-                tokio::sync::mpsc::unbounded_channel::<()>();
-            tokio::task::spawn_local(async move {
-                while let Some(()) = install_req_rx.recv().await {
-                    tracing::info!(target: "install_hooks", "received install request");
-                    // Run the (potentially slow, IO-bound) installer on the
-                    // blocking pool so we don't park the LocalSet.
-                    let _ = tokio::task::spawn_blocking(|| {
-                        agent_hooks_installer::ensure_installed();
-                    })
-                    .await;
-                }
-            });
-            app_state.set_install_request_tx(install_req_tx);
 
             // Wire the agent_event channel so dispatch_resume's split-pane
             // background callback can post AgentSessionEvent (specifically

@@ -1141,8 +1141,6 @@ pub struct App {
     /// truth) and the `agents_view::render` call in `ui/layout.rs`. See
     /// [`MVP_SESSIONS_ORIGIN_FILTER`] for the gate to flip when un-MVP.
     pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
-    // Onboarding: signals main.rs to install agent hook plugins on demand.
-    install_request_tx: Option<mpsc::UnboundedSender<()>>,
     /// Posts `AppEvent::AgentSessionEvent` from background callbacks
     /// (split-pane callback in `dispatch_resume`) back into the main
     /// event loop so they can apply to `agent_sessions` on the UI thread.
@@ -1405,7 +1403,6 @@ impl App {
             agent_supports_load_session: false,
             agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
-            install_request_tx: None,
             agent_event_tx: None,
             session_hook_tx: None,
             delegate_agents: None,
@@ -1732,13 +1729,6 @@ impl App {
                 }
             }
         }
-    }
-
-    /// Wire a sender that signals main.rs to run the agent-hooks installer
-    /// (Settings UI -> Install button -> main.rs spawns
-    /// `agent_hooks_installer::ensure_installed`).
-    pub fn set_install_request_tx(&mut self, tx: mpsc::UnboundedSender<()>) {
-        self.install_request_tx = Some(tx);
     }
 
     /// Wire the main loop's `AppEvent` sender so background callbacks
@@ -2578,15 +2568,6 @@ impl App {
                     "failed to queue session_hook event for master"
                 );
             }
-        }
-    }
-
-    /// Trigger an install-hooks request. No-op if no channel is wired
-    /// (e.g. running outside the packaged app).
-    #[allow(dead_code)]
-    pub fn request_install_hooks(&self) {
-        if let Some(tx) = &self.install_request_tx {
-            let _ = tx.send(());
         }
     }
 
