@@ -28,6 +28,7 @@ Describe 'Feature: OpenCode session tracking hooks' -Tag 'Feature' -Skip:(-not $
         $script:supportDir = Join-Path $script:pluginsDir 'wt-agent-hooks'
         $script:managedPaths = @(
             (Join-Path $script:pluginsDir 'wt-agent-hooks.js'),
+            (Join-Path $script:supportDir 'send-event.ps1'),
             (Join-Path $script:supportDir 'plugin.json')
         )
         $script:pluginsDirExisted = Test-Path $script:pluginsDir
