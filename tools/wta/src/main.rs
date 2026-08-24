@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rust_i18n;
 
+mod action_links;
 mod agent_check;
 mod agent_hooks_installer;
 mod agent_pane_origin;
@@ -8,7 +9,6 @@ mod agent_registry;
 mod agent_sessions;
 mod agent_source;
 mod agent_tools;
-mod action_links;
 mod app;
 mod app_contracts;
 mod cli;
@@ -18,6 +18,7 @@ mod commands;
 mod coordinator;
 mod custom_model_provider;
 mod cwd_util;
+mod durable_tab_session_store;
 mod event;
 mod helper;
 mod history_loader;
@@ -39,7 +40,6 @@ mod session_mgmt;
 mod session_registry;
 mod session_watcher;
 mod shell;
-mod durable_tab_session_store;
 mod telemetry;
 #[cfg(test)]
 mod test_support;

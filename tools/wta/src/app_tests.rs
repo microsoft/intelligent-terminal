@@ -2202,7 +2202,10 @@ get time"#
     assert_eq!(t0.prompt, "get time");
     assert_eq!(t0.details.len(), 1);
     assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
-    assert!(t0.expanded, "replayed turn must match live expanded rendering");
+    assert!(
+        t0.expanded,
+        "replayed turn must match live expanded rendering"
+    );
     assert!(t0.trailing_marker.is_none());
 
     let t1 = &tab.completed_turns[1];
@@ -2373,7 +2376,10 @@ fn session_attached_for_load_target_packs_replayed_history() {
         "both replayed user prompts must become CompletedTurn rows"
     );
     for turn in &tab.completed_turns {
-        assert!(turn.expanded, "replayed turns must match live expanded rendering");
+        assert!(
+            turn.expanded,
+            "replayed turns must match live expanded rendering"
+        );
     }
     // Resume is silent now — no "Resuming…" marker is posted, so after
     // packing the replayed User/Agent rows into turns nothing is left in
@@ -3484,10 +3490,7 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
     ));
     assert!(app.current_tab().config_pending_id.is_none());
     assert!(!app.current_tab().agent_picker_open);
-    assert!(app
-        .current_tab()
-        .pending_terminal_action_proposal
-        .is_none());
+    assert!(app.current_tab().pending_terminal_action_proposal.is_none());
     assert!(app.current_tab().active_direct_proposal_id.is_none());
     assert_eq!(app.current_tab().autofix.generation, 8);
     assert!(app.current_tab().autofix.pane_id.is_none());
@@ -3687,7 +3690,10 @@ fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() 
         &app.agent_reconnect_state,
         AgentReconnectState::Idle
     ));
-    let setup = app.setup.as_ref().expect("missing target should show Setup");
+    let setup = app
+        .setup
+        .as_ref()
+        .expect("missing target should show Setup");
     assert_eq!(setup.reason, SetupReason::AgentMissing);
     assert!(setup.options.iter().any(
         |option| matches!(option, SetupOption::Install { agent_id, .. } if agent_id == "copilot")
@@ -12894,8 +12900,10 @@ fn durable_session_id_uses_the_load_target_during_replay() {
     assert_eq!(tab.durable_session_id(), Some("loaded-session"));
 }
 
-
-fn durable_tab_session_record(id: &str, name: &str) -> crate::durable_tab_session_store::DurableTabSessionSummary {
+fn durable_tab_session_record(
+    id: &str,
+    name: &str,
+) -> crate::durable_tab_session_store::DurableTabSessionSummary {
     crate::durable_tab_session_store::DurableTabSessionSummary {
         id: id.to_string(),
         name: name.to_string(),

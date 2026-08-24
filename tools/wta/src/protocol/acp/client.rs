@@ -3088,23 +3088,23 @@ pub async fn run_acp_client_over_pipe(
                 anyhow::bail!("bootstrap session retired during tab reset or close");
             }
 
-        let session_id = session.session_id.clone();
-        startup_probe.log(&format!("Session created (over pipe): {}", session_id));
-        if is_agent_pane {
-            let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
-            let pane_for_index = if pane_session_id.is_empty() {
-                None
-            } else {
-                Some(pane_session_id.as_str())
-            };
-            tracing::info!(
-                target: "agent_pane_origin",
-                session_id = %session_id,
-                pane_session_id = %pane_session_id,
-                "recording agent-pane session origin (startup over pipe)",
-            );
-            crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
-        }
+            let session_id = session.session_id.clone();
+            startup_probe.log(&format!("Session created (over pipe): {}", session_id));
+            if is_agent_pane {
+                let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+                let pane_for_index = if pane_session_id.is_empty() {
+                    None
+                } else {
+                    Some(pane_session_id.as_str())
+                };
+                tracing::info!(
+                    target: "agent_pane_origin",
+                    session_id = %session_id,
+                    pane_session_id = %pane_session_id,
+                    "recording agent-pane session origin (startup over pipe)",
+                );
+                crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
+            }
 
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&session);
@@ -3570,14 +3570,18 @@ fn dispatch_master_ext_request(
                 // marked.
                 let (result, marks) = tokio::join!(
                     async {
-                        conn.ext_method(crate::session_registry::build_durable_tab_sessions_list_request(
-                            elevated,
-                        ))
+                        conn.ext_method(
+                            crate::session_registry::build_durable_tab_sessions_list_request(
+                                elevated,
+                            ),
+                        )
                         .await
                         .map_err(|error| anyhow::anyhow!("{error:?}"))
                         .and_then(|response| {
-                            crate::session_registry::parse_durable_tab_sessions_list_response(&response.0)
-                                .map_err(anyhow::Error::from)
+                            crate::session_registry::parse_durable_tab_sessions_list_response(
+                                &response.0,
+                            )
+                            .map_err(anyhow::Error::from)
                         })
                     },
                     fetch_durable_tab_session_marks()
@@ -3630,15 +3634,19 @@ fn dispatch_master_ext_request(
                 elevated,
             } => {
                 let result = conn
-                    .ext_method(crate::session_registry::build_durable_tab_session_delete_request(
-                        id.clone(),
-                        elevated,
-                    ))
+                    .ext_method(
+                        crate::session_registry::build_durable_tab_session_delete_request(
+                            id.clone(),
+                            elevated,
+                        ),
+                    )
                     .await
                     .map_err(|error| anyhow::anyhow!("{error:?}"))
                     .and_then(|response| {
-                        crate::session_registry::parse_durable_tab_session_delete_response(&response.0)
-                            .map_err(anyhow::Error::from)
+                        crate::session_registry::parse_durable_tab_session_delete_response(
+                            &response.0,
+                        )
+                        .map_err(anyhow::Error::from)
                     });
                 let (deleted, error) = match result {
                     Ok(response) => (response.deleted, None),
@@ -4794,7 +4802,6 @@ async fn fetch_durable_tab_session_marks_inner() -> DurableTabSessionMarks {
 #[cfg(test)]
 mod tests {
     use super::acp;
-    use super::{with_marks_timeout, DurableTabSessionMarks, DURABLE_TAB_SESSION_MARKS_TIMEOUT};
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
@@ -4803,6 +4810,7 @@ mod tests {
         tool_call_exit_code, tool_call_kind_label, AcpClientExit, ClientState, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
+    use super::{with_marks_timeout, DurableTabSessionMarks, DURABLE_TAB_SESSION_MARKS_TIMEOUT};
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;

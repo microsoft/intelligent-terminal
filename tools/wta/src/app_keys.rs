@@ -248,11 +248,16 @@ impl App {
             {
                 return;
             }
-            if let Some(id) = self.current_tab().durable_tab_session_delete_confirmation.clone() {
+            if let Some(id) = self
+                .current_tab()
+                .durable_tab_session_delete_confirmation
+                .clone()
+            {
                 match key.code {
                     KeyCode::Char('y' | 'Y') => self.delete_durable_tab_session(tab_id, id),
                     KeyCode::Char('n' | 'N') | KeyCode::Esc => {
-                        self.current_tab_mut().durable_tab_session_delete_confirmation = None;
+                        self.current_tab_mut()
+                            .durable_tab_session_delete_confirmation = None;
                     }
                     _ => {}
                 }
@@ -273,7 +278,9 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().durable_tab_sessions_query.push(character);
+                        self.current_tab_mut()
+                            .durable_tab_sessions_query
+                            .push(character);
                         self.current_tab_mut().reset_durable_tab_session_selection();
                     }
                     _ => {}
@@ -308,16 +315,23 @@ impl App {
                         .select((count > 0).then_some(current.saturating_sub(1)));
                 }
                 KeyCode::Enter => {
-                    if let Some(index) = self.current_tab().durable_tab_sessions_list_state.selected() {
-                        if let Some(session) =
-                            self.current_tab().matching_durable_tab_session(index).cloned()
+                    if let Some(index) = self
+                        .current_tab()
+                        .durable_tab_sessions_list_state
+                        .selected()
+                    {
+                        if let Some(session) = self
+                            .current_tab()
+                            .matching_durable_tab_session(index)
+                            .cloned()
                         {
                             self.restore_durable_tab_session(tab_id, session.id);
                         }
                     }
                 }
                 KeyCode::Delete | KeyCode::Char('d' | 'D') => {
-                    self.current_tab_mut().begin_selected_durable_tab_session_delete();
+                    self.current_tab_mut()
+                        .begin_selected_durable_tab_session_delete();
                 }
                 KeyCode::Char('/') => {
                     self.current_tab_mut().durable_tab_sessions_search_focused = true;
@@ -494,8 +508,8 @@ impl App {
                         request.selected = request.selected.saturating_sub(1);
                     }
                     KeyCode::Down => {
-                        request.selected = (request.selected + 1)
-                            .min(request.selection_count().saturating_sub(1));
+                        request.selected =
+                            (request.selected + 1).min(request.selection_count().saturating_sub(1));
                     }
                     KeyCode::Char(character)
                         if request.request.allow_freeform
@@ -519,9 +533,7 @@ impl App {
                                     selected_index: None,
                                 });
                             }
-                        } else if let Some(answer) =
-                            request.request.choices.get(request.selected)
-                        {
+                        } else if let Some(answer) = request.request.choices.get(request.selected) {
                             resolved = Some(UserInputResponse::Answered {
                                 answer: answer.clone(),
                                 selected_index: Some(request.selected),

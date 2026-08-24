@@ -253,7 +253,12 @@ mod tests {
             r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState",
         );
         assert_eq!(
-            durable_tab_session_runtime_root_from(false, Some(bare_root), Some(settings.clone()), None,),
+            durable_tab_session_runtime_root_from(
+                false,
+                Some(bare_root),
+                Some(settings.clone()),
+                None,
+            ),
             Some(settings.join("IntelligentTerminal"))
         );
     }
@@ -265,7 +270,12 @@ mod tests {
             r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState\state.json",
         );
         assert_eq!(
-            durable_tab_session_runtime_root_from(false, Some(bare_root.clone()), None, Some(state)),
+            durable_tab_session_runtime_root_from(
+                false,
+                Some(bare_root.clone()),
+                None,
+                Some(state)
+            ),
             Some(PathBuf::from(
                 r"C:\Users\test\AppData\Local\Packages\IntelligentTerminal_test\LocalState\IntelligentTerminal"
             ))

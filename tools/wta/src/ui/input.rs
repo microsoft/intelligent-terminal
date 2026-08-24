@@ -212,9 +212,8 @@ fn push_caret_spans(
         },
     ));
     if !after.is_empty() {
-        let after_start = line_start
-            + before.len()
-            + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
+        let after_start =
+            line_start + before.len() + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
         push_styled_input(spans, &after, after_start, attachment_ranges);
     }
 
@@ -261,12 +260,7 @@ fn push_styled_input(
 }
 
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {
-    input_viewport_with_max_rows(
-        input,
-        cursor_pos,
-        total_width,
-        INPUT_MAX_INNER_ROWS,
-    )
+    input_viewport_with_max_rows(input, cursor_pos, total_width, INPUT_MAX_INNER_ROWS)
 }
 
 fn input_viewport_with_max_rows(
@@ -288,8 +282,7 @@ fn input_viewport_with_max_rows(
         0
     };
     let visible_lines = wrapped.lines[scroll_row..scroll_row + visible_rows].to_vec();
-    let visible_line_starts =
-        wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
+    let visible_line_starts = wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
 
     InputViewport {
         visible_lines,

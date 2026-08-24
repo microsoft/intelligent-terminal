@@ -3,8 +3,8 @@ use ratatui::prelude::*;
 
 use super::config_popup;
 use super::{
-    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup, durable_tab_sessions_view, user_input,
+    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel,
+    durable_tab_sessions_view, input, model_popup, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -148,13 +148,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width);
-    let recommendation_natural_height = app
-        .current_tab()
-        .turn
-        .recommendations()
-        .map(|recommendations| {
-            action_panel::recommendation_panel_height(recommendations, main_area.width)
-        });
+    let recommendation_natural_height =
+        app.current_tab()
+            .turn
+            .recommendations()
+            .map(|recommendations| {
+                action_panel::recommendation_panel_height(recommendations, main_area.width)
+            });
     let permission_natural_height = app.current_tab().permission.front().map(|permission| {
         let queue = &app.current_tab().permission;
         let queued = queue
@@ -243,12 +243,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     chat::render(frame, app, h_chat[1]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
-    recommendations::render(
-        frame,
-        app,
-        h_rec[1],
-        panel_layout.recommendation_mode,
-    );
+    recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }

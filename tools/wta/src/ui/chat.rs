@@ -6,12 +6,12 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::app::{
     App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput,
 };
-#[cfg(test)]
-use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
@@ -125,7 +125,9 @@ fn tool_detail_lines(
     let mut omitted = false;
     if detailed {
         for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
-            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            let suffix = location
+                .line
+                .map_or_else(String::new, |line| format!(":{line}"));
             lines.push(format!("    {}{suffix}", location.path));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
@@ -170,7 +172,9 @@ fn tool_detail_lines(
                 }
             }
             ToolCallContent::Attachment { label, uri } => {
-                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                let target = uri
+                    .as_deref()
+                    .map_or_else(String::new, |uri| format!(" · {uri}"));
                 lines.push(format!("    ↳ {label}{target}"));
             }
         }
@@ -476,12 +480,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let buffer = frame.buffer_mut();
     for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
-        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
+        if let Some(header_row) = header_from_top
+            .checked_sub(scroll)
+            .filter(|row| *row < visible_height)
         {
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
             if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+                .find(|column| {
+                    buffer
+                        .cell((*column, row))
+                        .is_some_and(|cell| cell.symbol() == symbol)
+                })
             {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
                     start_column: column,
@@ -1627,7 +1637,9 @@ mod tests {
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
         assert_eq!(lines[0], "    │ …");
-        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+        assert!(lines
+            .last()
+            .is_some_and(|line| line.ends_with("object-199.o")));
     }
 
     #[test]
@@ -1755,7 +1767,8 @@ mod tests {
             },
         };
         if !buf.is_empty() {
-            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+            tab.messages
+                .push(crate::app::ChatMessage::Agent(buf.to_string()));
         }
         tab.reveal_chars = reveal_chars;
         tab

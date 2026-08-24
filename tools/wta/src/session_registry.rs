@@ -480,7 +480,6 @@ pub fn parse_durable_tab_session_delete_response(
     serde_json::from_str(raw.get())
 }
 
-
 pub fn build_durable_tab_session_ext_response<T: serde::Serialize>(
     response: &T,
 ) -> acp::schema::v1::ExtResponse {
@@ -612,7 +611,10 @@ pub enum WtaExtRequest {
     ForwardToAgent(acp::schema::v1::ExtRequest),
     /// Method matched one of ours but the params failed to decode. The master
     /// answers `invalid_params` rather than acting on a half-parsed payload.
-    Malformed { method: String, error: String },
+    Malformed {
+        method: String,
+        error: String,
+    },
 }
 
 /// Classify and decode an inbound helper→master `ExtRequest`.
@@ -659,13 +661,19 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
         decode!(SessionFocus, parse_session_focus_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSIONS_LIST) {
-        decode!(DurableTabSessionsList, parse_durable_tab_sessions_list_params)
+        decode!(
+            DurableTabSessionsList,
+            parse_durable_tab_sessions_list_params
+        )
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE) {
         decode!(DurableTabSessionSave, parse_durable_tab_session_save_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_GET) {
         decode!(DurableTabSessionGet, parse_durable_tab_session_get_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_DELETE) {
-        decode!(DurableTabSessionDelete, parse_durable_tab_session_delete_params)
+        decode!(
+            DurableTabSessionDelete,
+            parse_durable_tab_session_delete_params
+        )
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_CLOSE_TAB_SESSION) {
         decode!(CloseTabSession, parse_close_tab_session_params)
     } else {
@@ -3408,7 +3416,8 @@ mod tests {
     #[test]
     fn parse_ext_request_decodes_typed_durable_tab_session_methods() {
         use crate::durable_tab_session_store::{
-            DurableTabSessionBufferInput, DurableTabSessionDeleteParams, DurableTabSessionSaveParams,
+            DurableTabSessionBufferInput, DurableTabSessionDeleteParams,
+            DurableTabSessionSaveParams,
         };
 
         let save = DurableTabSessionSaveParams {
@@ -3432,11 +3441,17 @@ mod tests {
             WtaExtRequest::DurableTabSessionsList(_)
         ));
         assert!(matches!(
-            parse_ext_request(build_typed_ext_request(INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE, &save)),
+            parse_ext_request(build_typed_ext_request(
+                INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE,
+                &save
+            )),
             WtaExtRequest::DurableTabSessionSave(_)
         ));
         assert!(matches!(
-            parse_ext_request(build_durable_tab_session_get_request("id".to_string(), false)),
+            parse_ext_request(build_durable_tab_session_get_request(
+                "id".to_string(),
+                false
+            )),
             WtaExtRequest::DurableTabSessionGet(_)
         ));
         assert!(matches!(

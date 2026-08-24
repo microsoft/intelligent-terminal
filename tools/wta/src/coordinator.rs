@@ -731,9 +731,7 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             validate_direction(direction.as_deref())?;
         }
         RecommendedAction::Open {
-            parent,
-            direction,
-            ..
+            parent, direction, ..
         } => {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;

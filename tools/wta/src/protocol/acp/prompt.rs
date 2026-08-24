@@ -12,10 +12,8 @@ const EMBEDDED_DEFAULT_PROMPT: &str = include_str!(concat!(
 
 const AUTOFIX_USER_PROMPT_FILE_NAME: &str = "auto-fix.md";
 const AUTOFIX_DEFAULT_PROMPT_FILE_NAME: &str = "auto-fix.default.md";
-const EMBEDDED_AUTOFIX_PROMPT: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/prompts/auto-fix.md"
-));
+const EMBEDDED_AUTOFIX_PROMPT: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/prompts/auto-fix.md"));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannerPromptTemplate {
@@ -217,7 +215,10 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 /// `fs::write` truncates first and races readers down to an empty string.
 fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("prompt");
+    let stem = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("prompt");
     let unique = NEXT_TMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = dir.join(format!(".{}.{}.{}.tmp", stem, std::process::id(), unique));
     fs::write(&tmp, content)?;
@@ -233,9 +234,9 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_planner_prompt_template_from_root, merge_runtime_sections,
-        DEFAULT_PROMPT_FILE_NAME, EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT,
-        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
+        load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
+        EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT, RUNTIME_CONTEXT_MARKER,
+        USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -270,10 +271,8 @@ mod tests {
 
     #[test]
     fn merge_runtime_sections_removes_marker_when_context_is_empty() {
-        let merged = merge_runtime_sections(
-            &format!("before\n{}\nafter", RUNTIME_CONTEXT_MARKER),
-            &[],
-        );
+        let merged =
+            merge_runtime_sections(&format!("before\n{}\nafter", RUNTIME_CONTEXT_MARKER), &[]);
 
         assert_eq!(merged, "before\n\nafter");
     }

@@ -78,8 +78,9 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         }
     } else if let Some(natural_height) = request.recommendation_natural_height {
         if preferred_action_budget >= CARD_MIN_SIZE {
-            result.recommendation_height =
-                natural_height.min(preferred_action_budget).max(CARD_MIN_SIZE);
+            result.recommendation_height = natural_height
+                .min(preferred_action_budget)
+                .max(CARD_MIN_SIZE);
             result.recommendation_mode = PanelMode::Full;
         } else if emergency_action_budget >= COMPACT_RECOMMENDATION_HEIGHT {
             result.recommendation_height = COMPACT_RECOMMENDATION_HEIGHT;
@@ -96,17 +97,15 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .saturating_add(request.chat_natural_height.max(CHAT_MIN_HEIGHT));
     let compact = result.permission_mode == PanelMode::Compact
         || result.recommendation_mode == PanelMode::Compact;
-    let generic_hint_requested = request.hint_requested
-        && !compact
-        && request.available_rows > natural_content_without_hint;
+    let generic_hint_requested =
+        request.hint_requested && !compact && request.available_rows > natural_content_without_hint;
 
     let base_remaining = request
         .available_rows
         .saturating_sub(action_rows)
         .saturating_sub(super::input::INPUT_MIN_HEIGHT);
     result.chat_height = CHAT_MIN_HEIGHT.min(base_remaining);
-    let status_height =
-        ACTIVITY_HEIGHT.min(base_remaining.saturating_sub(result.chat_height));
+    let status_height = ACTIVITY_HEIGHT.min(base_remaining.saturating_sub(result.chat_height));
     if request.activity_requested {
         result.activity_height = status_height;
     } else if result.recommendation_mode == PanelMode::Full {

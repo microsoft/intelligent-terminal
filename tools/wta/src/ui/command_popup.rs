@@ -79,10 +79,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             .iter()
             .map(|position| {
                 ListItem::new(Line::from(vec![
-                    Span::styled(
-                        format!(" /move {:<6} ", position.name),
-                        theme::INPUT_TEXT,
-                    ),
+                    Span::styled(format!(" /move {:<6} ", position.name), theme::INPUT_TEXT),
                     Span::styled(format!("({})", position.alias), theme::DIM),
                 ]))
             })
@@ -121,10 +118,7 @@ fn command_name_spans(name: &str, query: &str) -> Vec<Span<'static>> {
         .then(|| name.to_ascii_lowercase().find(&needle))
         .flatten()
     else {
-        return vec![Span::styled(
-            format!(" /{padded_name}"),
-            theme::INPUT_TEXT,
-        )];
+        return vec![Span::styled(format!(" /{padded_name}"), theme::INPUT_TEXT)];
     };
     let end = start + needle.len();
 
@@ -143,10 +137,7 @@ fn command_name_spans(name: &str, query: &str) -> Vec<Span<'static>> {
 /// needs no special handling here — the App pre-filters the candidate list to
 /// just `/restart`, so the normal clamp lands on it. Pure so it can be
 /// unit-tested without a render frame.
-pub(crate) fn popup_highlight(
-    candidate_count: usize,
-    selected: usize,
-) -> Option<usize> {
+pub(crate) fn popup_highlight(candidate_count: usize, selected: usize) -> Option<usize> {
     if candidate_count == 0 {
         return None;
     }

@@ -705,10 +705,9 @@ impl WtChannel for CliChannel {
         match method {
             "list_durable_tab_sessions" => self.run_wtcli(&["list-tab-sessions"]).await,
             "restore_durable_tab_session" => {
-                let id = params
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow!("restore_durable_tab_session: missing 'id' parameter"))?;
+                let id = params.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
+                    anyhow!("restore_durable_tab_session: missing 'id' parameter")
+                })?;
                 let window_id = params
                     .get("window_id")
                     .and_then(json_id_as_str)

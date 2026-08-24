@@ -124,9 +124,7 @@ impl ProviderBinding {
 
     fn has_active_custom_provider(&self) -> bool {
         match self {
-            Self::LegacyEnvironment => {
-                crate::custom_model_provider::shared_provider_is_complete()
-            }
+            Self::LegacyEnvironment => crate::custom_model_provider::shared_provider_is_complete(),
             Self::Native => false,
             Self::Custom { .. } => true,
         }
@@ -691,23 +689,23 @@ async fn close_and_retire_owned_session(
         match tokio::time::timeout(
             remaining,
             agent
-            .conn
+                .conn
                 .cancel(acp::schema::v1::CancelNotification::new(session_id.clone())),
         )
-            .await
+        .await
         {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-            tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "cancel_replaced_session",
-                helper_id = ?helper_id,
-                old_session_id = %session_id,
-                error = %error,
-                "legacy session/cancel fallback failed"
-            );
-        }
+                tracing::warn!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "cancel_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    error = %error,
+                    "legacy session/cancel fallback failed"
+                );
+            }
             Err(_) => return Err(retirement_deadline_error(session_id, "cancel")),
         }
         ReplacedSessionCleanup::LogicalFallback
@@ -719,23 +717,23 @@ async fn close_and_retire_owned_session(
         match tokio::time::timeout(
             remaining,
             agent
-            .conn
+                .conn
                 .cancel(acp::schema::v1::CancelNotification::new(session_id.clone())),
         )
-            .await
+        .await
         {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-            tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "cancel_replaced_session",
-                helper_id = ?helper_id,
-                old_session_id = %session_id,
-                error = %error,
-                "failed to cancel active turn before session/close"
-            );
-        }
+                tracing::warn!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "cancel_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    error = %error,
+                    "failed to cancel active turn before session/close"
+                );
+            }
             Err(_) => return Err(retirement_deadline_error(session_id, "cancel")),
         }
         let started = std::time::Instant::now();
@@ -794,9 +792,9 @@ async fn close_and_retire_owned_session(
                     if retire_on_close_failure {
                         ReplacedSessionCleanup::LogicalFallback
                     } else {
-                    return Err(error);
+                        return Err(error);
+                    }
                 }
-            }
             }
             Err(_) => {
                 let message =
@@ -814,13 +812,13 @@ async fn close_and_retire_owned_session(
                 if retire_on_close_failure {
                     ReplacedSessionCleanup::LogicalFallback
                 } else {
-                return Err(
-                    acp::Error::new(-32603, message.clone()).data(serde_json::json!({
-                        "message": message
-                    })),
-                );
+                    return Err(
+                        acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                            "message": message
+                        })),
+                    );
+                }
             }
-        }
         }
     };
 
@@ -971,8 +969,7 @@ async fn retire_tab_session(
         if target.is_none() {
             target = state.pending_session_helpers.lock().await.iter().find_map(
                 |(helper_id, owner_tab_id)| {
-                    (owner_tab_id.as_deref() == Some(tab_id.as_str()))
-                        .then_some((*helper_id, None))
+                    (owner_tab_id.as_deref() == Some(tab_id.as_str())).then_some((*helper_id, None))
                 },
             );
         }
@@ -1025,14 +1022,7 @@ async fn retire_tab_session(
     };
 
     let Some((owner_helper_id, session_id, agent_instance_id)) = live_target else {
-        let orphan = {
-            state
-                .orphaned_tabs
-                .lock()
-                .await
-                .get(&tab_id)
-                .cloned()
-        };
+        let orphan = { state.orphaned_tabs.lock().await.get(&tab_id).cloned() };
         if let Some((agent_key, orphan_helper_id, orphan_session_id)) = orphan {
             let gate = session_lifecycle_gate(state, &orphan_session_id).await;
             let _guard = match tokio::time::timeout_at(deadline, gate.lock()).await {
@@ -1060,19 +1050,20 @@ async fn retire_tab_session(
                     ));
                 }
             };
-            let orphan_is_current = state
-                .orphaned_tabs
-                .lock()
-                .await
-                .get(&tab_id)
-                .is_some_and(|current| {
-                    current
-                        == &(
-                            agent_key.clone(),
-                            orphan_helper_id,
-                            orphan_session_id.clone(),
-                        )
-                });
+            let orphan_is_current =
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .get(&tab_id)
+                    .is_some_and(|current| {
+                        current
+                            == &(
+                                agent_key.clone(),
+                                orphan_helper_id,
+                                orphan_session_id.clone(),
+                            )
+                    });
             if !orphan_is_current {
                 return Ok(ReplacedSessionCleanup::NotOwned);
             }
@@ -1101,15 +1092,15 @@ async fn retire_tab_session(
                 let cancel_timed_out = match cancel {
                     Ok(Ok(())) => false,
                     Ok(Err(error)) => {
-                    tracing::warn!(
-                        target: "master",
-                        tab_id,
-                        session_id = %orphan_session_id,
-                        error = %error,
-                            "failed to cancel orphaned turn before retirement"
-                    );
+                        tracing::warn!(
+                            target: "master",
+                            tab_id,
+                            session_id = %orphan_session_id,
+                            error = %error,
+                                "failed to cancel orphaned turn before retirement"
+                        );
                         false
-                }
+                    }
                     Err(_) if destructive => {
                         tracing::error!(
                             target: "master_retirement",
@@ -1128,25 +1119,25 @@ async fn retire_tab_session(
                 } else if agent_supports_session_close(&agent) {
                     match tokio::time::timeout_at(
                         deadline,
-                    agent
-                        .conn
-                        .close_session(acp::schema::v1::CloseSessionRequest::new(
-                            orphan_session_id.clone(),
-                        )),
-                )
-                .await
-                {
-                    Ok(Ok(_)) => ReplacedSessionCleanup::PhysicallyClosed,
-                    Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
-                        tracing::warn!(
-                            target: "master",
-                            tab_id,
-                            session_id = %orphan_session_id,
-                            error = %error,
-                            "agent advertised session/close but rejected it; retiring orphaned WTA state"
-                        );
-                        ReplacedSessionCleanup::LogicalFallback
-                    }
+                        agent
+                            .conn
+                            .close_session(acp::schema::v1::CloseSessionRequest::new(
+                                orphan_session_id.clone(),
+                            )),
+                    )
+                    .await
+                    {
+                        Ok(Ok(_)) => ReplacedSessionCleanup::PhysicallyClosed,
+                        Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
+                            tracing::warn!(
+                                target: "master",
+                                tab_id,
+                                session_id = %orphan_session_id,
+                                error = %error,
+                                "agent advertised session/close but rejected it; retiring orphaned WTA state"
+                            );
+                            ReplacedSessionCleanup::LogicalFallback
+                        }
                         Ok(Err(error)) if destructive => {
                             tracing::error!(
                                 target: "master",
@@ -1157,7 +1148,7 @@ async fn retire_tab_session(
                             );
                             ReplacedSessionCleanup::LogicalFallback
                         }
-                    Ok(Err(error)) => return Err(error),
+                        Ok(Err(error)) => return Err(error),
                         Err(_) if destructive => {
                             tracing::error!(
                                 target: "master",
@@ -1167,17 +1158,17 @@ async fn retire_tab_session(
                             );
                             ReplacedSessionCleanup::LogicalFallback
                         }
-                    Err(_) => {
-                        return Err(acp::Error::internal_error().data(serde_json::json!({
-                            "message": format!(
-                                "session/close timed out for orphaned tab {}",
-                                tab_id
-                            )
-                        })));
+                        Err(_) => {
+                            return Err(acp::Error::internal_error().data(serde_json::json!({
+                                "message": format!(
+                                    "session/close timed out for orphaned tab {}",
+                                    tab_id
+                                )
+                            })));
+                        }
                     }
-                }
-            } else {
-                ReplacedSessionCleanup::LogicalFallback
+                } else {
+                    ReplacedSessionCleanup::LogicalFallback
                 }
             } else if destructive {
                 tracing::warn!(
@@ -1271,13 +1262,13 @@ async fn retire_tab_session(
 
     let cleanup = if let Some(agent) = agent {
         close_and_retire_owned_session(
-        state,
-        owner_helper_id,
-        &agent,
-        &session_id,
+            state,
+            owner_helper_id,
+            &agent,
+            &session_id,
             deadline,
             destructive,
-    )
+        )
         .await?
     } else if destructive {
         tracing::warn!(
@@ -2292,10 +2283,10 @@ impl HelperHandler {
             entry.owner_tab_id = Some(owner_tab_id);
         }
         entry.last_session_id = Some(session_id.clone());
-            self.state
+        self.state
             .pending_session_helpers
-                .lock()
-                .await
+            .lock()
+            .await
             .remove(&self.helper_id);
         true
     }
@@ -2327,10 +2318,10 @@ impl HelperHandler {
                 .contains(&self.helper_id)
         } else {
             self.state
-            .closing_session_helpers
-            .lock()
-            .await
-            .remove(&self.helper_id)
+                .closing_session_helpers
+                .lock()
+                .await
+                .remove(&self.helper_id)
         };
         if closing {
             self.state.helper_meta.lock().await.remove(&self.helper_id);
@@ -3065,7 +3056,7 @@ impl HelperHandler {
         {
             let cleanup = self
                 .close_session_for_destroyed_tab(&agent, &resp.session_id)
-            .await;
+                .await;
             self.finish_failed_pending_session().await;
             let cleanup = cleanup?;
             if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -3416,7 +3407,7 @@ impl HelperHandler {
             }
             let cleanup_result = self
                 .close_session_for_destroyed_tab(&agent, &session_id)
-            .await;
+                .await;
             let cleanup_result = match cleanup_result {
                 Ok(mut cleanup) => {
                     let mut predecessor_error = None;
@@ -3426,7 +3417,7 @@ impl HelperHandler {
                     {
                         match self
                             .close_session_for_destroyed_tab(&agent, previous_session_id)
-                        .await
+                            .await
                         {
                             Ok(predecessor_cleanup) => {
                                 if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -3616,7 +3607,7 @@ impl HelperHandler {
             }
             let cleanup = self
                 .close_session_for_destroyed_tab(&agent, &session_id)
-            .await;
+                .await;
             self.finish_failed_pending_session().await;
             let cleanup = cleanup?;
             if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -3891,10 +3882,14 @@ impl HelperHandler {
                 handle_session_resume_dispatched(&self.state, &p).await
             }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
-            Req::DurableTabSessionsList(p) => handle_durable_tab_sessions_list(&self.state, p).await,
+            Req::DurableTabSessionsList(p) => {
+                handle_durable_tab_sessions_list(&self.state, p).await
+            }
             Req::DurableTabSessionSave(p) => handle_durable_tab_session_save(&self.state, p).await,
             Req::DurableTabSessionGet(p) => handle_durable_tab_session_get(&self.state, p).await,
-            Req::DurableTabSessionDelete(p) => handle_durable_tab_session_delete(&self.state, p).await,
+            Req::DurableTabSessionDelete(p) => {
+                handle_durable_tab_session_delete(&self.state, p).await
+            }
             Req::CloseTabSession(p) => handle_close_tab_session(&self.state, &p, false).await,
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
@@ -4374,17 +4369,18 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
             .local_addr()
             .context("read master session MCP HTTP endpoint")?
     );
-    let durable_tab_sessions = match crate::durable_tab_session_store::DurableTabSessionStore::open_runtime().await {
-        Ok(store) => Some(store),
-        Err(error) => {
-            tracing::error!(
-                target: "durable_tab_sessions",
-                error = %error,
-                "durable tab-session store unavailable; agent master will continue"
-            );
-            None
-        }
-    };
+    let durable_tab_sessions =
+        match crate::durable_tab_session_store::DurableTabSessionStore::open_runtime().await {
+            Ok(store) => Some(store),
+            Err(error) => {
+                tracing::error!(
+                    target: "durable_tab_sessions",
+                    error = %error,
+                    "durable tab-session store unavailable; agent master will continue"
+                );
+                None
+            }
+        };
     let inner = Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
@@ -4819,7 +4815,9 @@ async fn resolve_provider_binding(
         return Ok(ProviderBinding::Native);
     }
 
-    let Some(requested_binding) = requested_binding.map(str::trim).filter(|value| !value.is_empty())
+    let Some(requested_binding) = requested_binding
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
     else {
         return Ok(ProviderBinding::LegacyEnvironment);
     };
@@ -4852,11 +4850,8 @@ async fn resolve_provider_binding(
     let config = crate::custom_model_provider::Config::from_settings(&settings, requested_binding)?;
 
     let mut generations = state.custom_model_generations.lock().await;
-    let generation = update_custom_model_generation(
-        &mut generations,
-        requested_binding,
-        config.clone(),
-    )?;
+    let generation =
+        update_custom_model_generation(&mut generations, requested_binding, config.clone())?;
 
     Ok(ProviderBinding::Custom {
         selection_id: requested_binding.to_string(),
@@ -5714,11 +5709,7 @@ async fn cleanup_disconnected_helper(handler: &HelperHandler) -> DisconnectedHel
     // holding the gate through cleanup prevents later state installation.
     let disconnect_added_closing_marker = {
         let _ownership_guard = state.tab_ownership_gate.lock().await;
-        let added = state
-            .closing_session_helpers
-            .lock()
-            .await
-            .insert(helper_id);
+        let added = state.closing_session_helpers.lock().await.insert(helper_id);
         state
             .destructive_session_helpers
             .lock()
@@ -6005,9 +5996,7 @@ async fn host_session_list_raw(
 /// may reconcile the other's rows. That is no worse than the pre-pool behavior
 /// (one listing reconciled every row regardless of CLI) and stays bounded by
 /// the host / Class-B / terminal gates in [`is_stale_host_history_row`].
-fn stamped_cli(
-    cli: Option<&crate::agent_sessions::CliSource>,
-) -> crate::agent_sessions::CliSource {
+fn stamped_cli(cli: Option<&crate::agent_sessions::CliSource>) -> crate::agent_sessions::CliSource {
     cli.cloned()
         .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()))
 }
@@ -6328,9 +6317,7 @@ async fn handle_durable_tab_sessions_list(
         .list(params)
         .await
         .map_err(|error| durable_tab_session_store_error("list", error))?;
-    Ok(crate::session_registry::build_durable_tab_session_ext_response(
-        &response,
-    ))
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(&response))
 }
 
 async fn handle_durable_tab_session_save(
@@ -6341,9 +6328,7 @@ async fn handle_durable_tab_session_save(
         .save(params)
         .await
         .map_err(|error| durable_tab_session_store_error("save", error))?;
-    Ok(crate::session_registry::build_durable_tab_session_ext_response(
-        &response,
-    ))
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(&response))
 }
 
 async fn handle_durable_tab_session_get(
@@ -6361,9 +6346,7 @@ async fn handle_durable_tab_session_get(
                 "reason": "durable tab session not found in elevation scope"
             }))
         })?;
-    Ok(crate::session_registry::build_durable_tab_session_ext_response(
-        &response,
-    ))
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(&response))
 }
 
 async fn handle_durable_tab_session_delete(
@@ -6374,11 +6357,8 @@ async fn handle_durable_tab_session_delete(
         .delete(params)
         .await
         .map_err(|error| durable_tab_session_store_error("delete", error))?;
-    Ok(crate::session_registry::build_durable_tab_session_ext_response(
-        &response,
-    ))
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(&response))
 }
-
 
 /// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.
 ///
@@ -7510,11 +7490,7 @@ async fn retire_ownerless_orphan_session(
             session_id = %session_id,
             "retirement deadline expired waiting for ownerless orphan lifecycle gate; deferring exact orphan cleanup"
         );
-        schedule_deferred_ownerless_orphan_cleanup(
-            state,
-            agent_key.clone(),
-            session_id.clone(),
-        );
+        schedule_deferred_ownerless_orphan_cleanup(state, agent_key.clone(), session_id.clone());
         return ReplacedSessionCleanup::LogicalFallback;
     };
 

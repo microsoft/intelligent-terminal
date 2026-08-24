@@ -67,7 +67,11 @@ pub(crate) fn build_overlay(
     ActionLinkOverlay {
         clear: previous
             .iter()
-            .filter(|region| !current.iter().any(|current| region.has_same_geometry(*current)))
+            .filter(|region| {
+                !current
+                    .iter()
+                    .any(|current| region.has_same_geometry(*current))
+            })
             .flat_map(|region| cells_in_region(buffer, *region))
             .collect(),
         actions: current

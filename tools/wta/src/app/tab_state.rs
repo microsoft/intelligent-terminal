@@ -556,7 +556,10 @@ impl TabSession {
         self.durable_tab_sessions
             .iter()
             .filter(|session| {
-                crate::ui::durable_tab_sessions_view::matches_query(session, &self.durable_tab_sessions_query)
+                crate::ui::durable_tab_sessions_view::matches_query(
+                    session,
+                    &self.durable_tab_sessions_query,
+                )
             })
             .count()
     }
@@ -568,7 +571,10 @@ impl TabSession {
         self.durable_tab_sessions
             .iter()
             .filter(|session| {
-                crate::ui::durable_tab_sessions_view::matches_query(session, &self.durable_tab_sessions_query)
+                crate::ui::durable_tab_sessions_view::matches_query(
+                    session,
+                    &self.durable_tab_sessions_query,
+                )
             })
             .nth(index)
     }
@@ -603,7 +609,9 @@ impl TabSession {
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
             && self.user_input.is_empty()
-            && self.streaming_agent_text().is_none_or(|text| text.trim().is_empty())
+            && self
+                .streaming_agent_text()
+                .is_none_or(|text| text.trim().is_empty())
             && !self.messages.iter().any(|message| {
                 matches!(
                     message,
@@ -622,7 +630,7 @@ impl TabSession {
 
     pub fn input_can_receive_nav_focus(&self) -> bool {
         (self.turn.recommendations().is_none()
-                || self.recommendation_focus == RecommendationFocus::Input)
+            || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && self.user_input.is_empty()
             && !self.paste_pending

@@ -75,7 +75,7 @@ mod tests {
         let body_start = start + anchor.len();
         let body_len = source[body_start..]
             .find("};")
-            .unwrap_or_else(||             panic!("`{name}` array in {HEADER_REL} is not terminated by `}};`"));
+            .unwrap_or_else(|| panic!("`{name}` array in {HEADER_REL} is not terminated by `}};`"));
         let body = &source[body_start..body_start + body_len];
 
         let mut found = BTreeSet::new();

@@ -151,8 +151,12 @@ mod tests {
             "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null",
         );
         assert_eq!(lines.len(), 2);
-        assert!(matches!(&lines[0], CommandLine::Statement(s) if s == "winget list --name PowerToys 2>$null"));
-        assert!(matches!(&lines[1], CommandLine::Statement(s) if s == "winget list --name Foundry 2>$null"));
+        assert!(
+            matches!(&lines[0], CommandLine::Statement(s) if s == "winget list --name PowerToys 2>$null")
+        );
+        assert!(
+            matches!(&lines[1], CommandLine::Statement(s) if s == "winget list --name Foundry 2>$null")
+        );
     }
 
     /// A `;` inside a quoted string (or inside a PowerShell array literal)

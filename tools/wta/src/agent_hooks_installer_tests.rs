@@ -245,7 +245,9 @@ fn copy_opencode_bundle_preserves_non_managed_support_directory() {
         fs::read_to_string(support_dir.join("user.txt")).unwrap(),
         "keep"
     );
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
 }
 
 #[test]
@@ -256,7 +258,9 @@ fn copy_opencode_bundle_rolls_back_partial_first_install() {
 
     assert!(copy_opencode_bundle(&source, &home).is_err());
     assert!(!opencode_support_dir(&home).exists());
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
 
     fs::write(
         source.join(OPENCODE_MANIFEST),
@@ -265,8 +269,12 @@ fn copy_opencode_bundle_rolls_back_partial_first_install() {
     .unwrap();
 
     copy_opencode_bundle(&source, &home).unwrap();
-    assert!(opencode_support_dir(&home).join(OPENCODE_MANIFEST).is_file());
-    assert!(opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).is_file());
+    assert!(opencode_support_dir(&home)
+        .join(OPENCODE_MANIFEST)
+        .is_file());
+    assert!(opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .is_file());
 }
 
 #[test]
@@ -277,7 +285,11 @@ fn copy_opencode_bundle_repairs_managed_install_with_bad_manifest() {
     let installed = opencode_plugins_dir(&home);
     let support = opencode_support_dir(&home);
     fs::create_dir_all(&support).unwrap();
-    fs::write(installed.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
+    fs::write(
+        installed.join(OPENCODE_PLUGIN_JS),
+        OPENCODE_PLUGIN_JS_CONTENT,
+    )
+    .unwrap();
     fs::write(support.join(OPENCODE_MANIFEST), "incomplete").unwrap();
     fs::write(support.join(OPENCODE_LEGACY_BRIDGE_PS1), "stale bridge").unwrap();
 
@@ -491,8 +503,7 @@ const CLAUDE_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/hooks.json");
 const COPILOT_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json");
-const GEMINI_HOOKS_JSON: &str =
-    include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
+const GEMINI_HOOKS_JSON: &str = include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
 const CODEX_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/hooks.json");
 const CLAUDE_PLUGIN_JSON: &str =
@@ -511,8 +522,7 @@ const COPILOT_MARKETPLACE_JSON: &str =
 
 const OPENCODE_PLUGIN_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
-const OPENCODE_PLUGIN_JSON: &str =
-    include_str!("../wt-agent-hooks/opencode/plugin.json");
+const OPENCODE_PLUGIN_JSON: &str = include_str!("../wt-agent-hooks/opencode/plugin.json");
 
 /// Every manifest-driven CLI invokes the native wtcli bridge directly; no
 /// PowerShell script and no batch launcher sits in between anymore. Copilot
@@ -559,7 +569,11 @@ fn bundle_hooks_thread_cli_source() {
         ("gemini", GEMINI_HOOKS_JSON),
         ("codex", CODEX_HOOKS_JSON),
     ] {
-        for placeholder in ["${PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}", "${extensionPath}"] {
+        for placeholder in [
+            "${PLUGIN_ROOT}",
+            "${CLAUDE_PLUGIN_ROOT}",
+            "${extensionPath}",
+        ] {
             assert!(
                 !hooks.contains(placeholder),
                 "{cli} hook command should not need {placeholder} any more"
@@ -738,8 +752,7 @@ fn copilot_ships_no_unguarded_fallback_command() {
 /// text: `cmd.exe` metacharacters, quotes PowerShell would read as an
 /// expression, and the backslash/`$` that bash would rewrite. Keeping all of
 /// them out is what makes one spelling work everywhere.
-const SHELL_METACHARACTERS: [char; 11] =
-    ['&', '|', '<', '>', '^', '(', ')', '"', '\'', '\\', '$'];
+const SHELL_METACHARACTERS: [char; 11] = ['&', '|', '<', '>', '^', '(', ')', '"', '\'', '\\', '$'];
 
 /// A command line is shell-agnostic when it is a bare executable name followed
 /// by plain arguments, with nothing any candidate shell would reinterpret.
@@ -937,7 +950,8 @@ fn gemini_hooks_exit_zero_when_the_bridge_is_missing() {
     let commands = hook_command_strings(GEMINI_HOOKS_JSON);
     for command in &commands {
         assert!(
-            command.starts_with("try { wtcli.exe agent-hook ") && command.ends_with("} catch { }; exit 0"),
+            command.starts_with("try { wtcli.exe agent-hook ")
+                && command.ends_with("} catch { }; exit 0"),
             "gemini hook must wrap the bridge in a PowerShell guard: {command}"
         );
     }
@@ -1212,8 +1226,7 @@ fn hook_shell_variants(hooks_json: &str) -> Vec<(HookShell, String)> {
 ///   its banner, and never runs the bridge.
 #[test]
 fn previous_hook_command_spellings_are_rejected() {
-    let quoted_path =
-        r#""C:/plugins/wt-agent-hooks/hooks/agent-hook.cmd" --cli-source copilot --event agent.stop"#;
+    let quoted_path = r#""C:/plugins/wt-agent-hooks/hooks/agent-hook.cmd" --cli-source copilot --event agent.stop"#;
     assert!(
         !powershell_parses(quoted_path),
         "a bare quoted path must fail to parse in PowerShell: {quoted_path}"
@@ -1227,8 +1240,7 @@ fn previous_hook_command_spellings_are_rejected() {
     );
     assert!(!is_shell_agnostic(&call_operator));
 
-    let cmd_wrapped =
-        r#"cmd /c "wtcli.exe agent-hook --cli-source copilot --event agent.stop >nul 2>nul & exit 0""#;
+    let cmd_wrapped = r#"cmd /c "wtcli.exe agent-hook --cli-source copilot --event agent.stop >nul 2>nul & exit 0""#;
     assert!(
         powershell_parses(cmd_wrapped),
         "the cmd-wrapped form parses in PowerShell too — the shape rule is what rejects it"
@@ -1667,9 +1679,8 @@ fn cleanup_stale_copilot_marketplace_rewrites_sibling_worktree_path() {
     }));
     fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
-    let expected = PathBuf::from(
-        "C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot",
-    );
+    let expected =
+        PathBuf::from("C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot");
     cleanup_stale_copilot_marketplace(&path, &expected).unwrap();
 
     let after: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -1858,7 +1869,9 @@ fn cleanup_copilot_plugin_config_removes_only_our_entry() {
     assert_eq!(plugins.len(), 1);
     assert_eq!(plugins[0]["name"], "keep-me");
     assert_eq!(after["model"], "keep-this-too");
-    assert!(messages.iter().any(|message| message.contains("removed stale")));
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("removed stale")));
 }
 
 /// Real `copilot plugin marketplace list` output. Built-in
@@ -1904,7 +1917,8 @@ fn claude_plugin_list_json_parser_extracts_enabled_flag() {
 
 #[test]
 fn claude_plugin_list_json_parser_reports_disabled() {
-    let stdout = r#"[{"id":"wt-agent-hooks@wt-local","version":"0.1.0","scope":"user","enabled":false}]"#;
+    let stdout =
+        r#"[{"id":"wt-agent-hooks@wt-local","version":"0.1.0","scope":"user","enabled":false}]"#;
     let p = parse_claude_plugin_list_json(stdout).expect("parses");
     assert!(p.installed);
     assert!(!p.enabled);
@@ -1937,8 +1951,7 @@ fn claude_marketplace_list_json_parser_misses_when_only_others() {
 /// Real `gemini extensions list -o json` output (Gemini 0.41.2).
 #[test]
 fn gemini_extensions_list_json_parser_extracts_active_flag() {
-    let stdout =
-        r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
+    let stdout = r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
     let p = parse_gemini_extensions_list_json(stdout).expect("parses");
     assert!(p.installed);
     assert!(p.enabled);
@@ -2205,7 +2218,11 @@ fn install_action_skips_when_a_version_is_unreadable() {
             ..installed_status("copilot")
         },
     ] {
-        assert_eq!(decide_install_action(&status), InstallAction::Skip, "{status:?}");
+        assert_eq!(
+            decide_install_action(&status),
+            InstallAction::Skip,
+            "{status:?}"
+        );
     }
 }
 
@@ -2787,8 +2804,8 @@ fn bundle_resolves_codex_dir_in_dev_tree() {
     // Dev-tree lookup walks up from CARGO_MANIFEST_DIR to find
     // tools/wta/wt-agent-hooks/<dir_name>/. Task 2 puts a real
     // directory at that path, so this should resolve.
-    let resolved = bundle::resolve_cli_dir(CliKind::Codex)
-        .expect("codex bundle should resolve in dev tree");
+    let resolved =
+        bundle::resolve_cli_dir(CliKind::Codex).expect("codex bundle should resolve in dev tree");
     assert!(
         resolved
             .join(".agents")
@@ -3448,8 +3465,7 @@ fn failed_upgrade_does_not_advance_cached_version() {
     let mut state = UpgradeState::default();
     state.set(CliKind::OpenCode, Some("0.1.2".into()));
 
-    let changed =
-        state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
+    let changed = state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
 
     assert!(!changed);
     assert_eq!(state.get(CliKind::OpenCode), Some("0.1.2"));

@@ -751,8 +751,7 @@ mod tests {
     /// detail.
     #[test]
     fn install_report_pins_its_schema_version() {
-        let report =
-            build_install_report(CliScope::All, &status_of(vec![]), &no_failures(), &[]);
+        let report = build_install_report(CliScope::All, &status_of(vec![]), &no_failures(), &[]);
         assert_eq!(report.schema_version, 1);
     }
 
