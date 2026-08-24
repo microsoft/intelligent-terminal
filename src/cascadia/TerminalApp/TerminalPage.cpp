@@ -1392,6 +1392,55 @@ namespace winrt::TerminalApp::implementation
         return _GetAgentSourceProfile(tab);
     }
 
+    // The agent identity a durable tab session has to record.
+    //
+    // Not simply the agent id: a WSL-backed pane is only reproducible together
+    // with its distro, so the two are folded into one `AgentPaneBackend` token
+    // exactly as the live pane spells it. Recording the bare id would restore
+    // the pane against the host instead of the distro it was running in.
+    winrt::hstring TerminalPage::_GetDurableAgentIdentity(Tab* const tab) const
+    {
+        if (tab->HasAgentOverride())
+        {
+            if (tab->AgentSourceOverride() == L"wsl")
+            {
+                return winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Wsl(
+                    tab->AgentWslDistroOverride(),
+                    tab->AgentIdOverride()) };
+            }
+            return tab->AgentIdOverride();
+        }
+
+        if (const auto sourceProfile = _ResolveAgentSourceProfile(tab->get_strong(), _settings))
+        {
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ sourceProfile.AgentPaneBackend() }))
+            {
+                return backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                           winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Wsl(backend->wslDistro, backend->agentId) } :
+                           winrt::hstring{ backend->agentId };
+            }
+        }
+
+        return _settings.GlobalSettings().EffectiveAcpAgent();
+    }
+
+    // The launch command a durable tab session has to record for a custom
+    // agent. Built-in agents resolve their command from the id alone, so they
+    // record nothing here.
+    winrt::hstring TerminalPage::_GetDurableAgentCustomCommand(Tab* const tab) const
+    {
+        if (tab->HasAgentOverride())
+        {
+            return tab->AgentCustomCommandOverride();
+        }
+
+        const auto& globals = _settings.GlobalSettings();
+        return _IsCustomAgentId(globals.EffectiveAcpAgent()) ?
+                   globals.AcpCustomCommand() :
+                   winrt::hstring{};
+    }
+
     // Resolve the effective delegate agent name from structured settings.
     static winrt::hstring _ResolveEffectiveDelegateAgent(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
@@ -2245,6 +2294,7 @@ namespace winrt::TerminalApp::implementation
             {},
             {},
             {},
+            {},
             options.focusPane);
     }
 
@@ -2309,6 +2359,7 @@ namespace winrt::TerminalApp::implementation
                             {},
                             {},
                             {},
+                            {},
                             recreationOptions.focusPane);
                     }
                     else if (focusedTab && focusedTab == currentTab)
@@ -2325,6 +2376,7 @@ namespace winrt::TerminalApp::implementation
                             currentTab,
                             /*intoSessionsView*/ false,
                             /*autoStash*/ true,
+                            {},
                             {},
                             {},
                             {},
@@ -2843,6 +2895,7 @@ namespace winrt::TerminalApp::implementation
                                                         std::wstring_view initialAuthAgent,
                                                         std::string_view initialView,
                                                         std::wstring_view initialPanePosition,
+                                                        float initialPaneSize,
                                                         bool focusPane)
     {
         if (!tab || !tab->GetActiveTerminalControl())
@@ -3256,7 +3309,11 @@ namespace winrt::TerminalApp::implementation
         sharedAcquired.release();
 
         const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
-        tab->SplitPaneAtRoot(splitDirection, newPane);
+        // Zero means the size was never recorded (a fresh pre-warm, or a
+        // session saved before sizes were persisted), so fall back to an even
+        // split rather than collapsing the pane.
+        const auto splitSize = initialPaneSize > 0.0f && initialPaneSize < 1.0f ? initialPaneSize : 0.5f;
+        tab->SplitPaneAtRoot(splitDirection, newPane, splitSize);
 
         if (autoStash)
         {
@@ -4928,7 +4985,23 @@ namespace winrt::TerminalApp::implementation
             it = _pendingDurableAgentPaneRestores.erase(it);
             if (!pending.agent.empty())
             {
-                targetTab->SetAgentOverride(pending.agent, {}, {});
+                // The saved identity folds a WSL pane's distro in with its
+                // agent id, so split it back apart or the pane comes back on
+                // the host instead of the distro it was running in.
+                if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                        std::wstring_view{ pending.agent }))
+                {
+                    targetTab->SetAgentOverride(
+                        winrt::hstring{ backend->agentId },
+                        {},
+                        pending.customCommand,
+                        backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ? L"wsl" : L"host",
+                        winrt::hstring{ backend->wslDistro });
+                }
+                else
+                {
+                    targetTab->SetAgentOverride(pending.agent, {}, pending.customCommand);
+                }
             }
             _AutoCreateHiddenAgentPaneShared(targetTab,
                                              pending.view == "sessions",
@@ -4937,7 +5010,8 @@ namespace winrt::TerminalApp::implementation
                                              pending.cwd,
                                              {},
                                              pending.view,
-                                             pending.panePosition);
+                                             pending.panePosition,
+                                             pending.paneSize);
         }
     }
 

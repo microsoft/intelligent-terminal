@@ -574,6 +574,8 @@ namespace winrt::TerminalApp::implementation
             std::string view;
             bool paneOpen{ false };
             winrt::hstring panePosition;
+            float paneSize{ 0.0f };
+            winrt::hstring customCommand;
         };
         std::unordered_map<winrt::hstring, _PendingDurableAgentPaneRestore> _pendingDurableAgentPaneRestores;
         uint64_t _nextStartupActionBatchId{ 0 };
@@ -713,7 +715,10 @@ namespace winrt::TerminalApp::implementation
                                               std::wstring_view initialAuthAgent = {},
                                               std::string_view initialView = {},
                                               std::wstring_view initialPanePosition = {},
+                                              float initialPaneSize = 0.0f,
                                               bool focusPane = true);
+        winrt::hstring _GetDurableAgentIdentity(Tab* tab) const;
+        winrt::hstring _GetDurableAgentCustomCommand(Tab* tab) const;
         void _RestorePendingDurableAgentPanes(uint64_t startupActionBatchId);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar

@@ -466,7 +466,8 @@ namespace SettingsModelUnitTests
                     "agentPaneSessionId": "acp-session-2",
                     "agentPaneView": "durable_tab_sessions",
                     "agentPaneOpen": true,
-                    "agentPanePosition": "right"
+                    "agentPanePosition": "right",
+                    "agentPaneSize": 0.35
                 }
             },
             {
@@ -482,11 +483,13 @@ namespace SettingsModelUnitTests
                     "agentPane": {
                         "agentSession": {
                             "agentSessionId": "acp-session-4",
-                            "agent": "claude"
+                            "agent": "wsl:Ubuntu:claude"
                         },
                         "view": "chat",
                         "open": true,
-                        "position": "bottom"
+                        "position": "bottom",
+                        "size": 0.25,
+                        "customCommand": "custom-acp --stdio"
                     }
                 }
             },
@@ -654,6 +657,7 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"durable_tab_sessions" }, terminalArgs.AgentPaneView());
             VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, terminalArgs.AgentPanePosition());
+            VERIFY_ARE_EQUAL(0.35f, terminalArgs.AgentPaneSize());
         }
         {
             const auto command = commands.Lookup(L"action10_structuredAgentSession");
@@ -662,10 +666,14 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-3" }, terminalArgs.AgentSessionId());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentSessionAgent());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-4" }, terminalArgs.AgentPaneSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, terminalArgs.AgentPaneAgent());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, terminalArgs.AgentPaneAgent());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"chat" }, terminalArgs.AgentPaneView());
             VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
+            // A WSL-backed pane records distro and agent as one token, so the
+            // restore can put it back in the distro rather than on the host.
+            VERIFY_ARE_EQUAL(0.25f, terminalArgs.AgentPaneSize());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom-acp --stdio" }, terminalArgs.AgentPaneCustomCommand());
 
             const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
             VERIFY_IS_TRUE(serialized["agentSession"].isObject());
@@ -675,10 +683,23 @@ namespace SettingsModelUnitTests
                 serialized["agentSession"]["paneSessionId"].asString());
             VERIFY_IS_TRUE(serialized["agentPane"].isObject());
             VERIFY_ARE_EQUAL(
-                "claude",
+                "wsl:Ubuntu:claude",
                 serialized["agentPane"]["agentSession"]["agent"].asString());
             VERIFY_IS_FALSE(serialized.isMember("agentResumeCommandline"));
             VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
+
+            // Size and custom command have to survive the round trip: a missing
+            // write would silently restore an evenly split pane running the
+            // wrong command.
+            VERIFY_ARE_EQUAL(0.25, serialized["agentPane"]["size"].asDouble());
+            VERIFY_ARE_EQUAL(
+                "custom-acp --stdio",
+                serialized["agentPane"]["customCommand"].asString());
+
+            const auto roundTripped = implementation::NewTerminalArgs::FromJson(serialized);
+            VERIFY_ARE_EQUAL(0.25f, roundTripped.AgentPaneSize());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom-acp --stdio" }, roundTripped.AgentPaneCustomCommand());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, roundTripped.AgentPaneAgent());
         }
         {
             const auto command = commands.Lookup(L"action11_durableTabSession");

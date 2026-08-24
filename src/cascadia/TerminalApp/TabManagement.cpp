@@ -112,7 +112,14 @@ namespace winrt::TerminalApp::implementation
                             winrt::to_string(newTerminalArgs.StartingDirectory()),
                             winrt::to_string(newTerminalArgs.AgentPaneView()),
                             newTerminalArgs.AgentPaneOpen(),
-                            newTerminalArgs.AgentPanePosition() });
+                            newTerminalArgs.AgentPanePosition(),
+                            // A size outside the split range means the record
+                            // predates size persistence, or is corrupt; either
+                            // way the even split is the safe restore.
+                            newTerminalArgs.AgentPaneSize() > 0.0f && newTerminalArgs.AgentPaneSize() < 1.0f ?
+                                newTerminalArgs.AgentPaneSize() :
+                                0.5f,
+                            newTerminalArgs.AgentPaneCustomCommand() });
                 }
             }
         }
@@ -635,14 +642,14 @@ namespace winrt::TerminalApp::implementation
                     if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
                     {
                         terminalArgs.AgentPaneSessionId(agentSessionId);
-                        terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
-                                                        tab->AgentIdOverride() :
-                                                        _settings.GlobalSettings().EffectiveAcpAgent());
+                        terminalArgs.AgentPaneAgent(_GetDurableAgentIdentity(tab));
+                        terminalArgs.AgentPaneCustomCommand(_GetDurableAgentCustomCommand(tab));
                         terminalArgs.AgentPaneView(agentContent.IsDurableTabSessionsView() ? L"durable_tab_sessions" :
                                                    agentContent.IsSessionsView()      ? L"sessions" :
                                                                                         L"chat");
                         terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
                         terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
+                        terminalArgs.AgentPaneSize(tab->AgentPaneSize());
                         break;
                     }
                 }
