@@ -61,7 +61,7 @@ public static class ItE2ECredential
                 TargetName = target,
                 CredentialBlobSize = (uint)bytes.Length,
                 CredentialBlob = handle.AddrOfPinnedObject(),
-                Persist = 2,
+                Persist = 1,
                 UserName = "Intelligent Terminal"
             };
             if (!CredWrite(ref credential, 0))

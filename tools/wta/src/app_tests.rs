@@ -8268,20 +8268,32 @@ fn double_click_in_input_dialog_preserves_word_selection() {
         })
         .expect("input marker must be visible");
 
-    for _ in 0..2 {
-        for kind in [
-            MouseEventKind::Down(MouseButton::Left),
-            MouseEventKind::Up(MouseButton::Left),
-        ] {
-            app.handle_event(AppEvent::Mouse(MouseEvent {
-                kind,
-                column,
-                row,
-                modifiers: KeyModifiers::NONE,
-            }));
-        }
-        render_to_text(&mut app, 80, 16);
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
     }
+    assert_eq!(app.text_selection.selected_text(), None);
+    render_to_text(&mut app, 80, 16);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    render_to_text(&mut app, 80, 16);
 
     assert_eq!(
         app.text_selection.selected_text().as_deref(),

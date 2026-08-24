@@ -35,6 +35,7 @@ fn copilot_plugin_update_detaches_a_directory_that_may_be_locked() {
 
     assert!(!plugin_dir.exists());
     let parent = plugin_dir.parent().unwrap();
+    let stale_prefix = format!("{PLUGIN_NAME}.wta-stale-");
     let detached = fs::read_dir(parent)
         .unwrap()
         .flatten()
@@ -42,7 +43,7 @@ fn copilot_plugin_update_detaches_a_directory_that_may_be_locked() {
         .find(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("wt-agent-hooks.wta-stale-"))
+                .is_some_and(|name| name.starts_with(&stale_prefix))
         })
         .expect("detached plugin directory");
     assert!(detached.join("plugin.json").is_file());

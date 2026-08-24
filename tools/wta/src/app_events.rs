@@ -232,6 +232,7 @@ impl App {
                     if input_pressed.as_deref() == Some(active_tab_id.as_str())
                         && self.input_dialog_at(mouse.column, mouse.row)
                     {
+                        self.text_selection.handle_mouse(mouse);
                         self.pressed_completed_turn = None;
                         self.last_completed_turn_click = None;
                         self.current_tab_mut().clear_completed_turn_selection();

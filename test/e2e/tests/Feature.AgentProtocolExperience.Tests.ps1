@@ -4,10 +4,13 @@
 # lifecycle through the deployed Terminal, helper, master, and a real stdio agent.
 
 BeforeDiscovery {
+    $fixturePath = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
     $script:Ready = [bool](
         (Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and
         (Get-Command pwsh -ErrorAction SilentlyContinue) -and
-        (Get-Command winapp -ErrorAction SilentlyContinue)
+        (Get-Command winapp -ErrorAction SilentlyContinue) -and
+        ($fixturePath -notmatch '\s') -and
+        ($env:TEMP -notmatch '\s')
     )
 }
 
