@@ -340,6 +340,11 @@ void WindowEmperor::OpenWindow(const winrt::hstring& name)
         return;
     }
 
+    // A named-window request is a genuine UI activation too, so restore a layout
+    // deferred by a headless COM activation before deciding whether the
+    // requested window already exists.
+    _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+
     // If a window with this name is already live, just summon it.
     // This mirrors the summon behavior in AppHost::DispatchCommandline (which is
     // what the old `wt -w <name>` ShellExecute path effectively triggered).
@@ -613,12 +618,13 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
-        const auto env = stringFromDoubleNullTerminated(envMem.get());
-        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
-        const auto showCmd = gsl::narrow_cast<uint32_t>(nCmdShow);
+        _startupEnvironment = stringFromDoubleNullTerminated(envMem.get());
+        _startupCurrentDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+        _startupShowWindowCommand = gsl::narrow_cast<uint32_t>(nCmdShow);
+
         if (!isEmbedding)
         {
-            _restorePersistedWindows(cwd, env, showCmd);
+            _restorePersistedWindows(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
         }
 
         if (isEmbedding)
@@ -633,7 +639,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // Create another window if needed: There aren't any yet, OR we got an explicit command line.
             if (_windows.empty() || args.size() != 1)
             {
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
+                _dispatchCommandlineCommon(args, _startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
             }
 
             // If we created no windows, e.g. because the args are "/?" we can just exit now.
@@ -650,6 +656,11 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         TerminalConnection::ConptyConnection::NewConnection([this](TerminalConnection::ConptyConnection conn) {
+            // A defterm handoff is a genuine UI activation: if we stayed
+            // headless for COM activation, the saved layout still needs to come
+            // back before we add the handoff window.
+            _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+
             TerminalApp::CommandlineArgs args;
             args.ShowWindowCommand(conn.ShowWindow());
             args.Connection(std::move(conn));
@@ -1300,7 +1311,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
-                    const auto restoredPersistedWindows = _deferPersistedLayoutRestore && _restorePersistedWindows(handoff.cwd, handoff.env, handoff.show);
+                    const auto restoredPersistedWindows = _restoreDeferredPersistedLayouts(handoff.cwd, handoff.env, handoff.show);
                     if (!restoredPersistedWindows || argv.size() != 1)
                     {
                         _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
@@ -1345,6 +1356,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
 }
 
 bool WindowEmperor::_restorePersistedWindows(wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand)
+try
 {
     _deferPersistedLayoutRestore = false;
     const auto previousWindowCount = _windows.size();
@@ -1366,6 +1378,26 @@ bool WindowEmperor::_restorePersistedWindows(wil::zwstring_view currentDirectory
         startIdx += 1;
     }
     return _windows.size() > previousWindowCount;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+// Runs the layout restore that a headless COM activation skipped. Called from
+// every entry point that turns this process into a visible Terminal, so the
+// saved layout comes back with the first real window instead of being stranded
+// until the next process start. Returns false when there was nothing deferred
+// or nothing to restore, so callers can fall back to their usual behavior.
+bool WindowEmperor::_restoreDeferredPersistedLayouts(wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand)
+{
+    if (!_deferPersistedLayoutRestore)
+    {
+        return false;
+    }
+
+    return _restorePersistedWindows(currentDirectory, envString, showWindowCommand);
 }
 
 void WindowEmperor::_setupSessionPersistence(bool enabled)
@@ -1411,6 +1443,14 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 void WindowEmperor::_finalizeSessionPersistence() const
 {
     using namespace std::string_view_literals;
+
+    if (_deferPersistedLayoutRestore)
+    {
+        // We never left the headless COM-activation state, so there is no
+        // arrangement of ours to persist and the saved layout still belongs to
+        // the session that wrote it.
+        return;
+    }
 
     if (_skipPersistence)
     {
