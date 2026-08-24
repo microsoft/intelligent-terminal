@@ -449,10 +449,7 @@ fn config_picker_select_sends_session_scoped_option_request() {
     run_slash(&mut app, "config");
 
     app.config_picker_enter();
-    assert_eq!(
-        app.current_tab().config_picker.option_id(),
-        Some("mode")
-    );
+    assert_eq!(app.current_tab().config_picker.option_id(), Some("mode"));
     app.config_picker_down();
     app.config_picker_enter();
 
@@ -1011,87 +1008,6 @@ fn unknown_agent_prefix_does_not_open_completion() {
     assert_eq!(app.command_ghost_suffix(), None);
 }
 
-#[test]
-fn agent_argument_completion_is_hidden_when_transport_is_lost() {
-    let mut app = test_app();
-    seed_completion_agents(&mut app);
-    type_input(&mut app, "/agent co");
-    app.transport_lost = true;
-
-    assert!(app.command_popup_state().is_none());
-    assert_eq!(app.command_ghost_suffix(), None);
-}
-
-// ---- Degraded (transport-lost) gating: only /restart runs ----
-
-#[test]
-fn degraded_blocks_non_restart_command() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.current_tab_mut().session_id = Some("sid-1".into());
-
-    run_slash(&mut app, "new");
-
-    // /new must NOT have reset the session — it was refused before dispatch
-    // because every command but /restart would hit the dead master pipe.
-    assert_eq!(
-        app.current_tab().session_id,
-        Some("sid-1".into()),
-        "while the transport is lost, /new must be refused, not run"
-    );
-    // ...and the user is steered to /restart (the locked token is present in
-    // every locale, so this holds regardless of the active language).
-    let (kind, message) = last_notice(&app);
-    assert_eq!(kind, NoticeKind::Warning);
-    assert!(
-        message.contains("/restart"),
-        "the degraded hint must point the user at /restart, got: {message}"
-    );
-}
-
-#[test]
-fn degraded_blocks_model_command_too() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.available_models = vec![AcpModelInfo {
-        id: "fast".into(),
-        name: "Fast".into(),
-        description: None,
-    }];
-
-    run_slash(&mut app, "model");
-
-    assert!(
-        !app.current_tab().model_picker_open,
-        "/model must be refused while the transport is lost"
-    );
-    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
-}
-
-#[test]
-fn degraded_still_allows_restart() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    app.state = ConnectionState::Connected;
-    app.session_id = "live-sid".to_string();
-    app.current_tab_mut().session_id = Some("tab-sid".into());
-
-    run_slash(&mut app, "restart");
-
-    // /restart is the one command exempt from the degraded guard — it ran and
-    // moved the connection into Connecting while the stack respawns.
-    assert!(
-        matches!(app.state, ConnectionState::Connecting(_)),
-        "/restart must run even while degraded — it recovers the dead transport"
-    );
-    assert!(
-        app.session_id.is_empty(),
-        "/restart must clear the process-level session id even while degraded"
-    );
-}
-
-// ---- Degraded popup effective-visibility (key-swallow regression) ----
-
 /// Type `text` char-by-char through the real input path so the command popup
 /// candidates refresh exactly as they do live.
 fn type_input(app: &mut App, text: &str) {
@@ -1101,53 +1017,13 @@ fn type_input(app: &mut App, text: &str) {
 }
 
 #[test]
-fn degraded_popup_hidden_when_prefix_excludes_restart() {
-    // Regression: in degraded mode the popup is filtered to /restart only.
-    // When the typed prefix can't match /restart (e.g. "/ne"), nothing is
-    // drawn — and command_popup_visible() must report false so Up/Down/Tab
-    // fall through to their normal handling instead of being swallowed against
-    // an invisible popup.
-    let mut app = test_app();
-    app.transport_lost = true;
-    type_input(&mut app, "/ne"); // matches /new, NOT /restart
-
-    assert!(
-        app.command_popup_state().is_none(),
-        "degraded popup must not render when the prefix excludes /restart"
-    );
-    assert!(
-        !app.command_popup_visible(),
-        "command_popup_visible() must be false when the degraded popup isn't drawn, \
-         so arrow/Tab keys aren't swallowed"
-    );
-}
-
-#[test]
-fn degraded_popup_visible_when_prefix_matches_restart() {
-    let mut app = test_app();
-    app.transport_lost = true;
-    type_input(&mut app, "/r"); // matches /restart
-
-    assert!(
-        app.command_popup_state().is_some(),
-        "degraded popup must render when /restart is a prefix match"
-    );
-    assert!(
-        app.command_popup_visible(),
-        "command_popup_visible() must be true when /restart is shown"
-    );
-}
-
-#[test]
 fn connected_popup_visible_for_any_prefix() {
-    // Sanity: when connected the popup behaves normally — "/ne" shows /new.
     let mut app = test_app();
-    assert!(!app.transport_lost);
     type_input(&mut app, "/ne");
 
     assert!(
         app.command_popup_visible(),
-        "a healthy connection must keep the normal popup behavior"
+        "a matching command prefix must keep the popup visible"
     );
 }
 

@@ -1289,4 +1289,12 @@ Beispielsweise entspricht 'wt -p "Ubuntu" -d C:\' 'wt new-tab -p "Ubuntu" -d C:\
 Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
+  <data name="AgentPane_DefaultTitle" xml:space="preserve">
+    <value>KI-Assistent</value>
+    <comment>Default title shown in the agent pane title bar before an agent reports its name. "AI assistant" refers to the built-in AI coding assistant, not a human assistant.</comment>
+  </data>
+  <data name="AgentPane_ConnectingTitle" xml:space="preserve">
+    <value>KI-Assistent · Verbindung wird hergestellt</value>
+    <comment>Status shown in the agent pane title bar while the built-in AI coding assistant is connecting. Preserve the centered dot separator.</comment>
+  </data>
 </root>

@@ -9,7 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
 use crate::agent_sessions::{
-    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
+    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionLocation,
+    SessionOrigin,
 };
 use crate::session_registry::SessionInfo;
 use crate::theme;
@@ -34,6 +35,12 @@ pub fn render(
     list_state: &mut ListState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
+    // Execution source of the agent this pane drives. Host Copilot and
+    // Copilot in a WSL distro share a `CliSource`, so the CLI filter alone
+    // leaves every Copilot pane rendering one merged list. Must match whatever
+    // `App::agents_rows_for_tab` applies; caller threads
+    // `App::current_location_filter`.
+    source_filter: &SessionLocation,
     // MVP origin filter — `ShellOnly` by default, see
     // `app.rs::MVP_SESSIONS_ORIGIN_FILTER`. Must match whatever filter
     // `App::agents_rows_for_tab` applies so the rendered rows line
@@ -153,6 +160,7 @@ pub fn render(
             // SessionOrigin::Unknown so `matches(&s.origin)` is correct
             // for the snapshot path too.
             rows.retain(|s| origin_filter.matches(&s.origin));
+            rows.retain(|s| matches_source(s, source_filter));
             (rows, total)
         } else {
             let total = reg.iter_sorted().len();
@@ -160,6 +168,7 @@ pub fn render(
                 .iter_sorted_with_filters(cli_filter, origin_filter)
                 .into_iter()
                 .cloned()
+                .filter(|s| matches_source(s, source_filter))
                 .collect();
             (rows, total)
         };
@@ -476,6 +485,17 @@ fn row_for(
     ListItem::new(Line::from(spans))
 }
 
+/// Whether a row's artefacts live where this pane's agent runs.
+///
+/// Host Copilot, Copilot in WSL Debian, and Copilot in WSL Ubuntu all report
+/// `CliSource::Copilot`, so filtering by CLI alone leaves a Debian pane listing
+/// host and Ubuntu sessions it cannot resume — those session files sit on
+/// another filesystem, reachable only by that distro's own CLI. Match the
+/// execution source exactly.
+pub(crate) fn matches_source(session: &AgentSession, pane_location: &SessionLocation) -> bool {
+    &session.location == pane_location
+}
+
 pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -> bool {
     if folded_query.is_empty() {
         return true;
@@ -595,24 +615,39 @@ fn badge_style(s: &AgentSession) -> Style {
     }
 }
 
-/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) only on the
-/// active row or the keyboard-selected row — matches the Figma where the
-/// agent icon appears only on the currently-engaged session and avoids
-/// cluttering the historical list.
+/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) and,
+/// for in-distro rows, the WSL distro that runs it — only on the active row or
+/// the keyboard-selected row, matching the Figma where the agent icon appears
+/// only on the currently-engaged session and avoids cluttering the historical
+/// list.
+///
+/// The distro rides this suffix ("· copilot · Ubuntu") rather than a leading
+/// `[WSL-Ubuntu]` tag: `matches_source` already narrows the list to the viewing
+/// pane's own execution source, so every visible row shares one location and the
+/// distro reads as identity, not as disambiguation.
 fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     let surface = selected || matches!(s.status, AgentStatus::Working | AgentStatus::Attention);
     if !surface {
         return String::new();
     }
-    let label = match s.cli_source {
-        CliSource::Claude => "claude",
-        CliSource::Codex => "codex",
-        CliSource::Copilot => "copilot",
-        CliSource::Gemini => "gemini",
-        CliSource::OpenCode => "opencode",
-        CliSource::Unknown(_) => return String::new(),
+    let cli = match s.cli_source {
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
+        CliSource::Copilot => Some("copilot"),
+        CliSource::Gemini => Some("gemini"),
+        CliSource::OpenCode => Some("opencode"),
+        CliSource::Unknown(_) => None,
     };
-    format!("· {}", label)
+    let distro = match &s.location {
+        SessionLocation::Wsl { distro } => Some(distro.as_str()),
+        SessionLocation::Host => None,
+    };
+    [cli, distro]
+        .into_iter()
+        .flatten()
+        .map(|part| format!("· {part}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Surface a tiny "originated from the Intelligent Terminal agent pane"
@@ -627,12 +662,6 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
-    // WSL rows get a bracketed `WSL-<distro>` tag (e.g. "[WSL-Ubuntu] ") so
-    // the user can tell in-distro sessions from host ones. WSL rows are never
-    // AgentPane, so this branch is exclusive with the one below.
-    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
-        return Some(format!("[WSL-{distro}] "));
-    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -855,6 +884,34 @@ mod tests {
         let s = relative_age(t);
         assert!(!s.is_empty(), "expected calendar date, got empty");
         assert!(!s.ends_with("ago"), "expected calendar date, got {:?}", s);
+    }
+
+    /// Host Copilot and Copilot inside a WSL distro report the same
+    /// `CliSource`, so the CLI filter alone cannot separate them — every
+    /// Copilot pane would render one merged list of sessions from every
+    /// source, including rows whose files live on another filesystem and which
+    /// that pane's CLI cannot resume.
+    #[test]
+    fn source_filter_keeps_only_rows_from_the_panes_own_execution_source() {
+        let debian = SessionLocation::Wsl {
+            distro: "Debian".into(),
+        };
+        let ubuntu = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+
+        let mut row = sample_session();
+
+        // A host pane sees host rows only.
+        row.location = SessionLocation::Host;
+        assert!(matches_source(&row, &SessionLocation::Host));
+        assert!(!matches_source(&row, &debian));
+
+        // A Debian pane sees Debian rows, not host or a sibling distro's.
+        row.location = debian.clone();
+        assert!(matches_source(&row, &debian));
+        assert!(!matches_source(&row, &SessionLocation::Host));
+        assert!(!matches_source(&row, &ubuntu));
     }
 
     #[test]
@@ -1093,7 +1150,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_prefix_shows_distro_for_wsl_rows() {
+    fn cli_suffix_appends_the_wsl_distro() {
         let s = AgentSession {
             key:              "abc".to_string(),
             cli_source:       CliSource::Copilot,
@@ -1112,7 +1169,18 @@ mod tests {
             origin:           SessionOrigin::Unknown,
             location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
         };
-        assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
+        assert_eq!(cli_suffix_for(&s, true), "· copilot · Ubuntu");
+        // The distro follows the provider's surfacing rule, so an unselected
+        // idle row stays clean.
+        assert_eq!(cli_suffix_for(&s, false), String::new());
+        // No provider to name still leaves the distro worth showing.
+        let unknown = AgentSession {
+            cli_source: CliSource::Unknown(String::new()),
+            ..s.clone()
+        };
+        assert_eq!(cli_suffix_for(&unknown, true), "· Ubuntu");
+        // WSL rows no longer carry a leading tag.
+        assert_eq!(origin_prefix_for(&s), None);
     }
 
     /// Release checklist §4 "Session states": the inline activity badge shown next to a session

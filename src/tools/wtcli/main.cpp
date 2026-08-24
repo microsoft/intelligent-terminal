@@ -18,13 +18,15 @@
 
 #include <wil/resource.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <fcntl.h>
+#include <io.h>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -354,7 +356,24 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
 
 // ── Main ──
 
-int main()
+// `wmain` — deliberately NOT `main`. Almost every string this tool forwards to
+// the terminal arrives as an argument: `new-tab -d` starting directories,
+// `-n` tab titles, `-c` command lines, `send-keys` payloads and the JSON blobs
+// of `publish` / `send-event`. All of them may hold non-ASCII text.
+//
+// The CRT's narrow `__argv` is transcoded from the real UTF-16 command line
+// through the *process ANSI code page*, so anything outside that code page is
+// destroyed before we ever see it — on ACP 936 `D:\Obsidian\我的笔记` turns
+// into GBK bytes that `Bstr()` below then decodes as UTF-8 (mojibake), and on
+// a Latin ACP it degrades to literal `?`. Either way `CreateProcessW` on the
+// terminal side fails the starting directory with 0x8007010b ERROR_DIRECTORY
+// (GH#641), and titles / keystrokes / JSON silently lose characters.
+//
+// Taking `wchar_t**` keeps the original UTF-16 and lets CLI11's wide `parse`
+// overload narrow it with `codecvt_utf8_utf16`, so every `std::string` bound
+// to an option really is UTF-8 — which is exactly what `Bstr()` and
+// `winrt::to_hstring` already assume.
+int wmain(int argc, wchar_t** argv)
 {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
@@ -548,6 +567,22 @@ int main()
             result["id"] = restoreShellSessionId;
             PrintJson(result);
         }
+    });
+
+    // ── get-settings ──
+    auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    getSettingsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value settings;
+        const auto hr = CallJson([&](BSTR* j) { return server->GetSettings(j); }, settings);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(settings);
     });
 
     // ── active-pane ──
@@ -909,9 +944,41 @@ int main()
     // ── publish ──
     // Low-level "pass this JSON through to SendEvent verbatim" escape hatch.
     std::string publishJson;
+    bool publishFromStdin = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
-    publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})")->required();
+    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
+    auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
+    publishJsonOption->excludes(publishStdinOption);
+    publishCmd->require_option(1, 1);
     publishCmd->callback([&]() {
+        if (publishFromStdin)
+        {
+            if (_setmode(_fileno(stdin), _O_BINARY) == -1)
+            {
+                fprintf(stderr, "[wtcli] publish: failed to configure stdin for binary input.\n");
+                exitCode = 1;
+                return;
+            }
+            std::string input;
+            std::array<char, 8192> buffer;
+            while (std::cin.read(buffer.data(), buffer.size()) || std::cin.gcount() > 0)
+            {
+                input.append(buffer.data(), static_cast<size_t>(std::cin.gcount()));
+            }
+            if (!std::cin.eof())
+            {
+                fprintf(stderr, "[wtcli] publish: failed to read JSON from stdin.\n");
+                exitCode = 1;
+                return;
+            }
+            publishJson = std::move(input);
+        }
+        if (publishJson.empty())
+        {
+            fprintf(stderr, "[wtcli] publish: JSON input must not be empty.\n");
+            exitCode = 1;
+            return;
+        }
         auto server = connect();
         if (!server) return;
         wil::unique_bstr evt{ Bstr(publishJson) };
@@ -930,49 +997,28 @@ int main()
     // Guarded by Feature.LegacyHookBundle.Tests.ps1 (C270).
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
-    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
+    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID); omit when the source pane is unknown");
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
         auto server = connect();
         if (!server)
             return;
-        std::string resolvedSessionId;
-        const auto paneIdIsExplicit = !sendEventPaneTarget.empty();
-        if (paneIdIsExplicit)
-        {
-            resolvedSessionId = sendEventPaneTarget;
-        }
-        else
-        {
-            // No --pane given: fall back to the focused pane so the event
-            // still carries a concrete pane id, and bail if there isn't one
-            // rather than emitting an all-zero GUID.
-            //
-            // Delivery does not depend on this: SendEvent broadcasts to every
-            // subscriber and only filters by pane when a listener passes
-            // --target. The fallback exists because a *blank* pane id is
-            // actively harmful downstream — wta's session registry keys
-            // `active_by_pane` by pane id, so sessions arriving with an empty
-            // id all collide on one key and demote each other (see the
-            // post-mortem in tools/wta/src/helper/runtime.rs).
-            //
-            // The id is therefore a placeholder, not a claim about origin. An
-            // agent CLI spawned by wta-master has no WT_SESSION, so its hooks
-            // pass no --pane and would otherwise be attributed to whichever
-            // pane happens to be focused. `pane_bound` below records that
-            // distinction for consumers that bind per-pane state.
-            const auto activeSid = ResolveSessionId(server.get(), "");
-            if (IsEqualGUID(activeSid, GUID{}))
-            {
-                fprintf(stderr, "[wtcli] send-event: no --pane given and no active pane to use as the event source.\n");
-                exitCode = 1;
-                return;
-            }
-            resolvedSessionId = GuidToString(activeSid);
-        }
+        // No `--pane` publishes an empty `pane_id`, meaning "this event has no
+        // known source pane". It deliberately does NOT fall back to the focused
+        // pane: the callers that omit `--pane` are hook bridges whose process
+        // never inherited WT_SESSION, and the focused pane is simply wherever
+        // the user happens to be looking, so attributing to it is wrong in a
+        // way that corrupts state rather than merely losing it. A legacy bundle
+        // firing `agent.session.start` would evict the focused pane's real
+        // session (the orphan-handover branch in agent_sessions.rs demotes the
+        // previous owner of a reused pane to Ended) and rebind the pane to an
+        // agent that was never in it, so Enter in the session list then focuses
+        // a stranger's pane. Empty is the case WTA already models: `pane_known`
+        // is false, so it skips the handover, leaves `active_by_pane` alone,
+        // and routes by cli_source instead.
         Json::Value evt;
-        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, paneIdIsExplicit, evt))
+        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, sendEventPaneTarget, evt))
         {
             fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
             exitCode = 1;
@@ -1066,10 +1112,24 @@ int main()
     // ── listen ──
     std::string listenTarget;
     std::string listenEventFilter;
+    DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
+    listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
     listenCmd->callback([&]() {
+        wil::unique_handle parentProcess;
+        if (listenParentPid != 0)
+        {
+            parentProcess.reset(OpenProcess(SYNCHRONIZE, FALSE, listenParentPid));
+            if (!parentProcess)
+            {
+                fprintf(stderr, "[wtcli] listen: failed to open parent process %lu (0x%08X)\n", listenParentPid, GetLastError());
+                exitCode = 1;
+                return;
+            }
+        }
+
         auto server = connect();
         if (!server)
         {
@@ -1112,7 +1172,21 @@ int main()
             return;
         }
 
-        WaitForSingleObject(s_stopEvent, INFINITE);
+        DWORD waitResult = WAIT_OBJECT_0;
+        if (parentProcess)
+        {
+            const HANDLE waitHandles[]{ s_stopEvent, parentProcess.get() };
+            waitResult = WaitForMultipleObjects(ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
+        }
+        else
+        {
+            waitResult = WaitForSingleObject(s_stopEvent, INFINITE);
+        }
+        if (waitResult == WAIT_FAILED)
+        {
+            fprintf(stderr, "[wtcli] listen: wait failed (0x%08X)\n", GetLastError());
+            exitCode = 1;
+        }
         server->Unsubscribe();
         // s_stopEvent is intentionally NOT closed: it is static and still
         // referenced by the registered Ctrl-C handler (a non-capturing lambda
@@ -1132,7 +1206,8 @@ int main()
 
     try
     {
-        app.parse(__argc, __argv);
+        // CLI11's wide overload; see the comment on `wmain` above.
+        app.parse(argc, argv);
     }
     catch (const CLI::ParseError& e)
     {

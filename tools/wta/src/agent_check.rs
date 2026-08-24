@@ -8,12 +8,15 @@
 //!
 //! Composite functions (combine basics):
 //!   - `check_agent`       — find_exe → AgentStatus
-//!   - `ensure_installed`  — find_exe → install if missing → refresh_path → find_exe
 
 use crate::agent_registry;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 const WSL_AGENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const WSL_AGENT_PROBE_ATTEMPTS: usize = 3;
+const CLAUDE_CODE_EXECUTABLE: &str = "CLAUDE_CODE_EXECUTABLE";
+const CODEX_PATH: &str = "CODEX_PATH";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -40,11 +43,32 @@ impl AgentStatus {
 
 // ─── Basic functions ────────────────────────────────────────────────────────
 
-/// Find the agent executable using a fresh PATH read from the Windows registry.
-/// Returns the full path if found, None otherwise.
+/// Find the executable used by an agent. Claude's ACP adapter needs the native
+/// binary rather than the npm shim used to launch the interactive CLI.
 pub fn find_exe(agent_id: &str) -> Option<String> {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let path_var = fresh_path();
+    let path_var = spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"))
+        .unwrap_or_default();
+
+    if profile.id == agent_registry::CLAUDE_AGENT_ID {
+        return find_claude_executable_in_path(
+            &path_var,
+            std::env::var_os(CLAUDE_CODE_EXECUTABLE).as_deref(),
+            claude_sdk_platform_package(std::env::consts::ARCH),
+            Path::is_file,
+        )
+        .map(|path| path.to_string_lossy().into_owned());
+    }
+    if profile.id == agent_registry::CODEX_AGENT_ID {
+        if let Some(path) =
+            find_configured_executable(std::env::var_os(CODEX_PATH).as_deref(), Path::is_file)
+        {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+
     let resolved = agent_registry::resolve_bare_agent_name(agent_id);
 
     // Try resolved name first (e.g. "copilot.exe")
@@ -72,6 +96,75 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+fn find_claude_executable_in_path(
+    path_var: &OsStr,
+    configured_executable: Option<&OsStr>,
+    sdk_platform_package: Option<&str>,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    if let Some(path) = find_configured_native_executable(configured_executable, &is_file) {
+        return Some(path);
+    }
+
+    for directory in std::env::split_paths(path_var) {
+        let mut candidates = vec![
+            directory.join("claude.exe"),
+            directory.join(r"node_modules\@anthropic-ai\claude-code\bin\claude.exe"),
+        ];
+        if let Some(package) = sdk_platform_package {
+            candidates.push(
+                directory
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join(package)
+                    .join("claude.exe"),
+            );
+            candidates.push(
+                directory
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join("claude-code")
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join(package)
+                    .join("claude.exe"),
+            );
+        }
+        if let Some(path) = candidates.into_iter().find(|path| is_file(path)) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn claude_sdk_platform_package(arch: &str) -> Option<&'static str> {
+    match arch {
+        "x86_64" => Some("claude-agent-sdk-win32-x64"),
+        "aarch64" => Some("claude-agent-sdk-win32-arm64"),
+        _ => None,
+    }
+}
+
+fn find_configured_native_executable(
+    configured_executable: Option<&OsStr>,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let path = PathBuf::from(configured_executable?);
+    let is_exe = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"));
+    (is_exe && is_file(&path)).then_some(path)
+}
+
+fn find_configured_executable(
+    configured_executable: Option<&OsStr>,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let path = PathBuf::from(configured_executable?);
+    is_file(&path).then_some(path)
 }
 
 /// Resolve a native Linux executable inside one WSL distro.
@@ -350,7 +443,11 @@ fn merge_paths(fresh: &str, current: &str) -> String {
 pub fn check_agent(agent_id: &str) -> AgentStatus {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
     let cli_path = find_exe(agent_id);
-    let cli_found = cli_path.is_some();
+    let cli_found = host_requirements_available(
+        profile,
+        cli_path.is_some(),
+        || find_exe("npx").is_some(),
+    );
 
     AgentStatus {
         id: agent_id.to_string(),
@@ -361,6 +458,22 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
         auth_hint: profile.auth_hint.to_string(),
         auto_installable: agent_id == "copilot",
     }
+}
+
+fn host_requirements_available(
+    profile: &agent_registry::AgentProfile,
+    cli_found: bool,
+    find_npx: impl FnOnce() -> bool,
+) -> bool {
+    cli_found && (!profile.acp_launch_command.starts_with("npx ") || find_npx())
+}
+
+/// Whether a built-in agent has every Host-side executable required to start
+/// its configured ACP command. Adapter-backed agents need both their native
+/// CLI and npx; this is the same gate used by preflight and exposed to the
+/// Terminal settings surfaces through `probe-host-agents`.
+pub fn host_agent_available(agent_id: &str) -> bool {
+    check_agent(agent_id).cli_found
 }
 
 pub async fn check_agent_in_source(
@@ -385,21 +498,6 @@ pub async fn check_agent_in_source(
             }
         }
     }
-}
-
-/// Ensure an agent is installed: find → install if missing → refresh PATH → find again.
-pub async fn ensure_installed(
-    agent_id: &str,
-    on_line: impl FnMut(String) + Send + 'static,
-) -> Result<Option<String>, String> {
-    if let Some(path) = find_exe(agent_id) {
-        return Ok(Some(path));
-    }
-
-    install(agent_id, on_line).await?;
-    refresh_path();
-
-    Ok(find_exe(agent_id))
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
@@ -570,6 +668,94 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_resolution_prefers_configured_native_executable() {
+        let configured = Path::new(r"C:\Claude\claude.exe");
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            Some(configured.as_os_str()),
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == configured,
+        );
+        assert_eq!(resolved.as_deref(), Some(configured));
+    }
+
+    #[test]
+    fn claude_resolution_finds_native_binary_next_to_npm_shim_directory() {
+        let expected =
+            Path::new(r"C:\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe");
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            None,
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == expected,
+        );
+        assert_eq!(resolved.as_deref(), Some(expected));
+    }
+
+    #[test]
+    fn claude_resolution_finds_direct_global_sdk_binary() {
+        let expected = Path::new(
+            r"C:\npm\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe",
+        );
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            None,
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == expected,
+        );
+        assert_eq!(resolved.as_deref(), Some(expected));
+    }
+
+    #[test]
+    fn claude_resolution_rejects_shim_only_installation() {
+        let resolved = find_claude_executable_in_path(
+            OsStr::new(r"C:\npm"),
+            Some(OsStr::new(r"C:\npm\claude.cmd")),
+            Some("claude-agent-sdk-win32-x64"),
+            |path| path == Path::new(r"C:\npm\claude.cmd"),
+        );
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn claude_sdk_package_matches_windows_architecture() {
+        assert_eq!(
+            claude_sdk_platform_package("x86_64"),
+            Some("claude-agent-sdk-win32-x64")
+        );
+        assert_eq!(
+            claude_sdk_platform_package("aarch64"),
+            Some("claude-agent-sdk-win32-arm64")
+        );
+        assert_eq!(claude_sdk_platform_package("x86"), None);
+    }
+
+    #[test]
+    fn configured_adapter_path_must_exist() {
+        let configured = Path::new(r"C:\Codex\codex.exe");
+        assert_eq!(
+            find_configured_executable(Some(configured.as_os_str()), |path| path == configured)
+                .as_deref(),
+            Some(configured)
+        );
+        assert_eq!(
+            find_configured_executable(Some(OsStr::new(r"C:\Missing\codex.exe")), |_| false),
+            None
+        );
+    }
+
+    #[test]
+    fn host_adapter_requires_both_native_cli_and_npx() {
+        let claude = agent_registry::lookup_profile_by_id("claude");
+        assert!(host_requirements_available(claude, true, || true));
+        assert!(!host_requirements_available(claude, true, || false));
+        assert!(!host_requirements_available(claude, false, || true));
+
+        let copilot = agent_registry::lookup_profile_by_id("copilot");
+        assert!(host_requirements_available(copilot, true, || false));
+    }
 
     #[test]
     fn merge_paths_prefers_fresh_and_removes_duplicates_case_insensitively() {

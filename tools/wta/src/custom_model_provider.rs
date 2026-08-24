@@ -55,6 +55,7 @@ const CLOUD_DISCOVERY_ENV_KEYS: &[&str] = &[
     PROVIDER_API_KEY,
 ];
 
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Config {
     pub(crate) base_url: String,
     pub(crate) model: String,
@@ -83,7 +84,7 @@ impl Drop for SensitiveString {
 }
 
 impl Config {
-    fn shared_from_env() -> Self {
+    pub(crate) fn shared_from_env() -> Self {
         Self {
             base_url: trimmed_env(SHARED_BASE_URL).unwrap_or_default(),
             model: trimmed_env(SHARED_MODEL).unwrap_or_default(),
@@ -91,6 +92,75 @@ impl Config {
             api_key_required: bool_env(SHARED_API_KEY_REQUIRED),
             credential_resource: "IntelligentTerminal.LocalModelProvider",
         }
+    }
+
+    pub(crate) fn from_settings(
+        settings: &serde_json::Value,
+        selection_id: &str,
+    ) -> Result<Config> {
+        let Some(rest) = selection_id.strip_prefix("custom:") else {
+            bail!("custom model selection is malformed");
+        };
+        let Some((provider_id, model_id)) = rest.split_once(':') else {
+            bail!("custom model selection is malformed");
+        };
+        if provider_id.trim().is_empty() || model_id.trim().is_empty() {
+            bail!("custom model selection is malformed");
+        }
+
+        let providers = settings
+            .get("customModelProviders")
+            .and_then(serde_json::Value::as_array)
+            .context("custom model providers are missing from Terminal settings")?;
+        let provider = providers
+            .iter()
+            .find(|provider| {
+                provider.get("id").and_then(serde_json::Value::as_str) == Some(provider_id)
+            })
+            .context("selected custom model provider no longer exists")?;
+        let api_contract = provider
+            .get("apiContract")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        normalize_api_contract(api_contract)
+            .context("selected custom model provider uses an unsupported API contract")?;
+        let model_exists = provider
+            .get("models")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|models| {
+                models.iter().any(|model| {
+                    model.get("id").and_then(serde_json::Value::as_str) == Some(model_id)
+                })
+            });
+        if !model_exists {
+            bail!("selected custom model no longer exists");
+        }
+
+        let base_url = provider
+            .get("baseUrl")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .context("selected custom model provider has no endpoint")?
+            .to_string();
+        let credential_id = provider
+            .get("apiKeyCredential")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let api_key_required = provider
+            .get("apiKeyRequired")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(credential_id.is_some());
+
+        Ok(Config {
+            base_url,
+            model: model_id.to_string(),
+            credential_id,
+            api_key_required,
+            credential_resource: "IntelligentTerminal.LocalModelProvider",
+        })
     }
 
     pub(crate) fn is_complete(&self) -> bool {
@@ -147,7 +217,7 @@ pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<
     configure_child_with_config(cmd, byok_mode, &shared)
 }
 
-fn configure_child_with_config(
+pub(crate) fn configure_child_with_config(
     cmd: &mut Command,
     byok_mode: ByokMode,
     shared: &Config,
@@ -376,6 +446,63 @@ mod tests {
             ..complete
         }
         .is_complete());
+    }
+
+    #[test]
+    fn settings_selection_resolves_only_non_secret_launch_metadata() {
+        let settings = serde_json::json!({
+            "customModelProviders": [{
+                "id": "provider-openrouter",
+                "baseUrl": "https://openrouter.ai/api/v1",
+                "apiContract": "openai-compatible",
+                "apiKeyCredential": "credential-reference",
+                "apiKeyRequired": true,
+                "models": [
+                    { "id": "qwen/qwen3.5-9b" },
+                    { "id": "deepseek/deepseek-v3" }
+                ]
+            }]
+        });
+
+        let config = Config::from_settings(
+            &settings,
+            "custom:provider-openrouter:qwen/qwen3.5-9b",
+        )
+        .expect("configured provider/model should resolve");
+
+        assert_eq!(config.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(config.model, "qwen/qwen3.5-9b");
+        assert_eq!(config.credential_id.as_deref(), Some("credential-reference"));
+        assert!(config.api_key_required);
+    }
+
+    #[test]
+    fn settings_selection_rejects_missing_or_unsupported_entries() {
+        let settings = serde_json::json!({
+            "customModelProviders": [{
+                "id": "unsupported",
+                "baseUrl": "https://example.test/v1",
+                "apiContract": "future-contract",
+                "models": [{ "id": "model-a" }]
+            }, {
+                "id": "supported",
+                "baseUrl": "https://example.test/v1",
+                "apiContract": "openai-compatible",
+                "models": [{ "id": "model-a" }]
+            }]
+        });
+
+        for selection in [
+            "not-custom",
+            "custom:missing:model-a",
+            "custom:supported:missing",
+            "custom:unsupported:model-a",
+        ] {
+            assert!(
+                Config::from_settings(&settings, selection).is_err(),
+                "{selection} must not resolve"
+            );
+        }
     }
 
     #[test]

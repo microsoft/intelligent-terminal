@@ -7,7 +7,179 @@
 
 use super::*;
 
+pub(super) const AUTH_RECOVERY_CONNECTION_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(8);
+// SharedWta grants retirement 16 seconds before replacing the master. Allow
+// one second for replacement readiness plus one second of scheduling margin.
+pub(super) const AUTH_RECOVERY_MASTER_READY_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(18);
+
+#[derive(serde::Deserialize)]
+struct AgentReconnectWire {
+    operation_id: String,
+    window_id: String,
+    tab_id: String,
+    generation: u64,
+    agent_id: String,
+    acp_model: Option<String>,
+    custom_model_selection: Option<String>,
+    agent_source: String,
+    wsl_distro: Option<String>,
+}
+
 impl App {
+    fn arm_auth_recovery_timeout(
+        &self,
+        agent_id: String,
+        generation: u64,
+        timeout: std::time::Duration,
+    ) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        tokio::task::spawn_local(async move {
+            tokio::time::sleep(timeout).await;
+            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
+                agent_id,
+                generation,
+            });
+        });
+    }
+
+    fn handle_agent_rebind(&mut self, params: serde_json::Value) {
+        let Ok(wire) = serde_json::from_value::<AgentReconnectWire>(params.clone()) else {
+            tracing::warn!(
+                target: "agent_rebind",
+                payload = %params,
+                "ignoring malformed agent rebind event"
+            );
+            return;
+        };
+        if self.owner_tab_id.as_deref() != Some(wire.tab_id.as_str())
+            || wire.window_id.trim().is_empty()
+            || self
+                .window_id
+                .as_deref()
+                .is_some_and(|window_id| !window_id.is_empty() && window_id != wire.window_id)
+        {
+            return;
+        }
+
+        let agent_source = if wire
+            .agent_source
+            .eq_ignore_ascii_case(crate::agent_source::AgentSource::HOST_KIND)
+        {
+            crate::agent_source::AgentSource::Host
+        } else if wire
+            .agent_source
+            .eq_ignore_ascii_case(crate::agent_source::AgentSource::WSL_KIND)
+        {
+            let Some(distro) = wire
+                .wsl_distro
+                .as_deref()
+                .map(str::trim)
+                .filter(|distro| !distro.is_empty())
+            else {
+                tracing::warn!(
+                    target: "agent_rebind",
+                    "ignoring WSL agent rebind without a distro"
+                );
+                return;
+            };
+            crate::agent_source::AgentSource::Wsl {
+                distro: distro.to_string(),
+            }
+        } else {
+            tracing::warn!(
+                target: "agent_rebind",
+                source = %wire.agent_source,
+                "ignoring agent rebind with an unknown source"
+            );
+            return;
+        };
+
+        let mut request = AgentReconnectRequest {
+            operation_id: wire.operation_id,
+            window_id: wire.window_id,
+            generation: wire.generation,
+            agent_id: wire.agent_id,
+            acp_model: wire.acp_model,
+            custom_model_selection: wire.custom_model_selection,
+            agent_source,
+        };
+        if request.operation_id.trim().is_empty()
+            || (self.last_agent_rebind_window_id.as_deref() == Some(request.window_id.as_str())
+                && request.generation <= self.last_agent_rebind_generation)
+        {
+            return;
+        }
+        if request.agent_source != self.current_agent_source {
+            tracing::warn!(
+                target: "agent_rebind",
+                operation_id = %request.operation_id,
+                generation = request.generation,
+                current_source = %self.current_agent_source,
+                requested_source = %request.agent_source,
+                "ignoring execution-source-changing agent rebind"
+            );
+            return;
+        }
+        if !crate::agent_registry::is_known_id(&request.agent_id)
+            || (self.host_agent_allowlist_present
+                && !self
+                    .allowed_agent_ids
+                    .iter()
+                    .any(|id| id.eq_ignore_ascii_case(&request.agent_id)))
+        {
+            tracing::warn!(
+                target: "agent_rebind",
+                operation_id = %request.operation_id,
+                generation = request.generation,
+                agent_id = %request.agent_id,
+                source = %request.agent_source,
+                "ignoring unsupported or policy-blocked agent rebind"
+            );
+            return;
+        }
+
+        request.agent_id.make_ascii_lowercase();
+        request.acp_model = request
+            .acp_model
+            .take()
+            .filter(|model| !model.trim().is_empty());
+        request.custom_model_selection = request
+            .custom_model_selection
+            .take()
+            .filter(|selection| !selection.trim().is_empty());
+        if !matches!(request.agent_source, crate::agent_source::AgentSource::Host)
+            || crate::agent_registry::lookup_profile_by_id(&request.agent_id).byok_mode
+                == crate::agent_registry::ByokMode::Unsupported
+        {
+            request.custom_model_selection = None;
+        }
+
+        self.last_agent_rebind_window_id = Some(request.window_id.clone());
+        self.last_agent_rebind_generation = request.generation;
+        self.prepare_agent_reconnect(&request);
+
+        let disconnect_in_progress = matches!(
+            &self.agent_reconnect_state,
+            AgentReconnectState::Disconnecting(_)
+        );
+        self.agent_reconnect_state = AgentReconnectState::Disconnecting(request.clone());
+        if !disconnect_in_progress
+            && self
+                .restart_tx
+                .send(AgentLifecycleRequest::RebindAgent(request))
+                .is_err()
+        {
+            let _ = self.begin_pending_agent_reconnect_preflight();
+        }
+    }
+
     fn completed_turn_hit_at(&self, column: u16, row: u16) -> Option<CompletedTurnHitRegion> {
         let tab = self.current_tab();
         if self.mode != AppMode::Chat
@@ -381,6 +553,38 @@ impl App {
                     );
                 }
             }
+            AppEvent::AgentReconnectReady(completed) => {
+                let Some(latest) = self.begin_pending_agent_reconnect_preflight() else {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        operation_id = %completed.operation_id,
+                        generation = completed.generation,
+                        "ignoring reconnect-ready event with no disconnect pending"
+                    );
+                    return;
+                };
+                tracing::info!(
+                    target: "agent_rebind",
+                    completed_operation_id = %completed.operation_id,
+                    completed_generation = completed.generation,
+                    target_operation_id = %latest.operation_id,
+                    target_generation = latest.generation,
+                    target_agent_id = %latest.agent_id,
+                    "old ACP transport retired; preflighting latest target"
+                );
+            }
+            AppEvent::AgentClientFailed => {
+                if let Some(latest) = self.begin_pending_agent_reconnect_preflight() {
+                    self.suppress_next_failed_client_error = true;
+                    tracing::info!(
+                        target: "agent_rebind",
+                        operation_id = %latest.operation_id,
+                        generation = latest.generation,
+                        agent_id = %latest.agent_id,
+                        "outgoing ACP client failed during startup; preflighting latest target"
+                    );
+                }
+            }
             AppEvent::AgentConnected {
                 name,
                 model,
@@ -395,6 +599,7 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
+                self.auth_recovery_state = AuthRecoveryState::Idle;
                 let (available_models, current_model_id) = self
                     .session_model_configs
                     .entry(session_id.clone())
@@ -410,9 +615,6 @@ impl App {
                 // bump the generation so a still-pending dead-man timer becomes
                 // stale and can't later force the sign-in screen.
                 self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
-                // A live connection cancels the degraded latch (e.g. the
-                // post-sign-in reconnect that goes back through master).
-                self.transport_lost = false;
                 self.proposal_channels.set_agent_transport_available(true);
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
@@ -583,8 +785,7 @@ impl App {
                 let Some(target_tab) = target_tab else {
                     return;
                 };
-                if let Some((_, current_model_id)) =
-                    self.session_model_configs.get_mut(&session_id)
+                if let Some((_, current_model_id)) = self.session_model_configs.get_mut(&session_id)
                 {
                     *current_model_id = Some(model.clone());
                 }
@@ -780,6 +981,11 @@ impl App {
                 failure,
                 message,
             } => {
+                if session_id.is_none()
+                    && std::mem::take(&mut self.suppress_next_failed_client_error)
+                {
+                    return;
+                }
                 // Classification is typed (`AgentFailure`), done once at the
                 // helper boundary where the `acp::Error` code / transport
                 // signal is still available. No substring matching here — the
@@ -799,39 +1005,11 @@ impl App {
                     return;
                 }
 
-                let session_survives = matches!(
-                    &failure,
-                    crate::protocol::acp::failure::AgentFailure::Protocol { .. }
-                );
-
-                // The transport to master is gone — latch the degraded state
-                // so the slash-command popup greys out everything but
-                // /restart (the only command that can recover without the
-                // dead pipe). Cleared on the next Connected.
-                let transport_lost = matches!(
-                    &failure,
-                    crate::protocol::acp::failure::AgentFailure::TransportLost
-                );
-                let stale_usage_tab = if transport_lost {
-                    self.transport_lost = true;
-                    self.proposal_channels.set_agent_transport_available(false);
-                    let target_tab = session_id
-                        .as_deref()
-                        .map(|sid| self.tab_for_session(sid))
-                        .unwrap_or_else(|| self.active_tab_key().to_string());
-                    let tab = self.tab_mut(&target_tab);
-                    if let Some(snapshot) = tab.usage.as_ref() {
-                        tab.usage_staleness.mark_present_stale(snapshot);
-                        Some(target_tab)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                if let Some(target_tab) = stale_usage_tab {
-                    self.project_tab_state(&target_tab);
-                }
+                let session_survives = session_id.is_some()
+                    && matches!(
+                        &failure,
+                        crate::protocol::acp::failure::AgentFailure::Protocol { .. }
+                    );
 
                 let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
@@ -900,16 +1078,8 @@ impl App {
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
-                    // Suppress only an *identical* consecutive error, not any
-                    // trailing error. When the master/agent dies, two errors can
-                    // arrive: the raw transport error (returned as-is) and the
-                    // `handle_io` watchdog's connection.lost ("/restart") line.
-                    // Those are different messages and BOTH should show — the raw
-                    // one says what broke, the connection.lost one says how to
-                    // recover. Collapsing every consecutive error (the previous
-                    // behavior) could hide the /restart hint behind an unrelated
-                    // or in-flight error. Dedup only true duplicates so the same
-                    // line never stacks.
+                    // Suppress only an identical consecutive error so repeated
+                    // provider failures do not stack duplicate messages.
                     let is_duplicate = matches!(
                         tab.messages.last(),
                         Some(ChatMessage::Error(prev)) if prev == &message
@@ -919,11 +1089,40 @@ impl App {
                     }
                 }
             }
+            AppEvent::MasterDisconnected => {
+                self.agent_reconnect_state = AgentReconnectState::Idle;
+                if self.deferred_acp.is_some() {
+                    if !matches!(&self.auth_recovery_state, AuthRecoveryState::Idle) {
+                        tracing::warn!(
+                            target: "helper",
+                            "master disconnected during auth recovery; explicit restart barrier owns reconnect"
+                        );
+                        return;
+                    }
+                    tracing::warn!(
+                        target: "helper",
+                        agent_id = %self.current_agent_id,
+                        source = %self.current_agent_source,
+                        "master disconnected; reconnecting retained helper over stable pipe"
+                    );
+                    self.reset_agent_scoped_state();
+                    self.pending_acp_start = true;
+                } else {
+                    tracing::warn!(
+                        target: "helper",
+                        "master disconnected without deferred binding; terminating helper"
+                    );
+                    self.should_quit = true;
+                }
+            }
             AppEvent::PostLoginAuthRecovery {
                 failure,
                 tab_id,
                 agent_id,
             } => {
+                if std::mem::take(&mut self.suppress_next_failed_client_error) {
+                    return;
+                }
                 tracing::warn!(
                     target: "auth_recovery",
                     failure_class = failure.class(),
@@ -943,12 +1142,15 @@ impl App {
                 // Connecting state.
                 self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
                 let recovery_generation = self.auth_recovery_generation;
+                let restart_request_id = uuid::Uuid::new_v4().to_string();
+                self.auth_recovery_state = AuthRecoveryState::WaitingForMaster {
+                    request_id: restart_request_id.clone(),
+                };
                 // (i) Transient "Reconnecting…" — NOT the sign-in screen. The
-                // restart below tears this pane down + respawns it, so the
-                // common (successful) case never flashes the setup screen
-                // between login and the fresh pane connecting. Only a dropped/
-                // slow restart leaves us alive long enough for the
-                // `AuthRecoveryTimedOut` fallback path to surface the sign-in screen.
+                // master restart below reconnects this retained helper, so the
+                // common path never flashes the setup screen. Only a dropped
+                // or slow restart leaves us in this state long enough for the
+                // `AuthRecoveryTimedOut` handler to fall back to the sign-in screen.
                 self.mode = AppMode::Chat;
                 self.setup = None;
                 self.auth = None;
@@ -962,55 +1164,54 @@ impl App {
                 // cached its unauthenticated state at spawn and `authenticate`
                 // does not refresh it; only a respawn (which re-reads the now
                 // valid on-disk credential) recovers. Reuse the tested
-                // `/restart` machinery; `tab_id` lets C++ reopen the failing
-                // tab rather than the active one.
-                let evt = serde_json::json!({
-                    "type": "event",
-                    "method": "restart_agent_stack",
-                    "params": { "reason": "auth_recovery", "tab_id": tab_id },
-                });
-                send_wt_protocol_event(evt.to_string());
-                // (iii) Dead-man fallback: if the restart actually respawned
-                // this pane, this helper process is gone before the timer
-                // fires. If it survives (dropped/slow restart), surface the
-                // sign-in screen so the user isn't stranded on "Reconnecting…".
-                // Guarded on a live async runtime so unit tests (no LocalSet)
-                // don't panic in `spawn_local`.
-                if let Some(ref tx) = self.event_tx {
-                    if tokio::runtime::Handle::try_current().is_ok() {
-                        let tx = tx.clone();
-                        tokio::task::spawn_local(async move {
-                            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
-                            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
-                                agent_id: resolved,
-                                generation: recovery_generation,
-                            });
-                        });
-                    }
-                }
+                // `/restart` machinery. C++ publishes agent_master_restarted
+                // only after the replacement has claimed the stable pipe.
+                send_wt_protocol_event(
+                    crate::wt_protocol_events::restart_agent_stack_event_with_id(
+                        &restart_request_id,
+                    ),
+                );
+                // (iii) Dead-man fallback for replacement-master readiness.
+                // This phase must cover SharedWta's retirement budget. Once
+                // readiness arrives, a fresh generation gets the usual,
+                // shorter connection deadline.
+                self.arm_auth_recovery_timeout(
+                    resolved,
+                    recovery_generation,
+                    AUTH_RECOVERY_MASTER_READY_TIMEOUT,
+                );
             }
             AppEvent::AuthRecoveryTimedOut {
                 agent_id,
                 generation,
             } => {
-                // Only reached when the auth-recovery restart did NOT tear this
-                // pane down within the window (dropped/slow delivery) — a
-                // successful restart kills this helper process first. Surface
-                // the sign-in fallback so the user can retry instead of being
-                // stranded on a perpetual "Reconnecting…".
+                // Only takes effect when the retained helper did not reconnect
+                // within the window. Surface the sign-in fallback so the user
+                // can retry instead of remaining on "Reconnecting…".
                 //
                 // The generation guard drops a stale timer: if a newer recovery
                 // started, or the reconnect already succeeded (AgentConnected
                 // bumps the generation), this no longer matches the current
                 // recovery and must not force the sign-in screen.
-                if generation == self.auth_recovery_generation
+                let timed_out_phase = if generation == self.auth_recovery_generation
                     && self.mode != AppMode::Setup
                     && matches!(self.state, ConnectionState::Connecting(_))
                 {
+                    match &self.auth_recovery_state {
+                        AuthRecoveryState::WaitingForMaster { .. } => Some("master readiness"),
+                        AuthRecoveryState::Connecting => Some("retained-helper connection"),
+                        AuthRecoveryState::Idle => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some(phase) = timed_out_phase {
+                    self.auth_recovery_state = AuthRecoveryState::Idle;
                     tracing::warn!(
                         target: "auth_recovery",
                         agent_id = %agent_id,
-                        "auth-recovery restart did not take effect within the window; \
+                        %phase,
+                        "auth recovery phase did not complete within its deadline; \
                          falling back to the sign-in screen"
                     );
                     let resolved = if !agent_id.is_empty() {
@@ -1399,6 +1600,26 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        current_agent = %self.current_agent_id,
+                        "ignoring startup preflight result during agent rebind"
+                    );
+                    return;
+                }
+                if !self.current_agent_id.is_empty()
+                    && !result.agent_id.eq_ignore_ascii_case(&self.current_agent_id)
+                {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        current_agent = %self.current_agent_id,
+                        "ignoring stale preflight result after agent rebind"
+                    );
+                    return;
+                }
                 tracing::info!(
                     target: "preflight",
                     agent = %result.agent_id,
@@ -1407,44 +1628,45 @@ impl App {
                     "preflight result received"
                 );
                 if !result.all_passed() {
-                    let reason = SetupReason::AgentMissing;
-                    let current_status = if matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    ) {
-                        None
-                    } else {
-                        Some(crate::agent_check::check_agent(&result.agent_id))
-                    };
-                    let options = build_setup_options(&reason, current_status.as_ref());
-                    let title = reason.title().to_string();
-                    let subtitle = if current_status
-                        .as_ref()
-                        .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
-                    {
-                        t!(
-                            "setup.subtitle.copilot_missing",
-                            agent = &result.display_name
-                        )
-                        .into_owned()
-                    } else {
-                        t!("setup.subtitle.agent_missing", agent = &result.display_name)
-                            .into_owned()
-                    };
-                    self.mode = AppMode::Setup;
-                    self.preflight_setup_active = true;
-                    self.setup = Some(SetupState {
-                        reason,
+                    self.show_preflight_setup(result);
+                }
+            }
+            AppEvent::AgentReconnectPreflightComplete {
+                operation_id,
+                generation,
+                result,
+            } => {
+                let matches_pending = match &self.agent_reconnect_state {
+                    AgentReconnectState::Preflighting(pending) => {
+                        pending.operation_id == operation_id
+                            && pending.generation == generation
+                            && pending.agent_id.eq_ignore_ascii_case(&result.agent_id)
+                    }
+                    _ => false,
+                };
+                if !matches_pending {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "ignoring stale target preflight result"
+                    );
+                    return;
+                }
 
-                        preflight: result,
-                        selected_index: 0,
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
-                        options,
-                        title,
-                        subtitle,
-                    });
+                self.agent_reconnect_state = AgentReconnectState::Idle;
+                if result.all_passed() {
+                    self.pending_acp_start = true;
+                    tracing::info!(
+                        target: "agent_rebind",
+                        operation_id = %operation_id,
+                        generation,
+                        agent_id = %result.agent_id,
+                        "target preflight passed; reconnecting helper"
+                    );
+                } else {
+                    self.show_preflight_setup(result);
                 }
             }
             AppEvent::AgentSourcesDiscovered {
@@ -1787,6 +2009,77 @@ impl App {
                     return;
                 }
 
+                if method == "agent_master_restarted" {
+                    let request_id = params
+                        .get("operation_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if request_id.is_empty() {
+                        return;
+                    }
+                    let completes_auth_recovery = matches!(
+                        &self.auth_recovery_state,
+                        AuthRecoveryState::WaitingForMaster {
+                            request_id: expected
+                        } if expected == request_id
+                    );
+                    // Session retirement can fail an in-flight startup before
+                    // the old master exits, so no later transport-loss event
+                    // remains to trigger the retained helper's reconnect.
+                    let recovers_retirement_failure =
+                        matches!(&self.auth_recovery_state, AuthRecoveryState::Idle)
+                            && matches!(&self.state, ConnectionState::Failed(_));
+                    if !completes_auth_recovery && !recovers_retirement_failure {
+                        return;
+                    }
+                    if self.deferred_acp.is_none() {
+                        tracing::warn!(
+                            target: "helper",
+                            %request_id,
+                            "replacement master is ready but helper binding is unavailable"
+                        );
+                        return;
+                    }
+
+                    tracing::info!(
+                        target: "helper",
+                        %request_id,
+                        "replacement master is ready; reconnecting retained helper"
+                    );
+                    if completes_auth_recovery {
+                        // Invalidate the longer master-readiness timer and arm
+                        // the normal connection deadline for this new phase.
+                        self.auth_recovery_generation =
+                            self.auth_recovery_generation.wrapping_add(1);
+                        self.auth_recovery_state = AuthRecoveryState::Connecting;
+                        let agent_id = self
+                            .deferred_acp
+                            .as_ref()
+                            .and_then(|params| params.agent_id.clone())
+                            .filter(|agent_id| !agent_id.is_empty())
+                            .unwrap_or_else(|| {
+                                if self.current_agent_id.is_empty() {
+                                    "copilot".to_string()
+                                } else {
+                                    self.current_agent_id.clone()
+                                }
+                            });
+                        self.arm_auth_recovery_timeout(
+                            agent_id,
+                            self.auth_recovery_generation,
+                            AUTH_RECOVERY_CONNECTION_TIMEOUT,
+                        );
+                    }
+                    self.reset_agent_scoped_state();
+                    self.pending_acp_start = true;
+                    return;
+                }
+
+                if method == "rebind_agent" {
+                    self.handle_agent_rebind(params);
+                    return;
+                }
+
                 if method == "agent_paste_text" {
                     self.handle_agent_paste_text(&params);
                     return;
@@ -1799,8 +2092,19 @@ impl App {
                     // dispatch: each field is optional and only present when
                     // it actually changed, so we apply exactly what's set
                     // — all in place, with NO agent-pane teardown/restart.
-                    // (Agent *identity* changes go through a master respawn
-                    // on the C++ side, not this event.)
+                    // Agent identity and launch-time model changes use the
+                    // separate same-helper rebind event.
+                    let target_window = params
+                        .get("window_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let owner_window = self.window_id.as_deref().unwrap_or("");
+                    if !target_window.is_empty()
+                        && !owner_window.is_empty()
+                        && target_window != owner_window
+                    {
+                        return;
+                    }
                     let target_tab = params
                         .get("tab_id")
                         .and_then(|value| value.as_str())
@@ -2802,7 +3106,9 @@ impl App {
                         );
                         self.deferred_acp = Some(DeferredAcpParams {
                             agent_cmd: new_cmd,
+                            agent_id: Some(agent_id),
                             acp_model: None,
+                            custom_model_selection: self.custom_model_selection.clone(),
                             agent_source: self.current_agent_source.clone(),
                             source_cwd: self.source_cwd.clone(),
                             prompt_rx: None, // try_start_acp will create fresh channels

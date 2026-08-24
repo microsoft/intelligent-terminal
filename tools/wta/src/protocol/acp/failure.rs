@@ -46,11 +46,6 @@ pub enum AgentFailure {
     /// transitional non-compliant-auth shim). Routes to the sign-in screen.
     AuthRequired { message: String },
 
-    /// The helper↔master pipe ended (master died, or an agent-CLI death
-    /// cascaded into a master shutdown). A *signal*, never an ACP error.
-    /// Recovery today is manual `/restart`; Phase 3 adds auto-reconnect.
-    TransportLost,
-
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` failed or timed out at startup.
     HandshakeFailed { stage: HandshakeStage, detail: String },
@@ -117,7 +112,6 @@ impl AgentFailure {
     pub fn class(&self) -> &'static str {
         match self {
             AgentFailure::AuthRequired { .. } => "auth_required",
-            AgentFailure::TransportLost => "transport_lost",
             AgentFailure::HandshakeFailed { .. } => "handshake_failed",
             AgentFailure::ResourceGone { .. } => "resource_gone",
             AgentFailure::Protocol { .. } => "protocol",
@@ -132,7 +126,6 @@ impl fmt::Display for AgentFailure {
             AgentFailure::AuthRequired { message } => {
                 write!(f, "authentication required: {message}")
             }
-            AgentFailure::TransportLost => f.write_str("connection to the agent was lost"),
             AgentFailure::HandshakeFailed { stage, detail } => {
                 write!(f, "handshake failed at {}: {detail}", stage.label())
             }
@@ -232,7 +225,7 @@ mod tests {
         };
         assert!(failure.failed_at(HandshakeStage::NewSession));
         assert!(!failure.failed_at(HandshakeStage::Authenticate));
-        assert!(!AgentFailure::TransportLost.failed_at(HandshakeStage::NewSession));
+        assert!(!AgentFailure::Cancelled.failed_at(HandshakeStage::NewSession));
     }
 
     #[test]

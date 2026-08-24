@@ -41,6 +41,13 @@ artefacts live inside a WSL distro, not on the Windows host.
 
 ## Scope
 
+> **Superseded — see "Amendment: own-source-only visibility" at the end of this
+> document.** Points 1 and 2 below described a cross-source merge that no longer
+> exists: session management now lists only the rows belonging to the viewing
+> pane's own execution source, and in-distro rows are supplied by that distro's
+> own pooled agent rather than a separate scan. Point 3 (resume back into the
+> distro) still holds. The `WTA_WSL_SESSIONS` gate is gone.
+
 In scope (MVP):
 
 1. Enumerate **running** WSL distros and scan each distro's Linux `$HOME` for
@@ -382,3 +389,76 @@ async reactor / UI thread).
   via the cached `ensure_history_loaded`) is redundant work. A follow-up can gate
   the WSL branch to the master caller (the host scan is already duplicated the
   same way, so this is a pure optimization, not a correctness fix).
+
+---
+
+## Amendment: own-source-only visibility
+
+This amendment supersedes the cross-source parts of the design above (Scope
+points 1 and 2). Resume-back-into-the-distro is unchanged.
+
+### What changed
+
+Session management now lists **only the rows whose execution source matches the
+viewing pane**: a Debian pane lists Debian sessions, a host pane lists host
+sessions. `CliSource` alone could never express this — host Copilot, Copilot in
+WSL Debian, and Copilot in WSL Ubuntu all report `CliSource::Copilot` — so the
+view filters on `SessionLocation` as well, keyed off the pane's `AgentSource`.
+
+The motivation is that a row from another source is not merely noise: its
+transcript lives on a different filesystem, reachable only by that source's own
+CLI, so selecting it from the wrong pane could not resume it.
+
+### Consequence: the in-distro scan is redundant
+
+The MVP discovered in-distro sessions by spawning a fresh ACP connection per
+(running distro x CLI) pair (`wsl_acp::scan_running_distros_acp`). Once master
+became a multi-agent pool and each pooled agent's history was stamped with its
+own source, that scan returned exactly what the pooled agent already reports —
+measured on one machine: the pooled Ubuntu agent listed 32 rows and the scan of
+Ubuntu listed the same 32; Debian, 27 and 27.
+
+Its only unique capability was reaching a distro with **no** pane open, which is
+precisely what own-source-only forbids: to see a distro's rows you must be
+viewing from a pane in that distro, and such a pane always has a pooled agent.
+
+Removed as dead:
+
+- `wsl_acp.rs` and `wsl.rs` (the scan and its distro enumeration)
+- `spawn_wsl_seed`, `maybe_spawn_wsl_title_seed`, `wsl_title_seed_warranted`,
+  `wsl_titles_from_scan`, and the `wsl_seed_in_flight` / `wsl_titles_seed_at`
+  state that throttled them
+- the `probe-wsl-sessions` diagnostic subcommand
+- `MasterStateInner::cli_source`, whose last readers were these paths
+
+The scan was also expensive: on one 25-minute session it ran 75 times for a
+cumulative 22 minutes of wall clock, with a single Claude distro probe costing
+up to 44 seconds.
+
+### Consequence: the `WTA_WSL_SESSIONS` gate is gone
+
+The env gate existed to keep in-distro rows out of the host picker while the
+mixed host/WSL view was undesigned. Visibility is now decided by the viewing
+pane's own source, so there is nothing to gate: a WSL row can only ever appear
+in a pane from that distro, where it belongs. Born-bound WSL delegate rows
+(`?<prompt>` in a WSL pane) are therefore always registered.
+
+### Related: row-driven refresh routes on source too
+
+`agent_for_row` (formerly `agent_for_cli`) resolves the pooled agent that owns a
+row by provider **and** `SessionLocation`. Matching the provider alone would
+route a `Wsl { Debian }` row to the host agent, which enumerates a different
+`$HOME` and can never list it. With the scan gone this is the only path that
+titles a born-bound in-distro row, and it is sufficient: if the row is visible
+at all, a pooled agent for its source exists.
+
+### Still in place
+
+- Naming the distro on the row, now as a `· <distro>` suffix beside the CLI
+  provider (`cli_suffix_for`) rather than a leading `[WSL-<distro>]` tag.
+- Resume back into the distro, including the `wsl -d <distro> --cd ...` command
+  shape and the suppression of Shift+Enter "resume in agent pane" for WSL rows.
+- `SessionLocation` on the wire, which is now load-bearing for filtering rather
+  than only for display.
+- The session MCP WSL relay, which serves WSL agent panes and is unrelated to
+  session-history visibility.

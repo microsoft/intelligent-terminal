@@ -116,22 +116,15 @@ namespace wtcli
     //                the WT pane GUID, which goes into `params["pane_id"]`
     //                — matching the rename in TerminalPage.cpp for
     //                connection_state / vt_sequence events.
-    // |paneIdIsExplicit| — true when the caller passed `--pane`, i.e. the
-    //                event source really is that pane. False when the pane was
-    //                inferred from the currently focused pane, which is only a
-    //                placeholder — it does NOT identify the origin.
-    //                Stamped as `params["pane_bound"]`, overriding whatever the
-    //                caller put in `paramsJson`: only wtcli knows whether the
-    //                id was supplied or guessed, and consumers such as
-    //                TerminalPage's agent-session binding must never attribute
-    //                an inferred pane. wtcli ships in the same package as the
-    //                consumer, so this flag is always in lockstep with it —
-    //                unlike the agent hook scripts, which upgrade separately.
+    //                Empty is valid and means "source pane unknown". WTA
+    //                treats an empty `pane_id` as unattributed rather than
+    //                binding the event to a pane, so callers that cannot
+    //                identify their pane must pass empty instead of
+    //                substituting some other pane.
     inline bool BuildSendEventJson(
         const std::string& eventType,
         const std::string& paramsJson,
         const std::string& sessionId,
-        const bool paneIdIsExplicit,
         Json::Value& outEvt)
     {
         Json::Value params;
@@ -148,7 +141,6 @@ namespace wtcli
 
         params["event"] = eventType;
         params["pane_id"] = sessionId;
-        params["pane_bound"] = paneIdIsExplicit;
 
         outEvt["type"] = "event";
         outEvt["method"] = "agent_event";
@@ -418,13 +410,6 @@ namespace wtcli
         params["agent_session_id"] = agentSessionId;
         params["event"] = eventType;
         params["pane_id"] = paneId;
-        // Always authoritative here, unlike `send-event`'s focused-pane
-        // fallback: `agent-hook` reads the pane from the hook process's own
-        // `WT_SESSION` and drops the event outright when it is absent, so a
-        // hook that reaches this point really did come from `paneId`. Durable
-        // restore keys the pane's agent binding off this flag, so omitting it
-        // would stop restored panes from resuming their agent CLI.
-        params["pane_bound"] = true;
         params["payload"] = payload;
 
         Json::Value event;

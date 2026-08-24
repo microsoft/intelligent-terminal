@@ -41,7 +41,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         PaneAgentSession,     // Direct to TerminalPage, no broadcast — hookless delegate pane/session binding
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
-        RestartAgentPane,     // Direct to TerminalPage, no broadcast — master detected helper death; re-warm a fresh helper for this tab
+        AgentSessionsRetired, // Direct to TerminalPage, no broadcast — destructive retirement transaction completed
         Broadcast,            // Normalize envelope + broadcast to all subscribers
         Invalid               // Failed validation
     };
@@ -111,9 +111,9 @@ namespace Microsoft::Terminal::Protocol::Parsing
             {
                 return SendEventRoute::RestartAgentStack;
             }
-            if (method == "restart_agent_pane")
+            if (method == "agent_sessions_retired")
             {
-                return SendEventRoute::RestartAgentPane;
+                return SendEventRoute::AgentSessionsRetired;
             }
         }
 
@@ -129,6 +129,21 @@ namespace Microsoft::Terminal::Protocol::Parsing
         outEvt["method"] = "agent_event";
 
         return SendEventRoute::Broadcast;
+    }
+
+    inline void EnsureRequestId(Json::Value& event, const std::string_view requestId)
+    {
+        auto& params = event["params"];
+        if (!params.isObject())
+        {
+            params = Json::Value{ Json::objectValue };
+        }
+        if (!params.isMember("request_id") ||
+            !params["request_id"].isString() ||
+            params["request_id"].asString().empty())
+        {
+            params["request_id"] = std::string{ requestId };
+        }
     }
 
     // ── SplitPane direction mapping ──

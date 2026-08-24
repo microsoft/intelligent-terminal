@@ -58,15 +58,18 @@ pub struct WtaMeta {
     /// model later via `setSessionModel`). Carried as its own field
     /// because the master no longer trusts `agent_cmd` to carry it.
     pub model: Option<String>,
+    /// Authoritative custom-provider binding for this helper generation.
+    /// `"default"` explicitly disables the master's inherited provider;
+    /// `custom:<provider>:<model>` asks the master to resolve that selection
+    /// from Terminal settings. The helper never receives credential metadata.
+    pub provider_binding: Option<String>,
     /// Execution environment selected for this tab (`host` or `wsl`).
     pub agent_source: Option<String>,
     /// WSL distribution paired with `agent_source=wsl`.
     pub wsl_distro: Option<String>,
     /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
-    /// owns this session. Carried so master can address per-tab events
-    /// (notably `restart_agent_pane` on helper crash recovery) by the
-    /// same StableId C++ routes every other per-tab event with. `None`
-    /// for non-agent-pane helpers / legacy callers.
+    /// owns this session. Carried so master can resolve close-by-tab
+    /// ownership. `None` for non-agent-pane helpers / legacy callers.
     pub owner_tab_id: Option<String>,
     /// JSON-encoded native cloud model catalog. Helpers may supply the host's
     /// last successful snapshot on initialize; master may return a clean-probed
@@ -100,6 +103,7 @@ impl WtaMeta {
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
             && blank(&self.model)
+            && blank(&self.provider_binding)
             && blank(&self.agent_source)
             && blank(&self.wsl_distro)
             && blank(&self.owner_tab_id)
@@ -150,6 +154,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
         model: str_field("model"),
+        provider_binding: str_field("provider_binding"),
         agent_source: str_field("agent_source"),
         wsl_distro: str_field("wsl_distro"),
         owner_tab_id: str_field("owner_tab_id"),
@@ -190,6 +195,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
     put("model", &wta.model);
+    put("provider_binding", &wta.provider_binding);
     put("agent_source", &wta.agent_source);
     put("wsl_distro", &wta.wsl_distro);
     put("owner_tab_id", &wta.owner_tab_id);
@@ -587,7 +593,7 @@ pub enum WtaExtRequest {
     /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
     /// semantics). The second field is the WSL distro when the born-bound
     /// session runs inside a distro (delegate `?<prompt>` from a WSL pane), so
-    /// the master can stamp the row `Wsl { distro }` for the `[WSL-…]` prefix.
+    /// the master can stamp the row `Wsl { distro }` for the distro suffix.
     SessionBornBound(crate::agent_sessions::SessionEvent, Option<String>),
     /// `_intellterm.wta/session_resume_dispatched` — optimistic resume flip.
     SessionResumeDispatched(SessionResumeDispatchedParams),
@@ -1014,7 +1020,7 @@ pub fn build_born_bound_request(
 /// Like [`build_born_bound_request`] but tags the session as running inside a
 /// WSL distro. The master stamps the created row `SessionLocation::Wsl {
 /// distro }` (the reducer defaults `SessionStarted` to `Host`) so the session
-/// view renders the `[WSL-<distro>]` prefix — used by the `?<prompt>` delegate
+/// view names the distro in the row suffix — used by the `?<prompt>` delegate
 /// path when the active pane is a WSL pane.
 pub fn build_born_bound_request_wsl(
     event: &crate::agent_sessions::SessionEvent,
@@ -1270,7 +1276,7 @@ pub trait SessionRegistry: Send + Sync {
     /// `true` iff the value actually changed. Used to stamp a born-bound WSL
     /// delegate row as `Wsl { distro }` after the reducer creates it (the
     /// reducer defaults every `SessionStarted` to `Host`), so the session view
-    /// renders the `[WSL-<distro>]` prefix.
+    /// names the distro in the row suffix.
     async fn set_location(
         &self,
         sid: &acp::schema::v1::SessionId,
@@ -3895,6 +3901,7 @@ mod tests {
             agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string()),
             agent_id: Some("gemini".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
+            provider_binding: Some("custom:provider-openrouter:qwen/qwen3.5-9b".to_string()),
             agent_source: Some("wsl".to_string()),
             wsl_distro: Some("Ubuntu".to_string()),
             cloud_models: Some(r#"[{"id":"cloud-native","name":"Cloud Native"}]"#.to_string()),
@@ -3949,6 +3956,7 @@ mod tests {
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 model: Some(" ".to_string()),
+                provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),
                 owner_tab_id: Some("\n".to_string()),
@@ -3990,6 +3998,7 @@ mod tests {
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
                 model: Some(" ".to_string()),
+                provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),
                 owner_tab_id: Some("\n".to_string()),

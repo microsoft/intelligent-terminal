@@ -9,6 +9,7 @@
 #include "CustomModelProviderEntry.g.cpp"
 #include "EnumEntry.h"
 #include "../inc/AcpModelUtils.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentHooksStatus.h"
 #include "../inc/CustomAgentId.h"
@@ -171,10 +172,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // installed — the dropdown only offers choices the user can actually
         // launch.
         const auto filteredAcp = Reg::FilteredAcpAgents();
+        const auto availableAcpAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
         std::vector<Editor::AgentEntry> acpEntries;
         for (const auto& a : filteredAcp)
         {
-            if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
+            if (!availableAcpAgents.contains(std::wstring{ a.id }))
             {
                 continue;
             }
@@ -1151,9 +1153,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // build/scripts/Verify-AgentHooks.ps1 consumes — so the Settings UI
     // and the verify script can never disagree about install state.
     //
-    // The single primary "Install hooks" button still delegates to
-    // `wta install-hooks`; afterwards we re-invoke the status query to
-    // refresh the rows.
+    // The single primary "Install hooks" button delegates to
+    // `wta hooks install --only-missing`; afterwards we re-invoke the status
+    // query to refresh the rows.
 
     // _ResolveWtaExePath and _RunWtaCaptureStdout moved to
     // src/cascadia/inc/WtaProcess.h for shared use.
@@ -1328,7 +1330,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _installingAgentHooks = true;
         _agentHooksInstallSummary = RS_(L"AIAgents_HooksInstallingSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
-        _RunHooksWtaAsync(L"hooks install");
+        // `--only-missing` builds a per-CLI plan from a status pre-pass:
+        // complete-and-current CLIs are left alone, a complete but
+        // out-of-date bridge is upgraded, and anything missing, partial,
+        // disabled or pointing at a stale path is installed.
+        //
+        // The distinction matters. Re-running `plugin install` on a complete
+        // bridge changes nothing — every CLI answers "already installed" —
+        // costs two Node spawns per CLI, and fails outright when a running
+        // agent CLI holds its plugin directory open, so the button used to be
+        // slow and could report a failure for work that never needed doing.
+        // Routing an out-of-date bridge there would be worse still: it would
+        // no-op and then report success. Upgrading needs `plugin update` /
+        // `extensions update` / a Codex reinstall, which is what wta runs.
+        _RunHooksWtaAsync(L"hooks install --only-missing");
     }
 
     void AIAgentsViewModel::RemoveCopilotHooks()

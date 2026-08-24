@@ -21,8 +21,8 @@ impl App {
             ConnectionState::Failed(_) => "failed",
             ConnectionState::Disconnected => "disconnected",
         };
-        // Include selected_agent only once — when connected after user selection.
-        // This avoids triggering _RebuildAgentStack mid-FRE.
+        // Include selected_agent only once, after the selected Agent connects,
+        // so C++ persists only a completed first-run selection.
         let selected = if self.state == ConnectionState::Connected {
             self.pending_agent_selection.take()
         } else {
