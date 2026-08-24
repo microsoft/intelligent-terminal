@@ -23,7 +23,9 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode.
 pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) {
-    let Some(recs) = app.current_tab().turn.recommendations() else { return };
+    let Some(recs) = app.current_tab().turn.recommendations() else {
+        return;
+    };
     if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
         return;
     }
@@ -102,10 +104,7 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
             ]),
             crate::rtl::text_alignment(),
         ),
-        Rect {
-            height: 1,
-            ..area
-        },
+        Rect { height: 1, ..area },
     );
 
     if area.height > 1 {
@@ -204,8 +203,7 @@ fn render_card(
     let button_inner = card::inset_horizontal(button_area, 2);
     if button_inner.width > 0 {
         let focused = if is_selected
-            && app.current_tab().recommendation_focus
-                == crate::app::RecommendationFocus::Button
+            && app.current_tab().recommendation_focus == crate::app::RecommendationFocus::Button
         {
             Some(app.current_tab().selected_button)
         } else {

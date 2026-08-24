@@ -56,13 +56,14 @@ const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{mpsc, watch, Mutex, OnceCell};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{
-    spawn_agent_process_for_source, AgentStderrLog, ChildEnvironmentPolicy,
+    spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
+    SharedProviderSelection,
 };
 
 pub(crate) mod config;
@@ -77,7 +78,57 @@ pub(crate) struct HelperId(u64);
 
 type AgentCmdKey = String;
 type AgentInstanceId = uuid::Uuid;
-type AgentCell = Arc<tokio::sync::OnceCell<Arc<AgentCli>>>;
+type AgentCell = Arc<OnceCell<Arc<AgentCli>>>;
+
+struct CustomModelGeneration {
+    config: crate::custom_model_provider::Config,
+    generation: u64,
+}
+
+#[derive(Clone)]
+enum ProviderBinding {
+    LegacyEnvironment,
+    Native,
+    Custom {
+        selection_id: String,
+        generation: u64,
+        config: crate::custom_model_provider::Config,
+    },
+}
+
+impl ProviderBinding {
+    fn pool_key(&self) -> String {
+        match self {
+            Self::LegacyEnvironment => "legacy".to_string(),
+            Self::Native => "native".to_string(),
+            Self::Custom {
+                selection_id,
+                generation,
+                ..
+            } => format!("{selection_id}@{generation}"),
+        }
+    }
+
+    fn spawn_selection(&self) -> SharedProviderSelection<'_> {
+        match self {
+            Self::LegacyEnvironment => SharedProviderSelection::Inherit,
+            Self::Native => SharedProviderSelection::Disabled,
+            Self::Custom { config, .. } => SharedProviderSelection::Custom(config),
+        }
+    }
+
+    fn is_model_scoped(&self) -> bool {
+        matches!(self, Self::Custom { .. })
+    }
+
+    fn has_active_custom_provider(&self) -> bool {
+        match self {
+            Self::LegacyEnvironment => crate::custom_model_provider::shared_provider_is_complete(),
+            Self::Native => false,
+            Self::Custom { .. } => true,
+        }
+    }
+}
 
 #[derive(Clone)]
 enum RetirementOperationState {
@@ -304,6 +355,10 @@ struct MasterStateInner {
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
+    /// Master-only BYOK configurations keyed by the credential-free selection
+    /// ID. A changed endpoint/model/credential reference advances the
+    /// generation and therefore gets a new agent-pool entry.
+    custom_model_generations: Mutex<HashMap<String, CustomModelGeneration>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -631,23 +686,23 @@ async fn close_and_retire_owned_session(
         match tokio::time::timeout(
             remaining,
             agent
-            .conn
+                .conn
                 .cancel(acp::schema::v1::CancelNotification::new(session_id.clone())),
         )
-            .await
+        .await
         {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-            tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "cancel_replaced_session",
-                helper_id = ?helper_id,
-                old_session_id = %session_id,
-                error = %error,
-                "legacy session/cancel fallback failed"
-            );
-        }
+                tracing::warn!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "cancel_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    error = %error,
+                    "legacy session/cancel fallback failed"
+                );
+            }
             Err(_) => return Err(retirement_deadline_error(session_id, "cancel")),
         }
         ReplacedSessionCleanup::LogicalFallback
@@ -659,23 +714,23 @@ async fn close_and_retire_owned_session(
         match tokio::time::timeout(
             remaining,
             agent
-            .conn
+                .conn
                 .cancel(acp::schema::v1::CancelNotification::new(session_id.clone())),
         )
-            .await
+        .await
         {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-            tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "cancel_replaced_session",
-                helper_id = ?helper_id,
-                old_session_id = %session_id,
-                error = %error,
-                "failed to cancel active turn before session/close"
-            );
-        }
+                tracing::warn!(
+                    target: "master",
+                    step = "helper→agent",
+                    op = "cancel_replaced_session",
+                    helper_id = ?helper_id,
+                    old_session_id = %session_id,
+                    error = %error,
+                    "failed to cancel active turn before session/close"
+                );
+            }
             Err(_) => return Err(retirement_deadline_error(session_id, "cancel")),
         }
         let started = std::time::Instant::now();
@@ -734,9 +789,9 @@ async fn close_and_retire_owned_session(
                     if retire_on_close_failure {
                         ReplacedSessionCleanup::LogicalFallback
                     } else {
-                    return Err(error);
+                        return Err(error);
+                    }
                 }
-            }
             }
             Err(_) => {
                 let message =
@@ -754,13 +809,13 @@ async fn close_and_retire_owned_session(
                 if retire_on_close_failure {
                     ReplacedSessionCleanup::LogicalFallback
                 } else {
-                return Err(
-                    acp::Error::new(-32603, message.clone()).data(serde_json::json!({
-                        "message": message
-                    })),
-                );
+                    return Err(
+                        acp::Error::new(-32603, message.clone()).data(serde_json::json!({
+                            "message": message
+                        })),
+                    );
+                }
             }
-        }
         }
     };
 
@@ -911,8 +966,7 @@ async fn retire_tab_session(
         if target.is_none() {
             target = state.pending_session_helpers.lock().await.iter().find_map(
                 |(helper_id, owner_tab_id)| {
-                    (owner_tab_id.as_deref() == Some(tab_id.as_str()))
-                        .then_some((*helper_id, None))
+                    (owner_tab_id.as_deref() == Some(tab_id.as_str())).then_some((*helper_id, None))
                 },
             );
         }
@@ -965,14 +1019,7 @@ async fn retire_tab_session(
     };
 
     let Some((owner_helper_id, session_id, agent_instance_id)) = live_target else {
-        let orphan = {
-            state
-                .orphaned_tabs
-                .lock()
-                .await
-                .get(&tab_id)
-                .cloned()
-        };
+        let orphan = { state.orphaned_tabs.lock().await.get(&tab_id).cloned() };
         if let Some((agent_key, orphan_helper_id, orphan_session_id)) = orphan {
             let gate = session_lifecycle_gate(state, &orphan_session_id).await;
             let _guard = match tokio::time::timeout_at(deadline, gate.lock()).await {
@@ -1000,19 +1047,20 @@ async fn retire_tab_session(
                     ));
                 }
             };
-            let orphan_is_current = state
-                .orphaned_tabs
-                .lock()
-                .await
-                .get(&tab_id)
-                .is_some_and(|current| {
-                    current
-                        == &(
-                            agent_key.clone(),
-                            orphan_helper_id,
-                            orphan_session_id.clone(),
-                        )
-                });
+            let orphan_is_current =
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .get(&tab_id)
+                    .is_some_and(|current| {
+                        current
+                            == &(
+                                agent_key.clone(),
+                                orphan_helper_id,
+                                orphan_session_id.clone(),
+                            )
+                    });
             if !orphan_is_current {
                 return Ok(ReplacedSessionCleanup::NotOwned);
             }
@@ -1041,15 +1089,15 @@ async fn retire_tab_session(
                 let cancel_timed_out = match cancel {
                     Ok(Ok(())) => false,
                     Ok(Err(error)) => {
-                    tracing::warn!(
-                        target: "master",
-                        tab_id,
-                        session_id = %orphan_session_id,
-                        error = %error,
-                            "failed to cancel orphaned turn before retirement"
-                    );
+                        tracing::warn!(
+                            target: "master",
+                            tab_id,
+                            session_id = %orphan_session_id,
+                            error = %error,
+                                "failed to cancel orphaned turn before retirement"
+                        );
                         false
-                }
+                    }
                     Err(_) if destructive => {
                         tracing::error!(
                             target: "master_retirement",
@@ -1068,25 +1116,25 @@ async fn retire_tab_session(
                 } else if agent_supports_session_close(&agent) {
                     match tokio::time::timeout_at(
                         deadline,
-                    agent
-                        .conn
-                        .close_session(acp::schema::v1::CloseSessionRequest::new(
-                            orphan_session_id.clone(),
-                        )),
-                )
-                .await
-                {
-                    Ok(Ok(_)) => ReplacedSessionCleanup::PhysicallyClosed,
-                    Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
-                        tracing::warn!(
-                            target: "master",
-                            tab_id,
-                            session_id = %orphan_session_id,
-                            error = %error,
-                            "agent advertised session/close but rejected it; retiring orphaned WTA state"
-                        );
-                        ReplacedSessionCleanup::LogicalFallback
-                    }
+                        agent
+                            .conn
+                            .close_session(acp::schema::v1::CloseSessionRequest::new(
+                                orphan_session_id.clone(),
+                            )),
+                    )
+                    .await
+                    {
+                        Ok(Ok(_)) => ReplacedSessionCleanup::PhysicallyClosed,
+                        Ok(Err(error)) if error.code == acp::ErrorCode::MethodNotFound => {
+                            tracing::warn!(
+                                target: "master",
+                                tab_id,
+                                session_id = %orphan_session_id,
+                                error = %error,
+                                "agent advertised session/close but rejected it; retiring orphaned WTA state"
+                            );
+                            ReplacedSessionCleanup::LogicalFallback
+                        }
                         Ok(Err(error)) if destructive => {
                             tracing::error!(
                                 target: "master",
@@ -1097,7 +1145,7 @@ async fn retire_tab_session(
                             );
                             ReplacedSessionCleanup::LogicalFallback
                         }
-                    Ok(Err(error)) => return Err(error),
+                        Ok(Err(error)) => return Err(error),
                         Err(_) if destructive => {
                             tracing::error!(
                                 target: "master",
@@ -1107,17 +1155,17 @@ async fn retire_tab_session(
                             );
                             ReplacedSessionCleanup::LogicalFallback
                         }
-                    Err(_) => {
-                        return Err(acp::Error::internal_error().data(serde_json::json!({
-                            "message": format!(
-                                "session/close timed out for orphaned tab {}",
-                                tab_id
-                            )
-                        })));
+                        Err(_) => {
+                            return Err(acp::Error::internal_error().data(serde_json::json!({
+                                "message": format!(
+                                    "session/close timed out for orphaned tab {}",
+                                    tab_id
+                                )
+                            })));
+                        }
                     }
-                }
-            } else {
-                ReplacedSessionCleanup::LogicalFallback
+                } else {
+                    ReplacedSessionCleanup::LogicalFallback
                 }
             } else if destructive {
                 tracing::warn!(
@@ -1211,13 +1259,13 @@ async fn retire_tab_session(
 
     let cleanup = if let Some(agent) = agent {
         close_and_retire_owned_session(
-        state,
-        owner_helper_id,
-        &agent,
-        &session_id,
+            state,
+            owner_helper_id,
+            &agent,
+            &session_id,
             deadline,
             destructive,
-    )
+        )
         .await?
     } else if destructive {
         tracing::warn!(
@@ -1294,7 +1342,25 @@ fn agent_cmd_key(
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
 ) -> AgentCmdKey {
-    format!("{:?}", (source, agent_id, command))
+    agent_cmd_key_with_provider(command, agent_id, source, &ProviderBinding::Native)
+}
+
+fn agent_cmd_key_with_provider(
+    command: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
+) -> AgentCmdKey {
+    let lifecycle =
+        if requested_model_is_explicit(command, agent_id) || provider_binding.is_model_scoped() {
+            "model:"
+        } else {
+            "warm:"
+        };
+    format!(
+        "{lifecycle}{:?}",
+        (source, agent_id, command, provider_binding.pool_key())
+    )
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -1426,13 +1492,14 @@ fn cloud_catalog_plan(
 fn prepare_native_cloud_catalog(
     resolved_agent_id: &str,
     source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
     supplied_models: Vec<crate::app::AcpModelInfo>,
 ) -> (NativeCloudCatalogState, bool) {
     let profile = crate::agent_registry::lookup_profile_by_id(resolved_agent_id);
     match cloud_catalog_plan(
         source,
         profile.byok_mode,
-        crate::custom_model_provider::shared_provider_is_complete(),
+        provider_binding.has_active_custom_provider(),
         supplied_models.is_empty(),
     ) {
         CloudCatalogPlan::None => (NativeCloudCatalogState::Unavailable, false),
@@ -2037,12 +2104,10 @@ struct HelperHandler {
     /// (+ `model`): the master reconstructs the command from that id and
     /// never executes a command string off the pipe (falling back to the
     /// master default when no / unknown id is declared). Reused by every
-    /// later request on this connection. `OnceLock` because the binding
-    /// can't be known
-    /// until the helper's `initialize` arrives, but the ACP protocol
-    /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
-    /// `resolved_agent()` always finds it populated for those.
-    agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// later request on this connection. The async `OnceCell` serializes
+    /// concurrent `initialize` requests so only the published binding can
+    /// acquire an agent and register this helper.
+    agent: AgentCell,
     state: Arc<MasterStateInner>,
     /// Serializes complete session replacement transactions for this helper.
     /// Shared by every cloned request handler, while unrelated helpers retain
@@ -2204,10 +2269,10 @@ impl HelperHandler {
             entry.owner_tab_id = Some(owner_tab_id);
         }
         entry.last_session_id = Some(session_id.clone());
-            self.state
+        self.state
             .pending_session_helpers
-                .lock()
-                .await
+            .lock()
+            .await
             .remove(&self.helper_id);
         true
     }
@@ -2239,10 +2304,10 @@ impl HelperHandler {
                 .contains(&self.helper_id)
         } else {
             self.state
-            .closing_session_helpers
-            .lock()
-            .await
-            .remove(&self.helper_id)
+                .closing_session_helpers
+                .lock()
+                .await
+                .remove(&self.helper_id)
         };
         if closing {
             self.state.helper_meta.lock().await.remove(&self.helper_id);
@@ -2513,6 +2578,18 @@ impl HelperHandler {
 }
 
 impl HelperHandler {
+    async fn get_or_initialize_agent<F, Fut>(&self, acquire: F) -> Result<Arc<AgentCli>>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<Arc<AgentCli>>>,
+    {
+        let agent = self
+            .agent
+            .get_or_try_init(|| acquire_and_bind_agent(&self.state, self.helper_id, acquire))
+            .await?;
+        Ok(Arc::clone(agent))
+    }
+
     async fn session_mcp_endpoint_for_session(
         &self,
         agent: &AgentCli,
@@ -2587,7 +2664,12 @@ impl HelperHandler {
                 }
             })
             .unwrap_or_default();
-        let (agent_cmd, agent_id, agent_source) = resolve_agent_selection(
+        let ResolvedAgentSelection {
+            command: agent_cmd,
+            agent_id,
+            source: agent_source,
+            explicit_selection,
+        } = resolve_agent_selection(
             &self.state.default_agent_cmd,
             self.state.default_agent_id.as_deref(),
             self.state.allowed_agent_ids.as_ref(),
@@ -2623,36 +2705,49 @@ impl HelperHandler {
                 }
                 Vec::new()
             };
-
-        let agent = get_or_spawn_agent(
+        let provider_binding = resolve_provider_binding(
             &self.state,
-            &agent_cmd,
             agent_id.as_deref(),
             &agent_source,
-            supplied_cloud_models,
+            wta_meta.provider_binding.as_deref(),
+            explicit_selection,
         )
         .await
-        .map_err(|e| {
-            let error_chain = format!("{e:#}");
-            let user_detail = e.root_cause().to_string();
+        .map_err(|error| {
             tracing::error!(
                 target: "master",
                 op = "initialize",
                 helper_id = ?self.helper_id,
-                agent_cmd = %agent_cmd,
-                error = %error_chain,
-                "failed to spawn/resolve agent CLI for helper"
+                agent_id = ?agent_id,
+                "failed to resolve custom model binding: {error:#}"
             );
-            acp::Error::internal_error().data(serde_json::json!(user_detail))
+            helper_initialize_error(HelperInitializeFailure::ProviderResolution, &error)
         })?;
-        // `set` is idempotent-by-error; a helper that (incorrectly) sent
-        // initialize twice keeps its first binding, which is fine.
-        let _ = self.agent.set(Arc::clone(&agent));
+
         let agent = self
-            .agent
-            .get()
-            .expect("helper agent binding is set before initialize response");
-        agent.bound_helpers.lock().await.insert(self.helper_id);
+            .get_or_initialize_agent(|| {
+                get_or_spawn_agent(
+                    &self.state,
+                    &agent_cmd,
+                    agent_id.as_deref(),
+                    &agent_source,
+                    provider_binding.clone(),
+                    supplied_cloud_models.clone(),
+                )
+            })
+            .await
+            .map_err(|e| {
+                let error_chain = format!("{e:#}");
+                tracing::error!(
+                    target: "master",
+                    op = "initialize",
+                    helper_id = ?self.helper_id,
+                    agent_cmd = %agent_cmd,
+                    error = %error_chain,
+                    "failed to spawn/resolve agent CLI for helper"
+                );
+                helper_initialize_error(HelperInitializeFailure::AgentStartup, &e)
+            })?;
         let session_mcp_available = if agent
             .cached_init_resp
             .agent_capabilities
@@ -2680,7 +2775,7 @@ impl HelperHandler {
         // empty `agent_info` on most backends, blanking the agent bar), adding
         // only our private helper-facing cloud catalog metadata. The original
         // third-party response capabilities remain untouched.
-        match initialize_response_for_agent(agent, session_mcp_available).await {
+        match initialize_response_for_agent(&agent, session_mcp_available).await {
             Ok(response) => Ok(response),
             Err(error) => {
                 tracing::warn!(
@@ -2947,7 +3042,7 @@ impl HelperHandler {
         {
             let cleanup = self
                 .close_session_for_destroyed_tab(&agent, &resp.session_id)
-            .await;
+                .await;
             self.finish_failed_pending_session().await;
             let cleanup = cleanup?;
             if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -3298,7 +3393,7 @@ impl HelperHandler {
             }
             let cleanup_result = self
                 .close_session_for_destroyed_tab(&agent, &session_id)
-            .await;
+                .await;
             let cleanup_result = match cleanup_result {
                 Ok(mut cleanup) => {
                     let mut predecessor_error = None;
@@ -3308,7 +3403,7 @@ impl HelperHandler {
                     {
                         match self
                             .close_session_for_destroyed_tab(&agent, previous_session_id)
-                        .await
+                            .await
                         {
                             Ok(predecessor_cleanup) => {
                                 if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -3498,7 +3593,7 @@ impl HelperHandler {
             }
             let cleanup = self
                 .close_session_for_destroyed_tab(&agent, &session_id)
-            .await;
+                .await;
             self.finish_failed_pending_session().await;
             let cleanup = cleanup?;
             if cleanup == ReplacedSessionCleanup::NotOwned {
@@ -4152,6 +4247,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
+        custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
         allowed_agent_ids,
@@ -4395,6 +4491,27 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
     Some(set)
 }
 
+#[derive(Clone, Copy)]
+enum HelperInitializeFailure {
+    ProviderResolution,
+    AgentStartup,
+}
+
+fn helper_initialize_error(
+    failure: HelperInitializeFailure,
+    _internal_error: &anyhow::Error,
+) -> acp::Error {
+    let detail = match failure {
+        HelperInitializeFailure::ProviderResolution => {
+            "Unable to load the selected model provider. Review it in Settings and try again."
+        }
+        HelperInitializeFailure::AgentStartup => {
+            "Unable to start the selected AI agent. Verify the agent installation and model provider settings, then try again."
+        }
+    };
+    acp::Error::internal_error().data(serde_json::json!(detail))
+}
+
 /// Decide which agent command the master will spawn for a helper, given
 /// what the helper declared in `_meta.wta` and the master's trusted
 /// defaults / GPO allowlist.
@@ -4408,14 +4525,29 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
 /// creation by choosing the command line — only by selecting among the
 /// host-approved agent ids.
 ///
-/// Returns `(command_line, agent_id_for_cli_source)`. The id is passed
-/// on to `spawn_one_agent` so the per-session `cli_source` is stamped
-/// correctly; `None` lets it be inferred from the command line.
+/// The returned id is passed on to `spawn_one_agent` so the per-session
+/// `cli_source` is stamped correctly; `None` lets it be inferred from the
+/// command line. The explicit-selection status keeps rejected helper metadata
+/// from influencing provider resolution after fallback.
 ///
 /// Fallback to the default happens when the helper declared no id, an
 /// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
 /// `custom:` agent, which the global default already covers), or an id
 /// the host's GPO allowlist excludes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExplicitAgentSelection {
+    ImplicitDefault,
+    Accepted,
+    Rejected,
+}
+
+struct ResolvedAgentSelection {
+    command: String,
+    agent_id: Option<String>,
+    source: crate::agent_source::AgentSource,
+    explicit_selection: ExplicitAgentSelection,
+}
+
 fn resolve_agent_selection(
     default_cmd: &str,
     default_id: Option<&str>,
@@ -4425,7 +4557,7 @@ fn resolve_agent_selection(
     requested_source: Option<&str>,
     requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> (String, Option<String>, crate::agent_source::AgentSource) {
+) -> ResolvedAgentSelection {
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -4443,10 +4575,17 @@ fn resolve_agent_selection(
 
         if known && allowed {
             let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
-            let cmd = crate::agent_registry::build_acp_command(id, model);
+            let launch_model =
+                model.filter(|_| !crate::agent_registry::supports_live_model_switch(id));
+            let cmd = crate::agent_registry::build_acp_command(id, launch_model);
             let source =
                 crate::agent_source::AgentSource::from_wire(requested_source, requested_wsl_distro);
-            return (cmd, Some(id.to_string()), source);
+            return ResolvedAgentSelection {
+                command: cmd,
+                agent_id: Some(id.to_string()),
+                source,
+                explicit_selection: ExplicitAgentSelection::Accepted,
+            };
         }
 
         // A real selection we refused — surface why, then fall back.
@@ -4461,11 +4600,115 @@ fn resolve_agent_selection(
         );
     }
 
-    (
-        default_cmd.to_string(),
-        default_id.map(str::to_string),
-        crate::agent_source::AgentSource::Host,
-    )
+    ResolvedAgentSelection {
+        command: default_cmd.to_string(),
+        agent_id: default_id.map(str::to_string),
+        source: crate::agent_source::AgentSource::Host,
+        explicit_selection: if requested.is_some() {
+            ExplicitAgentSelection::Rejected
+        } else {
+            ExplicitAgentSelection::ImplicitDefault
+        },
+    }
+}
+
+async fn resolve_provider_binding(
+    state: &MasterStateInner,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    requested_binding: Option<&str>,
+    explicit_selection: ExplicitAgentSelection,
+) -> Result<ProviderBinding> {
+    if explicit_selection == ExplicitAgentSelection::Rejected {
+        return Ok(ProviderBinding::Native);
+    }
+
+    let Some(requested_binding) = requested_binding
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(ProviderBinding::LegacyEnvironment);
+    };
+    if !matches!(source, crate::agent_source::AgentSource::Host)
+        || requested_binding.eq_ignore_ascii_case("default")
+    {
+        return Ok(ProviderBinding::Native);
+    }
+
+    let agent_id = agent_id.context("custom model binding requires a known agent")?;
+    if crate::agent_registry::lookup_profile_by_id(agent_id).byok_mode
+        == crate::agent_registry::ByokMode::Unsupported
+    {
+        tracing::warn!(
+            target: "master",
+            agent_id,
+            "ignoring custom model binding for an agent without BYOK support"
+        );
+        return Ok(ProviderBinding::Native);
+    }
+
+    let wt = state
+        .wt
+        .as_ref()
+        .context("Terminal settings are unavailable for custom model resolution")?;
+    let settings = wt
+        .request("get_settings", serde_json::Value::Null)
+        .await
+        .context("failed to read Terminal settings for custom model resolution")?;
+    let config = crate::custom_model_provider::Config::from_settings(&settings, requested_binding)?;
+
+    let mut generations = state.custom_model_generations.lock().await;
+    let generation =
+        update_custom_model_generation(&mut generations, requested_binding, config.clone())?;
+
+    Ok(ProviderBinding::Custom {
+        selection_id: requested_binding.to_string(),
+        generation,
+        config,
+    })
+}
+
+fn update_custom_model_generation(
+    generations: &mut HashMap<String, CustomModelGeneration>,
+    selection_id: &str,
+    config: crate::custom_model_provider::Config,
+) -> Result<u64> {
+    let generation = match generations.get_mut(selection_id) {
+        Some(current) if current.config == config => current.generation,
+        Some(current) => {
+            current.generation = current
+                .generation
+                .checked_add(1)
+                .context("custom model provider generation exhausted")?;
+            current.config = config.clone();
+            current.generation
+        }
+        None => {
+            generations.insert(
+                selection_id.to_string(),
+                CustomModelGeneration {
+                    config,
+                    generation: 1,
+                },
+            );
+            1
+        }
+    };
+    Ok(generation)
+}
+
+fn requested_model_is_explicit(agent_cmd: &str, agent_id: Option<&str>) -> bool {
+    let resolved_agent_id =
+        agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    if !crate::agent_registry::is_known_id(resolved_agent_id)
+        || crate::agent_registry::supports_live_model_switch(resolved_agent_id)
+    {
+        return false;
+    }
+    let profile = crate::agent_registry::lookup_profile_by_id(resolved_agent_id);
+    let tokens = crate::coordinator::split_windows_commandline(agent_cmd);
+    let args: Vec<&str> = tokens.iter().skip(1).map(String::as_str).collect();
+    crate::agent_registry::extract_model_from_args(&args, profile).is_some()
 }
 
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
@@ -4478,9 +4721,10 @@ async fn get_or_spawn_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    provider_binding: ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
-    let key = agent_cmd_key(agent_cmd, agent_id, source);
+    let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -4503,6 +4747,7 @@ async fn get_or_spawn_agent(
                 agent_cmd,
                 agent_id,
                 source,
+                &provider_binding,
                 supplied_cloud_models,
             )
             .await
@@ -4567,18 +4812,20 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    provider_binding: &ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
         .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
-    let mut spawn_result = spawn_agent_process_for_source(
+    let mut spawn_result = spawn_agent_process_for_source_with_provider(
         agent_cmd,
         None,
         agent_id,
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
+        provider_binding.spawn_selection(),
     )
     .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -4823,8 +5070,12 @@ async fn spawn_one_agent(
         "agent CLI initialize OK; cli_source resolved"
     );
 
-    let (cloud_catalog, start_clean_probe) =
-        prepare_native_cloud_catalog(&resolved_agent_id, source, supplied_cloud_models);
+    let (cloud_catalog, start_clean_probe) = prepare_native_cloud_catalog(
+        &resolved_agent_id,
+        source,
+        provider_binding,
+        supplied_cloud_models,
+    );
     let agent = Arc::new(AgentCli {
         instance_id,
         conn,
@@ -4963,7 +5214,7 @@ async fn serve_helper(
         helper_id,
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
-        agent: Arc::new(OnceLock::new()),
+        agent: Arc::new(OnceCell::new()),
         state: Arc::clone(&state),
         replacement_gate: Arc::new(Mutex::new(())),
         notif_tx,
@@ -5169,6 +5420,9 @@ async fn serve_helper(
     }
 
     let cleanup = cleanup_disconnected_helper(&handler).await;
+    if let Some(agent) = handler.agent.get() {
+        retire_unbound_model_agent(&state, agent).await;
+    }
 
     tracing::info!(
         target: "master",
@@ -5180,6 +5434,67 @@ async fn serve_helper(
     );
 
     result
+}
+
+async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentCli>) {
+    if !agent.cmd_key.starts_with("model:") {
+        return;
+    }
+
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        let matches_instance = agents
+            .get(&agent.cmd_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|current| Arc::ptr_eq(current, agent));
+        if !matches_instance || !agent.bound_helpers.lock().await.is_empty() {
+            false
+        } else {
+            agents.remove(&agent.cmd_key).is_some()
+        }
+    };
+    if removed {
+        tracing::info!(
+            target: "master",
+            agent = %agent.cmd_key,
+            "retiring unbound model-specific agent CLI"
+        );
+        agent.conn.shutdown();
+    }
+}
+
+async fn bind_helper_to_agent(
+    state: &MasterStateInner,
+    agent: &Arc<AgentCli>,
+    helper_id: HelperId,
+) -> bool {
+    let agents = state.agents.lock().await;
+    let matches_instance = agents
+        .get(&agent.cmd_key)
+        .and_then(|cell| cell.get())
+        .is_some_and(|current| Arc::ptr_eq(current, agent));
+    if !matches_instance {
+        return false;
+    }
+    agent.bound_helpers.lock().await.insert(helper_id);
+    true
+}
+
+async fn acquire_and_bind_agent<F, Fut>(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+    mut acquire: F,
+) -> Result<Arc<AgentCli>>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    loop {
+        let agent = acquire().await?;
+        if bind_helper_to_agent(state, &agent, helper_id).await {
+            return Ok(agent);
+        }
+    }
 }
 
 struct DisconnectedHelperCleanup {
@@ -5199,11 +5514,7 @@ async fn cleanup_disconnected_helper(handler: &HelperHandler) -> DisconnectedHel
     // holding the gate through cleanup prevents later state installation.
     let disconnect_added_closing_marker = {
         let _ownership_guard = state.tab_ownership_gate.lock().await;
-        let added = state
-            .closing_session_helpers
-            .lock()
-            .await
-            .insert(helper_id);
+        let added = state.closing_session_helpers.lock().await.insert(helper_id);
         state
             .destructive_session_helpers
             .lock()
@@ -5490,9 +5801,7 @@ async fn host_session_list_raw(
 /// may reconcile the other's rows. That is no worse than the pre-pool behavior
 /// (one listing reconciled every row regardless of CLI) and stays bounded by
 /// the host / Class-B / terminal gates in [`is_stale_host_history_row`].
-fn stamped_cli(
-    cli: Option<&crate::agent_sessions::CliSource>,
-) -> crate::agent_sessions::CliSource {
+fn stamped_cli(cli: Option<&crate::agent_sessions::CliSource>) -> crate::agent_sessions::CliSource {
     cli.cloned()
         .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()))
 }
@@ -5881,8 +6190,8 @@ async fn handle_session_hook(
 /// Applies the event exactly like [`handle_session_hook`] (binding-only), then —
 /// for a WSL delegate — stamps the freshly-created row `SessionLocation::Wsl {
 /// distro }`. The `SessionStarted` reducer defaults every row to `Host`, so
-/// without this a born-bound WSL delegate row would render without the
-/// `[WSL-<distro>]` prefix the session view already shows for in-distro rows.
+/// without this a born-bound WSL delegate row would render without the distro
+/// suffix the session view already shows for in-distro rows.
 /// Re-broadcasts `sessions/changed` only when the location actually changed, so
 /// the host path (no distro) adds no extra push.
 async fn handle_session_born_bound(
@@ -6900,11 +7209,7 @@ async fn retire_ownerless_orphan_session(
             session_id = %session_id,
             "retirement deadline expired waiting for ownerless orphan lifecycle gate; deferring exact orphan cleanup"
         );
-        schedule_deferred_ownerless_orphan_cleanup(
-            state,
-            agent_key.clone(),
-            session_id.clone(),
-        );
+        schedule_deferred_ownerless_orphan_cleanup(state, agent_key.clone(), session_id.clone());
         return ReplacedSessionCleanup::LogicalFallback;
     };
 

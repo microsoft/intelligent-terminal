@@ -219,13 +219,15 @@ sendEventCmd->callback([&]() {
 Usage:
 
 ```bash
-# Simple lifecycle event
-wtcli send-event -e agent.started '{"agent":"copilot-cli","version":"1.2.0"}'
+# Simple lifecycle event, attributed to this pane
+wtcli send-event -p "$WT_SESSION" -e agent.started '{"agent":"copilot-cli","version":"1.2.0"}'
 
 # Task completion with exit code
 wtcli send-event -p 3 -e agent.task.completed '{"task_id":"abc","exit_code":0,"summary":"Built successfully"}'
 
-# Minimal — just the event type (pane auto-resolved from active pane)
+# Minimal — just the event type. Without -p the event is published with an
+# empty `pane_id`, i.e. "source pane unknown". It is NOT attributed to the
+# focused pane; see `doc/wtcli-commands.md`.
 wtcli send-event -e agent.idle
 ```
 

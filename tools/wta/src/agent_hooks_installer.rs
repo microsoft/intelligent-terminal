@@ -91,7 +91,7 @@
 // Public surface for `wta hooks <action>` (Track 2 / #18)
 // -------------------------------------------------------
 //
-// In addition to the install entry point [`ensure_installed`], this module
+// In addition to the install entry point [`apply_install_plan`], this module
 // exposes two read-only / best-effort APIs the Settings UI and
 // `Verify-AgentHooks.ps1` consume:
 //
@@ -676,54 +676,106 @@ pub struct InstallFailure {
     pub reason: String,
 }
 
-/// Top-level entry point. Run once at wta startup. Idempotent and silent on
-/// failure: if a CLI isn't installed, we skip it; if its settings.json is
-/// malformed, we leave it alone.
-pub fn ensure_installed() {
-    let _ = ensure_installed_scoped(CliScope::All);
+/// What an install pass should do for one CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallAction {
+    /// The bridge is complete and not known to be behind the bundle. Nothing
+    /// to do.
+    Skip,
+    /// Nothing usable is registered — or what is registered is partial,
+    /// disabled, or points at a path that no longer exists. Run the first-run
+    /// install flow.
+    Install,
+    /// The bridge is complete but older than the bundle. Run the per-CLI
+    /// upgrade flow, **not** the install flow: every supported CLI answers a
+    /// second `plugin install` with "already installed" and changes nothing,
+    /// so installing here would report a success that never happened.
+    Upgrade,
 }
 
-/// Install hooks for the specified scope (all CLIs or a single one).
+/// Decide what an install pass should do for one CLI, from its status row.
 ///
-/// Returns the CLIs whose install actively failed. Startup callers ignore it —
-/// a failed hook install must never block wta from starting — but the
-/// `wta hooks install` command reports it, because an install that failed
-/// silently is indistinguishable from one that worked.
-pub fn ensure_installed_scoped(scope: CliScope) -> Vec<InstallFailure> {
+/// Pure — no IO, no spawns. Splits the three cases the Settings "Install
+/// hooks" button has to tell apart:
+///
+///   * incomplete in any way (not on PATH, marketplace missing or pointing at
+///     a pruned path, plugin missing or disabled, or a verdict that came from
+///     filesystem heuristics rather than the CLI itself) → [`InstallAction::Install`];
+///   * complete but a release behind the bundle → [`InstallAction::Upgrade`],
+///     because `install` cannot upgrade — that needs `plugin update` /
+///     `extensions update` / a Codex reinstall;
+///   * complete and not provably behind → [`InstallAction::Skip`].
+///
+/// An unreadable version on either side lands in `Skip`: we can't prove the
+/// bridge is stale, running `install` against it would no-op anyway, and
+/// [`upgrade_installed_hooks`] re-checks it at master startup with a richer
+/// probe than [`CliStatus`] carries.
+pub fn decide_install_action(status: &CliStatus) -> InstallAction {
+    let complete = status.binary_on_path
+        && status.marketplace_registered
+        && status.marketplace_path_valid
+        && status.plugin_installed
+        && status.plugin_enabled
+        && status.detection_fallback.is_none();
+    if !complete {
+        return InstallAction::Install;
+    }
+    let parse = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<Version>().ok());
+    match (
+        parse(&status.installed_version),
+        parse(&status.bundle_version),
+    ) {
+        (Some(installed), Some(bundled)) if installed < bundled => InstallAction::Upgrade,
+        _ => InstallAction::Skip,
+    }
+}
+
+/// Execute a per-CLI plan of [`InstallAction`]s.
+///
+/// Per-CLI failures are recorded and the loop continues — one CLI's broken
+/// install must not hide the others. `Skip` entries are accepted and ignored
+/// so callers may pass a full plan or a pre-filtered one.
+pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailure> {
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
         return Vec::new();
     };
     let mut failures = Vec::new();
-    let mut record = |cli: CliKind, outcome: InstallOutcome| {
-        if let InstallOutcome::Failed(reason) = outcome {
+    for (cli, action) in plan.iter().copied() {
+        let failure = match action {
+            InstallAction::Skip => None,
+            InstallAction::Install => match install_one(cli, &home) {
+                InstallOutcome::Failed(reason) => Some(reason),
+                InstallOutcome::Installed | InstallOutcome::Skipped => None,
+            },
+            InstallAction::Upgrade => upgrade_one_cli(cli, &home, read_bundled_version(cli)).err(),
+        };
+        if let Some(reason) = failure {
             failures.push(InstallFailure {
                 cli: cli.name(),
                 reason,
             });
         }
-    };
-    if scope.includes(CliKind::Claude) {
-        record(CliKind::Claude, install_for_claude(&home));
-    }
-    if scope.includes(CliKind::Copilot) {
-        record(CliKind::Copilot, install_for_copilot(&home));
-    }
-    if scope.includes(CliKind::Gemini) {
-        record(CliKind::Gemini, install_for_gemini(&home));
-    }
-    if scope.includes(CliKind::Codex) {
-        record(CliKind::Codex, install_for_codex(&home));
-    }
-    if scope.includes(CliKind::OpenCode) {
-        record(CliKind::OpenCode, install_for_opencode(&home));
     }
     failures
 }
 
-/// Run the installer against a specific home directory. Split out from
-/// [`ensure_installed`] so tests can drive it with an isolated tempdir
-/// without mutating `USERPROFILE`/`HOME` for the whole process.
+/// Per-CLI dispatch for the first-run install flow.
+fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
+    match cli {
+        CliKind::Copilot => install_for_copilot(home),
+        CliKind::Claude => install_for_claude(home),
+        CliKind::Gemini => install_for_gemini(home),
+        CliKind::Codex => install_for_codex(home),
+        CliKind::OpenCode => install_for_opencode(home),
+    }
+}
+
+/// Run every per-CLI install flow against a specific home directory.
+///
+/// Test-only: it exists so tests can drive the installers against an isolated
+/// tempdir without mutating `USERPROFILE`/`HOME` for the whole process.
+#[cfg(test)]
 fn ensure_installed_in(home: &Path) {
     install_for_claude(home);
     install_for_copilot(home);
@@ -936,12 +988,7 @@ fn install_for_codex(_home: &Path) -> InstallOutcome {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
-        "codex",
-        &["plugin", "add", &plugin_ref],
-        "agent_hooks",
-        &[],
-    ) {
+    match run_plugin_cli("codex", &["plugin", "add", &plugin_ref], "agent_hooks", &[]) {
         Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
@@ -1280,8 +1327,7 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
         false
     };
     if support_dir.exists() {
-        let managed_support =
-            opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
+        let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
             || installed_js_managed;
         if !managed_support {
             return Err(std::io::Error::new(
@@ -1530,8 +1576,8 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
     let mkt_ok = join_or_run_plugin_cli(mkt_handle, "copilot", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_copilot_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_presence, mkt_ok) {
         out.plugin_installed = p.installed;
@@ -1719,8 +1765,8 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
 
     let plugin_json =
         join_or_run_plugin_cli(plugin_handle, "claude", &["plugin", "list", "--json"])
-    .filter(|o| o.success)
-    .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
+            .filter(|o| o.success)
+            .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
     let mkt_json = join_or_run_plugin_cli(
         mkt_handle,
         "claude",
@@ -2114,25 +2160,25 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
 /// exists, and `root_path` is the remainder of that row trimmed.
 fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
     for line in stdout.lines() {
-       let line = line.trim();
-       // Skip header and blank lines.
-       if line.is_empty() || line.starts_with("MARKETPLACE") {
-           continue;
-       }
-       let mut split = line.splitn(2, char::is_whitespace);
-       let name = match split.next() {
-           Some(s) => s.trim(),
-           None => continue,
-       };
-       if name == MARKETPLACE_NAME {
-           let rest = split.next().unwrap_or("").trim();
+        let line = line.trim();
+        // Skip header and blank lines.
+        if line.is_empty() || line.starts_with("MARKETPLACE") {
+            continue;
+        }
+        let mut split = line.splitn(2, char::is_whitespace);
+        let name = match split.next() {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        if name == MARKETPLACE_NAME {
+            let rest = split.next().unwrap_or("").trim();
             let path = if rest.is_empty() {
                 None
             } else {
                 Some(rest.to_string())
             };
-           return (true, path);
-       }
+            return (true, path);
+        }
     }
     (false, None)
 }
@@ -2145,34 +2191,34 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
     // We accept either the qualified or bare form (forward-compat).
     let qualified = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
     for line in stdout.lines() {
-       let line = line.trim_end();
-       if line.is_empty()
-           || line.starts_with("PLUGIN")
-           || line.starts_with("Marketplace ")
-           || line.starts_with("C:\\")
-           || line.starts_with('/')
-           || line.starts_with('.')
-       {
-           continue;
-       }
-       let mut cols = line.split_whitespace();
-       let name = match cols.next() {
-           Some(s) => s,
-           None => continue,
-       };
-       let matches = name == PLUGIN_NAME || name == qualified;
-       if !matches {
-           continue;
-       }
-       let rest: Vec<&str> = cols.collect();
-       if rest.is_empty() {
-           return false;
-       }
-       // Status column starts here. Only an "installed*" status
-       // (installed / installed, enabled / installed, disabled)
-       // counts as installed — "not installed", "available", and
-       // any other status mean the plugin is not active.
-       return rest[0].starts_with("installed");
+        let line = line.trim_end();
+        if line.is_empty()
+            || line.starts_with("PLUGIN")
+            || line.starts_with("Marketplace ")
+            || line.starts_with("C:\\")
+            || line.starts_with('/')
+            || line.starts_with('.')
+        {
+            continue;
+        }
+        let mut cols = line.split_whitespace();
+        let name = match cols.next() {
+            Some(s) => s,
+            None => continue,
+        };
+        let matches = name == PLUGIN_NAME || name == qualified;
+        if !matches {
+            continue;
+        }
+        let rest: Vec<&str> = cols.collect();
+        if rest.is_empty() {
+            return false;
+        }
+        // Status column starts here. Only an "installed*" status
+        // (installed / installed, enabled / installed, disabled)
+        // counts as installed — "not installed", "available", and
+        // any other status mean the plugin is not active.
+        return rest[0].starts_with("installed");
     }
     false
 }
@@ -2392,8 +2438,7 @@ fn preserve_copilot_registration(home: Option<&Path>, messages: &mut Vec<String>
         .and_then(|entries| {
             entries.iter().find(|entry| {
                 entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
-                    && entry.get("marketplace").and_then(Value::as_str)
-                        == Some(MARKETPLACE_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str) == Some(MARKETPLACE_NAME)
             })
         })
     else {
@@ -2715,11 +2760,8 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
         if support_dir_empty {
             if let Err(e) = fs::remove_dir(&support_dir) {
                 removed = false;
-                out.messages.push(format!(
-                    "failed to remove {}: {}",
-                    support_dir.display(),
-                    e
-                ));
+                out.messages
+                    .push(format!("failed to remove {}: {}", support_dir.display(), e));
             }
         }
     }
@@ -3558,8 +3600,8 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
     );
 
     let mkt = join_or_run_plugin_cli(mkt_handle, "codex", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_codex_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_codex_marketplace_list(&o.stdout));
     let plugin = join_or_run_plugin_cli(
         plugin_handle,
         "codex",
@@ -3898,8 +3940,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
         .and_then(|entries| {
             entries.iter().find(|entry| {
                 entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
-                    && entry.get("marketplace").and_then(Value::as_str)
-                        == Some(MARKETPLACE_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str) == Some(MARKETPLACE_NAME)
             })
         })
     else {
@@ -4200,12 +4241,7 @@ impl UpgradeState {
         }
     }
 
-    fn record_completed(
-        &mut self,
-        cli: CliKind,
-        version: Option<String>,
-        completed: bool,
-    ) -> bool {
+    fn record_completed(&mut self, cli: CliKind, version: Option<String>, completed: bool) -> bool {
         if !completed {
             return false;
         }
@@ -4441,7 +4477,7 @@ pub fn upgrade_installed_hooks() {
         }
 
         // Cache miss (or first ever run): do the full per-CLI check.
-        let completed = upgrade_one_cli(cli, &home, bundle_version);
+        let completed = upgrade_one_cli(cli, &home, bundle_version).is_ok();
 
         // Cache completed checks, including intentional skips. Failed
         // OpenCode file copies must retry on the next startup.
@@ -4508,7 +4544,15 @@ fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
 }
 
 /// Per-CLI upgrade entry: read installed state, decide, dispatch.
-fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
+///
+/// `Err` carries a user-facing reason so `wta hooks install` can name what
+/// went wrong per CLI; `upgrade_installed_hooks` only needs the pass/fail bit
+/// because the individual upgrade helpers already log their own errors.
+fn upgrade_one_cli(
+    cli: CliKind,
+    home: &Path,
+    bundle_version: Option<Version>,
+) -> Result<(), String> {
     let probe = probe_installed(cli, home);
     let installed = match probe {
         Ok(installed) => installed,
@@ -4519,7 +4563,9 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
                 err = %error,
                 "failed to detect installed hook version; leaving cache unchanged for retry",
             );
-            return false;
+            return Err(format!(
+                "failed to detect the installed hook version: {error}"
+            ));
         }
     };
 
@@ -4540,7 +4586,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         "upgrade decision",
     );
 
-    match action {
+    let succeeded = match action {
         UpgradeAction::Skip(_) => true,
         UpgradeAction::UpdatePlugin => match cli {
             CliKind::Copilot => upgrade_copilot(home),
@@ -4587,6 +4633,17 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
         UpgradeAction::OpenCodeCopy => install_for_opencode(home).installed(),
+    };
+    if succeeded {
+        Ok(())
+    } else {
+        // The helper that failed has already logged the concrete command and
+        // stderr; threading that string back through five `bool`-returning
+        // upgrade paths would be a bigger change than the report is worth.
+        Err(format!(
+            "{} hook upgrade failed; see wta-install-hooks.log",
+            cli.name()
+        ))
     }
 }
 

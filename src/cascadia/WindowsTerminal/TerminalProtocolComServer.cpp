@@ -174,6 +174,21 @@ static winrt::TerminalApp::TerminalPage _getPage(AppHost* host)
     return root.try_as<winrt::TerminalApp::TerminalPage>();
 }
 
+static std::shared_ptr<AppHost> _getMostRecentHost(const std::vector<std::shared_ptr<AppHost>>& windows) noexcept
+{
+    int64_t latest = INT64_MIN;
+    std::shared_ptr<AppHost> result;
+    for (const auto& host : windows)
+    {
+        if (const auto activated = host->GetLastActivatedTime(); activated > latest)
+        {
+            latest = activated;
+            result = host;
+        }
+    }
+    return result;
+}
+
 // Parse a JSON string into Json::Value
 static bool _parseJson(const std::string& str, Json::Value& out)
 {
@@ -544,10 +559,11 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    const auto host = s_emperor->GetMostRecentWindow();
+    const auto windows = s_emperor->GetWindows();
+    const auto host = _getMostRecentHost(windows);
     RETURN_HR_IF(E_FAIL, !host);
 
-    const auto page = _getPage(host);
+    const auto page = _getPage(host.get());
     RETURN_HR_IF(E_FAIL, !page);
 
     auto info = page.GetProtocolActivePane().get();
@@ -569,10 +585,11 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    const auto mostRecent = s_emperor->GetMostRecentWindow();
+    const auto windows = s_emperor->GetWindows();
+    const auto mostRecent = _getMostRecentHost(windows);
     Json::Value arr(Json::arrayValue);
 
-    for (const auto& host : s_emperor->GetWindows())
+    for (const auto& host : windows)
     {
         const auto logic = host->Logic();
         if (!logic)
@@ -583,7 +600,7 @@ try
         Protocol::WindowInfo info{};
         info.WindowId = props.WindowId();
         info.Title = props.WindowNameForDisplay();
-        info.IsFocused = (host.get() == mostRecent);
+        info.IsFocused = (host == mostRecent);
         info.TabCount = logic.TabCount();
         arr.append(_toJson(info));
     }
@@ -779,19 +796,30 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // Find target window.
-    AppHost* targetHost = nullptr;
+    // Hold a strong snapshot while resolving and dispatching to the target.
+    // A drag can add or remove WindowEmperor entries concurrently with this
+    // COM MTA call.
+    const auto windows = s_emperor->GetWindows();
+    std::shared_ptr<AppHost> targetHost;
     if (windowId != 0)
     {
-        targetHost = s_emperor->GetWindowById(windowId);
+        for (const auto& host : windows)
+        {
+            const auto logic = host->Logic();
+            if (logic && logic.WindowProperties().WindowId() == windowId)
+            {
+                targetHost = host;
+                break;
+            }
+        }
     }
     else
     {
-        targetHost = s_emperor->GetMostRecentWindow();
+        targetHost = _getMostRecentHost(windows);
     }
     RETURN_HR_IF(E_FAIL, !targetHost);
 
-    const auto page = _getPage(targetHost);
+    const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
 
     // Build NewTerminalArgs.

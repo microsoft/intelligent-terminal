@@ -689,10 +689,7 @@ mod tests {
         assert_eq!(context.binding.session_id, "session");
         assert_eq!(context.binding.prompt_id, 1);
         assert_eq!(
-            manager
-                .begin_mcp_validation("other")
-                .unwrap_err()
-                .status,
+            manager.begin_mcp_validation("other").unwrap_err().status,
             ProposalValidationStatus::Stale
         );
     }

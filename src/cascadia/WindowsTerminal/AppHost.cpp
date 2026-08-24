@@ -334,15 +334,20 @@ void AppHost::Close()
 
     _window->Close();
 
-    if (_windowLogic)
+    winrt::TerminalApp::TerminalWindow logic{ nullptr };
     {
-        _windowLogic.DismissDialog();
-        _windowLogic = nullptr;
+        std::lock_guard lock{ _stateMutex };
+        logic = std::exchange(_windowLogic, nullptr);
+    }
+    if (logic)
+    {
+        logic.DismissDialog();
     }
 }
 
 int64_t AppHost::GetLastActivatedTime() const noexcept
 {
+    std::lock_guard lock{ _stateMutex };
     return _lastActivatedTime.QuadPart;
 }
 
@@ -876,7 +881,12 @@ void AppHost::_WindowActivated(bool activated)
 
     if (activated)
     {
-        QueryPerformanceCounter(&_lastActivatedTime);
+        LARGE_INTEGER activatedTime;
+        QueryPerformanceCounter(&activatedTime);
+        {
+            std::lock_guard lock{ _stateMutex };
+            _lastActivatedTime = activatedTime;
+        }
         _virtualDesktopId = {};
     }
 }
@@ -1325,6 +1335,7 @@ safe_void_coroutine AppHost::_WindowInitializedHandler(const winrt::Windows::Fou
 
 winrt::TerminalApp::TerminalWindow AppHost::Logic()
 {
+    std::lock_guard lock{ _stateMutex };
     return _windowLogic;
 }
 

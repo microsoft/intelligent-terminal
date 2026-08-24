@@ -5,7 +5,7 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
-use crate::app::tab_state::collapsed_prompt_preview;
+use crate::app::tab_state::{collapsed_prompt_preview, PendingTerminalActionProposal};
 use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 
@@ -78,6 +78,41 @@ pub(super) fn test_app() -> App {
     )
 }
 
+fn test_app_with_restart_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::AgentLifecycleRequest>,
+) {
+    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        restart_rx,
+    )
+}
+
 fn test_app_with_drop_session_rx() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
@@ -111,6 +146,53 @@ fn test_app_with_drop_session_rx() -> (
         ),
         drop_session_rx,
     )
+}
+
+fn agent_rebind_event(tab_id: &str, generation: u64, agent_id: &str) -> AppEvent {
+    agent_rebind_event_for_window(
+        "window-1",
+        tab_id,
+        generation,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+    )
+}
+
+fn agent_rebind_event_for_window(
+    window_id: &str,
+    tab_id: &str,
+    generation: u64,
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": format!("op-{generation}"),
+            "generation": generation,
+            "window_id": window_id,
+            "tab_id": tab_id,
+            "agent_id": agent_id,
+            "agent_source": source.kind(),
+            "wsl_distro": source.distro(),
+            "acp_model": ""
+        }),
+    }
+}
+
+fn passed_preflight(agent_id: &str, display_name: &str) -> PreflightResult {
+    PreflightResult {
+        agent_id: agent_id.into(),
+        display_name: display_name.into(),
+        cli_status: CheckStatus::Passed,
+        cli_path: Some(format!(r"C:\Agents\{agent_id}.exe")),
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }
 }
 
 #[test]
@@ -762,6 +844,114 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
         AgentStatus::Attention,
         "fallback must require a trustworthy cli_source hint to avoid \
          routing sessionless events into unrelated CLIs",
+    );
+}
+
+/// The WTA-side half of the `wtcli send-event` pane contract: an event whose
+/// `pane_id` is empty must not touch any *other* session's pane binding.
+///
+/// `send-event` publishes an empty `pane_id` when the caller could not
+/// identify its pane (a legacy hook bundle whose CLI never inherited
+/// `WT_SESSION`). It used to substitute `GetActivePane()` instead, which fed
+/// the focused pane's GUID into exactly this reducer — and `SessionStarted`'s
+/// orphan-handover branch then demoted the focused pane's real session to
+/// `Ended` and unbound it, because a new key appeared to claim its pane.
+///
+/// This pins the property that makes publishing empty safe: `pane_known` is
+/// false, so no handover runs, `active_by_pane` is untouched, and the
+/// bystander session survives intact.
+#[test]
+fn empty_pane_session_start_does_not_evict_a_bound_session() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    let bystander_pane = "11111111-1111-1111-1111-111111111111";
+    reg.apply(SessionEvent::SessionStarted {
+        key: "bystander-sid".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: bystander_pane.into(),
+        cwd: std::path::PathBuf::from("/work"),
+        title: "bystander".into(),
+    });
+    reg.take_dirty();
+
+    // A different session starts, carrying a real agent_session_id but no pane
+    // — the agent-pane / pane-less hook shape.
+    let params = json!({
+        "event": "agent.session.start",
+        "cli_source": "copilot",
+        "agent_session_id": "paneless-sid",
+        "payload": { "cwd": "C:\\elsewhere" }
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+
+    let bystander = reg
+        .get(&"bystander-sid".to_string())
+        .expect("bystander row preserved");
+    assert_eq!(
+        bystander.status,
+        AgentStatus::Idle,
+        "a pane-less session start must not end an unrelated session",
+    );
+    assert_eq!(
+        bystander.pane_session_id.as_deref(),
+        Some(bystander_pane),
+        "a pane-less session start must not steal another session's pane binding",
+    );
+
+    let paneless = reg
+        .get(&"paneless-sid".to_string())
+        .expect("pane-less row created");
+    assert_eq!(
+        paneless.pane_session_id, None,
+        "an empty pane_id must stay unbound rather than adopt some other pane",
+    );
+}
+
+/// Counterpart: the pane-less row must not be reachable through
+/// `active_by_pane` either, or a later `PaneClosed` for an unrelated pane
+/// could end it. The empty string is not a pane, so it must never become a
+/// key in that map.
+#[test]
+fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    let mut reg = AgentSessionRegistry::new();
+    let params = json!({
+        "event": "agent.session.start",
+        "cli_source": "copilot",
+        "agent_session_id": "paneless-sid",
+        "payload": {}
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+    reg.take_dirty();
+
+    // A PaneClosed for the empty "pane" must not resolve to the row.
+    reg.apply(SessionEvent::PaneClosed {
+        pane_session_id: String::new(),
+    });
+
+    assert_eq!(
+        reg.get(&"paneless-sid".to_string()).unwrap().status,
+        AgentStatus::Idle,
+        "an empty pane id must not be a lookup key, so it cannot end the row",
+    );
+
+    // And a second pane-less session must not collide with the first through
+    // the pane map.
+    let params2 = json!({
+        "event": "agent.session.start",
+        "cli_source": "claude",
+        "agent_session_id": "paneless-sid-2",
+        "payload": {}
+    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_| {});
+    assert_eq!(
+        reg.get(&"paneless-sid".to_string()).unwrap().status,
+        AgentStatus::Idle,
+        "two pane-less sessions must coexist; neither may evict the other",
+    );
+    assert_eq!(
+        reg.get(&"paneless-sid-2".to_string()).unwrap().status,
+        AgentStatus::Idle,
     );
 }
 
@@ -2886,13 +3076,606 @@ fn non_overridden_pane_follows_global_model() {
 }
 
 #[test]
+fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.agent_name = "GitHub Copilot".into();
+    app.agent_model = Some("old-model".into());
+    app.session_id = "old-session".into();
+    app.available_models = vec![model_info("old-model")];
+    app.current_model_id = Some("old-model".into());
+    app.mode = AppMode::Setup;
+    app.preflight_setup_active = true;
+    {
+        let tab = app.tab_mut("owner-tab");
+        tab.input = "keep this draft".into();
+        tab.cursor_pos = tab.input.len();
+        tab.messages.push(ChatMessage::Agent("old response".into()));
+        tab.session_id = Some("old-session".into());
+        tab.usage = Some(usage_snapshot());
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("loading-old-session".into());
+        tab.model_picker_open = true;
+        tab.model_picker_selected = 3;
+        tab.config_picker = ConfigPickerState::Values {
+            option_id: "old-config".into(),
+            selected: 2,
+            parent_selected: Some(1),
+        };
+        tab.config_pending_id = Some("old-config".into());
+        tab.agent_picker_open = true;
+        tab.agent_picker_selected = 2;
+        tab.pending_terminal_action_proposal = Some(PendingTerminalActionProposal {
+            proposal_id: "old-proposal".into(),
+            session_id: "old-session".into(),
+            prompt_id: 42,
+            is_autofix: false,
+            recommendations: RecommendationSet {
+                recommended_choice: None,
+                choices: Vec::new(),
+            },
+        });
+        tab.active_direct_proposal_id = Some("old-direct-proposal".into());
+        tab.autofix.generation = 7;
+        tab.autofix.pane_id = Some("failing-pane".into());
+        tab.autofix.suggested_pane_id = Some("failing-pane".into());
+        tab.autofix.bar_snapshot = AutofixBarSnapshot::Pending {
+            pane_id: "failing-pane".into(),
+            summary: "old failure".into(),
+        };
+    }
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        Some("old-model".into()),
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("other-tab", 1, "claude"));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+
+    match restart_rx
+        .try_recv()
+        .expect("matching helper should begin a controlled reconnect")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => {
+            assert_eq!(request.agent_id, "claude");
+            assert_eq!(request.generation, 1);
+            assert!(request.acp_model.is_none());
+        }
+        other => panic!("expected RebindAgent, got {other:?}"),
+    }
+    assert_eq!(app.current_agent_id, "claude");
+    assert!(app.agent_name.is_empty());
+    assert!(app.agent_model.is_none());
+    assert!(app.session_id.is_empty());
+    assert!(app.available_models.is_empty());
+    assert!(app.current_model_id.is_none());
+    assert_eq!(app.current_tab().input, "keep this draft");
+    assert!(app.current_tab().messages.is_empty());
+    assert!(app.current_tab().session_id.is_none());
+    assert!(app.current_tab().usage.is_none());
+    assert!(!app.current_tab().loading_session);
+    assert!(app.current_tab().loading_target_session_id.is_none());
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().config_picker,
+        ConfigPickerState::Closed
+    ));
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().agent_picker_open);
+    assert!(app.current_tab().pending_terminal_action_proposal.is_none());
+    assert!(app.current_tab().active_direct_proposal_id.is_none());
+    assert_eq!(app.current_tab().autofix.generation, 8);
+    assert!(app.current_tab().autofix.pane_id.is_none());
+    assert!(app.current_tab().autofix.suggested_pane_id.is_none());
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+    assert_eq!(app.mode, AppMode::Chat);
+    assert!(!app.preflight_setup_active);
+    assert!(app.auth.is_none());
+    assert!(app.setup.is_none());
+    let deferred = app
+        .deferred_acp
+        .as_ref()
+        .expect("agent target should remain available for reconnect");
+    assert_eq!(deferred.agent_id.as_deref(), Some("claude"));
+    assert!(deferred.acp_model.is_none());
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".into(),
+        display_name: "GitHub Copilot".into(),
+        cli_status: CheckStatus::Failed("stale result".into()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+    assert_eq!(
+        app.mode,
+        AppMode::Chat,
+        "late setup results from the outgoing agent must be ignored"
+    );
+
+    app.handle_event(AppEvent::AgentClientFailed);
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+            detail: "outgoing client failed".into(),
+        },
+        message: "outgoing client failed".into(),
+    });
+    assert!(!app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "the outgoing client's startup error must not leak into the new agent chat"
+    );
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+}
+
+#[test]
+fn agent_rebind_accepts_only_the_helpers_current_execution_source() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        app.current_agent_source.clone(),
+        Some("/home/user/project".into()),
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event_for_window(
+        "window-1",
+        "owner-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Wsl {
+            distro: "Debian".into(),
+        },
+    ));
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(app.current_agent_id, "copilot");
+
+    app.handle_event(agent_rebind_event_for_window(
+        "window-1",
+        "owner-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    ));
+    let request = match restart_rx
+        .try_recv()
+        .expect("same-distro WSL rebind should reuse the helper")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(
+        request.agent_source,
+        crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+    assert_eq!(app.current_agent_id, "claude");
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.source_cwd.as_deref()),
+        Some("/home/user/project")
+    );
+}
+
+#[test]
+fn settings_agent_rebind_missing_target_enters_install_setup_after_retirement() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "claude".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "claude --acp".into(),
+        Some("claude".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "copilot"));
+    let retired = match restart_rx
+        .try_recv()
+        .expect("the old transport should be retired before target preflight")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(app.current_agent_id, "copilot");
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectReady(retired));
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: PreflightResult {
+            agent_id: "copilot".into(),
+            display_name: "GitHub Copilot".into(),
+            cli_status: CheckStatus::Failed("Not found on PATH".into()),
+            cli_path: None,
+            auth_status: CheckStatus::Skipped,
+            install_hint: "Install GitHub Copilot".into(),
+            install_url: String::new(),
+            auth_hint: String::new(),
+        },
+    });
+
+    assert_eq!(app.current_agent_id, "copilot");
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.preflight_setup_active);
+    assert!(!app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+    let setup = app
+        .setup
+        .as_ref()
+        .expect("missing target should show Setup");
+    assert_eq!(setup.reason, SetupReason::AgentMissing);
+    assert!(setup.options.iter().any(
+        |option| matches!(option, SetupOption::Install { agent_id, .. } if agent_id == "copilot")
+    ));
+}
+
+#[test]
+fn settings_agent_rebind_invalidates_completed_older_target_preflight() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "claude"));
+    let first = match restart_rx
+        .try_recv()
+        .expect("target A should retire the current transport")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    app.handle_event(AppEvent::AgentReconnectReady(first));
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(app.pending_acp_start);
+
+    app.handle_event(agent_rebind_event("owner-tab", 2, "codex"));
+
+    assert!(
+        !app.pending_acp_start,
+        "accepting target B must invalidate target A's queued ACP startup"
+    );
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Disconnecting(request)
+            if request.agent_id == "codex" && request.generation == 2
+    ));
+    let second = match restart_rx
+        .try_recv()
+        .expect("target B must retire target A before its own preflight")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(!app.pending_acp_start);
+    assert!(
+        matches!(
+            &app.agent_reconnect_state,
+            AgentReconnectState::Disconnecting(request)
+                if request.agent_id == "codex" && request.generation == 2
+        ),
+        "a stale target A completion must not consume target B",
+    );
+
+    app.handle_event(AppEvent::AgentReconnectReady(second));
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
+    assert!(!app.pending_acp_start);
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-2".into(),
+        generation: 2,
+        result: PreflightResult {
+            agent_id: "codex".into(),
+            display_name: "Codex".into(),
+            cli_status: CheckStatus::Failed("Not found on PATH".into()),
+            cli_path: None,
+            auth_status: CheckStatus::Skipped,
+            install_hint: "Install Codex".into(),
+            install_url: String::new(),
+            auth_hint: String::new(),
+        },
+    });
+
+    assert_eq!(app.current_agent_id, "codex");
+    assert_eq!(app.mode, AppMode::Setup);
+    assert_eq!(
+        app.setup.as_ref().map(|setup| &setup.reason),
+        Some(&SetupReason::AgentMissing)
+    );
+    assert!(app.preflight_setup_active);
+    assert!(!app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+}
+
+#[test]
+fn settings_model_rebind_preserves_custom_provider_selection() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": "model-rebind",
+            "generation": 1,
+            "window_id": "window-1",
+            "tab_id": "owner-tab",
+            "agent_id": "copilot",
+            "agent_source": "host",
+            "acp_model": "",
+            "custom_model_selection": "custom:provider:model-a"
+        }),
+    });
+
+    let request = match restart_rx
+        .try_recv()
+        .expect("custom model selection should trigger a controlled reconnect")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+    assert_eq!(
+        request.custom_model_selection.as_deref(),
+        Some("custom:provider:model-a")
+    );
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.custom_model_selection.as_deref()),
+        Some("custom:provider:model-a")
+    );
+}
+
+#[test]
+fn settings_agent_rebind_ignores_stale_generation_and_converges_to_latest_target() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 10, "claude"));
+    let first = match restart_rx
+        .try_recv()
+        .expect("first target should trigger transport retirement")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+
+    app.handle_event(agent_rebind_event("owner-tab", 9, "codex"));
+    assert_eq!(app.current_agent_id, "claude");
+    assert!(restart_rx.try_recv().is_err());
+
+    app.handle_event(agent_rebind_event("owner-tab", 11, "gemini"));
+    assert_eq!(app.current_agent_id, "gemini");
+    assert!(restart_rx.try_recv().is_err());
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("gemini")
+    );
+
+    app.handle_event(AppEvent::AgentReconnectReady(first));
+
+    assert!(!app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("gemini"),
+        "the reconnect must use the newest accepted Settings generation"
+    );
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-11".into(),
+        generation: 11,
+        result: passed_preflight("gemini", "Gemini"),
+    });
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+
+    app.pending_acp_start = false;
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-11".into(),
+        generation: 11,
+        result: passed_preflight("gemini", "Gemini"),
+    });
+    assert!(
+        !app.pending_acp_start,
+        "a duplicate target preflight must not start a second reconnect"
+    );
+
+    app.window_id = Some("window-2".into());
+    app.handle_event(agent_rebind_event_for_window(
+        "window-2",
+        "owner-tab",
+        1,
+        "codex",
+        &crate::agent_source::AgentSource::Host,
+    ));
+    assert_eq!(app.current_agent_id, "codex");
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(AgentLifecycleRequest::RebindAgent(AgentReconnectRequest {
+            window_id,
+            generation: 1,
+            ..
+        })) if window_id == "window-2"
+    ));
+
+    app.handle_event(agent_rebind_event("owner-tab", 12, "claude"));
+    assert_eq!(
+        app.current_agent_id, "codex",
+        "an event delayed from the helper's previous window must be ignored"
+    );
+}
+
+#[test]
 fn global_model_hot_update_is_scoped_to_matching_global_followers() {
     use crate::protocol::acp::client::MasterExtRequest;
 
     let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.window_id = Some("window-1".into());
     app.current_agent_id = "gemini".into();
     app.follows_global_acp_model = true;
     app.current_tab_mut().session_id = Some("gemini-session".into());
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        None,
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
 
     app.handle_event(AppEvent::WtEvent {
         method: "agent_config_changed".into(),
@@ -2929,11 +3712,35 @@ fn global_model_hot_update_is_scoped_to_matching_global_followers() {
         pane_id: String::new(),
         tab_id: None,
         params: serde_json::json!({
+            "window_id": "window-2",
+            "acp_model": "wrong-window-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(
+        app.acp_model.is_none(),
+        "another window's settings event must be ignored"
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "window_id": "window-1",
             "acp_model": "copilot-only-model",
             "target_agent_id": "copilot"
         }),
     });
     assert_eq!(app.acp_model.as_deref(), Some("copilot-only-model"));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.acp_model.as_deref()),
+        Some("copilot-only-model"),
+        "a later transport reconnect must retain the hot-updated model"
+    );
     match master_rx
         .try_recv()
         .expect("matching global-following helper should receive the model")
@@ -3518,13 +4325,13 @@ fn agents_rows_snapshot_preserves_wsl_location() {
 }
 
 /// End-to-end render proof: a WSL `SessionInfo` in the `/sessions`
-/// snapshot must actually paint its bracketed distro tag (`[WSL-Ubuntu]`)
-/// on screen. `agents_rows_snapshot_preserves_wsl_location` proves the
-/// data path and `origin_prefix_shows_distro_for_wsl_rows` proves the
-/// prefix builder; this closes the loop through `crate::ui::render` so a
-/// regression in `agents_view::render`'s own `session_info_to_agent_session`
-/// conversion (a *second* call site, separate from `agents_rows_for_tab`)
-/// can't silently drop the tag.
+/// snapshot must actually paint its distro on screen.
+/// `agents_rows_snapshot_preserves_wsl_location` proves the data path and
+/// `cli_suffix_appends_the_wsl_distro` proves the suffix builder; this closes
+/// the loop through `crate::ui::render` so a regression in
+/// `agents_view::render`'s own `session_info_to_agent_session` conversion (a
+/// *second* call site, separate from `agents_rows_for_tab`) can't silently
+/// drop it.
 #[test]
 fn render_sessions_view_paints_wsl_distro_tag() {
     use crate::agent_sessions::{OriginFilter, SessionLocation};
@@ -3545,11 +4352,17 @@ fn render_sessions_view_paints_wsl_distro_tag() {
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+    // Opening the view for real selects row 0 (`toggle_agents_view`); this test
+    // installs the snapshot directly, so select it here — the distro rides the
+    // CLI suffix, which only surfaces on the selected or active row.
+    app.current_tab_mut().agents_list_state.select(Some(0));
 
     let text = render_to_text(&mut app, 80, 24);
     assert!(
-        text.contains("[WSL-Ubuntu]"),
-        "the /sessions view must paint the bracketed WSL distro tag; rendered:\n{text}"
+        // `session_info_for_test` reports Claude; the distro must ride the same
+        // suffix, right after the provider.
+        text.contains("· claude · Ubuntu"),
+        "the /sessions view must paint the WSL distro beside the CLI; rendered:\n{text}"
     );
 }
 
@@ -4925,6 +5738,19 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
 #[test]
 fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
     let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
     app.handle_event(AppEvent::PostLoginAuthRecovery {
         failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
             message: "auth".to_string(),
@@ -4932,6 +5758,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         tab_id: None,
         agent_id: "copilot".to_string(),
     });
+    let restart_request_id = match &app.auth_recovery_state {
+        AuthRecoveryState::WaitingForMaster { request_id } => request_id.clone(),
+        _ => panic!("auth recovery should wait for its replacement master"),
+    };
     // Common case: transient Reconnecting, NOT the setup screen (no flash).
     assert!(
         !matches!(app.mode, AppMode::Setup),
@@ -4942,20 +5772,60 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         "recovery must show a transient Reconnecting state"
     );
     let generation = app.auth_recovery_generation;
-    // A STALE timer (older generation) must be ignored — it must not force
-    // the sign-in screen onto the current Connecting state.
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(
+        !app.pending_acp_start,
+        "auth recovery must wait until C++ confirms the replacement master"
+    );
+    assert_eq!(
+        app.auth_recovery_generation, generation,
+        "master disconnect must not invalidate the auth-recovery dead-man"
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "unrelated-restart" }),
+    });
+    assert!(
+        !app.pending_acp_start,
+        "another restart must not release this auth-recovery barrier"
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": restart_request_id }),
+    });
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        &app.auth_recovery_state,
+        AuthRecoveryState::Connecting
+    ));
+    let connecting_generation = app.auth_recovery_generation;
+    assert_ne!(
+        connecting_generation, generation,
+        "master readiness must start a separately correlated connection phase"
+    );
+    app.pending_acp_start = false;
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(
+        !app.pending_acp_start,
+        "a late disconnect from the replaced master must not start a duplicate ACP client"
+    );
+    // The master-readiness timer is stale after the matching restart event.
     app.handle_event(AppEvent::AuthRecoveryTimedOut {
         agent_id: "copilot".to_string(),
-        generation: generation.wrapping_sub(1),
+        generation,
     });
     assert!(
         !matches!(app.mode, AppMode::Setup),
         "a stale-generation timeout must be ignored"
     );
-    // Dead-man fallback (restart never took effect) → sign-in screen.
+    // The connection-phase dead-man still surfaces the sign-in screen.
     app.handle_event(AppEvent::AuthRecoveryTimedOut {
         agent_id: "copilot".to_string(),
-        generation,
+        generation: connecting_generation,
     });
     assert!(
         matches!(app.mode, AppMode::Setup),
@@ -4963,17 +5833,233 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
     );
 }
 
-#[test]
-fn master_disconnect_terminates_helper_without_recovery() {
+fn start_timed_auth_recovery() -> (App, String) {
     let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.handle_event(AppEvent::PostLoginAuthRecovery {
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "auth".to_string(),
+        },
+        tab_id: None,
+        agent_id: "copilot".to_string(),
+    });
+    let request_id = match &app.auth_recovery_state {
+        AuthRecoveryState::WaitingForMaster { request_id } => request_id.clone(),
+        _ => panic!("auth recovery should wait for its replacement master"),
+    };
+    (app, request_id)
+}
+
+#[test]
+fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let readiness_generation = app.auth_recovery_generation;
+    assert!(
+        super::app_events::AUTH_RECOVERY_MASTER_READY_TIMEOUT
+            > super::app_events::AUTH_RECOVERY_CONNECTION_TIMEOUT,
+        "waiting for master must extend beyond the eight-second connection timeout"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": request_id }),
+    });
+
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        app.auth_recovery_state,
+        AuthRecoveryState::Connecting
+    ));
+    assert_ne!(
+        app.auth_recovery_generation, readiness_generation,
+        "master readiness must invalidate the readiness deadline"
+    );
+}
+
+#[test]
+fn auth_recovery_missing_master_readiness_times_out_after_retirement_budget() {
+    let (mut app, _) = start_timed_auth_recovery();
+    assert_eq!(
+        super::app_events::AUTH_RECOVERY_MASTER_READY_TIMEOUT,
+        std::time::Duration::from_secs(18),
+        "readiness deadline must cover the 17-second retirement path plus margin"
+    );
+    let generation = app.auth_recovery_generation;
+    app.handle_event(AppEvent::AuthRecoveryTimedOut {
+        agent_id: "copilot".into(),
+        generation,
+    });
+
+    assert!(matches!(app.mode, AppMode::Setup));
+    assert!(matches!(app.auth_recovery_state, AuthRecoveryState::Idle));
+}
+
+#[test]
+fn auth_recovery_connection_timeout_starts_when_master_is_ready() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let readiness_generation = app.auth_recovery_generation;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": request_id }),
+    });
+    let connection_generation = app.auth_recovery_generation;
+    assert_eq!(
+        super::app_events::AUTH_RECOVERY_CONNECTION_TIMEOUT,
+        std::time::Duration::from_secs(8)
+    );
+    assert_ne!(connection_generation, readiness_generation);
+
+    app.handle_event(AppEvent::AuthRecoveryTimedOut {
+        agent_id: "copilot".into(),
+        generation: connection_generation,
+    });
+
+    assert!(matches!(app.mode, AppMode::Setup));
+    assert!(matches!(app.auth_recovery_state, AuthRecoveryState::Idle));
+}
+
+#[test]
+fn master_disconnect_reconnects_retained_custom_wsl_helper() {
+    let mut app = test_app();
+    app.current_agent_id = "custom:local".into();
+    app.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "custom-agent --serve".into(),
+        Some("custom:local".into()),
+        Some("custom-model".into()),
+        None,
+        app.current_agent_source.clone(),
+        Some("/home/user/project".into()),
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.agent_reconnect_state = AgentReconnectState::Preflighting(AgentReconnectRequest {
+        operation_id: "stale-rebind".into(),
+        window_id: "window-1".into(),
+        generation: 1,
+        agent_id: "copilot".into(),
+        acp_model: None,
+        custom_model_selection: None,
+        agent_source: crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        },
+    });
     assert!(!app.should_quit);
 
     app.handle_event(AppEvent::MasterDisconnected);
 
+    assert!(!app.should_quit);
     assert!(
-        app.should_quit,
-        "master disconnect must terminate the helper instead of retaining a recoverable pane"
+        app.pending_acp_start,
+        "master disconnect must reconnect the existing immutable binding"
     );
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.agent_id.as_deref()),
+        Some("custom:local")
+    );
+    let deferred = app.deferred_acp.as_ref().unwrap();
+    assert_eq!(deferred.agent_cmd, "custom-agent --serve");
+    assert_eq!(deferred.acp_model.as_deref(), Some("custom-model"));
+    assert_eq!(deferred.source_cwd.as_deref(), Some("/home/user/project"));
+    assert_eq!(
+        deferred.agent_source,
+        crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+}
+
+#[test]
+fn master_disconnect_without_binding_terminates_helper() {
+    let mut app = test_app();
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(app.should_quit);
+}
+
+#[test]
+fn replacement_master_recovers_helper_failed_during_session_retirement() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.state = ConnectionState::Failed("old master retired the startup session".into());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "normal-restart" }),
+    });
+
+    assert!(app.pending_acp_start);
+    assert!(matches!(app.state, ConnectionState::Connecting(_)));
+    assert!(matches!(&app.auth_recovery_state, AuthRecoveryState::Idle));
+}
+
+#[test]
+fn replacement_master_does_not_duplicate_connected_helper() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.state = ConnectionState::Connected;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({ "operation_id": "normal-restart" }),
+    });
+
+    assert!(!app.pending_acp_start);
 }
 
 /// A one-off protocol error ends the turn while preserving the live session.
@@ -4983,7 +6069,7 @@ fn protocol_error_ends_turn_without_failing_connection() {
     app.state = ConnectionState::Connected;
 
     app.handle_event(AppEvent::AgentError {
-        session_id: None,
+        session_id: Some("live-session".to_string()),
         failure: crate::protocol::acp::failure::AgentFailure::Protocol {
             code: -32603,
             message: "bad params".to_string(),
@@ -4995,6 +6081,31 @@ fn protocol_error_ends_turn_without_failing_connection() {
     assert!(matches!(
         app.current_tab().messages.last(),
         Some(ChatMessage::Error(message)) if message == "protocol error"
+    ));
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
+}
+
+#[test]
+fn startup_protocol_error_fails_connection() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("Creating session...".to_string());
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32603,
+            message: "invalid provider configuration".to_string(),
+        },
+        message: "session creation failed".to_string(),
+    });
+
+    assert_eq!(
+        app.state,
+        ConnectionState::Failed("session creation failed".to_string())
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message == "session creation failed"
     ));
     assert_eq!(app.current_tab().turn, TurnState::Idle);
 }

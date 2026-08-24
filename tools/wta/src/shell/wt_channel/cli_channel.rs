@@ -734,6 +734,7 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "get_active_pane" => self.run_wtcli(&["active-pane"]).await,
+            "get_settings" => self.run_wtcli(&["get-settings"]).await,
             "read_pane_output" => {
                 let pane_id = params
                     .get("session_id")

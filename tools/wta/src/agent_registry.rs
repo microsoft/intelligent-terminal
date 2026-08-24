@@ -302,6 +302,13 @@ pub fn is_known_id(id: &str) -> bool {
     KNOWN_AGENTS.iter().any(|p| p.id == id)
 }
 
+/// Whether a running ACP session can accept model changes without replacing
+/// its agent process. Gemini currently accepts `--model` only at launch.
+pub fn supports_live_model_switch(id: &str) -> bool {
+    let canonical_id = id.to_ascii_lowercase();
+    is_known_id(&canonical_id) && canonical_id != GEMINI_AGENT_ID
+}
+
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
 /// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
 /// `"codex"`, `"gemini"`, `"opencode"` — or `"unknown"` if nothing matches.
@@ -557,6 +564,25 @@ mod tests {
     }
 
     #[test]
+    fn live_model_switch_capability_matches_agent_transport() {
+        for agent in ["copilot", "claude", "codex", "opencode"] {
+            assert!(
+                supports_live_model_switch(agent),
+                "{agent} should keep its live ACP session when the model changes"
+            );
+        }
+        for agent in ["gemini", "custom:test", "unknown", ""] {
+            assert!(
+                !supports_live_model_switch(agent),
+                "{agent:?} must not receive live ACP model changes"
+            );
+        }
+
+        assert!(supports_live_model_switch("CoPiLoT"));
+        assert!(!supports_live_model_switch("GeMiNi"));
+    }
+
+    #[test]
     fn resolve_agent_id_from_cmd_recognises_bare_names_with_flags() {
         assert_eq!(
             resolve_agent_id_from_cmd("copilot --acp --stdio"),
@@ -690,9 +716,9 @@ mod tests {
 
     #[test]
     fn resolve_agent_id_from_cmd_falls_back_to_unknown() {
-        assert_eq!(resolve_agent_id_from_cmd(""),           "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd(""), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("   "), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("npx"), "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
     }
 

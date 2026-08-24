@@ -471,6 +471,22 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
+    // ── get-settings ──
+    auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    getSettingsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value settings;
+        const auto hr = CallJson([&](BSTR* j) { return server->GetSettings(j); }, settings);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(settings);
+    });
+
     // ── active-pane ──
     auto* activePaneCmd = app.add_subcommand("active-pane", "Show the currently active pane");
     activePaneCmd->callback([&]() {
@@ -883,34 +899,28 @@ int wmain(int argc, wchar_t** argv)
     // Guarded by Feature.LegacyHookBundle.Tests.ps1 (C270).
     std::string sendEventType, sendEventJson, sendEventPaneTarget;
     auto* sendEventCmd = app.add_subcommand("send-event", "Publish an event to all listeners")->alias("se");
-    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID)");
+    sendEventCmd->add_option("-p,--pane", sendEventPaneTarget, "Source session ID (GUID); omit when the source pane is unknown");
     sendEventCmd->add_option("-e,--event", sendEventType, "Event type (e.g. agent.task.started)")->required();
     sendEventCmd->add_option("json", sendEventJson, "Event params as JSON object");
     sendEventCmd->callback([&]() {
         auto server = connect();
         if (!server)
             return;
-        std::string resolvedSessionId;
-        if (!sendEventPaneTarget.empty())
-        {
-            resolvedSessionId = sendEventPaneTarget;
-        }
-        else
-        {
-            // Fall back to the active pane as the event source. If there is no
-            // active pane, bail rather than sending with an all-zero GUID,
-            // which would silently misroute the event.
-            const auto activeSid = ResolveSessionId(server.get(), "");
-            if (IsEqualGUID(activeSid, GUID{}))
-            {
-                fprintf(stderr, "[wtcli] send-event: no --pane given and no active pane to use as the event source.\n");
-                exitCode = 1;
-                return;
-            }
-            resolvedSessionId = GuidToString(activeSid);
-        }
+        // No `--pane` publishes an empty `pane_id`, meaning "this event has no
+        // known source pane". It deliberately does NOT fall back to the focused
+        // pane: the callers that omit `--pane` are hook bridges whose process
+        // never inherited WT_SESSION, and the focused pane is simply wherever
+        // the user happens to be looking, so attributing to it is wrong in a
+        // way that corrupts state rather than merely losing it. A legacy bundle
+        // firing `agent.session.start` would evict the focused pane's real
+        // session (the orphan-handover branch in agent_sessions.rs demotes the
+        // previous owner of a reused pane to Ended) and rebind the pane to an
+        // agent that was never in it, so Enter in the session list then focuses
+        // a stranger's pane. Empty is the case WTA already models: `pane_known`
+        // is false, so it skips the handover, leaves `active_by_pane` alone,
+        // and routes by cli_source instead.
         Json::Value evt;
-        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, resolvedSessionId, evt))
+        if (!wtcli::BuildSendEventJson(sendEventType, sendEventJson, sendEventPaneTarget, evt))
         {
             fprintf(stderr, "Invalid JSON for --json: value must be a JSON object (e.g. '{\"key\":\"val\"}')\n");
             exitCode = 1;

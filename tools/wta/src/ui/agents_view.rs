@@ -22,8 +22,8 @@ use crate::ui::shimmer;
 const ACCENT_GREEN: Color = Color::Green; // Active status badge
 const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
 const ACCENT_RED: Color = Color::Red; // Error
-// Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
-// backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
+                                      // Idle / timestamp: a fixed mid-gray reads as "muted" on both light and dark
+                                      // backgrounds (a true middle gray, unlike ANSI 7/8 which flip per scheme).
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
@@ -127,13 +127,7 @@ pub fn render(
         (None, content_area)
     };
     if let Some(search_area) = search_area {
-        render_search(
-            f,
-            search_area,
-            search_query,
-            search_focused,
-            pane_focused,
-        );
+        render_search(f, search_area, search_query, search_focused, pane_focused);
     }
 
     let folded_query = search_query.to_lowercase();
@@ -518,10 +512,7 @@ fn highlight_matches(text: &str, folded_query: &str, base_style: Style) -> Vec<S
         if cursor < start {
             spans.push(Span::styled(text[cursor..start].to_string(), base_style));
         }
-        spans.push(Span::styled(
-            text[start..end].to_string(),
-            highlight_style,
-        ));
+        spans.push(Span::styled(text[start..end].to_string(), highlight_style));
         cursor = end;
     }
     if cursor < text.len() {
@@ -615,24 +606,39 @@ fn badge_style(s: &AgentSession) -> Style {
     }
 }
 
-/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) only on the
-/// active row or the keyboard-selected row — matches the Figma where the
-/// agent icon appears only on the currently-engaged session and avoids
-/// cluttering the historical list.
+/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) and,
+/// for in-distro rows, the WSL distro that runs it — only on the active row or
+/// the keyboard-selected row, matching the Figma where the agent icon appears
+/// only on the currently-engaged session and avoids cluttering the historical
+/// list.
+///
+/// The distro rides this suffix ("· copilot · Ubuntu") rather than a leading
+/// `[WSL-Ubuntu]` tag: `matches_source` already narrows the list to the viewing
+/// pane's own execution source, so every visible row shares one location and the
+/// distro reads as identity, not as disambiguation.
 fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
     let surface = selected || matches!(s.status, AgentStatus::Working | AgentStatus::Attention);
     if !surface {
         return String::new();
     }
-    let label = match s.cli_source {
-        CliSource::Claude => "claude",
-        CliSource::Codex => "codex",
-        CliSource::Copilot => "copilot",
-        CliSource::Gemini => "gemini",
-        CliSource::OpenCode => "opencode",
-        CliSource::Unknown(_) => return String::new(),
+    let cli = match s.cli_source {
+        CliSource::Claude => Some("claude"),
+        CliSource::Codex => Some("codex"),
+        CliSource::Copilot => Some("copilot"),
+        CliSource::Gemini => Some("gemini"),
+        CliSource::OpenCode => Some("opencode"),
+        CliSource::Unknown(_) => None,
     };
-    format!("· {}", label)
+    let distro = match &s.location {
+        SessionLocation::Wsl { distro } => Some(distro.as_str()),
+        SessionLocation::Host => None,
+    };
+    [cli, distro]
+        .into_iter()
+        .flatten()
+        .map(|part| format!("· {part}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Surface a tiny "originated from the Intelligent Terminal agent pane"
@@ -647,12 +653,6 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
-    // WSL rows get a bracketed `WSL-<distro>` tag (e.g. "[WSL-Ubuntu] ") so
-    // the user can tell in-distro sessions from host ones. WSL rows are never
-    // AgentPane, so this branch is exclusive with the one below.
-    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
-        return Some(format!("[WSL-{distro}] "));
-    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -1119,48 +1119,61 @@ mod tests {
     #[test]
     fn cli_suffix_renders_codex_label_on_selected_row() {
         let s = AgentSession {
-            key:              "k".to_string(),
-            cli_source:       CliSource::Codex,
-            pane_session_id:  None,
-            window_id:        None,
-            tab_id:           None,
-            title:            "codex — test".to_string(),
-            cwd:              std::path::PathBuf::from("."),
-            started_at:       SystemTime::now(),
+            key: "k".to_string(),
+            cli_source: CliSource::Codex,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "codex — test".to_string(),
+            cwd: std::path::PathBuf::from("."),
+            started_at: SystemTime::now(),
             last_activity_at: SystemTime::now(),
-            status:           AgentStatus::Idle,
-            last_error:       None,
-            current_tool:     None,
+            status: AgentStatus::Idle,
+            last_error: None,
+            current_tool: None,
             attention_reason: None,
-            log_path:         None,
-            origin:           SessionOrigin::default(),
-            location:         crate::agent_sessions::SessionLocation::Host,
+            log_path: None,
+            origin: SessionOrigin::default(),
+            location: crate::agent_sessions::SessionLocation::Host,
         };
-        assert_eq!(cli_suffix_for(&s, true),  "· codex");
+        assert_eq!(cli_suffix_for(&s, true), "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());
     }
 
     #[test]
-    fn origin_prefix_shows_distro_for_wsl_rows() {
+    fn cli_suffix_appends_the_wsl_distro() {
         let s = AgentSession {
-            key:              "abc".to_string(),
-            cli_source:       CliSource::Copilot,
-            pane_session_id:  None,
-            window_id:        None,
-            tab_id:           None,
-            title:            "hi".to_string(),
-            cwd:              std::path::PathBuf::from("/home/u"),
-            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            key: "abc".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "hi".to_string(),
+            cwd: std::path::PathBuf::from("/home/u"),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
             last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-            status:           AgentStatus::Historical,
-            last_error:       None,
-            current_tool:     None,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
             attention_reason: None,
-            log_path:         None,
-            origin:           SessionOrigin::Unknown,
-            location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
         };
-        assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
+        assert_eq!(cli_suffix_for(&s, true), "· copilot · Ubuntu");
+        // The distro follows the provider's surfacing rule, so an unselected
+        // idle row stays clean.
+        assert_eq!(cli_suffix_for(&s, false), String::new());
+        // No provider to name still leaves the distro worth showing.
+        let unknown = AgentSession {
+            cli_source: CliSource::Unknown(String::new()),
+            ..s.clone()
+        };
+        assert_eq!(cli_suffix_for(&unknown, true), "· Ubuntu");
+        // WSL rows no longer carry a leading tag.
+        assert_eq!(origin_prefix_for(&s), None);
     }
 
     /// Release checklist §4 "Session states": the inline activity badge shown next to a session
@@ -1183,25 +1196,28 @@ mod tests {
         let _g = crate::test_support::lock_locale();
         set_test_locale();
         let mk = |status: AgentStatus| AgentSession {
-            key:              "k".to_string(),
-            cli_source:       CliSource::Copilot,
-            pane_session_id:  None,
-            window_id:        None,
-            tab_id:           None,
-            title:            "t".to_string(),
-            cwd:              std::path::PathBuf::from("."),
-            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            key: "k".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".to_string(),
+            cwd: std::path::PathBuf::from("."),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
             last_activity_at: std::time::SystemTime::UNIX_EPOCH,
             status,
-            last_error:       None,
-            current_tool:     None,
+            last_error: None,
+            current_tool: None,
             attention_reason: None,
-            log_path:         None,
-            origin:           SessionOrigin::default(),
-            location:         crate::agent_sessions::SessionLocation::Host,
+            log_path: None,
+            origin: SessionOrigin::default(),
+            location: crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
-        assert_eq!(status_badge(&mk(AgentStatus::Attention)), "Waiting for input");
+        assert_eq!(
+            status_badge(&mk(AgentStatus::Attention)),
+            "Waiting for input"
+        );
         assert_eq!(status_badge(&mk(AgentStatus::Idle)), "Idle");
         assert_eq!(status_badge(&mk(AgentStatus::Error)), "Error");
         // Terminal / on-disk rows render an empty badge — no live activity to show.

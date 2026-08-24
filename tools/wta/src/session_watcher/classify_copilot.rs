@@ -136,7 +136,8 @@ mod tests {
 
     #[test]
     fn permission_requested_without_intention_uses_fallback() {
-        let r = rec(r#"{"type":"permission.requested","data":{"permissionRequest":{"kind":"shell"}}}"#);
+        let r =
+            rec(r#"{"type":"permission.requested","data":{"permissionRequest":{"kind":"shell"}}}"#);
         let out = classify(&r, &"sess-1".to_string());
         assert!(matches!(
             out.as_slice(),

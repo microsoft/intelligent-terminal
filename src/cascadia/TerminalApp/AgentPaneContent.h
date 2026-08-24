@@ -73,6 +73,9 @@ namespace winrt::TerminalApp::implementation
             _pendingRenameFromTabId = {};
             return value;
         }
+        void SetTransferSourceTabId(const winrt::hstring& value) noexcept { _transferSourceTabId = value; }
+        winrt::hstring TransferSourceTabId() const noexcept { return _transferSourceTabId; }
+        void ClearTransferSourceTabId() noexcept { _transferSourceTabId = {}; }
         void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
         std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
         {
@@ -95,6 +98,12 @@ namespace winrt::TerminalApp::implementation
         // capability exists before connect (cold start) or after a
         // failure/disconnect, so the button must not appear at all.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
+        // True after the first agent_status routed to this pane. The helper
+        // subscribes to WT events before it can publish that status, so this
+        // also proves that settings events can reach the helper.
+        bool IsHelperEventReady() const noexcept { return _helperEventReady; }
+        winrt::hstring GetAgentName() const noexcept { return _agentName; }
+        winrt::hstring GetAgentModel() const noexcept { return _agentModel; }
         winrt::hstring GetLastErrorPaneId() const noexcept { return _lastErrorPaneId; }
         winrt::hstring GetFixPreview() const noexcept { return _fixPreview; }
         winrt::hstring GetHotkeyHint() const noexcept { return _hotkeyHint; }
@@ -143,6 +152,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
+        bool _helperEventReady{ false };
 
         // When true, the bar replaces the agent/model label with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
@@ -162,6 +172,9 @@ namespace winrt::TerminalApp::implementation
         // fallback; generic settings propagation must not overwrite it.
         winrt::hstring _agentPanePosition{ L"bottom" };
         winrt::hstring _pendingRenameFromTabId{};
+        // The old StableId remains a temporary alias until this replacement
+        // wrapper recovers the helper's first post-transfer status.
+        winrt::hstring _transferSourceTabId{};
         std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
         bool _helperTransferredForDrag{ false };
 

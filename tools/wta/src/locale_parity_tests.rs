@@ -59,11 +59,7 @@ mod tests {
     fn every_locale_has_all_en_us_keys() {
         let dir = locales_dir();
         let en_us = dir.join("en-US.yml");
-        assert!(
-            en_us.exists(),
-            "en-US.yml not found at {}",
-            en_us.display()
-        );
+        assert!(en_us.exists(), "en-US.yml not found at {}", en_us.display());
 
         let base = keys_of(&en_us);
         assert!(
@@ -93,7 +89,11 @@ mod tests {
                 .map(|s| s.as_str())
                 .collect();
             if !missing.is_empty() {
-                failures.push(format!("  {name}: missing {} -> {}", missing.len(), missing.join(", ")));
+                failures.push(format!(
+                    "  {name}: missing {} -> {}",
+                    missing.len(),
+                    missing.join(", ")
+                ));
             }
         }
 

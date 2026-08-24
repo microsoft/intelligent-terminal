@@ -105,7 +105,7 @@ namespace winrt::TerminalApp::implementation
         class TabRetirementTracker
         {
         public:
-            bool BeginRebuild(std::string_view tabId);
+            bool BeginRecreation(std::string_view tabId);
             bool RequestClose(std::string_view tabId);
             bool Complete(std::string_view tabId);
 
@@ -190,6 +190,23 @@ namespace winrt::TerminalApp::implementation
             Generation _currentGeneration{ 0 };
             DWORD _pid{ 0 };
         };
+
+        class UnexpectedExitRecoveryPolicy
+        {
+        public:
+            using Generation = ProcessWaitGenerationTracker::Generation;
+
+            void Arm(Generation generation) noexcept;
+            void Retire() noexcept;
+            bool ShouldRespawn(
+                Generation generation,
+                size_t refCount,
+                bool spawnSuppressed,
+                bool hasCachedArgs) noexcept;
+
+        private:
+            Generation _armedGeneration{ 0 };
+        };
     }
 
     class SharedWta
@@ -246,14 +263,10 @@ namespace winrt::TerminalApp::implementation
 
         /// Force-restart the wta-master process, bypassing the
         /// `AcquirePane`/`ReleasePane` reference count. Used by the
-        /// `/restart` slash command path: the caller (TerminalPage)
-        /// tears down every agent pane around this call, so the
-        /// refcount-based teardown isn't enough — there may be other
-        /// panes' Closed handlers that have yet to fire. After this
-        /// returns, the next `AcquirePane` finds a fresh master
-        /// listening on the same `_masterPipeName` (intentionally
-        /// stable across respawns so any helpers spawned with the old
-        /// cmdline can still find it).
+        /// `/restart` slash command and launch-configuration changes after
+        /// their sessions retire. Existing panes and helpers stay alive; the
+        /// replacement master listens on the same `_masterPipeName` so they
+        /// can reconnect without rebuilding their physical terminal stack.
         ///
         /// Replays the `wtaPath` + `extraArgs` cached from the first
         /// successful spawn so the new master inherits the same
@@ -322,7 +335,8 @@ namespace winrt::TerminalApp::implementation
         // All `*Locked` helpers assume the caller already holds `_mtx`.
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
-                          std::span<const std::pair<std::wstring, std::wstring>> environment);
+                          std::span<const std::pair<std::wstring, std::wstring>> environment,
+                          bool armUnexpectedExitRecovery = true);
         bool _RestartLocked(const std::wstring_view wtaPath,
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
@@ -341,6 +355,7 @@ namespace winrt::TerminalApp::implementation
         wil::unique_handle _job;
         HANDLE _waitHandle{ nullptr };
         details::ProcessWaitGenerationTracker _waitGeneration;
+        details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
         size_t _refCount{ 0 };
         // Generated lazily on first AcquirePane; reused across

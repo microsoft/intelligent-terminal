@@ -1,5 +1,5 @@
-mod agent_popup;
 pub(crate) mod action_panel;
+mod agent_popup;
 pub mod agents_view;
 mod auth;
 pub(crate) mod card;

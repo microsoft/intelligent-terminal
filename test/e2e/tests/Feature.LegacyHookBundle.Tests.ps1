@@ -113,8 +113,61 @@ Describe 'Feature §8 legacy hook bundle compatibility' -Tag 'Feature' -Skip:(-n
         }
     }
 
-    It 'Legacy hook bundle degrades quietly without Terminal (an uninstalled Terminal leaves stale hooks harmless)' {
-        # Uninstalling Terminal removes the bridge but leaves every hook registration
+    It 'Legacy hook bundle without WT_SESSION publishes unattributed (a pane-less legacy hook never hijacks the focused pane)' {
+        # The other half of the un-refreshed-user state. The frozen script only
+        # passes `-p` when it can read WT_SESSION, and a CLI whose hook process
+        # never inherited it (an agent-pane CLI is spawned outside the conpty
+        # chain, so it has none) therefore calls `wtcli send-event` with no pane
+        # at all. `send-event` used to fill that gap with GetActivePane(), which
+        # is not "the pane this agent runs in" but "wherever the user is looking
+        # right now" — so the event bound to a stranger's pane. For
+        # agent.session.start specifically that is destructive rather than merely
+        # wrong: WTA's orphan-handover branch demotes the previous owner of a
+        # reused pane to Ended, so an un-refreshed hook firing while the user
+        # looks at a tracked pane silently kills that pane's real session, and
+        # Enter on the session list then focuses someone else's pane.
+        #
+        # An empty pane_id is the honest answer and one WTA already models
+        # (`pane_known` false -> no handover, no active_by_pane write, route by
+        # cli_source). This case pins that: with no WT_SESSION the event must
+        # still arrive, and must NOT carry the focused pane's id.
+        $paneId = (New-WtTab -App $script:app).session_id
+        $agentSessionId = "legacy-nopane-$([guid]::NewGuid())"
+        $payload = script:Write-Payload -Name 'legacy-nopane' -Dir $TestDrive -Json (@{
+                session_id = $agentSessionId
+                cwd        = 'C:\legacy-hook-test'
+            } | ConvertTo-Json -Compress)
+
+        $legacy = script:Get-LegacyCommand -Event 'agent.session.start'
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            # Clear only WT_SESSION. WT_COM_CLSID stays, so the script runs all
+            # the way through and really publishes -- otherwise "no focused-pane
+            # id" would be satisfied by the event never being sent at all, and
+            # the case would pass for the wrong reason.
+            Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 `
+                -Command "`$env:WT_SESSION=''; Get-Content -Raw -LiteralPath '$payload' | $legacy" | Out-Null
+
+            $event = $null
+            try {
+                $event = Wait-WtEvent -Listener $listener -TimeoutSec 60 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $agentSessionId
+                }
+            }
+            catch { }
+            $event | Should -Not -BeNullOrEmpty -Because 'a pane-less legacy hook must still publish -- dropping it would lose tracking for every un-refreshed user whose CLI has no WT_SESSION'
+
+            $event.params.pane_id | Should -BeNullOrEmpty -Because '`wtcli send-event` without -p must publish an empty pane_id, not resolve one'
+            $event.params.pane_id | Should -Not -Be $paneId -Because 'attributing a pane-less hook to the focused pane is what evicts that pane''s real session'
+        }
+        finally {
+            Stop-WtEventListener -Listener $listener
+            try { Close-WtPane -App $script:app -SessionId $paneId } catch { }
+        }
+    }
+
+    It 'Legacy hook bundle degrades quietly without Terminal (an uninstalled Terminal leaves stale hooks harmless)' {        # Uninstalling Terminal removes the bridge but leaves every hook registration
         # behind. For the legacy bundle the first gate is WT_COM_CLSID: no Terminal,
         # no variable, so the script must exit 0 before it tries anything. Clearing
         # the variable reproduces that gate exactly, and unlike a PATH scrub it cannot

@@ -3,6 +3,21 @@ pub fn send(json_payload: String) {
     let _ = publisher_sender().send(json_payload);
 }
 
+pub(crate) fn restart_agent_stack_event() -> String {
+    restart_agent_stack_event_with_id(&uuid::Uuid::new_v4().to_string())
+}
+
+pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "restart_agent_stack",
+        "params": {
+            "request_id": request_id,
+        },
+    })
+    .to_string()
+}
+
 fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
     static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
         std::sync::OnceLock::new();
@@ -131,6 +146,29 @@ fn publish_blocking(json_payload: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restart_event_has_unique_shared_request_id() {
+        let first: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event()).unwrap();
+        let second: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event()).unwrap();
+
+        let first_request_id = first["params"]["request_id"].as_str().unwrap();
+        let second_request_id = second["params"]["request_id"].as_str().unwrap();
+        assert!(uuid::Uuid::parse_str(first_request_id).is_ok());
+        assert!(uuid::Uuid::parse_str(second_request_id).is_ok());
+        assert_ne!(first_request_id, second_request_id);
+    }
+
+    #[test]
+    fn restart_event_preserves_supplied_request_id() {
+        let event: serde_json::Value =
+            serde_json::from_str(&super::restart_agent_stack_event_with_id("auth-recovery-1"))
+                .unwrap();
+
+        assert_eq!(event["params"]["request_id"], "auth-recovery-1");
+    }
+
     #[test]
     fn publish_command_selects_stdin_transport() {
         let command = super::publish_command(std::path::Path::new("wtcli.exe"));
