@@ -316,7 +316,7 @@ Install path:
 
 ```text
 Settings UI / WTA setup / wta hooks install
-  -> agent_hooks_installer::ensure_installed()
+  -> agent_hooks_installer::apply_install_plan()
   -> resolve wt-agent-hooks bundle
   -> Claude / Copilot plugin manager or Gemini extension manager
   -> persistent CLI hook registration

@@ -10256,7 +10256,7 @@ async fn session_born_bound_marks_born_bound_not_hook_owned() {
 async fn born_bound_wsl_stamps_wsl_location() {
     // A WSL `?<prompt>` delegate registers with a distro; the master must
     // stamp the row `Wsl { distro }` (the reducer defaults to Host) so the
-    // session view renders the [WSL-<distro>] prefix.
+    // session view names the distro in the row suffix.
     let state = make_state();
     let event = crate::agent_sessions::SessionEvent::SessionStarted {
         key: "bb-wsl-loc".to_string(),

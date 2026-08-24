@@ -116,6 +116,11 @@ namespace wtcli
     //                the WT pane GUID, which goes into `params["pane_id"]`
     //                — matching the rename in TerminalPage.cpp for
     //                connection_state / vt_sequence events.
+    //                Empty is valid and means "source pane unknown". WTA
+    //                treats an empty `pane_id` as unattributed rather than
+    //                binding the event to a pane, so callers that cannot
+    //                identify their pane must pass empty instead of
+    //                substituting some other pane.
     inline bool BuildSendEventJson(
         const std::string& eventType,
         const std::string& paramsJson,

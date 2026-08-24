@@ -121,8 +121,11 @@ namespace Microsoft.Terminal.Settings.Editor
 
         // ── Agent Hooks ──────────────────────────────────────────────────
         // Drives the "Agent session tracking (hooks)" expander. Shape:
-        //   Row 1 always: "Install hooks" button — runs `wta hooks install`
-        //                 across every CLI on PATH (idempotent).
+        //   Row 1 always: "Install hooks" button — runs
+        //                 `wta hooks install --only-missing` across every CLI
+        //                 on PATH. Missing / partial / stale bridges are
+        //                 installed, complete but out-of-date ones are
+        //                 upgraded, and complete current ones are left alone.
         //   Rows 2+ : one per CLI that currently has any hook state on
         //             disk (marketplace registered OR plugin installed),
         //             whether fully installed or partial. Each row exposes

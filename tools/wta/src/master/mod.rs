@@ -6206,8 +6206,8 @@ async fn handle_session_hook(
 /// Applies the event exactly like [`handle_session_hook`] (binding-only), then —
 /// for a WSL delegate — stamps the freshly-created row `SessionLocation::Wsl {
 /// distro }`. The `SessionStarted` reducer defaults every row to `Host`, so
-/// without this a born-bound WSL delegate row would render without the
-/// `[WSL-<distro>]` prefix the session view already shows for in-distro rows.
+/// without this a born-bound WSL delegate row would render without the distro
+/// suffix the session view already shows for in-distro rows.
 /// Re-broadcasts `sessions/changed` only when the location actually changed, so
 /// the host path (no distro) adds no extra push.
 async fn handle_session_born_bound(
