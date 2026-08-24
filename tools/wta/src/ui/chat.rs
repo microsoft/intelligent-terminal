@@ -190,49 +190,20 @@ fn tool_detail_lines(
     lines
 }
 
-/// Estimate the chat block's natural height (in visual rows) given the
-/// rendering width. Counts wraps for each message + completed turn. Used by
-/// `layout::render` to size the
-/// chat area so the rec panel sits directly below content instead of being
-/// pushed to the pane bottom by a `Min(1)` spacer.
-pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
+/// Estimate the chat block's natural height (in visual rows), saturated at
+/// `max_height`. Layout only needs an exact height while the content fits;
+/// once the chat fills the available rows, measuring older history cannot
+/// change the layout.
+pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
+    let max_height = max_height.max(1) as usize;
     // Fetch once for the pending-height calculation.
     let pending_text = pending_render_text(tab);
 
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
-    let messages: usize = tab
-        .messages
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| Some(*index) != streaming_index)
-        .map(|(index, message)| {
-            rendered_lines_height(
-                &build_message_lines(
-                    message,
-                    index + 1 == tab.messages.len(),
-                    tab.turn.is_streaming(),
-                    permission_tool_call_id,
-                    tab.activity_frame,
-                    wrap_width,
-                ),
-                wrap_width,
-            )
-        })
-        .sum();
-    let turns: usize = tab
-        .completed_turns
-        .iter()
-        .map(|turn| {
-            rendered_lines_height(
-                &build_completed_turn_lines(turn, false, false, wrap_width),
-                wrap_width,
-            )
-        })
-        .sum();
-    let pending = pending_text
+    let mut height = pending_text
         .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
         .unwrap_or(0);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
@@ -246,9 +217,42 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
         0
     };
 
-    (messages + turns + pending + welcome)
-        .max(1)
-        .min(u16::MAX as usize) as u16
+    height = height.saturating_add(welcome);
+    if height >= max_height {
+        return max_height as u16;
+    }
+
+    for (index, message) in tab.messages.iter().enumerate().rev() {
+        if Some(index) == streaming_index {
+            continue;
+        }
+        height = height.saturating_add(rendered_lines_height(
+            &build_message_lines(
+                message,
+                index + 1 == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
+                wrap_width,
+            ),
+            wrap_width,
+        ));
+        if height >= max_height {
+            return max_height as u16;
+        }
+    }
+
+    for turn in tab.completed_turns.iter().rev() {
+        height = height.saturating_add(rendered_lines_height(
+            &build_completed_turn_lines(turn, false, false, wrap_width),
+            wrap_width,
+        ));
+        if height >= max_height {
+            return max_height as u16;
+        }
+    }
+
+    height.max(1) as u16
 }
 
 #[cfg(test)]

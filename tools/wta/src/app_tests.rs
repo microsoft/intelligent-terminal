@@ -10084,14 +10084,195 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
         .push(ChatMessage::User("hello".into()));
 
     app.state = ConnectionState::Disconnected;
-    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let without_activity = crate::ui::chat::estimated_block_height(&app, 80, 40);
     app.state = ConnectionState::Connecting("Starting agent".into());
-    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let with_activity = crate::ui::chat::estimated_block_height(&app, 80, 40);
 
     assert_eq!(with_activity, without_activity);
     assert!(
         app.has_activity_indicator(),
         "Connecting must keep Tick redraws active for the shimmer"
+    );
+}
+
+#[test]
+fn estimated_chat_height_stops_after_filling_available_rows() {
+    let mut app = test_app();
+    for index in 0..100 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("prompt {index}"),
+            details: vec![ChatMessage::Agent(format!("response {index}"))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let estimated = crate::ui::chat::estimated_block_height(&app, 80, 12);
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+
+    assert_eq!(estimated, 12);
+    assert!(
+        built_turns < app.current_tab().completed_turns.len(),
+        "height estimation must not build history beyond the layout limit",
+    );
+}
+
+#[test]
+fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
+    use unicode_width::UnicodeWidthStr;
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..200 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("OLD_TURN_{index:03}"),
+            details: vec![
+                ChatMessage::Agent(format!("old response {index}")),
+                ChatMessage::ToolCall {
+                    id: format!("old-tool-{index}"),
+                    title: "Read old file".into(),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(format!(r"C:\repo\old-{index}.txt")),
+                    location_is_command: false,
+                    cwd: None,
+                    output: Some(ToolCallOutput {
+                        text: format!("old output {index}"),
+                        truncated: false,
+                    }),
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                },
+            ],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "LATEST_MIXED_PROMPT".into(),
+        details: vec![
+            ChatMessage::Agent(
+                "最新回复包含宽字符，用来验证窄窗口中的换行；LATEST_AGENT_TAIL".into(),
+            ),
+            ChatMessage::ToolCall {
+                id: "latest-read".into(),
+                title: "Read latest file".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\repo\latest.txt".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "LATEST_READ_OUTPUT".into(),
+                    truncated: false,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::ToolCall {
+                id: "latest-execute".into(),
+                title: "Run latest tests".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Execute,
+                location: Some("cargo test --package latest".into()),
+                location_is_command: true,
+                cwd: Some(r"C:\repo".into()),
+                output: Some(ToolCallOutput {
+                    text: "LATEST_EXEC_OUTPUT".into(),
+                    truncated: false,
+                }),
+                exit_code: Some(0),
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::ToolCall {
+                id: "latest-edit".into(),
+                title: "Edit latest source".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Edit,
+                location: Some(r"C:\repo\src\latest.rs".into()),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: vec![ToolCallContent::Diff {
+                    path: r"C:\repo\src\latest.rs".into(),
+                    old_text: Some(ToolCallOutput {
+                        text: "LATEST_OLD_LINE".into(),
+                        truncated: false,
+                    }),
+                    new_text: ToolCallOutput {
+                        text: "LATEST_NEW_LINE".into(),
+                        truncated: false,
+                    },
+                }],
+                locations: Vec::new(),
+            },
+            ChatMessage::Plan(vec![
+                PlanEntry {
+                    content: "LATEST_PLAN_DONE".into(),
+                    status: PlanEntryStatus::Completed,
+                },
+                PlanEntry {
+                    content: "LATEST_PLAN_NEXT".into(),
+                    status: PlanEntryStatus::Pending,
+                },
+            ]),
+        ],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let width = 56;
+    let buffer = render_to_buffer(&mut app, width, 38);
+    let rendered = buffer_to_text(&buffer);
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+
+    for needle in [
+        "LATEST_MIXED_PROMPT",
+        "LATEST_AGENT_TAIL",
+        "Read latest file",
+        "LATEST_READ_OUTPUT",
+        "Run latest tests",
+        "LATEST_EXEC_OUTPUT",
+        "Edit latest source",
+        "LATEST_OLD_LINE",
+        "LATEST_NEW_LINE",
+        "LATEST_PLAN_DONE",
+        "LATEST_PLAN_NEXT",
+    ] {
+        assert!(
+            rendered.contains(needle),
+            "latest mixed content {needle:?} must remain visible; rendered:\n{rendered}",
+        );
+    }
+    assert!(!rendered.contains("OLD_TURN_000"));
+    assert!(
+        built_turns < 20,
+        "layout and bottom-up rendering must not build all 201 turns; built {built_turns}",
+    );
+
+    for row in buffer.content.chunks(width as usize) {
+        assert_eq!(row.len(), width as usize);
+        for (column, cell) in row.iter().enumerate() {
+            let symbol_width = UnicodeWidthStr::width(cell.symbol());
+            assert!(
+                column.saturating_add(symbol_width) <= width as usize,
+                "cell {:?} at column {column} must not overflow width {width}",
+                cell.symbol(),
+            );
+        }
+    }
+
+    app.current_tab_mut().chat_scroll.offset = 120;
+    let scrolled = render_to_text(&mut app, width, 38);
+    assert!(
+        scrolled.contains("OLD_TURN_"),
+        "older mixed history must remain renderable after lazy height estimation",
     );
 }
 
@@ -11789,10 +11970,14 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
 
     crate::ui::chat::reset_completed_turn_line_build_count();
     let after = render_to_text(&mut app, 80, 16);
-    assert_eq!(
-        crate::ui::chat::completed_turn_line_build_count(),
-        app.current_tab().completed_turns.len() * 2,
-        "selection-follow rendering must not add a third completed-turn layout pass",
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+    assert!(
+        built_turns >= app.current_tab().completed_turns.len(),
+        "selection-follow rendering must build enough turns to reach the oldest selection",
+    );
+    assert!(
+        built_turns < app.current_tab().completed_turns.len() * 2,
+        "height estimation must stop before rebuilding all completed turns; built {built_turns}",
     );
     assert!(
         after.contains("SELECT_SCROLL_TURN_00"),
