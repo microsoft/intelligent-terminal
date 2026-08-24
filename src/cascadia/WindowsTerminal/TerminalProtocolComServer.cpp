@@ -33,7 +33,7 @@ WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
 static DWORD g_comRegistration = 0;
 static DWORD g_activeObjectRegistration = 0;
 static std::shared_mutex g_mtx;
-static std::mutex g_shellSessionRestoreMutex;
+static std::mutex g_durableTabSessionRestoreMutex;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
 
@@ -298,7 +298,7 @@ static Json::Value _toJson(const Protocol::TabInfo& t){
     v["title"] = winrt::to_string(t.Title);
     v["is_active"] = static_cast<bool>(t.IsActive);
     v["pane_count"] = static_cast<Json::UInt>(t.PaneCount);
-    v["durable_shell_session_id"] = winrt::to_string(t.DurableShellSessionId);
+    v["durable_tab_session_id"] = winrt::to_string(t.DurableTabSessionId);
     return v;
 }
 
@@ -581,14 +581,14 @@ try
         "get_process_status",
         "get_session_variable",
         "get_settings",
-        "list_shell_sessions",
+        "list_durable_tab_sessions",
         "create_tab",
         "split_pane",
         "close_pane",
         "send_input",
         "focus_pane",
         "set_session_variable",
-        "restore_shell_session",
+        "restore_durable_tab_session",
         "subscribe",
         "unsubscribe",
         "send_event",
@@ -665,15 +665,15 @@ try
 }
 CATCH_RETURN()
 
-// Annotates each saved shell-session row with the one thing the database
+// Annotates each saved durable tab-session row with the one thing the database
 // cannot know: whether it is on screen right now.
 //
 // The agent-pane list and the CLI both have to answer this the same way, so
 // the merge lives here rather than in each client. The agent pane's own list
 // reaches wta-master directly rather than through this server, so it repeats
 // this merge in `tools/wta/src/protocol/acp/client.rs`
-// (`fetch_shell_session_marks`). Keep the two definitions of "opened" in step.
-void TerminalProtocolComServer::_annotateShellSessions(Json::Value& sessions)
+// (`fetch_durable_tab_session_marks`). Keep the two definitions of "opened" in step.
+void TerminalProtocolComServer::_annotateDurableTabSessions(Json::Value& sessions)
 {
     if (!s_emperor || !sessions.isArray())
     {
@@ -694,7 +694,7 @@ void TerminalProtocolComServer::_annotateShellSessions(Json::Value& sessions)
         for (uint32_t i = 0; i < tabs.Size(); ++i)
         {
             const auto tab = tabs.GetAt(i);
-            auto id = _lowerAscii(winrt::to_string(tab.DurableShellSessionId));
+            auto id = _lowerAscii(winrt::to_string(tab.DurableTabSessionId));
             if (!id.empty())
             {
                 opened.emplace(std::move(id));
@@ -708,7 +708,7 @@ void TerminalProtocolComServer::_annotateShellSessions(Json::Value& sessions)
     }
 }
 
-STDMETHODIMP TerminalProtocolComServer::ListShellSessions(BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::ListDurableTabSessions(BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -720,14 +720,14 @@ try
 
     const auto page = _getPage(host);
     RETURN_HR_IF(E_FAIL, !page);
-    const auto serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    const auto serialized = winrt::to_string(page.ListProtocolDurableTabSessions().get());
 
     Json::Value sessions;
     std::string errors;
     std::istringstream stream{ serialized };
     RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
 
-    _annotateShellSessions(sessions);
+    _annotateDurableTabSessions(sessions);
     *json = _bstrFromJson(sessions);
     return S_OK;
 }
@@ -1091,7 +1091,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR id)
+STDMETHODIMP TerminalProtocolComServer::RestoreDurableTabSession(unsigned __int64 windowId, BSTR id)
 try
 {
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
@@ -1100,12 +1100,12 @@ try
 
     // Keep the active-tab lookup and first synchronous NewTab action atomic
     // across concurrent wtcli/helper requests for the same database row.
-    std::scoped_lock restoreLock{ g_shellSessionRestoreMutex };
+    std::scoped_lock restoreLock{ g_durableTabSessionRestoreMutex };
 
     for (const auto& host : s_emperor->GetWindows())
     {
         const auto page = _getPage(host.get());
-        if (page && page.FocusProtocolShellSession(idH).get())
+        if (page && page.FocusProtocolDurableTabSession(idH).get())
         {
             return S_OK;
         }
@@ -1116,7 +1116,7 @@ try
 
     const auto page = _getPage(targetHost);
     RETURN_HR_IF(E_FAIL, !page);
-    return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    return page.RestoreProtocolDurableTabSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

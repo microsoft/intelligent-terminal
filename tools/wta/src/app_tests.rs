@@ -12895,8 +12895,8 @@ fn durable_session_id_uses_the_load_target_during_replay() {
 }
 
 
-fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::ShellSessionSummary {
-    crate::shell_session_store::ShellSessionSummary {
+fn durable_tab_session_record(id: &str, name: &str) -> crate::durable_tab_session_store::DurableTabSessionSummary {
+    crate::durable_tab_session_store::DurableTabSessionSummary {
         id: id.to_string(),
         name: name.to_string(),
         active_pane_cwd: r"C:\repo".to_string(),
@@ -12905,30 +12905,30 @@ fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::She
 }
 
 #[test]
-fn shell_session_delete_requires_confirmation_and_dispatches_to_master() {
+fn durable_tab_session_delete_requires_confirmation_and_dispatches_to_master() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
     let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
     {
         let tab = app.current_tab_mut();
-        tab.current_view = View::ShellSessions;
-        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
-        tab.shell_sessions_list_state.select(Some(0));
+        tab.current_view = View::DurableTabSessions;
+        tab.durable_tab_sessions = vec![durable_tab_session_record(id, "PowerShell")];
+        tab.durable_tab_sessions_list_state.select(Some(0));
     }
 
     app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
     assert_eq!(
         app.current_tab()
-            .shell_session_delete_confirmation
+            .durable_tab_session_delete_confirmation
             .as_deref(),
         Some(id)
     );
     assert!(master_rx.try_recv().is_err());
 
     app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT));
-    assert!(app.current_tab().shell_session_delete_in_flight);
+    assert!(app.current_tab().durable_tab_session_delete_in_flight);
     assert!(matches!(
         master_rx.try_recv(),
-        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+        Ok(crate::protocol::acp::client::MasterExtRequest::DurableTabSessionDelete {
             tab_id,
             id: dispatched_id,
             ..
@@ -12937,47 +12937,47 @@ fn shell_session_delete_requires_confirmation_and_dispatches_to_master() {
 }
 
 #[test]
-fn shell_session_delete_confirmation_can_be_cancelled() {
+fn durable_tab_session_delete_confirmation_can_be_cancelled() {
     let mut app = test_app();
     let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
     {
         let tab = app.current_tab_mut();
-        tab.current_view = View::ShellSessions;
-        tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
-        tab.shell_sessions_list_state.select(Some(0));
+        tab.current_view = View::DurableTabSessions;
+        tab.durable_tab_sessions = vec![durable_tab_session_record(id, "PowerShell")];
+        tab.durable_tab_sessions_list_state.select(Some(0));
     }
 
     app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().current_view, View::ShellSessions);
+    assert_eq!(app.current_tab().current_view, View::DurableTabSessions);
     assert!(app
         .current_tab()
-        .shell_session_delete_confirmation
+        .durable_tab_session_delete_confirmation
         .is_none());
-    assert!(!app.current_tab().shell_session_delete_in_flight);
+    assert!(!app.current_tab().durable_tab_session_delete_in_flight);
 }
 
 #[test]
-fn shell_session_search_filters_navigation_and_restore() {
+fn durable_tab_session_search_filters_navigation_and_restore() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
     let powershell_id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
     let empower_id = "b5671763-0c71-46bb-9374-d966751c9a00";
     let cwd_id = "ef8e974d-ff11-407c-8372-a4742a2f6fa3";
     {
         let tab = app.current_tab_mut();
-        tab.current_view = View::ShellSessions;
-        let mut powershell = shell_session_record(powershell_id, "PowerShell");
+        tab.current_view = View::DurableTabSessions;
+        let mut powershell = durable_tab_session_record(powershell_id, "PowerShell");
         powershell.active_pane_cwd = r"C:\Windows".to_string();
-        let mut empower = shell_session_record(empower_id, "empower");
+        let mut empower = durable_tab_session_record(empower_id, "empower");
         empower.active_pane_cwd = r"C:\Windows".to_string();
         let mut unrelated =
-            shell_session_record("1ee9352a-bd66-4353-bf88-cdf67d6089ce", "unrelated");
+            durable_tab_session_record("1ee9352a-bd66-4353-bf88-cdf67d6089ce", "unrelated");
         unrelated.active_pane_cwd = r"C:\Windows".to_string();
-        tab.shell_sessions = vec![
+        tab.durable_tab_sessions = vec![
             powershell,
             empower,
-            crate::shell_session_store::ShellSessionSummary {
+            crate::durable_tab_session_store::DurableTabSessionSummary {
                 id: cwd_id.to_string(),
                 name: "cmd".to_string(),
                 active_pane_cwd: r"C:\repos\portal".to_string(),
@@ -12985,42 +12985,42 @@ fn shell_session_search_filters_navigation_and_restore() {
             },
             unrelated,
         ];
-        tab.shell_sessions_list_state.select(Some(0));
+        tab.durable_tab_sessions_list_state.select(Some(0));
     }
 
     app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
-    assert_eq!(app.current_tab().shell_sessions_query, "po");
-    assert_eq!(app.current_tab().matching_shell_session_count(), 3);
+    assert_eq!(app.current_tab().durable_tab_sessions_query, "po");
+    assert_eq!(app.current_tab().matching_durable_tab_session_count(), 3);
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert!(app.current_tab().shell_session_restore_in_flight);
+    assert!(app.current_tab().durable_tab_session_restore_in_flight);
     assert!(matches!(
         master_rx.try_recv(),
-        Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+        Ok(crate::protocol::acp::client::MasterExtRequest::DurableTabSessionRestore {
             id,
             ..
         }) if id == cwd_id
     ));
     assert!(master_rx.try_recv().is_err());
 
-    app.handle_event(AppEvent::ShellSessionRestored {
+    app.handle_event(AppEvent::DurableTabSessionRestored {
         tab_id: DEFAULT_TAB_ID.to_string(),
         id: cwd_id.to_string(),
         error: None,
     });
-    assert!(!app.current_tab().shell_session_restore_in_flight);
+    assert!(!app.current_tab().durable_tab_session_restore_in_flight);
 
     app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().shell_sessions_query, "p");
+    assert_eq!(app.current_tab().durable_tab_sessions_query, "p");
     assert_eq!(
-        app.current_tab().shell_sessions_list_state.selected(),
+        app.current_tab().durable_tab_sessions_list_state.selected(),
         Some(0)
     );
 }

@@ -521,17 +521,17 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
-    pub shell_sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+    pub durable_tab_sessions: Vec<crate::durable_tab_session_store::DurableTabSessionSummary>,
     /// Durable ids that are already open in a tab.
-    pub shell_sessions_open: std::collections::HashSet<String>,
-    pub shell_sessions_query: String,
-    pub shell_sessions_search_focused: bool,
-    pub shell_sessions_list_state: ratatui::widgets::ListState,
-    pub shell_sessions_loading: bool,
-    pub shell_sessions_error: Option<String>,
-    pub shell_session_restore_in_flight: bool,
-    pub shell_session_delete_confirmation: Option<String>,
-    pub shell_session_delete_in_flight: bool,
+    pub durable_tab_sessions_open: std::collections::HashSet<String>,
+    pub durable_tab_sessions_query: String,
+    pub durable_tab_sessions_search_focused: bool,
+    pub durable_tab_sessions_list_state: ratatui::widgets::ListState,
+    pub durable_tab_sessions_loading: bool,
+    pub durable_tab_sessions_error: Option<String>,
+    pub durable_tab_session_restore_in_flight: bool,
+    pub durable_tab_session_delete_confirmation: Option<String>,
+    pub durable_tab_session_delete_in_flight: bool,
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     pub pane_open: bool,
@@ -552,40 +552,40 @@ impl TabSession {
         )?
     }
 
-    pub(crate) fn matching_shell_session_count(&self) -> usize {
-        self.shell_sessions
+    pub(crate) fn matching_durable_tab_session_count(&self) -> usize {
+        self.durable_tab_sessions
             .iter()
             .filter(|session| {
-                crate::ui::shell_sessions_view::matches_query(session, &self.shell_sessions_query)
+                crate::ui::durable_tab_sessions_view::matches_query(session, &self.durable_tab_sessions_query)
             })
             .count()
     }
 
-    pub(crate) fn matching_shell_session(
+    pub(crate) fn matching_durable_tab_session(
         &self,
         index: usize,
-    ) -> Option<&crate::shell_session_store::ShellSessionSummary> {
-        self.shell_sessions
+    ) -> Option<&crate::durable_tab_session_store::DurableTabSessionSummary> {
+        self.durable_tab_sessions
             .iter()
             .filter(|session| {
-                crate::ui::shell_sessions_view::matches_query(session, &self.shell_sessions_query)
+                crate::ui::durable_tab_sessions_view::matches_query(session, &self.durable_tab_sessions_query)
             })
             .nth(index)
     }
 
-    pub(crate) fn reset_shell_session_selection(&mut self) {
-        self.shell_sessions_list_state
-            .select((self.matching_shell_session_count() > 0).then_some(0));
+    pub(crate) fn reset_durable_tab_session_selection(&mut self) {
+        self.durable_tab_sessions_list_state
+            .select((self.matching_durable_tab_session_count() > 0).then_some(0));
     }
 
-    pub(crate) fn begin_selected_shell_session_delete(&mut self) {
+    pub(crate) fn begin_selected_durable_tab_session_delete(&mut self) {
         let selected_id = self
-            .shell_sessions_list_state
+            .durable_tab_sessions_list_state
             .selected()
-            .and_then(|index| self.matching_shell_session(index))
+            .and_then(|index| self.matching_durable_tab_session(index))
             .map(|session| session.id.clone());
         if let Some(id) = selected_id {
-            self.shell_session_delete_confirmation = Some(id);
+            self.durable_tab_session_delete_confirmation = Some(id);
         }
     }
 
@@ -859,7 +859,7 @@ impl TabSession {
 pub enum View {
     Chat,
     Agents,
-    ShellSessions,
+    DurableTabSessions,
 }
 
 impl Default for View {

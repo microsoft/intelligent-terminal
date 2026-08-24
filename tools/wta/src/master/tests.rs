@@ -9,16 +9,16 @@ use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdat
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[test]
-fn shell_session_requests_use_authenticated_pipe_elevation() {
+fn durable_tab_session_requests_use_authenticated_pipe_elevation() {
     use crate::session_registry::WtaExtRequest as Req;
-    use crate::shell_session_store::{
-        ShellSessionDeleteParams, ShellSessionGetParams, ShellSessionSaveParams,
-        ShellSessionsListParams,
+    use crate::durable_tab_session_store::{
+        DurableTabSessionDeleteParams, DurableTabSessionGetParams, DurableTabSessionSaveParams,
+        DurableTabSessionsListParams,
     };
 
     let mut requests = [
-        Req::ShellSessionsList(ShellSessionsListParams { elevated: false }),
-        Req::ShellSessionSave(ShellSessionSaveParams {
+        Req::DurableTabSessionsList(DurableTabSessionsListParams { elevated: false }),
+        Req::DurableTabSessionSave(DurableTabSessionSaveParams {
             id: None,
             expected_revision: None,
             name: "name".to_string(),
@@ -27,23 +27,23 @@ fn shell_session_requests_use_authenticated_pipe_elevation() {
             elevated: false,
             buffers: Vec::new(),
         }),
-        Req::ShellSessionGet(ShellSessionGetParams {
+        Req::DurableTabSessionGet(DurableTabSessionGetParams {
             id: uuid::Uuid::nil().to_string(),
             elevated: false,
         }),
-        Req::ShellSessionDelete(ShellSessionDeleteParams {
+        Req::DurableTabSessionDelete(DurableTabSessionDeleteParams {
             id: uuid::Uuid::nil().to_string(),
             elevated: false,
         }),
     ];
 
     for request in &mut requests {
-        assert_eq!(scope_shell_session_request(request, true), Some(false));
+        assert_eq!(scope_durable_tab_session_request(request, true), Some(false));
         let elevated = match request {
-            Req::ShellSessionsList(params) => params.elevated,
-            Req::ShellSessionSave(params) => params.elevated,
-            Req::ShellSessionGet(params) => params.elevated,
-            Req::ShellSessionDelete(params) => params.elevated,
+            Req::DurableTabSessionsList(params) => params.elevated,
+            Req::DurableTabSessionSave(params) => params.elevated,
+            Req::DurableTabSessionGet(params) => params.elevated,
+            Req::DurableTabSessionDelete(params) => params.elevated,
             _ => unreachable!(),
         };
         assert!(elevated);
@@ -69,7 +69,7 @@ async fn pipe_client_elevation_is_available_after_first_read() -> Result<()> {
     assert_eq!(
         connected_pipe_client_is_elevated(&server)
             .map_err(|error| anyhow!("failed to authenticate test pipe client: {error:?}"))?,
-        crate::shell_session_store::current_process_is_elevated()
+        crate::durable_tab_session_store::current_process_is_elevated()
     );
     Ok(())
 }
@@ -1266,7 +1266,7 @@ fn make_state_with_retirement_pending_timeout(
     Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
-        shell_sessions: None,
+        durable_tab_sessions: None,
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
@@ -9337,7 +9337,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
     Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
-        shell_sessions: None,
+        durable_tab_sessions: None,
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),

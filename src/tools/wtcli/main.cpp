@@ -515,56 +515,56 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
-    // ── list-shell-sessions ──
-    auto* listShellSessionsCmd = app.add_subcommand("list-shell-sessions", "List saved shell sessions");
-    listShellSessionsCmd->callback([&]() {
+    // ── list-tab-sessions ──
+    auto* listTabSessionsCmd = app.add_subcommand("list-tab-sessions", "List saved durable tab sessions");
+    listTabSessionsCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        if (!SupportsMethod(server.get(), "list_shell_sessions", exitCode))
+        if (!SupportsMethod(server.get(), "list_durable_tab_sessions", exitCode))
             return;
         Json::Value sessions;
-        auto hr = CallJson([&](BSTR* j) { return server->ListShellSessions(j); }, sessions);
-        if (FAILED(hr)) { fprintf(stderr, "ListShellSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        auto hr = CallJson([&](BSTR* j) { return server->ListDurableTabSessions(j); }, sessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListDurableTabSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
         {
             Json::Value result(Json::objectValue);
-            result["shell_sessions"] = sessions;
+            result["durable_tab_sessions"] = sessions;
             PrintJson(result);
         }
         else
         {
-            FormatShellSessionsHuman(sessions);
+            FormatDurableTabSessionsHuman(sessions);
         }
     });
 
-    // ── restore-shell-session ──
-    std::string restoreShellSessionId;
-    std::string restoreShellSessionWindowId;
-    auto* restoreShellSessionCmd = app.add_subcommand("restore-shell-session", "Restore a saved shell session");
-    restoreShellSessionCmd->add_option("id", restoreShellSessionId, "Durable shell session ID")->required();
-    restoreShellSessionCmd->add_option("-w,--window-id", restoreShellSessionWindowId, "Target window ID");
-    restoreShellSessionCmd->callback([&]() {
+    // ── restore-tab-session ──
+    std::string restoreTabSessionId;
+    std::string restoreTabSessionWindowId;
+    auto* restoreTabSessionCmd = app.add_subcommand("restore-tab-session", "Restore a saved durable tab session");
+    restoreTabSessionCmd->add_option("id", restoreTabSessionId, "Durable tab session ID")->required();
+    restoreTabSessionCmd->add_option("-w,--window-id", restoreTabSessionWindowId, "Target window ID");
+    restoreTabSessionCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        if (!SupportsMethod(server.get(), "restore_shell_session", exitCode))
+        if (!SupportsMethod(server.get(), "restore_durable_tab_session", exitCode))
             return;
 
         uint64_t windowId = 0;
-        if (!restoreShellSessionWindowId.empty() && !TryParseU64(restoreShellSessionWindowId, windowId))
+        if (!restoreTabSessionWindowId.empty() && !TryParseU64(restoreTabSessionWindowId, windowId))
         {
-            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreShellSessionWindowId.c_str());
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreTabSessionWindowId.c_str());
             exitCode = 1;
             return;
         }
 
-        wil::unique_bstr id{ Bstr(restoreShellSessionId) };
-        const auto hr = server->RestoreShellSession(windowId, id.get());
-        if (FAILED(hr)) { fprintf(stderr, "RestoreShellSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        wil::unique_bstr id{ Bstr(restoreTabSessionId) };
+        const auto hr = server->RestoreDurableTabSession(windowId, id.get());
+        if (FAILED(hr)) { fprintf(stderr, "RestoreDurableTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
         {
             Json::Value result(Json::objectValue);
             result["ok"] = true;
-            result["id"] = restoreShellSessionId;
+            result["id"] = restoreTabSessionId;
             PrintJson(result);
         }
     });

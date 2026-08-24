@@ -30,5 +30,5 @@ pub(crate) struct HelperConfig {
 pub(crate) enum InitialView {
     Chat,
     Sessions,
-    ShellSessions,
+    DurableTabSessions,
 }

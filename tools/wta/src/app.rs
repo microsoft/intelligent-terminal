@@ -3258,83 +3258,83 @@ impl App {
         tab.agents_view_prev_pane_open = None;
     }
 
-    pub(crate) fn open_shell_sessions_view_for_tab(&mut self, tab_id: String) {
+    pub(crate) fn open_durable_tab_sessions_view_for_tab(&mut self, tab_id: String) {
         {
             let tab = self.tab_mut(&tab_id);
-            tab.current_view = View::ShellSessions;
-            tab.shell_sessions_loading = true;
-            tab.shell_sessions_error = None;
+            tab.current_view = View::DurableTabSessions;
+            tab.durable_tab_sessions_loading = true;
+            tab.durable_tab_sessions_error = None;
         }
-        self.load_shell_sessions(tab_id);
+        self.load_durable_tab_sessions(tab_id);
     }
 
-    fn close_shell_sessions_view_for_tab(&mut self, tab_id: &str) {
+    fn close_durable_tab_sessions_view_for_tab(&mut self, tab_id: &str) {
         let tab = self.tab_mut(tab_id);
         tab.current_view = View::Chat;
-        tab.shell_sessions_loading = false;
-        tab.shell_sessions_error = None;
-        tab.shell_session_restore_in_flight = false;
-        tab.shell_session_delete_confirmation = None;
-        tab.shell_session_delete_in_flight = false;
-        tab.shell_sessions_search_focused = false;
+        tab.durable_tab_sessions_loading = false;
+        tab.durable_tab_sessions_error = None;
+        tab.durable_tab_session_restore_in_flight = false;
+        tab.durable_tab_session_delete_confirmation = None;
+        tab.durable_tab_session_delete_in_flight = false;
+        tab.durable_tab_sessions_search_focused = false;
     }
 
-    fn load_shell_sessions(&mut self, tab_id: String) {
+    fn load_durable_tab_sessions(&mut self, tab_id: String) {
         tracing::info!(
-            target: "shell_sessions",
+            target: "durable_tab_sessions",
             %tab_id,
-            "shell-session list requested"
+            "durable tab-session list requested"
         );
-        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionsList {
+        let request = crate::protocol::acp::client::MasterExtRequest::DurableTabSessionsList {
             tab_id: tab_id.clone(),
-            elevated: crate::shell_session_store::current_process_is_elevated(),
+            elevated: crate::durable_tab_session_store::current_process_is_elevated(),
         };
         if self.master_request_tx.send(request).is_err() {
             let tab = self.tab_mut(&tab_id);
-            tab.shell_sessions_loading = false;
-            tab.shell_sessions_error =
-                Some("Shell-session master connection is unavailable".to_string());
+            tab.durable_tab_sessions_loading = false;
+            tab.durable_tab_sessions_error =
+                Some("Durable tab-session master connection is unavailable".to_string());
         }
     }
 
-    fn restore_shell_session(&mut self, tab_id: String, id: String) {
+    fn restore_durable_tab_session(&mut self, tab_id: String, id: String) {
         {
             let tab = self.tab_mut(&tab_id);
-            if tab.shell_session_restore_in_flight {
+            if tab.durable_tab_session_restore_in_flight {
                 return;
             }
-            tab.shell_sessions_error = None;
-            tab.shell_session_restore_in_flight = true;
+            tab.durable_tab_sessions_error = None;
+            tab.durable_tab_session_restore_in_flight = true;
         }
-        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+        let request = crate::protocol::acp::client::MasterExtRequest::DurableTabSessionRestore {
             tab_id: tab_id.clone(),
             id,
             window_id: self.window_id.clone(),
         };
         if self.master_request_tx.send(request).is_err() {
             let tab = self.tab_mut(&tab_id);
-            tab.shell_session_restore_in_flight = false;
-            tab.shell_sessions_error =
-                Some("Shell-session master connection is unavailable".to_string());
+            tab.durable_tab_session_restore_in_flight = false;
+            tab.durable_tab_sessions_error =
+                Some("Durable tab-session master connection is unavailable".to_string());
         }
     }
 
-    fn delete_shell_session(&mut self, tab_id: String, id: String) {
+    fn delete_durable_tab_session(&mut self, tab_id: String, id: String) {
         {
             let tab = self.tab_mut(&tab_id);
-            tab.shell_sessions_error = None;
-            tab.shell_session_delete_in_flight = true;
+            tab.durable_tab_sessions_error = None;
+            tab.durable_tab_session_delete_in_flight = true;
         }
-        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+        let request = crate::protocol::acp::client::MasterExtRequest::DurableTabSessionDelete {
             tab_id: tab_id.clone(),
             id,
-            elevated: crate::shell_session_store::current_process_is_elevated(),
+            elevated: crate::durable_tab_session_store::current_process_is_elevated(),
         };
         if self.master_request_tx.send(request).is_err() {
             let tab = self.tab_mut(&tab_id);
-            tab.shell_session_delete_in_flight = false;
-            tab.shell_sessions_error =
-                Some("Shell-session master connection is unavailable".to_string());
+            tab.durable_tab_session_delete_in_flight = false;
+            tab.durable_tab_sessions_error =
+                Some("Durable tab-session master connection is unavailable".to_string());
         }
     }
 
@@ -4425,9 +4425,9 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
-            AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
-            AppEvent::ShellSessionRestored { .. } => "shell_session_restored",
-            AppEvent::ShellSessionDeleted { .. } => "shell_session_deleted",
+            AppEvent::DurableTabSessionsLoaded { .. } => "durable_tab_sessions_loaded",
+            AppEvent::DurableTabSessionRestored { .. } => "durable_tab_session_restored",
+            AppEvent::DurableTabSessionDeleted { .. } => "durable_tab_session_deleted",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
@@ -5198,7 +5198,7 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
-            CommandKind::ShellSessions => self.cmd_shell_sessions(),
+            CommandKind::DurableTabSessions => self.cmd_durable_tab_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
@@ -5427,9 +5427,9 @@ impl App {
         self.project_active_tab_state();
     }
 
-    fn cmd_shell_sessions(&mut self) {
+    fn cmd_durable_tab_sessions(&mut self) {
         let tab_id = self.active_tab_key().to_string();
-        self.open_shell_sessions_view_for_tab(tab_id);
+        self.open_durable_tab_sessions_view_for_tab(tab_id);
         self.project_active_tab_state();
     }
 

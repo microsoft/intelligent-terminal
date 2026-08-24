@@ -349,7 +349,7 @@ impl App {
                 | crossterm::event::MouseEventKind::ScrollDown
                     if matches!(
                         self.current_tab().current_view,
-                        View::Agents | View::ShellSessions
+                        View::Agents | View::DurableTabSessions
                     ) =>
                 {
                     self.cancel_completed_turn_click();
@@ -1797,52 +1797,52 @@ impl App {
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
             }
-            AppEvent::ShellSessionsLoaded {
+            AppEvent::DurableTabSessionsLoaded {
                 tab_id,
                 sessions,
                 open,
                 error,
             } => {
                 let tab = self.tab_mut(&tab_id);
-                tab.shell_sessions = sessions;
-                tab.shell_sessions_open = open;
-                tab.shell_sessions_loading = false;
-                tab.shell_sessions_error = error;
-                let matching_count = tab.matching_shell_session_count();
+                tab.durable_tab_sessions = sessions;
+                tab.durable_tab_sessions_open = open;
+                tab.durable_tab_sessions_loading = false;
+                tab.durable_tab_sessions_error = error;
+                let matching_count = tab.matching_durable_tab_session_count();
                 if matching_count == 0 {
-                    tab.shell_sessions_list_state.select(None);
+                    tab.durable_tab_sessions_list_state.select(None);
                 } else {
                     let selected = tab
-                        .shell_sessions_list_state
+                        .durable_tab_sessions_list_state
                         .selected()
                         .unwrap_or(0)
                         .min(matching_count - 1);
-                    tab.shell_sessions_list_state.select(Some(selected));
+                    tab.durable_tab_sessions_list_state.select(Some(selected));
                 }
             }
-            AppEvent::ShellSessionRestored { tab_id, id, error } => {
-                tracing::debug!(target: "shell_sessions", %id, restored = error.is_none(), "shell-session restore completed");
+            AppEvent::DurableTabSessionRestored { tab_id, id, error } => {
+                tracing::debug!(target: "durable_tab_sessions", %id, restored = error.is_none(), "durable tab-session restore completed");
                 let tab = self.tab_mut(&tab_id);
-                tab.shell_session_restore_in_flight = false;
-                tab.shell_sessions_error = error;
+                tab.durable_tab_session_restore_in_flight = false;
+                tab.durable_tab_sessions_error = error;
             }
-            AppEvent::ShellSessionDeleted {
+            AppEvent::DurableTabSessionDeleted {
                 tab_id,
                 id,
                 deleted,
                 error,
             } => {
-                tracing::debug!(target: "shell_sessions", %id, deleted, succeeded = error.is_none(), "shell-session delete completed");
+                tracing::debug!(target: "durable_tab_sessions", %id, deleted, succeeded = error.is_none(), "durable tab-session delete completed");
                 let succeeded = error.is_none();
                 {
                     let tab = self.tab_mut(&tab_id);
-                    tab.shell_session_delete_confirmation = None;
-                    tab.shell_session_delete_in_flight = false;
-                    tab.shell_sessions_error = error;
+                    tab.durable_tab_session_delete_confirmation = None;
+                    tab.durable_tab_session_delete_in_flight = false;
+                    tab.durable_tab_sessions_error = error;
                 }
                 if succeeded {
-                    self.tab_mut(&tab_id).shell_sessions_loading = true;
-                    self.load_shell_sessions(tab_id);
+                    self.tab_mut(&tab_id).durable_tab_sessions_loading = true;
+                    self.load_durable_tab_sessions(tab_id);
                 }
             }
             AppEvent::DirectTerminalActionProposal {
@@ -2562,8 +2562,8 @@ impl App {
                             "applying view"
                         );
                         match view_str {
-                            "shell_sessions" => {
-                                self.open_shell_sessions_view_for_tab(target_tab.clone());
+                            "durable_tab_sessions" => {
+                                self.open_durable_tab_sessions_view_for_tab(target_tab.clone());
                             }
                             "sessions" | "agents" => {
                                 // User entered session management (via shortcut or UI) —
@@ -2578,9 +2578,9 @@ impl App {
                                 if self
                                     .tab_sessions
                                     .get(&target_tab)
-                                    .is_some_and(|tab| tab.current_view == View::ShellSessions)
+                                    .is_some_and(|tab| tab.current_view == View::DurableTabSessions)
                                 {
-                                    self.close_shell_sessions_view_for_tab(&target_tab);
+                                    self.close_durable_tab_sessions_view_for_tab(&target_tab);
                                 } else {
                                     self.close_agents_view_for_tab(&target_tab);
                                 }

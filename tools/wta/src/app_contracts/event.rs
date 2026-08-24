@@ -291,19 +291,19 @@ pub enum AppEvent {
     RegisterBornBoundSession {
         event: crate::agent_sessions::SessionEvent,
     },
-    ShellSessionsLoaded {
+    DurableTabSessionsLoaded {
         tab_id: String,
-        sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+        sessions: Vec<crate::durable_tab_session_store::DurableTabSessionSummary>,
         /// Durable ids that are already open in a tab.
         open: std::collections::HashSet<String>,
         error: Option<String>,
     },
-    ShellSessionRestored {
+    DurableTabSessionRestored {
         tab_id: String,
         id: String,
         error: Option<String>,
     },
-    ShellSessionDeleted {
+    DurableTabSessionDeleted {
         tab_id: String,
         id: String,
         deleted: bool,

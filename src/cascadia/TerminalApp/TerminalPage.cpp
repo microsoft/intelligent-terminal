@@ -3115,9 +3115,9 @@ namespace winrt::TerminalApp::implementation
         {
             appendHelperFlagValue(L"--language", lang);
         }
-        if (initialView == "shell_sessions")
+        if (initialView == "durable_tab_sessions")
         {
-            helperCmd.append(L" --initial-view shell-sessions");
+            helperCmd.append(L" --initial-view durable-tab-sessions");
         }
         else if (intoSessionsView || initialView == "sessions")
         {
@@ -6437,7 +6437,7 @@ namespace winrt::TerminalApp::implementation
             if (view.has_value())
             {
                 agentContent.SetSessionsView(*view == "sessions");
-                agentContent.SetShellSessionsView(*view == "shell_sessions");
+                agentContent.SetDurableTabSessionsView(*view == "durable_tab_sessions");
             }
         }
 
@@ -8439,7 +8439,7 @@ namespace winrt::TerminalApp::implementation
             {
                 try
                 {
-                    _PersistShellSession(tabImpl.get());
+                    _PersistDurableTabSession(tabImpl.get());
                 }
                 CATCH_LOG()
             }
@@ -9936,7 +9936,7 @@ namespace winrt::TerminalApp::implementation
         const auto restoringAgentSession = newTerminalArgs &&
                                            ShouldResumeAgentSession(
                                                !newTerminalArgs.AgentSessionId().empty(),
-                                               !newTerminalArgs.ShellSessionRestorePath().empty());
+                                               !newTerminalArgs.DurableTabSessionBufferPath().empty());
         auto resumingAgentSession = false;
         if (restoringAgentSession)
         {
@@ -10034,9 +10034,9 @@ namespace winrt::TerminalApp::implementation
             const auto admin = IsRunningElevated();
             const auto filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
             auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
-            if (newTerminalArgs && !newTerminalArgs.ShellSessionRestorePath().empty())
+            if (newTerminalArgs && !newTerminalArgs.DurableTabSessionBufferPath().empty())
             {
-                path = newTerminalArgs.ShellSessionRestorePath();
+                path = newTerminalArgs.DurableTabSessionBufferPath();
             }
             control.RestoreFromPath(path);
         }

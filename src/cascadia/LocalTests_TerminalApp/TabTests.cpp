@@ -193,8 +193,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
-        TEST_METHOD(ShellSessionCloseActionsFollowStartupPreference);
-        TEST_METHOD(ShellSessionAgentBindingQualifiesForPersistence);
+        TEST_METHOD(DurableTabSessionCloseActionsFollowStartupPreference);
+        TEST_METHOD(DurableTabSessionAgentBindingQualifiesForPersistence);
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
@@ -210,8 +210,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ReusedSessionIdAcrossControlLifetimesEmitsEndStatePerLifetime);
         TEST_METHOD(SyntheticFailedEventSuppressesDelayedNormalCallback);
         TEST_METHOD(CloseNonLastPaneEmitsOneEndStateWithoutKeepingTheTab);
-        TEST_METHOD(FocusProtocolShellSessionUsesDurableId);
-        TEST_METHOD(ParseShellSessionSaveResponse);
+        TEST_METHOD(FocusProtocolTabSessionUsesDurableId);
+        TEST_METHOD(ParseDurableTabSessionSaveResponse);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -353,41 +353,41 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
-    void TabTests::ShellSessionCloseActionsFollowStartupPreference()
+    void TabTests::DurableTabSessionCloseActionsFollowStartupPreference()
     {
         const auto durableId = ::Microsoft::Console::Utils::GuidFromString(L"{11111111-2222-3333-4444-555555555555}");
 
-        using winrt::TerminalApp::implementation::TryParseShellSessionId;
+        using winrt::TerminalApp::implementation::TryParseTabSessionId;
         VERIFY_IS_TRUE(!!::IsEqualGUID(
             durableId,
-            TryParseShellSessionId(L"11111111-2222-3333-4444-555555555555").value()));
+            TryParseTabSessionId(L"11111111-2222-3333-4444-555555555555").value()));
         VERIFY_IS_TRUE(!!::IsEqualGUID(
             durableId,
-            TryParseShellSessionId(L"{11111111-2222-3333-4444-555555555555}").value()));
-        VERIFY_IS_FALSE(TryParseShellSessionId(L"").has_value());
-        VERIFY_IS_FALSE(TryParseShellSessionId(L"not-a-durable-uuid").has_value());
+            TryParseTabSessionId(L"{11111111-2222-3333-4444-555555555555}").value()));
+        VERIFY_IS_FALSE(TryParseTabSessionId(L"").has_value());
+        VERIFY_IS_FALSE(TryParseTabSessionId(L"not-a-durable-uuid").has_value());
 
-        const auto disabled = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::DefaultProfile);
+        const auto disabled = winrt::TerminalApp::implementation::GetDurableTabSessionCloseActions(FirstWindowPreference::DefaultProfile);
         VERIFY_IS_FALSE(disabled.save);
         VERIFY_IS_FALSE(disabled.persistScrollback);
 
-        const auto layout = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayout);
+        const auto layout = winrt::TerminalApp::implementation::GetDurableTabSessionCloseActions(FirstWindowPreference::PersistedLayout);
         VERIFY_IS_TRUE(layout.save);
         VERIFY_IS_FALSE(layout.persistScrollback);
 
-        const auto layoutAndContent = winrt::TerminalApp::implementation::GetShellSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent);
+        const auto layoutAndContent = winrt::TerminalApp::implementation::GetDurableTabSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent);
         VERIFY_IS_TRUE(layoutAndContent.save);
         VERIFY_IS_TRUE(layoutAndContent.persistScrollback);
     }
 
-    void TabTests::ShellSessionAgentBindingQualifiesForPersistence()
+    void TabTests::DurableTabSessionAgentBindingQualifiesForPersistence()
     {
-        using winrt::TerminalApp::implementation::ShouldPersistShellSession;
+        using winrt::TerminalApp::implementation::ShouldPersistDurableTabSession;
 
-        VERIFY_IS_FALSE(ShouldPersistShellSession(false, false, false));
-        VERIFY_IS_TRUE(ShouldPersistShellSession(true, false, false));
-        VERIFY_IS_TRUE(ShouldPersistShellSession(false, true, false));
-        VERIFY_IS_TRUE(ShouldPersistShellSession(false, false, true));
+        VERIFY_IS_FALSE(ShouldPersistDurableTabSession(false, false, false));
+        VERIFY_IS_TRUE(ShouldPersistDurableTabSession(true, false, false));
+        VERIFY_IS_TRUE(ShouldPersistDurableTabSession(false, true, false));
+        VERIFY_IS_TRUE(ShouldPersistDurableTabSession(false, false, true));
     }
 
     void TabTests::AgentSessionRestoreRequiresDurableRestoreContext()
@@ -430,11 +430,11 @@ namespace TerminalAppLocalTests
 
         VERIFY_ARE_EQUAL(
             winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(firstSessionId) + L".txt" },
-            firstArgs.ShellSessionRestorePath());
+            firstArgs.DurableTabSessionBufferPath());
         VERIFY_IS_TRUE(secondArgs.AgentSessionId().empty());
         VERIFY_IS_TRUE(secondArgs.AgentSessionAgent().empty());
         VERIFY_IS_TRUE(secondArgs.AgentResumeCommandline().empty());
-        VERIFY_IS_TRUE(secondArgs.ShellSessionRestorePath().empty());
+        VERIFY_IS_TRUE(secondArgs.DurableTabSessionBufferPath().empty());
     }
 
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
@@ -620,12 +620,12 @@ namespace TerminalAppLocalTests
                                             const winrt::hstring& expectedId,
                                             const int64_t expectedRevision,
                                             const bool expectedForked) {
-                const auto save = winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(response);
+                const auto save = winrt::TerminalApp::implementation::TerminalPage::_ParseDurableTabSessionSaveResponse(response);
                 VERIFY_ARE_EQUAL(expectedForked, save.forked);
 
-                winrt::TerminalApp::implementation::TerminalPage::_ApplyShellSessionSaveResult(tab.get(), save);
-                VERIFY_ARE_EQUAL(expectedId, tab->DurableShellSessionId());
-                VERIFY_ARE_EQUAL(expectedRevision, tab->DurableShellSessionRevision());
+                winrt::TerminalApp::implementation::TerminalPage::_ApplyDurableTabSessionSaveResult(tab.get(), save);
+                VERIFY_ARE_EQUAL(expectedId, tab->DurableTabSessionId());
+                VERIFY_ARE_EQUAL(expectedRevision, tab->DurableTabSessionRevision());
 
                 const auto persistedLayout = WindowLayout::FromJson(WindowLayout::ToJson(page->_GetWindowLayout(true)));
                 VERIFY_IS_NOT_NULL(persistedLayout);
@@ -635,26 +635,26 @@ namespace TerminalAppLocalTests
 
                 const auto terminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
                 VERIFY_IS_NOT_NULL(terminalArgs);
-                VERIFY_ARE_EQUAL(expectedId, terminalArgs.DurableShellSessionId());
-                VERIFY_ARE_EQUAL(expectedRevision, terminalArgs.DurableShellSessionRevision());
+                VERIFY_ARE_EQUAL(expectedId, terminalArgs.DurableTabSessionId());
+                VERIFY_ARE_EQUAL(expectedRevision, terminalArgs.DurableTabSessionRevision());
 
                 return persistedActions.GetAt(0).Args().as<NewTabArgs>();
             };
 
-            applyAndVerify(R"({"id":"shell-session-first","revision":1,"forked":false})",
-                           L"shell-session-first",
+            applyAndVerify(R"({"id":"tab-session-first","revision":1,"forked":false})",
+                           L"tab-session-first",
                            1,
                            false);
-            const auto forkedArgs = applyAndVerify(R"({"id":"shell-session-fork","revision":2,"forked":true})",
-                                                   L"shell-session-fork",
+            const auto forkedArgs = applyAndVerify(R"({"id":"tab-session-fork","revision":2,"forked":true})",
+                                                   L"tab-session-fork",
                                                    2,
                                                    true);
 
             page->_HandleNewTab(nullptr, ActionEventArgs{ forkedArgs });
             const auto restoredTab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(restoredTab);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-fork" }, restoredTab->DurableShellSessionId());
-            VERIFY_ARE_EQUAL(2LL, restoredTab->DurableShellSessionRevision());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"tab-session-fork" }, restoredTab->DurableTabSessionId());
+            VERIFY_ARE_EQUAL(2LL, restoredTab->DurableTabSessionRevision());
         });
     }
 
@@ -670,7 +670,7 @@ namespace TerminalAppLocalTests
             page->_SplitPane(nullptr, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
             VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
 
-            tab->SetDurableShellSession(L"shell-session-persisted", 91);
+            tab->SetDurableTabSession(L"tab-session-persisted", 91);
 
             page->_paneAgentSessions.clear();
 
@@ -715,8 +715,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, publicActions.Size());
             const auto publicFirstTerminalArgs = _getTerminalArgs(publicActions.GetAt(0));
             VERIFY_IS_NOT_NULL(publicFirstTerminalArgs);
-            VERIFY_IS_TRUE(publicFirstTerminalArgs.DurableShellSessionId().empty());
-            VERIFY_ARE_EQUAL(0LL, publicFirstTerminalArgs.DurableShellSessionRevision());
+            VERIFY_IS_TRUE(publicFirstTerminalArgs.DurableTabSessionId().empty());
+            VERIFY_ARE_EQUAL(0LL, publicFirstTerminalArgs.DurableTabSessionRevision());
 
             const auto persistedLayout = page->_GetWindowLayout(true);
             VERIFY_IS_NOT_NULL(persistedLayout);
@@ -731,8 +731,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(ShortcutAction::NewTab, persistedActions.GetAt(0).Action());
             const auto firstTerminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
             VERIFY_IS_NOT_NULL(firstTerminalArgs);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-persisted" }, firstTerminalArgs.DurableShellSessionId());
-            VERIFY_ARE_EQUAL(91LL, firstTerminalArgs.DurableShellSessionRevision());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"tab-session-persisted" }, firstTerminalArgs.DurableTabSessionId());
+            VERIFY_ARE_EQUAL(91LL, firstTerminalArgs.DurableTabSessionRevision());
             if (const auto firstBinding = page->_paneAgentSessions.find(firstTerminalArgs.SessionId());
                 firstBinding != page->_paneAgentSessions.end())
             {
@@ -748,8 +748,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, persistedActions.GetAt(1).Action());
             const auto secondTerminalArgs = _getTerminalArgs(persistedActions.GetAt(1));
             VERIFY_IS_NOT_NULL(secondTerminalArgs);
-            VERIFY_IS_TRUE(secondTerminalArgs.DurableShellSessionId().empty());
-            VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
+            VERIFY_IS_TRUE(secondTerminalArgs.DurableTabSessionId().empty());
+            VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableTabSessionRevision());
             if (const auto secondBinding = page->_paneAgentSessions.find(secondTerminalArgs.SessionId());
                 secondBinding != page->_paneAgentSessions.end())
             {
@@ -783,7 +783,7 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
 
-            tab->SetDurableShellSession(L"shell-session-unnamed", 17);
+            tab->SetDurableTabSession(L"tab-session-unnamed", 17);
             page->PersistState();
         });
 
@@ -798,8 +798,8 @@ namespace TerminalAppLocalTests
 
         const auto terminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
         VERIFY_IS_NOT_NULL(terminalArgs);
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-unnamed" }, terminalArgs.DurableShellSessionId());
-        VERIFY_ARE_EQUAL(17LL, terminalArgs.DurableShellSessionRevision());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"tab-session-unnamed" }, terminalArgs.DurableTabSessionId());
+        VERIFY_ARE_EQUAL(17LL, terminalArgs.DurableTabSessionRevision());
     }
 
     void TabTests::NaturalClosedEventThenNotifyPanesClosingEmitsOnce()
@@ -1133,7 +1133,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(std::string{ "closed" }, states.at(0));
     }
 
-    void TabTests::FocusProtocolShellSessionUsesDurableId()
+    void TabTests::FocusProtocolTabSessionUsesDurableId()
     {
         auto page = _commonSetup();
         VERIFY_IS_NOT_NULL(page);
@@ -1142,30 +1142,30 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             VERIFY_IS_NOT_NULL(tab);
-            tab->SetDurableShellSession(durableId, 1);
+            tab->SetDurableTabSession(durableId, 1);
         });
 
-        VERIFY_IS_TRUE(page->FocusProtocolShellSession(durableId).get());
-        VERIFY_IS_FALSE(page->FocusProtocolShellSession(L"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").get());
+        VERIFY_IS_TRUE(page->FocusProtocolDurableTabSession(durableId).get());
+        VERIFY_IS_FALSE(page->FocusProtocolDurableTabSession(L"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").get());
     }
 
-    void TabTests::ParseShellSessionSaveResponse()
+    void TabTests::ParseDurableTabSessionSaveResponse()
     {
         const auto verifyInvalidJson = [](const std::string_view json) {
             VERIFY_THROWS_SPECIFIC(
-                winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(json),
+                winrt::TerminalApp::implementation::TerminalPage::_ParseDurableTabSessionSaveResponse(json),
                 wil::ResultException,
                 [](wil::ResultException& e) { return e.GetErrorCode() == WEB_E_INVALID_JSON_STRING; });
         };
 
-        const auto parsed = winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(R"({"id":"shell-session-7","revision":7,"forked":true})");
-        VERIFY_IS_TRUE(parsed.id == L"shell-session-7");
+        const auto parsed = winrt::TerminalApp::implementation::TerminalPage::_ParseDurableTabSessionSaveResponse(R"({"id":"tab-session-7","revision":7,"forked":true})");
+        VERIFY_IS_TRUE(parsed.id == L"tab-session-7");
         VERIFY_ARE_EQUAL(7LL, parsed.revision);
         VERIFY_IS_TRUE(parsed.forked);
 
         verifyInvalidJson(R"({"revision":7,"forked":true})");
-        verifyInvalidJson(R"({"id":"shell-session-7","revision":7,"forked":true,})");
-        verifyInvalidJson(R"({"id":"shell-session-7","revision":7,"forked":true}garbage)");
+        verifyInvalidJson(R"({"id":"tab-session-7","revision":7,"forked":true,})");
+        verifyInvalidJson(R"({"id":"tab-session-7","revision":7,"forked":true}garbage)");
     }
 
     // Method Description:

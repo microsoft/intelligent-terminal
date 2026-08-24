@@ -39,7 +39,7 @@ mod session_mgmt;
 mod session_registry;
 mod session_watcher;
 mod shell;
-mod shell_session_store;
+mod durable_tab_session_store;
 mod telemetry;
 #[cfg(test)]
 mod test_support;
@@ -127,7 +127,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,
             InitialView::Sessions => helper::config::InitialView::Sessions,
-            InitialView::ShellSessions => helper::config::InitialView::ShellSessions,
+            InitialView::DurableTabSessions => helper::config::InitialView::DurableTabSessions,
         },
         initial_pane_position: cli.initial_pane_position,
         owner_tab_id: cli.owner_tab_id,

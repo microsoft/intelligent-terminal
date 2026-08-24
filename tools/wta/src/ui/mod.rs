@@ -15,7 +15,7 @@ mod permission;
 mod popup;
 mod recommendations;
 pub mod setup;
-pub mod shell_sessions_view;
+pub mod durable_tab_sessions_view;
 pub mod shimmer;
 mod user_input;
 

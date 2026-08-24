@@ -231,16 +231,16 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
     },
-    ShellSessionsList {
+    DurableTabSessionsList {
         tab_id: String,
         elevated: bool,
     },
-    ShellSessionRestore {
+    DurableTabSessionRestore {
         tab_id: String,
         id: String,
         window_id: Option<String>,
     },
-    ShellSessionDelete {
+    DurableTabSessionDelete {
         tab_id: String,
         id: String,
         elevated: bool,
@@ -3560,7 +3560,7 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
-            MasterExtRequest::ShellSessionsList { tab_id, elevated } => {
+            MasterExtRequest::DurableTabSessionsList { tab_id, elevated } => {
                 let started = std::time::Instant::now();
                 // Which of those durable rows still has a live detached shell,
                 // and which are already open in a tab, is only known to Windows
@@ -3570,37 +3570,37 @@ fn dispatch_master_ext_request(
                 // marked.
                 let (result, marks) = tokio::join!(
                     async {
-                        conn.ext_method(crate::session_registry::build_shell_sessions_list_request(
+                        conn.ext_method(crate::session_registry::build_durable_tab_sessions_list_request(
                             elevated,
                         ))
                         .await
                         .map_err(|error| anyhow::anyhow!("{error:?}"))
                         .and_then(|response| {
-                            crate::session_registry::parse_shell_sessions_list_response(&response.0)
+                            crate::session_registry::parse_durable_tab_sessions_list_response(&response.0)
                                 .map_err(anyhow::Error::from)
                         })
                     },
-                    fetch_shell_session_marks()
+                    fetch_durable_tab_session_marks()
                 );
                 let (sessions, error) = match result {
                     Ok(response) => (response.sessions, None),
                     Err(error) => (Vec::new(), Some(error.to_string())),
                 };
                 tracing::info!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     elapsed_ms = started.elapsed().as_millis() as u64,
                     sessions = sessions.len(),
                     marked_open = marks.open.len(),
-                    "shell-session list served"
+                    "durable tab-session list served"
                 );
-                let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
+                let _ = event_tx.send(AppEvent::DurableTabSessionsLoaded {
                     tab_id,
                     sessions,
                     open: marks.open,
                     error,
                 });
             }
-            MasterExtRequest::ShellSessionRestore {
+            MasterExtRequest::DurableTabSessionRestore {
                 tab_id,
                 id,
                 window_id,
@@ -3611,40 +3611,40 @@ fn dispatch_master_ext_request(
                     let channel = crate::shell::wt_channel::CliChannel::connect().await?;
                     channel
                         .request(
-                            "restore_shell_session",
+                            "restore_durable_tab_session",
                             serde_json::json!({ "id": id, "window_id": window_id }),
                         )
                         .await?;
                     anyhow::Ok(())
                 }
                 .await;
-                let _ = event_tx.send(AppEvent::ShellSessionRestored {
+                let _ = event_tx.send(AppEvent::DurableTabSessionRestored {
                     tab_id,
                     id,
                     error: result.err().map(|error| error.to_string()),
                 });
             }
-            MasterExtRequest::ShellSessionDelete {
+            MasterExtRequest::DurableTabSessionDelete {
                 tab_id,
                 id,
                 elevated,
             } => {
                 let result = conn
-                    .ext_method(crate::session_registry::build_shell_session_delete_request(
+                    .ext_method(crate::session_registry::build_durable_tab_session_delete_request(
                         id.clone(),
                         elevated,
                     ))
                     .await
                     .map_err(|error| anyhow::anyhow!("{error:?}"))
                     .and_then(|response| {
-                        crate::session_registry::parse_shell_session_delete_response(&response.0)
+                        crate::session_registry::parse_durable_tab_session_delete_response(&response.0)
                             .map_err(anyhow::Error::from)
                     });
                 let (deleted, error) = match result {
                     Ok(response) => (response.deleted, None),
                     Err(error) => (false, Some(error.to_string())),
                 };
-                let _ = event_tx.send(AppEvent::ShellSessionDeleted {
+                let _ = event_tx.send(AppEvent::DurableTabSessionDeleted {
                     tab_id,
                     id,
                     deleted,
@@ -4714,7 +4714,7 @@ async fn dispatch_prompt_body(
 
 /// Durable ids of tabs that are open right now, so the list can show which
 /// saved sessions are already on screen.
-fn parse_open_tab_shell_session_ids(
+fn parse_open_tab_durable_tab_session_ids(
     payload: &serde_json::Value,
 ) -> std::collections::HashSet<String> {
     payload
@@ -4722,7 +4722,7 @@ fn parse_open_tab_shell_session_ids(
         .and_then(|tabs| tabs.as_array())
         .map(|tabs| {
             tabs.iter()
-                .filter_map(|tab| tab.get("durable_shell_session_id")?.as_str())
+                .filter_map(|tab| tab.get("durable_tab_session_id")?.as_str())
                 .filter(|id| !id.is_empty())
                 .map(str::to_string)
                 .collect()
@@ -4730,9 +4730,9 @@ fn parse_open_tab_shell_session_ids(
         .unwrap_or_default()
 }
 
-/// How the shell-session list should annotate each saved row.
+/// How the durable tab-session list should annotate each saved row.
 #[derive(Default)]
-struct ShellSessionMarks {
+struct DurableTabSessionMarks {
     open: std::collections::HashSet<String>,
 }
 
@@ -4740,51 +4740,51 @@ struct ShellSessionMarks {
 /// that talks COM to Windows Terminal's UI thread, so a busy or wedged window
 /// must not hold the saved-session list hostage — an unmarked list beats a
 /// spinner that never resolves.
-const SHELL_SESSION_MARKS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const DURABLE_TAB_SESSION_MARKS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-async fn fetch_shell_session_marks() -> ShellSessionMarks {
+async fn fetch_durable_tab_session_marks() -> DurableTabSessionMarks {
     with_marks_timeout(
-        SHELL_SESSION_MARKS_TIMEOUT,
-        fetch_shell_session_marks_inner(),
+        DURABLE_TAB_SESSION_MARKS_TIMEOUT,
+        fetch_durable_tab_session_marks_inner(),
     )
     .await
 }
 
 /// Yields whatever the lookup produced, or an unmarked list if it overran
 /// `budget`.
-async fn with_marks_timeout<F>(budget: std::time::Duration, lookup: F) -> ShellSessionMarks
+async fn with_marks_timeout<F>(budget: std::time::Duration, lookup: F) -> DurableTabSessionMarks
 where
-    F: std::future::Future<Output = ShellSessionMarks>,
+    F: std::future::Future<Output = DurableTabSessionMarks>,
 {
     match tokio::time::timeout(budget, lookup).await {
         Ok(marks) => marks,
         Err(_) => {
             tracing::debug!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 timeout_ms = budget.as_millis() as u64,
-                "shell-session marks timed out; listing without marks"
+                "durable tab-session marks timed out; listing without marks"
             );
-            ShellSessionMarks::default()
+            DurableTabSessionMarks::default()
         }
     }
 }
 
-async fn fetch_shell_session_marks_inner() -> ShellSessionMarks {
+async fn fetch_durable_tab_session_marks_inner() -> DurableTabSessionMarks {
     use crate::shell::wt_channel::WtChannel;
 
     let channel = match crate::shell::wt_channel::CliChannel::connect().await {
         Ok(channel) => channel,
         Err(error) => {
-            tracing::debug!(target: "shell_sessions", %error, "no wt channel for shell-session marks");
-            return ShellSessionMarks::default();
+            tracing::debug!(target: "durable_tab_sessions", %error, "no wt channel for durable tab-session marks");
+            return DurableTabSessionMarks::default();
         }
     };
 
-    let mut marks = ShellSessionMarks::default();
+    let mut marks = DurableTabSessionMarks::default();
     match channel.request("list_tabs", serde_json::Value::Null).await {
-        Ok(payload) => marks.open = parse_open_tab_shell_session_ids(&payload),
+        Ok(payload) => marks.open = parse_open_tab_durable_tab_session_ids(&payload),
         Err(error) => {
-            tracing::debug!(target: "shell_sessions", %error, "could not list tabs");
+            tracing::debug!(target: "durable_tab_sessions", %error, "could not list tabs");
         }
     }
 
@@ -4794,7 +4794,7 @@ async fn fetch_shell_session_marks_inner() -> ShellSessionMarks {
 #[cfg(test)]
 mod tests {
     use super::acp;
-    use super::{with_marks_timeout, ShellSessionMarks, SHELL_SESSION_MARKS_TIMEOUT};
+    use super::{with_marks_timeout, DurableTabSessionMarks, DURABLE_TAB_SESSION_MARKS_TIMEOUT};
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
@@ -4985,7 +4985,7 @@ mod tests {
         let budget = std::time::Duration::from_millis(20);
         let slow = async {
             tokio::time::sleep(budget * 10).await;
-            ShellSessionMarks {
+            DurableTabSessionMarks {
                 open: std::collections::HashSet::from(["durable-1".to_string()]),
             }
         };
@@ -4999,12 +4999,12 @@ mod tests {
     #[tokio::test]
     async fn marks_lookup_within_the_budget_is_kept() {
         let ready = async {
-            ShellSessionMarks {
+            DurableTabSessionMarks {
                 open: std::collections::HashSet::from(["durable-2".to_string()]),
             }
         };
 
-        let marks = with_marks_timeout(SHELL_SESSION_MARKS_TIMEOUT, ready).await;
+        let marks = with_marks_timeout(DURABLE_TAB_SESSION_MARKS_TIMEOUT, ready).await;
         assert!(marks.open.contains("durable-2"));
     }
 

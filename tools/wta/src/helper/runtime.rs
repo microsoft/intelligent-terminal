@@ -1094,9 +1094,9 @@ async fn run_acp_app(
                         tracing::info!(target: "initial_view", "starting in agent session view");
                         app_state.open_agents_view_for_tab(tab_id);
                     }
-                    InitialView::ShellSessions => {
-                        tracing::info!(target: "initial_view", "starting in shell sessions view");
-                        app_state.open_shell_sessions_view_for_tab(tab_id);
+                    InitialView::DurableTabSessions => {
+                        tracing::info!(target: "initial_view", "starting in durable tab sessions view");
+                        app_state.open_durable_tab_sessions_view_for_tab(tab_id);
                     }
                     InitialView::Chat => {}
                 }

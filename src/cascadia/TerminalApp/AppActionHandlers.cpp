@@ -505,12 +505,12 @@ namespace winrt::TerminalApp::implementation
             if (SUCCEEDED(result))
             {
                 if (const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
-                    terminalArgs && !terminalArgs.DurableShellSessionId().empty())
+                    terminalArgs && !terminalArgs.DurableTabSessionId().empty())
                 {
                     if (const auto tab = _GetFocusedTabImpl())
                     {
-                        tab->SetDurableShellSession(terminalArgs.DurableShellSessionId(),
-                                                    terminalArgs.DurableShellSessionRevision());
+                        tab->SetDurableTabSession(terminalArgs.DurableTabSessionId(),
+                                                    terminalArgs.DurableTabSessionRevision());
                     }
                 }
             }

@@ -27,7 +27,7 @@ namespace winrt::TerminalApp::implementation
                                const winrt::hstring& backend);
 
         void SetSessionsView(bool active);
-        void SetShellSessionsView(bool active);
+        void SetDurableTabSessionsView(bool active);
         // Whether the agent pane is currently displaying its sessions view
         // (vs the chat view). Reflects the last `agent_state_changed` snapshot
         // from wta for this pane. Read by the window-level bottom bar to
@@ -35,7 +35,7 @@ namespace winrt::TerminalApp::implementation
         // active, the next press closes the pane; otherwise it switches
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
-        bool IsShellSessionsView() const noexcept { return _isShellSessionsView; }
+        bool IsDurableTabSessionsView() const noexcept { return _isDurableTabSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
         void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
 
@@ -162,7 +162,7 @@ namespace winrt::TerminalApp::implementation
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
-        bool _isShellSessionsView{ false };
+        bool _isDurableTabSessionsView{ false };
         winrt::hstring _agentSessionId{};
 
         // --- Diagnostics / autofix state (projected by the window bottom bar) ---

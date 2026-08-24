@@ -205,9 +205,9 @@ namespace Microsoft.Terminal.Settings.Model
         String AgentPaneView;
         Boolean AgentPaneOpen;
         String AgentPanePosition;
-        String ShellSessionRestorePath;
-        String DurableShellSessionId;
-        Int64 DurableShellSessionRevision;
+        String DurableTabSessionBufferPath;
+        String DurableTabSessionId;
+        Int64 DurableTabSessionRevision;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

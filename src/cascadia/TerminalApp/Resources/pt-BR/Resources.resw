@@ -1273,9 +1273,9 @@
     <value>Alternar agente</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
   </data>
-  <data name="AgentPane_ShellSessionsTitle" xml:space="preserve">
-    <value>Sessões do shell</value>
-    <comment>Title shown in the agent pane title bar when the saved shell-sessions view is active.</comment>
+  <data name="AgentPane_DurableTabSessionsTitle" xml:space="preserve">
+    <value>Sessões de guia</value>
+    <comment>Title shown in the agent pane title bar when the saved tab-sessions view is active. In this context, a "tab session" is a saved terminal tab that can be restored later.</comment>
   </data>
   <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
     <value>Sessões do agente: {0}</value>

@@ -27,7 +27,7 @@ pub enum CommandKind {
     /// a clean session. Only an unavailable helper requires pane recreation.
     Restart,
     Sessions,
-    ShellSessions,
+    DurableTabSessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
@@ -111,7 +111,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "tab-history",
         summary_key: "commands.tab_history.summary",
-        kind: CommandKind::ShellSessions,
+        kind: CommandKind::DurableTabSessions,
     },
     CommandSpec {
         name: "agent",
@@ -379,7 +379,7 @@ mod tests {
     fn tab_history_parses() {
         assert_eq!(
             parse("/tab-history").unwrap().kind,
-            CommandKind::ShellSessions
+            CommandKind::DurableTabSessions
         );
     }
 

@@ -250,13 +250,13 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
-    void AgentPaneContent::SetShellSessionsView(bool active)
+    void AgentPaneContent::SetDurableTabSessionsView(bool active)
     {
-        if (_isShellSessionsView == active)
+        if (_isDurableTabSessionsView == active)
         {
             return;
         }
-        _isShellSessionsView = active;
+        _isDurableTabSessionsView = active;
         _refreshLabel();
         _refreshLogo();
         StateChanged.raise(*this, nullptr);
@@ -353,11 +353,11 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLabel()
     {
-        // The saved shell-session list is not about the agent, so it replaces
+        // The saved durable tab-session list is not about the agent, so it replaces
         // the whole label rather than appending to the agent identity below.
-        if (_isShellSessionsView)
+        if (_isDurableTabSessionsView)
         {
-            AgentLabelText().Text(RS_(L"AgentPane_ShellSessionsTitle"));
+            AgentLabelText().Text(RS_(L"AgentPane_DurableTabSessionsTitle"));
             return;
         }
 
@@ -416,9 +416,9 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLogo()
     {
-        // The shell-session list replaces the agent identity in the label, so
+        // The durable tab-session list replaces the agent identity in the label, so
         // an agent mark next to it would have nothing to label.
-        if (_isShellSessionsView)
+        if (_isDurableTabSessionsView)
         {
             AgentLogo().Visibility(Visibility::Collapsed);
             return;

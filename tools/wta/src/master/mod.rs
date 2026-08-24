@@ -283,7 +283,7 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
-    shell_sessions: Option<crate::shell_session_store::ShellSessionStore>,
+    durable_tab_sessions: Option<crate::durable_tab_session_store::DurableTabSessionStore>,
     session_mcp_endpoints: session_mcp::Endpoints,
     session_mcp_capabilities: session_mcp::CapabilityRegistry,
     /// Latest Usage waiting for its owning helper. Context is replaced by
@@ -3862,15 +3862,15 @@ impl HelperHandler {
         );
         let mut request = crate::session_registry::parse_ext_request(args);
         if let Some(claimed_elevated) =
-            scope_shell_session_request(&mut request, self.client_elevated)
+            scope_durable_tab_session_request(&mut request, self.client_elevated)
         {
             if claimed_elevated != self.client_elevated {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     helper_id = ?self.helper_id,
                     claimed_elevated,
                     authenticated_elevated = self.client_elevated,
-                    "ignoring caller-controlled shell-session elevation scope"
+                    "ignoring caller-controlled durable tab-session elevation scope"
                 );
             }
         }
@@ -3891,10 +3891,10 @@ impl HelperHandler {
                 handle_session_resume_dispatched(&self.state, &p).await
             }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
-            Req::ShellSessionsList(p) => handle_shell_sessions_list(&self.state, p).await,
-            Req::ShellSessionSave(p) => handle_shell_session_save(&self.state, p).await,
-            Req::ShellSessionGet(p) => handle_shell_session_get(&self.state, p).await,
-            Req::ShellSessionDelete(p) => handle_shell_session_delete(&self.state, p).await,
+            Req::DurableTabSessionsList(p) => handle_durable_tab_sessions_list(&self.state, p).await,
+            Req::DurableTabSessionSave(p) => handle_durable_tab_session_save(&self.state, p).await,
+            Req::DurableTabSessionGet(p) => handle_durable_tab_session_get(&self.state, p).await,
+            Req::DurableTabSessionDelete(p) => handle_durable_tab_session_delete(&self.state, p).await,
             Req::CloseTabSession(p) => handle_close_tab_session(&self.state, &p, false).await,
             Req::ForwardToAgent(raw) => {
                 self.resolved_agent("ext_method")?
@@ -4374,13 +4374,13 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
             .local_addr()
             .context("read master session MCP HTTP endpoint")?
     );
-    let shell_sessions = match crate::shell_session_store::ShellSessionStore::open_runtime().await {
+    let durable_tab_sessions = match crate::durable_tab_session_store::DurableTabSessionStore::open_runtime().await {
         Ok(store) => Some(store),
         Err(error) => {
             tracing::error!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 error = %error,
-                "durable shell-session store unavailable; agent master will continue"
+                "durable tab-session store unavailable; agent master will continue"
             );
             None
         }
@@ -4388,7 +4388,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     let inner = Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
-        shell_sessions,
+        durable_tab_sessions,
         session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
@@ -6285,16 +6285,16 @@ async fn handle_sessions_list(
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
-fn scope_shell_session_request(
+fn scope_durable_tab_session_request(
     request: &mut crate::session_registry::WtaExtRequest,
     authenticated_elevated: bool,
 ) -> Option<bool> {
     use crate::session_registry::WtaExtRequest as Req;
     let claimed = match request {
-        Req::ShellSessionsList(params) => &mut params.elevated,
-        Req::ShellSessionSave(params) => &mut params.elevated,
-        Req::ShellSessionGet(params) => &mut params.elevated,
-        Req::ShellSessionDelete(params) => &mut params.elevated,
+        Req::DurableTabSessionsList(params) => &mut params.elevated,
+        Req::DurableTabSessionSave(params) => &mut params.elevated,
+        Req::DurableTabSessionGet(params) => &mut params.elevated,
+        Req::DurableTabSessionDelete(params) => &mut params.elevated,
         _ => return None,
     };
     let claimed_elevated = *claimed;
@@ -6302,79 +6302,79 @@ fn scope_shell_session_request(
     Some(claimed_elevated)
 }
 
-fn shell_session_store(
+fn durable_tab_session_store(
     state: &MasterStateInner,
-) -> acp::Result<&crate::shell_session_store::ShellSessionStore> {
-    state.shell_sessions.as_ref().ok_or_else(|| {
+) -> acp::Result<&crate::durable_tab_session_store::DurableTabSessionStore> {
+    state.durable_tab_sessions.as_ref().ok_or_else(|| {
         acp::Error::internal_error().data(serde_json::json!({
-            "reason": "shell-session store unavailable"
+            "reason": "durable tab-session store unavailable"
         }))
     })
 }
 
-fn shell_session_store_error(operation: &str, error: anyhow::Error) -> acp::Error {
-    tracing::warn!(target: "shell_sessions", operation, error = %error, "durable shell-session operation failed");
+fn durable_tab_session_store_error(operation: &str, error: anyhow::Error) -> acp::Error {
+    tracing::warn!(target: "durable_tab_sessions", operation, error = %error, "durable tab-session operation failed");
     acp::Error::internal_error().data(serde_json::json!({
         "operation": operation,
         "message": error.to_string()
     }))
 }
 
-async fn handle_shell_sessions_list(
+async fn handle_durable_tab_sessions_list(
     state: &MasterStateInner,
-    params: crate::shell_session_store::ShellSessionsListParams,
+    params: crate::durable_tab_session_store::DurableTabSessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let response = shell_session_store(state)?
+    let response = durable_tab_session_store(state)?
         .list(params)
         .await
-        .map_err(|error| shell_session_store_error("list", error))?;
-    Ok(crate::session_registry::build_shell_session_ext_response(
+        .map_err(|error| durable_tab_session_store_error("list", error))?;
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(
         &response,
     ))
 }
 
-async fn handle_shell_session_save(
+async fn handle_durable_tab_session_save(
     state: &MasterStateInner,
-    params: crate::shell_session_store::ShellSessionSaveParams,
+    params: crate::durable_tab_session_store::DurableTabSessionSaveParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let response = shell_session_store(state)?
+    let response = durable_tab_session_store(state)?
         .save(params)
         .await
-        .map_err(|error| shell_session_store_error("save", error))?;
-    Ok(crate::session_registry::build_shell_session_ext_response(
+        .map_err(|error| durable_tab_session_store_error("save", error))?;
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(
         &response,
     ))
 }
 
-async fn handle_shell_session_get(
+async fn handle_durable_tab_session_get(
     state: &MasterStateInner,
-    params: crate::shell_session_store::ShellSessionGetParams,
+    params: crate::durable_tab_session_store::DurableTabSessionGetParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
     let id = params.id.clone();
-    let response = shell_session_store(state)?
+    let response = durable_tab_session_store(state)?
         .get(params)
         .await
-        .map_err(|error| shell_session_store_error("get", error))?
+        .map_err(|error| durable_tab_session_store_error("get", error))?
         .ok_or_else(|| {
             acp::Error::resource_not_found(None).data(serde_json::json!({
                 "id": id,
-                "reason": "durable shell session not found in elevation scope"
+                "reason": "durable tab session not found in elevation scope"
             }))
         })?;
-    Ok(crate::session_registry::build_shell_session_ext_response(
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(
         &response,
     ))
 }
 
-async fn handle_shell_session_delete(
+async fn handle_durable_tab_session_delete(
     state: &MasterStateInner,
-    params: crate::shell_session_store::ShellSessionDeleteParams,
+    params: crate::durable_tab_session_store::DurableTabSessionDeleteParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let response = shell_session_store(state)?
+    let response = durable_tab_session_store(state)?
         .delete(params)
         .await
-        .map_err(|error| shell_session_store_error("delete", error))?;
-    Ok(crate::session_registry::build_shell_session_ext_response(
+        .map_err(|error| durable_tab_session_store_error("delete", error))?;
+    Ok(crate::session_registry::build_durable_tab_session_ext_response(
         &response,
     ))
 }

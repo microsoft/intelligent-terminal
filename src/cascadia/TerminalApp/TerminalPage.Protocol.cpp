@@ -193,7 +193,7 @@ namespace winrt::TerminalApp::implementation
                 });
             }
             info.PaneCount = terminalPaneCount;
-            info.DurableShellSessionId = tabImpl->DurableShellSessionId();
+            info.DurableTabSessionId = tabImpl->DurableTabSessionId();
             tabs.Append(info);
         }
 
@@ -843,7 +843,7 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    IAsyncOperation<hstring> TerminalPage::ListProtocolShellSessions()
+    IAsyncOperation<hstring> TerminalPage::ListProtocolDurableTabSessions()
     {
         co_await wil::resume_foreground(Dispatcher());
 
@@ -868,7 +868,7 @@ namespace winrt::TerminalApp::implementation
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "";
         const auto result = sharedWta.Request(
-            "_intellterm.wta/shell_sessions/list",
+            "_intellterm.wta/durable_tab_sessions/list",
             Json::writeString(writer, params));
         THROW_HR_IF(E_FAIL, !result);
 
@@ -882,14 +882,14 @@ namespace winrt::TerminalApp::implementation
         co_return winrt::to_hstring(Json::writeString(writer, response["sessions"]));
     }
 
-    IAsyncOperation<bool> TerminalPage::FocusProtocolShellSession(hstring id)
+    IAsyncOperation<bool> TerminalPage::FocusProtocolDurableTabSession(hstring id)
     {
         co_await wil::resume_foreground(Dispatcher());
 
         for (uint32_t index = 0; index < _tabs.Size(); ++index)
         {
             if (const auto tab = _GetTabImpl(_tabs.GetAt(index));
-                tab && tab->DurableShellSessionId() == id)
+                tab && tab->DurableTabSessionId() == id)
             {
                 SummonWindowRequested.raise(*this, nullptr);
                 _SelectTab(index);
@@ -900,7 +900,7 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring id)
+    IAsyncOperation<bool> TerminalPage::RestoreProtocolDurableTabSession(hstring id)
     {
         co_await wil::resume_foreground(Dispatcher());
 
@@ -929,7 +929,7 @@ namespace winrt::TerminalApp::implementation
         Json::StreamWriterBuilder writer;
         writer["indentation"] = "";
         const auto result = sharedWta.Request(
-            "_intellterm.wta/shell_sessions/get",
+            "_intellterm.wta/durable_tab_sessions/get",
             Json::writeString(writer, params));
         if (!result)
         {
@@ -992,7 +992,7 @@ namespace winrt::TerminalApp::implementation
                     const auto paneKey = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
                     if (const auto path = restorePaths.find(paneKey); path != restorePaths.end())
                     {
-                        terminalArgs.ShellSessionRestorePath(path->second);
+                        terminalArgs.DurableTabSessionBufferPath(path->second);
                     }
 
                     // Restoring from a snapshot builds a brand new shell, so it
@@ -1001,8 +1001,8 @@ namespace winrt::TerminalApp::implementation
 
                     if (firstTerminal)
                     {
-                        terminalArgs.DurableShellSessionId(id);
-                        terminalArgs.DurableShellSessionRevision(session["revision"].asInt64());
+                        terminalArgs.DurableTabSessionId(id);
+                        terminalArgs.DurableTabSessionRevision(session["revision"].asInt64());
                         firstTerminal = false;
                     }
                 }

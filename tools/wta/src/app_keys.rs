@@ -239,42 +239,42 @@ impl App {
             return;
         }
 
-        if self.current_tab().current_view == View::ShellSessions {
+        if self.current_tab().current_view == View::DurableTabSessions {
             let tab_id = self.active_tab_key().to_string();
-            let count = self.current_tab().matching_shell_session_count();
+            let count = self.current_tab().matching_durable_tab_session_count();
 
-            if self.current_tab().shell_session_restore_in_flight
-                || self.current_tab().shell_session_delete_in_flight
+            if self.current_tab().durable_tab_session_restore_in_flight
+                || self.current_tab().durable_tab_session_delete_in_flight
             {
                 return;
             }
-            if let Some(id) = self.current_tab().shell_session_delete_confirmation.clone() {
+            if let Some(id) = self.current_tab().durable_tab_session_delete_confirmation.clone() {
                 match key.code {
-                    KeyCode::Char('y' | 'Y') => self.delete_shell_session(tab_id, id),
+                    KeyCode::Char('y' | 'Y') => self.delete_durable_tab_session(tab_id, id),
                     KeyCode::Char('n' | 'N') | KeyCode::Esc => {
-                        self.current_tab_mut().shell_session_delete_confirmation = None;
+                        self.current_tab_mut().durable_tab_session_delete_confirmation = None;
                     }
                     _ => {}
                 }
                 return;
             }
 
-            if self.current_tab().shell_sessions_search_focused {
+            if self.current_tab().durable_tab_sessions_search_focused {
                 match key.code {
                     KeyCode::Esc | KeyCode::Enter => {
-                        self.current_tab_mut().shell_sessions_search_focused = false;
+                        self.current_tab_mut().durable_tab_sessions_search_focused = false;
                     }
                     KeyCode::Backspace => {
-                        self.current_tab_mut().shell_sessions_query.pop();
-                        self.current_tab_mut().reset_shell_session_selection();
+                        self.current_tab_mut().durable_tab_sessions_query.pop();
+                        self.current_tab_mut().reset_durable_tab_session_selection();
                     }
                     KeyCode::Char(character)
                         if !key
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().shell_sessions_query.push(character);
-                        self.current_tab_mut().reset_shell_session_selection();
+                        self.current_tab_mut().durable_tab_sessions_query.push(character);
+                        self.current_tab_mut().reset_durable_tab_session_selection();
                     }
                     _ => {}
                 }
@@ -285,7 +285,7 @@ impl App {
                 KeyCode::Down => {
                     let current = self
                         .current_tab()
-                        .shell_sessions_list_state
+                        .durable_tab_sessions_list_state
                         .selected()
                         .unwrap_or(0);
                     let next = if count == 0 {
@@ -294,43 +294,43 @@ impl App {
                         (current + 1).min(count - 1)
                     };
                     self.current_tab_mut()
-                        .shell_sessions_list_state
+                        .durable_tab_sessions_list_state
                         .select((count > 0).then_some(next));
                 }
                 KeyCode::Up => {
                     let current = self
                         .current_tab()
-                        .shell_sessions_list_state
+                        .durable_tab_sessions_list_state
                         .selected()
                         .unwrap_or(0);
                     self.current_tab_mut()
-                        .shell_sessions_list_state
+                        .durable_tab_sessions_list_state
                         .select((count > 0).then_some(current.saturating_sub(1)));
                 }
                 KeyCode::Enter => {
-                    if let Some(index) = self.current_tab().shell_sessions_list_state.selected() {
+                    if let Some(index) = self.current_tab().durable_tab_sessions_list_state.selected() {
                         if let Some(session) =
-                            self.current_tab().matching_shell_session(index).cloned()
+                            self.current_tab().matching_durable_tab_session(index).cloned()
                         {
-                            self.restore_shell_session(tab_id, session.id);
+                            self.restore_durable_tab_session(tab_id, session.id);
                         }
                     }
                 }
                 KeyCode::Delete | KeyCode::Char('d' | 'D') => {
-                    self.current_tab_mut().begin_selected_shell_session_delete();
+                    self.current_tab_mut().begin_selected_durable_tab_session_delete();
                 }
                 KeyCode::Char('/') => {
-                    self.current_tab_mut().shell_sessions_search_focused = true;
+                    self.current_tab_mut().durable_tab_sessions_search_focused = true;
                 }
                 KeyCode::Char('f' | 'F') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.current_tab_mut().shell_sessions_search_focused = true;
+                    self.current_tab_mut().durable_tab_sessions_search_focused = true;
                 }
                 KeyCode::F(5) => {
-                    self.current_tab_mut().shell_sessions_loading = true;
-                    self.load_shell_sessions(tab_id);
+                    self.current_tab_mut().durable_tab_sessions_loading = true;
+                    self.load_durable_tab_sessions(tab_id);
                 }
                 KeyCode::Esc => {
-                    self.close_shell_sessions_view_for_tab(&tab_id);
+                    self.close_durable_tab_sessions_view_for_tab(&tab_id);
                     self.project_active_tab_state();
                 }
                 _ => {}

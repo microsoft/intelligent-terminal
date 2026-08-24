@@ -397,9 +397,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::hstring, AgentPaneView, L"");
         ACTION_ARG(bool, AgentPaneOpen, false);
         ACTION_ARG(winrt::hstring, AgentPanePosition, L"");
-        ACTION_ARG(winrt::hstring, ShellSessionRestorePath, L"");
-        ACTION_ARG(winrt::hstring, DurableShellSessionId, L"");
-        ACTION_ARG(int64_t, DurableShellSessionRevision, 0);
+        ACTION_ARG(winrt::hstring, DurableTabSessionBufferPath, L"");
+        ACTION_ARG(winrt::hstring, DurableTabSessionId, L"");
+        ACTION_ARG(int64_t, DurableTabSessionRevision, 0);
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
@@ -417,8 +417,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         static constexpr std::string_view ViewKey{ "view" };
         static constexpr std::string_view OpenKey{ "open" };
         static constexpr std::string_view PositionKey{ "position" };
-        static constexpr std::string_view DurableShellSessionIdKey{ "durableShellSessionId" };
-        static constexpr std::string_view DurableShellSessionRevisionKey{ "durableShellSessionRevision" };
+        static constexpr std::string_view DurableTabSessionIdKey{ "durableTabSessionId" };
+        static constexpr std::string_view DurableTabSessionRevisionKey{ "durableTabSessionRevision" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -500,11 +500,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::GetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::GetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
-            JsonUtils::GetValueForKey(json, DurableShellSessionIdKey, args->_DurableShellSessionId);
-            if (const auto& durableShellSessionRevision = json[DurableShellSessionRevisionKey.data()];
-                durableShellSessionRevision.isInt() || durableShellSessionRevision.isInt64())
+            JsonUtils::GetValueForKey(json, DurableTabSessionIdKey, args->_DurableTabSessionId);
+            if (const auto& durableTabSessionRevision = json[DurableTabSessionRevisionKey.data()];
+                durableTabSessionRevision.isInt() || durableTabSessionRevision.isInt64())
             {
-                args->_DurableShellSessionRevision = durableShellSessionRevision.asInt64();
+                args->_DurableTabSessionRevision = durableTabSessionRevision.asInt64();
             }
             JsonUtils::GetValueForKey(json, ContentKey, args->_ContentId);
             return *args;
@@ -560,11 +560,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::SetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
-            if (const auto durableShellSessionId = args->DurableShellSessionId();
-                !durableShellSessionId.empty())
+            if (const auto durableTabSessionId = args->DurableTabSessionId();
+                !durableTabSessionId.empty())
             {
-                JsonUtils::SetValueForKey(json, DurableShellSessionIdKey, durableShellSessionId);
-                json[DurableShellSessionRevisionKey.data()] = Json::Int64{ args->DurableShellSessionRevision() };
+                JsonUtils::SetValueForKey(json, DurableTabSessionIdKey, durableTabSessionId);
+                json[DurableTabSessionRevisionKey.data()] = Json::Int64{ args->DurableTabSessionRevision() };
             }
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
             return json;
@@ -587,9 +587,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_AgentPaneView = _AgentPaneView;
             copy->_AgentPaneOpen = _AgentPaneOpen;
             copy->_AgentPanePosition = _AgentPanePosition;
-            copy->_ShellSessionRestorePath = _ShellSessionRestorePath;
-            copy->_DurableShellSessionId = _DurableShellSessionId;
-            copy->_DurableShellSessionRevision = _DurableShellSessionRevision;
+            copy->_DurableTabSessionBufferPath = _DurableTabSessionBufferPath;
+            copy->_DurableTabSessionId = _DurableTabSessionId;
+            copy->_DurableTabSessionRevision = _DurableTabSessionRevision;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;

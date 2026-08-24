@@ -552,7 +552,7 @@ namespace winrt::TerminalApp::implementation
 
     // Stamps the tab-level identity onto the first pane's args.
     //
-    // A pane's args describe a pane; the durable shell-session id belongs to
+    // A pane's args describe a pane; the durable tab-session id belongs to
     // the tab, so it only survives a hop that rebuilds the tab from actions —
     // persistence, or a move to another window — if it is written into the
     // actions here. The durable id is what makes a saved session at most one
@@ -560,8 +560,8 @@ namespace winrt::TerminalApp::implementation
     // tab and focus it, and a tab that arrived without its id cannot be found.
     void TerminalPage::_AddTabIdentityMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
     {
-        const auto& durableShellSessionId = tab->DurableShellSessionId();
-        if (durableShellSessionId.empty())
+        const auto& durableTabSessionId = tab->DurableTabSessionId();
+        if (durableTabSessionId.empty())
         {
             return;
         }
@@ -580,8 +580,8 @@ namespace winrt::TerminalApp::implementation
 
             if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
             {
-                terminalArgs.DurableShellSessionId(durableShellSessionId);
-                terminalArgs.DurableShellSessionRevision(tab->DurableShellSessionRevision());
+                terminalArgs.DurableTabSessionId(durableTabSessionId);
+                terminalArgs.DurableTabSessionRevision(tab->DurableTabSessionRevision());
                 break;
             }
         }
@@ -638,7 +638,7 @@ namespace winrt::TerminalApp::implementation
                         terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
                                                         tab->AgentIdOverride() :
                                                         _settings.GlobalSettings().EffectiveAcpAgent());
-                        terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
+                        terminalArgs.AgentPaneView(agentContent.IsDurableTabSessionsView() ? L"durable_tab_sessions" :
                                                    agentContent.IsSessionsView()      ? L"sessions" :
                                                                                         L"chat");
                         terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
@@ -662,7 +662,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TerminalPage::_ShellSessionSaveResult TerminalPage::_ParseShellSessionSaveResponse(const std::string_view json)
+    TerminalPage::_DurableTabSessionSaveResult TerminalPage::_ParseDurableTabSessionSaveResponse(const std::string_view json)
     {
         Json::Value response;
         std::string errors;
@@ -692,20 +692,20 @@ namespace winrt::TerminalApp::implementation
                         revision.asInt64() <= 0 ||
                         !forked.isBool());
 
-        return _ShellSessionSaveResult{ winrt::to_hstring(id.asString()), revision.asInt64(), forked.asBool() };
+        return _DurableTabSessionSaveResult{ winrt::to_hstring(id.asString()), revision.asInt64(), forked.asBool() };
     }
 
-    void TerminalPage::_ApplyShellSessionSaveResult(Tab* const tab, const _ShellSessionSaveResult& save)
+    void TerminalPage::_ApplyDurableTabSessionSaveResult(Tab* const tab, const _DurableTabSessionSaveResult& save)
     {
-        tab->SetDurableShellSession(save.id, save.revision);
+        tab->SetDurableTabSession(save.id, save.revision);
     }
 
-    void TerminalPage::_PersistShellSession(Tab* const tab)
+    void TerminalPage::_PersistDurableTabSession(Tab* const tab)
     {
-        const auto closeActions = GetShellSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference());
+        const auto closeActions = GetDurableTabSessionCloseActions(_settings.GlobalSettings().FirstWindowPreference());
         if (!closeActions.save)
         {
-            _agentPaneLog("_PersistShellSession: skipped — saving is off");
+            _agentPaneLog("_PersistDurableTabSession: skipped — saving is off");
             return;
         }
 
@@ -724,11 +724,11 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-        if (!ShouldPersistShellSession(hasUserInput, !tab->DurableShellSessionId().empty(), hasAgentSession))
+        if (!ShouldPersistDurableTabSession(hasUserInput, !tab->DurableTabSessionId().empty(), hasAgentSession))
         {
             // Profile startup commands alone do not qualify until the user
             // sends input or a resumable agent session binds to the pane.
-            _agentPaneLog("_PersistShellSession: skipped — no user input, durable id, or agent session");
+            _agentPaneLog("_PersistDurableTabSession: skipped — no user input, durable id, or agent session");
             return;
         }
 
@@ -738,14 +738,14 @@ namespace winrt::TerminalApp::implementation
             auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
             if (sessionName.empty() || actions.empty())
             {
-                _agentPaneLog(std::string{ "_PersistShellSession: skipped — nameEmpty=" } +
+                _agentPaneLog(std::string{ "_PersistDurableTabSession: skipped — nameEmpty=" } +
                               (sessionName.empty() ? "true" : "false") + " actions=" +
                               std::to_string(actions.size()));
             }
             else
             {
                 const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-                const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"shell-session-staging";
+                const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"durable-tab-session-staging";
                 std::filesystem::create_directories(stagingDirectory);
                 const auto elevated = IsRunningElevated();
                 std::vector<std::filesystem::path> persistedPaths;
@@ -859,12 +859,12 @@ namespace winrt::TerminalApp::implementation
                 params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
                 params["elevated"] = elevated;
                 params["buffers"] = std::move(buffers);
-                const auto requestedShellSessionId = tab->DurableShellSessionId();
-                const auto requestedShellSessionRevision = tab->DurableShellSessionRevision();
-                if (!requestedShellSessionId.empty())
+                const auto requestedTabSessionId = tab->DurableTabSessionId();
+                const auto requestedDurableTabSessionRevision = tab->DurableTabSessionRevision();
+                if (!requestedTabSessionId.empty())
                 {
-                    params["id"] = winrt::to_string(requestedShellSessionId);
-                    params["expected_revision"] = Json::Int64{ requestedShellSessionRevision };
+                    params["id"] = winrt::to_string(requestedTabSessionId);
+                    params["expected_revision"] = Json::Int64{ requestedDurableTabSessionRevision };
                 }
 
                 auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
@@ -886,14 +886,14 @@ namespace winrt::TerminalApp::implementation
                 Json::StreamWriterBuilder writer;
                 writer["indentation"] = "";
                 const auto result = sharedWta.Request(
-                    "_intellterm.wta/shell_sessions/save",
+                    "_intellterm.wta/durable_tab_sessions/save",
                     Json::writeString(writer, params));
                 if (!result)
                 {
-                    _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result");
+                    _agentPaneLog("_PersistDurableTabSession: wta durable_tab_sessions/save returned no result");
                 }
                 THROW_HR_IF(E_FAIL, !result);
-                const auto save = _ParseShellSessionSaveResponse(*result);
+                const auto save = _ParseDurableTabSessionSaveResponse(*result);
                 if (save.forked)
                 {
                     // A fork means the revision this tab was holding no longer
@@ -901,13 +901,13 @@ namespace winrt::TerminalApp::implementation
                     // split off a duplicate instead. That is how the same
                     // session ends up listed several times, and the pair of
                     // revisions below is what says which stale copy caused it.
-                    _agentPaneLog(std::string{ "_PersistShellSession: FORKED requested id=" } +
-                                  winrt::to_string(requestedShellSessionId) +
-                                  " expected_revision=" + std::to_string(requestedShellSessionRevision) +
+                    _agentPaneLog(std::string{ "_PersistDurableTabSession: FORKED requested id=" } +
+                                  winrt::to_string(requestedTabSessionId) +
+                                  " expected_revision=" + std::to_string(requestedDurableTabSessionRevision) +
                                   " -> new id=" + winrt::to_string(save.id) +
                                   " revision=" + std::to_string(save.revision));
                 }
-                _ApplyShellSessionSaveResult(tab, save);
+                _ApplyDurableTabSessionSaveResult(tab, save);
                 committed = true;
             }
         }
@@ -968,7 +968,7 @@ namespace winrt::TerminalApp::implementation
         // id/revision, matching the last-pane close path.
         try
         {
-            _PersistShellSession(t);
+            _PersistDurableTabSession(t);
         }
         CATCH_LOG()
 
@@ -1469,12 +1469,12 @@ namespace winrt::TerminalApp::implementation
         {
             try
             {
-                _PersistShellSession(owningTab.get());
+                _PersistDurableTabSession(owningTab.get());
             }
             CATCH_LOG()
         }
         // If this is the last pane on the last tab of a named window, persist
-        // the workspace after the shell-session save has updated the tab's
+        // the workspace after the durable tab-session save has updated the tab's
         // durable id and revision, while the pane content is still alive.
         if (isLastPane && _tabs.Size() == 1)
         {

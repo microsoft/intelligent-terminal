@@ -1,4 +1,4 @@
-//! Master-owned durable shell-session metadata and scrollback storage.
+//! Master-owned durable tab-session metadata and scrollback storage.
 
 use std::collections::HashSet;
 use std::fs;
@@ -12,18 +12,23 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-const DATABASE_FILE: &str = "shell-sessions.db";
-const BUFFER_DIRECTORY: &str = "shell-sessions";
-const STAGING_DIRECTORY: &str = "shell-session-staging";
-const RESTORE_CACHE_DIRECTORY: &str = "shell-session-restore-cache";
+const DATABASE_FILE: &str = "durable-tab-sessions.db";
+const BUFFER_DIRECTORY: &str = "durable-tab-sessions";
+const STAGING_DIRECTORY: &str = "durable-tab-session-staging";
+const RESTORE_CACHE_DIRECTORY: &str = "durable-tab-session-restore-cache";
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const TRANSIENT_RETENTION_SECONDS: i64 = 24 * 60 * 60;
 const MAINTENANCE_INTERVAL_SECONDS: i64 = 24 * 60 * 60;
 const LAST_MAINTENANCE_KEY: &str = "last_maintenance_at";
 const LEGACY_BUFFER_PREFIXES: [&str; 2] = ["shell_buffer_", "shell_elevated_"];
+// Pre-rename layout, migrated once on first open. See `migrate_legacy_layout`.
+const LEGACY_DATABASE_FILE: &str = "shell-sessions.db";
+const LEGACY_BUFFER_DIRECTORY: &str = "shell-sessions";
+const LEGACY_STAGING_DIRECTORY: &str = "shell-session-staging";
+const LEGACY_RESTORE_CACHE_DIRECTORY: &str = "shell-session-restore-cache";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionRecord {
+pub struct DurableTabSessionRecord {
     pub id: String,
     pub name: String,
     pub layout_json: String,
@@ -35,7 +40,7 @@ pub struct ShellSessionRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionSummary {
+pub struct DurableTabSessionSummary {
     pub id: String,
     pub name: String,
     pub active_pane_cwd: String,
@@ -43,29 +48,29 @@ pub struct ShellSessionSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionBufferInput {
+pub struct DurableTabSessionBufferInput {
     pub pane_key: String,
     pub staging_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionBuffer {
+pub struct DurableTabSessionBuffer {
     pub pane_key: String,
     pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionsListParams {
+pub struct DurableTabSessionsListParams {
     pub elevated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionsListResponse {
-    pub sessions: Vec<ShellSessionSummary>,
+pub struct DurableTabSessionsListResponse {
+    pub sessions: Vec<DurableTabSessionSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionSaveParams {
+pub struct DurableTabSessionSaveParams {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -75,66 +80,66 @@ pub struct ShellSessionSaveParams {
     pub active_pane_cwd: String,
     pub layout_json: String,
     pub elevated: bool,
-    pub buffers: Vec<ShellSessionBufferInput>,
+    pub buffers: Vec<DurableTabSessionBufferInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionSaveResponse {
+pub struct DurableTabSessionSaveResponse {
     pub id: String,
     pub revision: i64,
     pub forked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionGetParams {
+pub struct DurableTabSessionGetParams {
     pub id: String,
     pub elevated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionGetResponse {
-    pub session: ShellSessionRecord,
-    pub buffers: Vec<ShellSessionBuffer>,
+pub struct DurableTabSessionGetResponse {
+    pub session: DurableTabSessionRecord,
+    pub buffers: Vec<DurableTabSessionBuffer>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionDeleteParams {
+pub struct DurableTabSessionDeleteParams {
     pub id: String,
     pub elevated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ShellSessionDeleteResponse {
+pub struct DurableTabSessionDeleteResponse {
     pub deleted: bool,
 }
 #[derive(Clone)]
-pub struct ShellSessionStore {
+pub struct DurableTabSessionStore {
     tx: mpsc::Sender<StoreCommand>,
 }
 
 enum StoreCommand {
     List(
-        ShellSessionsListParams,
-        oneshot::Sender<Result<ShellSessionsListResponse>>,
+        DurableTabSessionsListParams,
+        oneshot::Sender<Result<DurableTabSessionsListResponse>>,
     ),
     Save(
-        ShellSessionSaveParams,
-        oneshot::Sender<Result<ShellSessionSaveResponse>>,
+        DurableTabSessionSaveParams,
+        oneshot::Sender<Result<DurableTabSessionSaveResponse>>,
     ),
     Get(
-        ShellSessionGetParams,
-        oneshot::Sender<Result<Option<ShellSessionGetResponse>>>,
+        DurableTabSessionGetParams,
+        oneshot::Sender<Result<Option<DurableTabSessionGetResponse>>>,
     ),
     Delete(
-        ShellSessionDeleteParams,
-        oneshot::Sender<Result<ShellSessionDeleteResponse>>,
+        DurableTabSessionDeleteParams,
+        oneshot::Sender<Result<DurableTabSessionDeleteResponse>>,
     ),
 }
 
-impl ShellSessionStore {
+impl DurableTabSessionStore {
     pub async fn open_runtime() -> Result<Self> {
-        let root = crate::runtime_paths::shell_session_runtime_root()
-            .ok_or_else(|| anyhow!("shell-session state root is unavailable"))?;
+        let root = crate::runtime_paths::durable_tab_session_runtime_root()
+            .ok_or_else(|| anyhow!("durable tab-session state root is unavailable"))?;
         Self::open_actor(root).await
     }
 
@@ -142,13 +147,13 @@ impl ShellSessionStore {
         let (tx, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = oneshot::channel();
         std::thread::Builder::new()
-            .name("wta-shell-session-store".to_string())
+            .name("wta-durable tab-session-store".to_string())
             .spawn(move || {
                 let legacy_settings_directory =
-                    crate::runtime_paths::shell_session_settings_directory();
+                    crate::runtime_paths::durable_tab_session_settings_directory();
                 if legacy_settings_directory.is_none() {
                     tracing::debug!(
-                        target: "shell_sessions",
+                        target: "durable_tab_sessions",
                         "Cascadia SettingsDirectory is not safely resolvable; skipping legacy buffer cleanup"
                     );
                 }
@@ -171,54 +176,60 @@ impl ShellSessionStore {
                     }
                 }
             })
-            .context("failed to spawn shell-session store actor")?;
+            .context("failed to spawn durable tab-session store actor")?;
 
         ready_rx
             .await
-            .context("shell-session store actor exited during startup")??;
+            .context("durable tab-session store actor exited during startup")??;
         Ok(Self { tx })
     }
 
-    pub async fn list(&self, params: ShellSessionsListParams) -> Result<ShellSessionsListResponse> {
+    pub async fn list(
+        &self,
+        params: DurableTabSessionsListParams,
+    ) -> Result<DurableTabSessionsListResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(StoreCommand::List(params, tx))
-            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+            .map_err(|_| anyhow!("durable tab-session store actor is unavailable"))?;
         rx.await
-            .context("shell-session store actor dropped list response")?
+            .context("durable tab-session store actor dropped list response")?
     }
 
-    pub async fn save(&self, params: ShellSessionSaveParams) -> Result<ShellSessionSaveResponse> {
+    pub async fn save(
+        &self,
+        params: DurableTabSessionSaveParams,
+    ) -> Result<DurableTabSessionSaveResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(StoreCommand::Save(params, tx))
-            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+            .map_err(|_| anyhow!("durable tab-session store actor is unavailable"))?;
         rx.await
-            .context("shell-session store actor dropped save response")?
+            .context("durable tab-session store actor dropped save response")?
     }
 
     pub async fn get(
         &self,
-        params: ShellSessionGetParams,
-    ) -> Result<Option<ShellSessionGetResponse>> {
+        params: DurableTabSessionGetParams,
+    ) -> Result<Option<DurableTabSessionGetResponse>> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(StoreCommand::Get(params, tx))
-            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+            .map_err(|_| anyhow!("durable tab-session store actor is unavailable"))?;
         rx.await
-            .context("shell-session store actor dropped get response")?
+            .context("durable tab-session store actor dropped get response")?
     }
 
     pub async fn delete(
         &self,
-        params: ShellSessionDeleteParams,
-    ) -> Result<ShellSessionDeleteResponse> {
+        params: DurableTabSessionDeleteParams,
+    ) -> Result<DurableTabSessionDeleteResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(StoreCommand::Delete(params, tx))
-            .map_err(|_| anyhow!("shell-session store actor is unavailable"))?;
+            .map_err(|_| anyhow!("durable tab-session store actor is unavailable"))?;
         rx.await
-            .context("shell-session store actor dropped delete response")?
+            .context("durable tab-session store actor dropped delete response")?
     }
 }
 
@@ -235,61 +246,62 @@ impl StoreCore {
         if let Some(directory) = legacy_settings_directory {
             match cleanup_legacy_one_shot_buffers(directory) {
                 Ok(removed) if removed > 0 => tracing::info!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     removed,
                     directory = %directory.display(),
-                    "removed legacy one-shot shell-session buffers"
+                    "removed legacy one-shot durable tab-session buffers"
                 ),
                 Ok(_) => {}
                 Err(error) => tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     directory = %directory.display(),
                     error = %error,
-                    "failed to clean legacy one-shot shell-session buffers"
+                    "failed to clean legacy one-shot durable tab-session buffers"
                 ),
             }
         }
         fs::create_dir_all(&root)
             .with_context(|| format!("failed to create state root {}", root.display()))?;
+        migrate_legacy_layout(&root);
         let buffer_root = root.join(BUFFER_DIRECTORY);
         let staging_root = root.join(STAGING_DIRECTORY);
         let restore_root = root.join(RESTORE_CACHE_DIRECTORY);
         fs::create_dir_all(&buffer_root).with_context(|| {
             format!(
-                "failed to create shell-session buffer root {}",
+                "failed to create durable tab-session buffer root {}",
                 buffer_root.display()
             )
         })?;
         fs::create_dir_all(&staging_root).with_context(|| {
             format!(
-                "failed to create shell-session staging root {}",
+                "failed to create durable tab-session staging root {}",
                 staging_root.display()
             )
         })?;
         fs::create_dir_all(&restore_root).with_context(|| {
             format!(
-                "failed to create shell-session restore cache {}",
+                "failed to create durable tab-session restore cache {}",
                 restore_root.display()
             )
         })?;
         let buffer_root = fs::canonicalize(&buffer_root).with_context(|| {
             format!(
-                "failed to canonicalize shell-session buffer root {}",
+                "failed to canonicalize durable tab-session buffer root {}",
                 buffer_root.display()
             )
         })?;
 
         let mut connection = Connection::open(root.join(DATABASE_FILE))
-            .context("failed to open shell-session database")?;
+            .context("failed to open durable tab-session database")?;
         connection
             .busy_timeout(std::time::Duration::from_secs(5))
-            .context("failed to set shell-session database busy timeout")?;
+            .context("failed to set durable tab-session database busy timeout")?;
         connection
             .execute_batch(
                 "
                 PRAGMA foreign_keys = ON;
                 PRAGMA journal_mode = WAL;
-                CREATE TABLE IF NOT EXISTS shell_sessions (
+                CREATE TABLE IF NOT EXISTS durable_tab_sessions (
                     id            TEXT PRIMARY KEY NOT NULL,
                     name          TEXT NOT NULL,
                     active_pane_cwd TEXT NOT NULL DEFAULT '',
@@ -300,32 +312,32 @@ impl StoreCore {
                     last_used_at  INTEGER NOT NULL,
                     revision      INTEGER NOT NULL CHECK (revision > 0)
                 );
-                CREATE TABLE IF NOT EXISTS shell_session_buffers (
+                CREATE TABLE IF NOT EXISTS durable_tab_session_buffers (
                     buffer_id  TEXT PRIMARY KEY NOT NULL,
-                    session_id TEXT NOT NULL
-                        REFERENCES shell_sessions(id) ON DELETE CASCADE,
+                    tab_id TEXT NOT NULL
+                        REFERENCES durable_tab_sessions(id) ON DELETE CASCADE,
                     pane_key   TEXT NOT NULL,
                     path       TEXT NOT NULL,
-                    UNIQUE(session_id, pane_key)
+                    UNIQUE(tab_id, pane_key)
                 );
-                CREATE INDEX IF NOT EXISTS shell_sessions_last_used_idx
-                    ON shell_sessions(last_used_at DESC);
-                CREATE TABLE IF NOT EXISTS shell_session_metadata (
+                CREATE INDEX IF NOT EXISTS durable_tab_sessions_last_used_idx
+                    ON durable_tab_sessions(last_used_at DESC);
+                CREATE TABLE IF NOT EXISTS durable_tab_session_metadata (
                     key   TEXT PRIMARY KEY NOT NULL,
                     value INTEGER NOT NULL
                 );
                 ",
             )
-            .context("failed to initialize shell-session database")?;
+            .context("failed to initialize durable tab-session database")?;
         ensure_active_pane_cwd_column(&mut connection)?;
         let last_maintenance_at = connection
             .query_row(
-                "SELECT value FROM shell_session_metadata WHERE key = ?1",
+                "SELECT value FROM durable_tab_session_metadata WHERE key = ?1",
                 params![LAST_MAINTENANCE_KEY],
                 |row| row.get(0),
             )
             .optional()
-            .context("failed to read shell-session maintenance timestamp")?;
+            .context("failed to read durable tab-session maintenance timestamp")?;
 
         let mut store = Self {
             connection,
@@ -358,55 +370,55 @@ impl StoreCore {
 
     fn list(
         &self,
-        params: &ShellSessionsListParams,
+        params: &DurableTabSessionsListParams,
         now: i64,
-    ) -> Result<ShellSessionsListResponse> {
+    ) -> Result<DurableTabSessionsListResponse> {
         let mut statement = self
             .connection
             .prepare(
                 "SELECT id, name, active_pane_cwd, last_used_at
-                   FROM shell_sessions
+                   FROM durable_tab_sessions
                   WHERE elevated = ?1 AND last_used_at >= ?2
                   ORDER BY last_used_at DESC, updated_at DESC, id ASC",
             )
-            .context("failed to prepare shell-session list query")?;
+            .context("failed to prepare durable tab-session list query")?;
         let sessions = statement
             .query_map(
                 params![params.elevated, now - RETENTION_SECONDS],
                 summary_from_row,
             )
-            .context("failed to query shell sessions")?
+            .context("failed to query durable tab sessions")?
             .collect::<rusqlite::Result<Vec<_>>>()
-            .context("failed to decode shell-session rows")?;
-        Ok(ShellSessionsListResponse { sessions })
+            .context("failed to decode durable tab-session rows")?;
+        Ok(DurableTabSessionsListResponse { sessions })
     }
 
     fn save(
         &mut self,
-        params: ShellSessionSaveParams,
+        params: DurableTabSessionSaveParams,
         now: i64,
-    ) -> Result<ShellSessionSaveResponse> {
+    ) -> Result<DurableTabSessionSaveResponse> {
         validate_save_params(&params)?;
         let staging_files = self.validate_staging_files(&params.buffers)?;
         let buffer_root = self.buffer_root.clone();
         let mut new_buffers: Vec<(String, String, PathBuf)> =
             Vec::with_capacity(params.buffers.len());
-        let transaction_result = (|| -> Result<(ShellSessionSaveResponse, Vec<PathBuf>)> {
+        let transaction_result = (|| -> Result<(DurableTabSessionSaveResponse, Vec<PathBuf>)> {
             let transaction = self
                 .connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
-                .context("failed to begin shell-session save transaction")?;
+                .context("failed to begin durable tab-session save transaction")?;
             let existing_revision = match params.id.as_deref() {
                 Some(id) => transaction
                     .query_row(
                         "SELECT revision
-                           FROM shell_sessions
+                           FROM durable_tab_sessions
                           WHERE id = ?1 AND elevated = ?2 AND last_used_at >= ?3",
                         params![id, params.elevated, now - RETENTION_SECONDS],
                         |row| row.get::<_, i64>(0),
                     )
                     .optional()
-                    .context("failed to inspect existing shell session")?,
+                    .context("failed to inspect existing durable tab session")?,
                 None => None,
             };
             let updates_existing = matches!(
@@ -431,19 +443,19 @@ impl StoreCore {
             let session_directory = buffer_root.join(&id);
             fs::create_dir_all(&session_directory).with_context(|| {
                 format!(
-                    "failed to create shell-session directory {}",
+                    "failed to create durable tab-session directory {}",
                     session_directory.display()
                 )
             })?;
             let session_directory = fs::canonicalize(&session_directory).with_context(|| {
                 format!(
-                    "failed to canonicalize shell-session directory {}",
+                    "failed to canonicalize durable tab-session directory {}",
                     session_directory.display()
                 )
             })?;
             if !session_directory.starts_with(&buffer_root) {
                 return Err(anyhow!(
-                    "shell-session directory escapes buffer root: {}",
+                    "durable tab-session directory escapes buffer root: {}",
                     session_directory.display()
                 ));
             }
@@ -458,7 +470,7 @@ impl StoreCore {
             if updates_existing {
                 let changed = transaction
                     .execute(
-                        "UPDATE shell_sessions
+                        "UPDATE durable_tab_sessions
                             SET name = ?1, active_pane_cwd = ?2, layout_json = ?3,
                                 updated_at = ?4, last_used_at = ?4, revision = ?5
                           WHERE id = ?6 AND elevated = ?7 AND revision = ?8",
@@ -473,22 +485,22 @@ impl StoreCore {
                             revision - 1
                         ],
                     )
-                    .context("failed to update shell session")?;
+                    .context("failed to update durable tab session")?;
                 if changed != 1 {
                     return Err(anyhow!(
-                        "shell-session revision changed during serialized update"
+                        "durable tab-session revision changed during serialized update"
                     ));
                 }
                 transaction
                     .execute(
-                        "DELETE FROM shell_session_buffers WHERE session_id = ?1",
+                        "DELETE FROM durable_tab_session_buffers WHERE tab_id = ?1",
                         params![id],
                     )
-                    .context("failed to replace shell-session buffers")?;
+                    .context("failed to replace durable tab-session buffers")?;
             } else {
                 transaction
                     .execute(
-                        "INSERT INTO shell_sessions
+                        "INSERT INTO durable_tab_sessions
                             (id, name, active_pane_cwd, layout_json, elevated, created_at,
                              updated_at, last_used_at, revision)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?7)",
@@ -502,23 +514,23 @@ impl StoreCore {
                             revision
                         ],
                     )
-                    .context("failed to insert shell session")?;
+                    .context("failed to insert durable tab session")?;
             }
             for (buffer_id, pane_key, path) in &new_buffers {
                 transaction
                     .execute(
-                        "INSERT INTO shell_session_buffers
-                            (buffer_id, session_id, pane_key, path)
+                        "INSERT INTO durable_tab_session_buffers
+                            (buffer_id, tab_id, pane_key, path)
                          VALUES (?1, ?2, ?3, ?4)",
                         params![buffer_id, id, pane_key, path.to_string_lossy()],
                     )
-                    .context("failed to insert shell-session buffer")?;
+                    .context("failed to insert durable tab-session buffer")?;
             }
             transaction
                 .commit()
-                .context("failed to commit shell-session save")?;
+                .context("failed to commit durable tab-session save")?;
             Ok((
-                ShellSessionSaveResponse {
+                DurableTabSessionSaveResponse {
                     id,
                     revision,
                     forked,
@@ -542,27 +554,27 @@ impl StoreCore {
 
     fn get(
         &mut self,
-        params: &ShellSessionGetParams,
+        params: &DurableTabSessionGetParams,
         now: i64,
-    ) -> Result<Option<ShellSessionGetResponse>> {
+    ) -> Result<Option<DurableTabSessionGetResponse>> {
         validate_durable_id(&params.id)?;
         let buffer_root = self.buffer_root.clone();
         let restore_root = self.restore_root.clone();
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("failed to begin shell-session get transaction")?;
+            .context("failed to begin durable tab-session get transaction")?;
         let mut session = transaction
             .query_row(
                 "SELECT id, name, layout_json, elevated, created_at, updated_at,
                         last_used_at, revision
-                   FROM shell_sessions
+                   FROM durable_tab_sessions
                   WHERE id = ?1 AND elevated = ?2 AND last_used_at >= ?3",
                 params![params.id, params.elevated, now - RETENTION_SECONDS],
                 record_from_row,
             )
             .optional()
-            .context("failed to query shell session")?;
+            .context("failed to query durable tab session")?;
         let Some(session) = session.as_mut() else {
             return Ok(None);
         };
@@ -570,12 +582,12 @@ impl StoreCore {
         let buffer_rows = {
             let mut statement = transaction
                 .prepare(
-                    "SELECT pane_key, session_id, buffer_id
-                       FROM shell_session_buffers
-                      WHERE session_id = ?1
+                    "SELECT pane_key, tab_id, buffer_id
+                       FROM durable_tab_session_buffers
+                      WHERE tab_id = ?1
                       ORDER BY pane_key ASC",
                 )
-                .context("failed to prepare shell-session buffer query")?;
+                .context("failed to prepare durable tab-session buffer query")?;
             let buffers = statement
                 .query_map(params![params.id], |row| {
                     Ok((
@@ -584,21 +596,17 @@ impl StoreCore {
                         row.get::<_, String>(2)?,
                     ))
                 })
-                .context("failed to query shell-session buffers")?
+                .context("failed to query durable tab-session buffers")?
                 .collect::<rusqlite::Result<Vec<_>>>()
-                .context("failed to decode shell-session buffers")?;
+                .context("failed to decode durable tab-session buffers")?;
             buffers
         };
         let source_buffers = buffer_rows
             .into_iter()
-            .map(|(pane_key, session_id, buffer_id)| {
-                Ok(ShellSessionBuffer {
+            .map(|(pane_key, tab_id, buffer_id)| {
+                Ok(DurableTabSessionBuffer {
                     pane_key,
-                    path: Self::resolve_existing_buffer_path(
-                        &buffer_root,
-                        &session_id,
-                        &buffer_id,
-                    )?,
+                    path: Self::resolve_existing_buffer_path(&buffer_root, &tab_id, &buffer_id)?,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -608,20 +616,20 @@ impl StoreCore {
         let commit_result = (|| -> Result<()> {
             let changed = transaction
                 .execute(
-                    "UPDATE shell_sessions
+                    "UPDATE durable_tab_sessions
                         SET last_used_at = ?1
                       WHERE id = ?2 AND elevated = ?3 AND last_used_at >= ?4",
                     params![now, params.id, params.elevated, now - RETENTION_SECONDS],
                 )
-                .context("failed to mark shell-session restore access")?;
+                .context("failed to mark durable tab-session restore access")?;
             if changed != 1 {
                 return Err(anyhow!(
-                    "shell session disappeared before restore access was recorded"
+                    "durable tab session disappeared before restore access was recorded"
                 ));
             }
             transaction
                 .commit()
-                .context("failed to commit shell-session restore access")
+                .context("failed to commit durable tab-session restore access")
         })();
         if let Err(error) = commit_result {
             let _ = fs::remove_dir_all(snapshot_directory);
@@ -629,7 +637,7 @@ impl StoreCore {
         }
 
         session.last_used_at = now;
-        Ok(Some(ShellSessionGetResponse {
+        Ok(Some(DurableTabSessionGetResponse {
             session: session.clone(),
             buffers,
         }))
@@ -637,13 +645,13 @@ impl StoreCore {
 
     fn create_restore_snapshot(
         restore_root: &Path,
-        source_buffers: &[ShellSessionBuffer],
+        source_buffers: &[DurableTabSessionBuffer],
         now: i64,
-    ) -> Result<(PathBuf, Vec<ShellSessionBuffer>)> {
+    ) -> Result<(PathBuf, Vec<DurableTabSessionBuffer>)> {
         let snapshot_directory = restore_root.join(format!("{now}-{}", Uuid::new_v4()));
         fs::create_dir(&snapshot_directory).with_context(|| {
             format!(
-                "failed to create shell-session restore snapshot {}",
+                "failed to create durable tab-session restore snapshot {}",
                 snapshot_directory.display()
             )
         })?;
@@ -653,7 +661,7 @@ impl StoreCore {
             .map(|source| {
                 let destination = snapshot_directory.join(format!("{}.buffer", Uuid::new_v4()));
                 snapshot_file(&source.path, &destination)?;
-                Ok(ShellSessionBuffer {
+                Ok(DurableTabSessionBuffer {
                     pane_key: source.pane_key.clone(),
                     path: destination,
                 })
@@ -668,13 +676,16 @@ impl StoreCore {
         }
     }
 
-    fn delete(&mut self, params: &ShellSessionDeleteParams) -> Result<ShellSessionDeleteResponse> {
+    fn delete(
+        &mut self,
+        params: &DurableTabSessionDeleteParams,
+    ) -> Result<DurableTabSessionDeleteResponse> {
         validate_durable_id(&params.id)?;
         let buffer_root = self.buffer_root.clone();
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("failed to begin shell-session delete transaction")?;
+            .context("failed to begin durable tab-session delete transaction")?;
         let paths = Self::buffer_paths_for_scoped_session(
             &transaction,
             &buffer_root,
@@ -683,25 +694,28 @@ impl StoreCore {
         )?;
         let deleted = transaction
             .execute(
-                "DELETE FROM shell_sessions WHERE id = ?1 AND elevated = ?2",
+                "DELETE FROM durable_tab_sessions WHERE id = ?1 AND elevated = ?2",
                 params![params.id, params.elevated],
             )
-            .context("failed to delete shell session")?
+            .context("failed to delete durable tab session")?
             != 0;
         transaction
             .commit()
-            .context("failed to commit shell-session delete")?;
+            .context("failed to commit durable tab-session delete")?;
         if deleted {
             remove_files(paths.iter());
             remove_empty_parent_directories(&buffer_root, &paths);
         }
-        Ok(ShellSessionDeleteResponse { deleted })
+        Ok(DurableTabSessionDeleteResponse { deleted })
     }
 
-    fn validate_staging_files(&self, buffers: &[ShellSessionBufferInput]) -> Result<Vec<PathBuf>> {
+    fn validate_staging_files(
+        &self,
+        buffers: &[DurableTabSessionBufferInput],
+    ) -> Result<Vec<PathBuf>> {
         let staging_root = fs::canonicalize(&self.staging_root).with_context(|| {
             format!(
-                "failed to canonicalize shell-session staging root {}",
+                "failed to canonicalize durable tab-session staging root {}",
                 self.staging_root.display()
             )
         })?;
@@ -711,23 +725,23 @@ impl StoreCore {
             .iter()
             .map(|buffer| {
                 if buffer.pane_key.trim().is_empty() {
-                    return Err(anyhow!("shell-session pane_key must not be empty"));
+                    return Err(anyhow!("durable tab-session pane_key must not be empty"));
                 }
                 if !pane_keys.insert(buffer.pane_key.clone()) {
                     return Err(anyhow!(
-                        "duplicate shell-session pane_key {:?}",
+                        "duplicate durable tab-session pane_key {:?}",
                         buffer.pane_key
                     ));
                 }
                 let path = fs::canonicalize(&buffer.staging_path).with_context(|| {
                     format!(
-                        "shell-session staging file does not exist: {}",
+                        "durable tab-session staging file does not exist: {}",
                         buffer.staging_path.display()
                     )
                 })?;
                 if !path.starts_with(&staging_root) {
                     return Err(anyhow!(
-                        "shell-session staging file is outside {}: {}",
+                        "durable tab-session staging file is outside {}: {}",
                         staging_root.display(),
                         path.display()
                     ));
@@ -738,13 +752,13 @@ impl StoreCore {
                     .is_file()
                 {
                     return Err(anyhow!(
-                        "shell-session staging path is not a file: {}",
+                        "durable tab-session staging path is not a file: {}",
                         path.display()
                     ));
                 }
                 if !paths.insert(path.clone()) {
                     return Err(anyhow!(
-                        "duplicate shell-session staging file {}",
+                        "duplicate durable tab-session staging file {}",
                         path.display()
                     ));
                 }
@@ -760,18 +774,18 @@ impl StoreCore {
     ) -> Result<Vec<PathBuf>> {
         let mut statement = connection
             .prepare(
-                "SELECT session_id, buffer_id
-                   FROM shell_session_buffers
-                  WHERE session_id = ?1",
+                "SELECT tab_id, buffer_id
+                   FROM durable_tab_session_buffers
+                  WHERE tab_id = ?1",
             )
-            .context("failed to prepare shell-session path query")?;
+            .context("failed to prepare durable tab-session path query")?;
         let rows = statement
             .query_map(params![id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .context("failed to query shell-session paths")?
+            .context("failed to query durable tab-session paths")?
             .collect::<rusqlite::Result<Vec<_>>>()
-            .context("failed to decode shell-session paths")?;
+            .context("failed to decode durable tab-session paths")?;
         Self::resolve_removable_buffer_paths(buffer_root, rows)
     }
 
@@ -783,19 +797,19 @@ impl StoreCore {
     ) -> Result<Vec<PathBuf>> {
         let mut statement = connection
             .prepare(
-                "SELECT b.session_id, b.buffer_id
-                   FROM shell_session_buffers b
-                   JOIN shell_sessions s ON s.id = b.session_id
+                "SELECT b.tab_id, b.buffer_id
+                   FROM durable_tab_session_buffers b
+                   JOIN durable_tab_sessions s ON s.id = b.tab_id
                   WHERE s.id = ?1 AND s.elevated = ?2",
             )
-            .context("failed to prepare scoped shell-session path query")?;
+            .context("failed to prepare scoped durable tab-session path query")?;
         let rows = statement
             .query_map(params![id, elevated], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .context("failed to query scoped shell-session paths")?
+            .context("failed to query scoped durable tab-session paths")?
             .collect::<rusqlite::Result<Vec<_>>>()
-            .context("failed to decode scoped shell-session paths")?;
+            .context("failed to decode scoped durable tab-session paths")?;
         Self::resolve_removable_buffer_paths(buffer_root, rows)
     }
 
@@ -804,9 +818,9 @@ impl StoreCore {
         rows: Vec<(String, String)>,
     ) -> Result<Vec<PathBuf>> {
         let mut paths = Vec::with_capacity(rows.len());
-        for (session_id, buffer_id) in rows {
+        for (tab_id, buffer_id) in rows {
             if let Some(path) =
-                Self::resolve_optional_buffer_path(buffer_root, &session_id, &buffer_id)?
+                Self::resolve_optional_buffer_path(buffer_root, &tab_id, &buffer_id)?
             {
                 paths.push(path);
             }
@@ -816,31 +830,29 @@ impl StoreCore {
 
     fn resolve_existing_buffer_path(
         buffer_root: &Path,
-        session_id: &str,
+        tab_id: &str,
         buffer_id: &str,
     ) -> Result<PathBuf> {
-        Self::resolve_optional_buffer_path(buffer_root, session_id, buffer_id)?.ok_or_else(|| {
-            anyhow!("durable shell-session buffer is missing: {session_id}/{buffer_id}.buffer")
+        Self::resolve_optional_buffer_path(buffer_root, tab_id, buffer_id)?.ok_or_else(|| {
+            anyhow!("durable tab-session buffer is missing: {tab_id}/{buffer_id}.buffer")
         })
     }
 
     fn resolve_optional_buffer_path(
         buffer_root: &Path,
-        session_id: &str,
+        tab_id: &str,
         buffer_id: &str,
     ) -> Result<Option<PathBuf>> {
-        let session_id = canonical_db_uuid(session_id, "session_id")?;
+        let tab_id = canonical_db_uuid(tab_id, "tab_id")?;
         let buffer_id = canonical_db_uuid(buffer_id, "buffer_id")?;
-        let candidate = buffer_root
-            .join(session_id)
-            .join(format!("{buffer_id}.buffer"));
+        let candidate = buffer_root.join(tab_id).join(format!("{buffer_id}.buffer"));
         let canonical = match fs::canonicalize(&candidate) {
             Ok(path) => path,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => {
                 return Err(error).with_context(|| {
                     format!(
-                        "durable shell-session buffer is inaccessible: {}",
+                        "durable tab-session buffer is inaccessible: {}",
                         candidate.display()
                     )
                 });
@@ -848,7 +860,7 @@ impl StoreCore {
         };
         if !canonical.starts_with(buffer_root) {
             return Err(anyhow!(
-                "durable shell-session buffer escapes buffer root: {}",
+                "durable tab-session buffer escapes buffer root: {}",
                 canonical.display()
             ));
         }
@@ -858,7 +870,7 @@ impl StoreCore {
             .is_file()
         {
             return Err(anyhow!(
-                "durable shell-session buffer is not a file: {}",
+                "durable tab-session buffer is not a file: {}",
                 canonical.display()
             ));
         }
@@ -883,31 +895,31 @@ impl StoreCore {
     fn run_maintenance(&mut self, now: i64) {
         if let Err(error) = self.expire_sessions(now) {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 error = %error,
-                "failed to run durable shell-session retention"
+                "failed to run durable tab-session retention"
             );
         }
         if let Err(error) = self.collect_orphan_buffers() {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 error = %error,
-                "failed to collect orphan durable shell-session buffers"
+                "failed to collect orphan durable tab-session buffers"
             );
         }
         cleanup_stale_staging_files(&self.staging_root, now);
         cleanup_stale_restore_snapshots(&self.restore_root, now);
         self.last_maintenance_at = Some(now);
         if let Err(error) = self.connection.execute(
-            "INSERT INTO shell_session_metadata(key, value)
+            "INSERT INTO durable_tab_session_metadata(key, value)
              VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![LAST_MAINTENANCE_KEY, now],
         ) {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 error = %error,
-                "failed to persist shell-session maintenance timestamp"
+                "failed to persist durable tab-session maintenance timestamp"
             );
         }
     }
@@ -918,37 +930,37 @@ impl StoreCore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("failed to begin shell-session retention transaction")?;
+            .context("failed to begin durable tab-session retention transaction")?;
         let expired_rows = {
             let mut statement = transaction
                 .prepare(
-                    "SELECT b.session_id, b.buffer_id
-                       FROM shell_session_buffers b
-                       JOIN shell_sessions s ON s.id = b.session_id
+                    "SELECT b.tab_id, b.buffer_id
+                       FROM durable_tab_session_buffers b
+                       JOIN durable_tab_sessions s ON s.id = b.tab_id
                       WHERE s.last_used_at < ?1",
                 )
-                .context("failed to prepare expired shell-session path query")?;
+                .context("failed to prepare expired durable tab-session path query")?;
             let rows = statement
                 .query_map(params![expiration_cutoff], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                 })
-                .context("failed to query expired shell-session paths")?
+                .context("failed to query expired durable tab-session paths")?
                 .collect::<rusqlite::Result<Vec<_>>>()
-                .context("failed to decode expired shell-session paths")?;
+                .context("failed to decode expired durable tab-session paths")?;
             rows
         };
         let expired_paths = expired_rows
             .into_iter()
-            .filter_map(|(session_id, buffer_id)| {
-                match Self::resolve_existing_buffer_path(&buffer_root, &session_id, &buffer_id) {
+            .filter_map(|(tab_id, buffer_id)| {
+                match Self::resolve_existing_buffer_path(&buffer_root, &tab_id, &buffer_id) {
                     Ok(path) => Some(path),
                     Err(error) => {
                         tracing::warn!(
-                            target: "shell_sessions",
-                            %session_id,
+                            target: "durable_tab_sessions",
+                            %tab_id,
                             %buffer_id,
                             error = %error,
-                            "skipping unsafe or missing expired shell-session buffer"
+                            "skipping unsafe or missing expired durable tab-session buffer"
                         );
                         None
                     }
@@ -957,13 +969,13 @@ impl StoreCore {
             .collect::<Vec<_>>();
         transaction
             .execute(
-                "DELETE FROM shell_sessions WHERE last_used_at < ?1",
+                "DELETE FROM durable_tab_sessions WHERE last_used_at < ?1",
                 params![expiration_cutoff],
             )
-            .context("failed to expire shell sessions")?;
+            .context("failed to expire durable tab sessions")?;
         transaction
             .commit()
-            .context("failed to commit shell-session retention")?;
+            .context("failed to commit durable tab-session retention")?;
         remove_files(expired_paths.iter());
         remove_empty_parent_directories(&buffer_root, &expired_paths);
         Ok(())
@@ -974,10 +986,10 @@ impl StoreCore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("failed to begin shell-session orphan GC transaction")?;
+            .context("failed to begin durable tab-session orphan GC transaction")?;
         let rows = {
             let mut statement = transaction
-                .prepare("SELECT session_id, buffer_id FROM shell_session_buffers")
+                .prepare("SELECT tab_id, buffer_id FROM durable_tab_session_buffers")
                 .context("failed to prepare referenced buffer query")?;
             let rows = statement
                 .query_map([], |row| {
@@ -990,16 +1002,16 @@ impl StoreCore {
         };
         let referenced = rows
             .into_iter()
-            .filter_map(|(session_id, buffer_id)| {
-                match Self::resolve_existing_buffer_path(&buffer_root, &session_id, &buffer_id) {
+            .filter_map(|(tab_id, buffer_id)| {
+                match Self::resolve_existing_buffer_path(&buffer_root, &tab_id, &buffer_id) {
                     Ok(path) => Some(path),
                     Err(error) => {
                         tracing::warn!(
-                            target: "shell_sessions",
-                            %session_id,
+                            target: "durable_tab_sessions",
+                            %tab_id,
                             %buffer_id,
                             error = %error,
-                            "ignoring unsafe or missing shell-session buffer reference"
+                            "ignoring unsafe or missing durable tab-session buffer reference"
                         );
                         None
                     }
@@ -1009,22 +1021,24 @@ impl StoreCore {
         collect_orphans_recursive(&buffer_root, &buffer_root, &referenced)?;
         transaction
             .commit()
-            .context("failed to commit shell-session orphan GC transaction")?;
+            .context("failed to commit durable tab-session orphan GC transaction")?;
         Ok(())
     }
 }
 
-fn validate_save_params(params: &ShellSessionSaveParams) -> Result<()> {
+fn validate_save_params(params: &DurableTabSessionSaveParams) -> Result<()> {
     if params.name.trim().is_empty() {
-        return Err(anyhow!("shell-session name must not be empty"));
+        return Err(anyhow!("durable tab-session name must not be empty"));
     }
     if let Some(id) = params.id.as_deref() {
         validate_durable_id(id)?;
     }
     let layout: serde_json::Value = serde_json::from_str(&params.layout_json)
-        .context("shell-session layout_json must be valid JSON")?;
+        .context("durable tab-session layout_json must be valid JSON")?;
     if !layout.is_object() {
-        return Err(anyhow!("shell-session layout_json must be a JSON object"));
+        return Err(anyhow!(
+            "durable tab-session layout_json must be a JSON object"
+        ));
     }
     Ok(())
 }
@@ -1032,46 +1046,46 @@ fn validate_save_params(params: &ShellSessionSaveParams) -> Result<()> {
 fn validate_durable_id(id: &str) -> Result<()> {
     Uuid::parse_str(id)
         .map(|_| ())
-        .context("shell-session id must be a valid UUID")
+        .context("durable tab-session id must be a valid UUID")
 }
 
 fn canonical_db_uuid(id: &str, column: &str) -> Result<String> {
     Uuid::parse_str(id)
         .map(|id| id.to_string())
-        .with_context(|| format!("corrupt shell-session {column}: expected UUID"))
+        .with_context(|| format!("corrupt durable tab-session {column}: expected UUID"))
 }
 
 fn ensure_active_pane_cwd_column(connection: &mut Connection) -> Result<()> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
-        .context("failed to begin shell-session schema migration")?;
+        .context("failed to begin durable tab-session schema migration")?;
     let has_column = {
         let mut statement = transaction
-            .prepare("PRAGMA table_info(shell_sessions)")
-            .context("failed to inspect shell-session schema")?;
+            .prepare("PRAGMA table_info(durable_tab_sessions)")
+            .context("failed to inspect durable tab-session schema")?;
         let columns = statement
             .query_map([], |row| row.get::<_, String>(1))
-            .context("failed to query shell-session schema")?
+            .context("failed to query durable tab-session schema")?
             .collect::<rusqlite::Result<Vec<_>>>()
-            .context("failed to decode shell-session schema")?;
+            .context("failed to decode durable tab-session schema")?;
         columns.iter().any(|name| name == "active_pane_cwd")
     };
     if !has_column {
         transaction
             .execute(
-                "ALTER TABLE shell_sessions
+                "ALTER TABLE durable_tab_sessions
                  ADD COLUMN active_pane_cwd TEXT NOT NULL DEFAULT ''",
                 [],
             )
-            .context("failed to add active pane CWD to shell-session schema")?;
+            .context("failed to add active pane CWD to durable tab-session schema")?;
     }
     transaction
         .commit()
-        .context("failed to commit shell-session schema migration")
+        .context("failed to commit durable tab-session schema migration")
 }
 
-fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionSummary> {
-    Ok(ShellSessionSummary {
+fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DurableTabSessionSummary> {
+    Ok(DurableTabSessionSummary {
         id: row.get(0)?,
         name: row.get(1)?,
         active_pane_cwd: row.get(2)?,
@@ -1079,8 +1093,8 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionSum
     })
 }
 
-fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionRecord> {
-    Ok(ShellSessionRecord {
+fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DurableTabSessionRecord> {
+    Ok(DurableTabSessionRecord {
         id: row.get(0)?,
         name: row.get(1)?,
         layout_json: row.get(2)?,
@@ -1144,7 +1158,7 @@ fn snapshot_file(source: &Path, destination: &Path) -> Result<()> {
                     .with_context(|| format!("failed to flush {}", temporary.display()))?;
                 fs::rename(&temporary, destination).with_context(|| {
                     format!(
-                        "failed to publish shell-session restore snapshot {}",
+                        "failed to publish durable tab-session restore snapshot {}",
                         destination.display()
                     )
                 })
@@ -1163,10 +1177,10 @@ fn cleanup_stale_staging_files(directory: &Path, now: i64) {
         Ok(entries) => entries,
         Err(error) => {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 directory = %directory.display(),
                 error = %error,
-                "failed to scan shell-session staging directory"
+                "failed to scan durable tab-session staging directory"
             );
             return;
         }
@@ -1177,10 +1191,10 @@ fn cleanup_stale_staging_files(directory: &Path, now: i64) {
             Ok(entry) => entry,
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     directory = %directory.display(),
                     error = %error,
-                    "failed to read shell-session staging entry"
+                    "failed to read durable tab-session staging entry"
                 );
                 continue;
             }
@@ -1190,10 +1204,10 @@ fn cleanup_stale_staging_files(directory: &Path, now: i64) {
             Ok(metadata) => metadata,
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to inspect shell-session staging file"
+                    "failed to inspect durable tab-session staging file"
                 );
                 continue;
             }
@@ -1207,10 +1221,10 @@ fn cleanup_stale_staging_files(directory: &Path, now: i64) {
                 .map_or(0, |duration| duration.as_secs() as i64),
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to read shell-session staging file age"
+                    "failed to read durable tab-session staging file age"
                 );
                 continue;
             }
@@ -1218,10 +1232,10 @@ fn cleanup_stale_staging_files(directory: &Path, now: i64) {
         if modified_at < cutoff {
             if let Err(error) = fs::remove_file(&path) {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to remove stale shell-session staging file"
+                    "failed to remove stale durable tab-session staging file"
                 );
             }
         }
@@ -1234,10 +1248,10 @@ fn cleanup_stale_restore_snapshots(directory: &Path, now: i64) {
         Ok(entries) => entries,
         Err(error) => {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 directory = %directory.display(),
                 error = %error,
-                "failed to scan shell-session restore cache"
+                "failed to scan durable tab-session restore cache"
             );
             return;
         }
@@ -1248,10 +1262,10 @@ fn cleanup_stale_restore_snapshots(directory: &Path, now: i64) {
             Ok(entry) => entry,
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     directory = %directory.display(),
                     error = %error,
-                    "failed to read shell-session restore snapshot"
+                    "failed to read durable tab-session restore snapshot"
                 );
                 continue;
             }
@@ -1274,23 +1288,130 @@ fn cleanup_stale_restore_snapshots(directory: &Path, now: i64) {
             Ok(_) => fs::remove_file(&path),
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to inspect stale shell-session restore snapshot"
+                    "failed to inspect stale durable tab-session restore snapshot"
                 );
                 continue;
             }
         };
         if let Err(error) = removal {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 path = %path.display(),
                 error = %error,
-                "failed to remove stale shell-session restore snapshot"
+                "failed to remove stale durable tab-session restore snapshot"
             );
         }
     }
+}
+
+/// Moves a pre-rename store into place, once.
+///
+/// The feature shipped internally as "shell sessions" before the records were
+/// renamed to durable tab sessions, so a dogfooding machine still has the old
+/// database and buffer directory. Renaming both is enough to carry the data
+/// over: the buffer `path` column is deliberately non-authoritative (paths are
+/// always recomputed from `buffer_root` + ids, see
+/// `resolve_existing_buffer_path`), so relocating the directory needs no
+/// rewrite. Staging and restore-cache hold only transient files, so the old
+/// ones are simply removed.
+///
+/// Best-effort throughout: a machine that cannot migrate starts empty rather
+/// than failing to open, which costs a dogfooder their saved tabs but never
+/// blocks the agent master from starting.
+fn migrate_legacy_layout(root: &Path) {
+    let legacy_database = root.join(LEGACY_DATABASE_FILE);
+    let database = root.join(DATABASE_FILE);
+    if legacy_database.is_file() && !database.exists() {
+        match fs::rename(&legacy_database, &database) {
+            Ok(()) => {
+                // WAL/SHM siblings belong to the old name; dropping them is safe
+                // because the rename above only happens on a cleanly closed store.
+                for suffix in ["-wal", "-shm"] {
+                    let mut stale = legacy_database.clone().into_os_string();
+                    stale.push(suffix);
+                    let _ = fs::remove_file(PathBuf::from(stale));
+                }
+                if let Err(error) = rename_legacy_tables(&database) {
+                    tracing::warn!(
+                        target: "durable_tab_sessions",
+                        error = %error,
+                        "failed to rename legacy durable tab-session tables"
+                    );
+                }
+                tracing::info!(
+                    target: "durable_tab_sessions",
+                    "migrated the legacy shell-session database"
+                );
+            }
+            Err(error) => tracing::warn!(
+                target: "durable_tab_sessions",
+                error = %error,
+                "failed to migrate the legacy shell-session database"
+            ),
+        }
+    }
+
+    let legacy_buffers = root.join(LEGACY_BUFFER_DIRECTORY);
+    let buffers = root.join(BUFFER_DIRECTORY);
+    if legacy_buffers.is_dir() && !buffers.exists() {
+        if let Err(error) = fs::rename(&legacy_buffers, &buffers) {
+            tracing::warn!(
+                target: "durable_tab_sessions",
+                error = %error,
+                "failed to migrate the legacy durable tab-session buffer directory"
+            );
+        }
+    }
+
+    for legacy in [LEGACY_STAGING_DIRECTORY, LEGACY_RESTORE_CACHE_DIRECTORY] {
+        let _ = fs::remove_dir_all(root.join(legacy));
+    }
+}
+
+/// Renames the tables inside a just-migrated legacy database.
+///
+/// SQLite has no `ALTER TABLE ... IF EXISTS`, so each rename is gated on
+/// `sqlite_master`. That also makes this idempotent, letting a partially
+/// migrated database finish on the next open.
+fn rename_legacy_tables(database: &Path) -> Result<()> {
+    let connection = Connection::open(database)
+        .context("failed to open the legacy durable tab-session database")?;
+    let has_table = |name: &str| -> Result<bool> {
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .context("failed to inspect the legacy durable tab-session schema")?;
+        Ok(count > 0)
+    };
+
+    if has_table("shell_sessions")? && !has_table("durable_tab_sessions")? {
+        connection
+            .execute_batch("ALTER TABLE shell_sessions RENAME TO durable_tab_sessions")
+            .context("failed to rename the legacy durable tab-session table")?;
+    }
+    if has_table("shell_session_buffers")? && !has_table("durable_tab_session_buffers")? {
+        connection
+            .execute_batch(
+                "ALTER TABLE shell_session_buffers RENAME TO durable_tab_session_buffers",
+            )
+            .context("failed to rename the legacy durable tab-session buffer table")?;
+        // Only the freshly renamed table still carries the old column name; a
+        // table created under the new schema already has `tab_id`.
+        connection
+            .execute_batch(
+                "ALTER TABLE durable_tab_session_buffers RENAME COLUMN session_id TO tab_id",
+            )
+            .context("failed to rename the legacy durable tab-session buffer key")?;
+    }
+    connection
+        .execute_batch("DROP INDEX IF EXISTS shell_sessions_last_used_idx")
+        .context("failed to drop the legacy durable tab-session index")
 }
 
 fn cleanup_legacy_one_shot_buffers(directory: &Path) -> Result<usize> {
@@ -1328,10 +1449,10 @@ fn cleanup_legacy_one_shot_buffers(directory: &Path) -> Result<usize> {
         match fs::remove_file(&path) {
             Ok(()) => removed += 1,
             Err(error) => tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 path = %path.display(),
                 error = %error,
-                "failed to remove legacy one-shot shell-session buffer"
+                "failed to remove legacy one-shot durable tab-session buffer"
             ),
         }
     }
@@ -1353,7 +1474,7 @@ fn collect_orphans_recursive(
             Ok(path) => path,
             Err(error) => {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
                     "failed to canonicalize orphan candidate; leaving it untouched"
@@ -1364,7 +1485,7 @@ fn collect_orphans_recursive(
         };
         if !canonical.starts_with(root) {
             tracing::warn!(
-                target: "shell_sessions",
+                target: "durable_tab_sessions",
                 path = %path.display(),
                 canonical = %canonical.display(),
                 "orphan candidate escapes buffer root; leaving it untouched"
@@ -1379,10 +1500,10 @@ fn collect_orphans_recursive(
             if collect_orphans_recursive(root, &path, referenced)? {
                 if let Err(error) = fs::remove_dir(&path) {
                     tracing::warn!(
-                        target: "shell_sessions",
+                        target: "durable_tab_sessions",
                         path = %path.display(),
                         error = %error,
-                        "failed to remove orphan shell-session directory"
+                        "failed to remove orphan durable tab-session directory"
                     );
                     empty = false;
                 }
@@ -1394,10 +1515,10 @@ fn collect_orphans_recursive(
         } else {
             if let Err(error) = fs::remove_file(&path) {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to remove orphan shell-session buffer"
+                    "failed to remove orphan durable tab-session buffer"
                 );
                 empty = false;
             }
@@ -1411,10 +1532,10 @@ fn remove_files<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) {
         if let Err(error) = fs::remove_file(path) {
             if error.kind() != std::io::ErrorKind::NotFound {
                 tracing::warn!(
-                    target: "shell_sessions",
+                    target: "durable_tab_sessions",
                     path = %path.display(),
                     error = %error,
-                    "failed to remove obsolete shell-session buffer"
+                    "failed to remove obsolete durable tab-session buffer"
                 );
             }
         }
@@ -1472,7 +1593,7 @@ mod tests {
         fn new() -> Result<Self> {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
-                .join("shell-session-tests")
+                .join("durable-tab-session-tests")
                 .join(Uuid::new_v4().to_string());
             fs::create_dir_all(&root)?;
             Ok(Self(root))
@@ -1497,32 +1618,115 @@ mod tests {
         directory: &TestDirectory,
         name: &str,
         file_name: &str,
-    ) -> Result<ShellSessionSaveParams> {
-        Ok(ShellSessionSaveParams {
+    ) -> Result<DurableTabSessionSaveParams> {
+        Ok(DurableTabSessionSaveParams {
             id: None,
             expected_revision: None,
             name: name.to_string(),
             active_pane_cwd: r"C:\project".to_string(),
             layout_json: r#"{"actions":[]}"#.to_string(),
             elevated: false,
-            buffers: vec![ShellSessionBufferInput {
+            buffers: vec![DurableTabSessionBufferInput {
                 pane_key: "pane-1".to_string(),
                 staging_path: directory.staging_file(file_name, file_name.as_bytes())?,
             }],
         })
     }
 
-    fn stored_buffer_ids(store: &StoreCore, session_id: &str) -> Result<(String, String)> {
+    fn stored_buffer_ids(store: &StoreCore, tab_id: &str) -> Result<(String, String)> {
         store
             .connection
             .query_row(
-                "SELECT session_id, buffer_id
-                   FROM shell_session_buffers
-                  WHERE session_id = ?1",
-                params![session_id],
+                "SELECT tab_id, buffer_id
+                   FROM durable_tab_session_buffers
+                  WHERE tab_id = ?1",
+                params![tab_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .context("saved buffer row missing")
+    }
+
+    #[test]
+    fn opening_a_pre_rename_layout_migrates_it() -> Result<()> {
+        // Build a store the ordinary way, then rename everything back to the
+        // pre-rename layout so the migration is exercised against a database
+        // this code really produced, rather than a hand-written approximation.
+        let directory = TestDirectory::new()?;
+        let (id, contents) = {
+            let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
+            let saved = store.save(save_params(&directory, "before", "before.tmp")?, 100)?;
+            let restored = store
+                .get(
+                    &DurableTabSessionGetParams {
+                        id: saved.id.clone(),
+                        elevated: false,
+                    },
+                    100,
+                )?
+                .context("saved session missing")?;
+            (saved.id, fs::read(&restored.buffers[0].path)?)
+        };
+
+        fs::rename(
+            directory.0.join(DATABASE_FILE),
+            directory.0.join(LEGACY_DATABASE_FILE),
+        )?;
+        fs::rename(
+            directory.0.join(BUFFER_DIRECTORY),
+            directory.0.join(LEGACY_BUFFER_DIRECTORY),
+        )?;
+        {
+            let connection = Connection::open(directory.0.join(LEGACY_DATABASE_FILE))?;
+            connection.execute_batch(
+                "
+                ALTER TABLE durable_tab_session_buffers RENAME COLUMN tab_id TO session_id;
+                ALTER TABLE durable_tab_session_buffers RENAME TO shell_session_buffers;
+                ALTER TABLE durable_tab_sessions RENAME TO shell_sessions;
+                ",
+            )?;
+        }
+
+        let mut store = StoreCore::open(directory.0.clone(), 200, None)?;
+        assert!(!directory.0.join(LEGACY_DATABASE_FILE).exists());
+        assert!(!directory.0.join(LEGACY_BUFFER_DIRECTORY).exists());
+
+        let list = store.list(&DurableTabSessionsListParams { elevated: false }, 200)?;
+        assert_eq!(list.sessions.len(), 1);
+        assert_eq!(list.sessions[0].id, id);
+        assert_eq!(list.sessions[0].name, "before");
+
+        // The buffer must still resolve: paths are recomputed from the (renamed)
+        // buffer root and the ids, so moving the directory is enough.
+        let restored = store
+            .get(
+                &DurableTabSessionGetParams {
+                    id,
+                    elevated: false,
+                },
+                200,
+            )?
+            .context("migrated session missing")?;
+        assert_eq!(fs::read(&restored.buffers[0].path)?, contents);
+        Ok(())
+    }
+
+    #[test]
+    fn migrating_a_pre_rename_layout_is_idempotent() -> Result<()> {
+        // A store already on the new layout must not be disturbed by the
+        // migration running again on every open.
+        let directory = TestDirectory::new()?;
+        let id = {
+            let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
+            store
+                .save(save_params(&directory, "kept", "kept.tmp")?, 100)?
+                .id
+        };
+
+        let mut store = StoreCore::open(directory.0.clone(), 200, None)?;
+        let list = store.list(&DurableTabSessionsListParams { elevated: false }, 200)?;
+        assert_eq!(list.sessions.len(), 1);
+        assert_eq!(list.sessions[0].id, id);
+        Ok(())
     }
 
     #[test]
@@ -1532,7 +1736,7 @@ mod tests {
         let first = store.save(save_params(&directory, "same", "first.tmp")?, 100)?;
         let second = store.save(save_params(&directory, "same", "second.tmp")?, 101)?;
 
-        let list = store.list(&ShellSessionsListParams { elevated: false }, 101)?;
+        let list = store.list(&DurableTabSessionsListParams { elevated: false }, 101)?;
         assert_eq!(list.sessions.len(), 2);
         assert_ne!(first.id, second.id);
         assert_eq!(list.sessions[0].name, "same");
@@ -1547,7 +1751,7 @@ mod tests {
         fs::create_dir_all(&directory.0)?;
         let connection = Connection::open(directory.0.join(DATABASE_FILE))?;
         connection.execute_batch(
-            "CREATE TABLE shell_sessions (
+            "CREATE TABLE durable_tab_sessions (
                 id TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
                 layout_json TEXT NOT NULL,
@@ -1563,7 +1767,7 @@ mod tests {
         let store = StoreCore::open(directory.0.clone(), 100, None)?;
         let columns = store
             .connection
-            .prepare("PRAGMA table_info(shell_sessions)")?
+            .prepare("PRAGMA table_info(durable_tab_sessions)")?
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         assert!(columns.iter().any(|name| name == "active_pane_cwd"));
@@ -1584,14 +1788,14 @@ mod tests {
             .to_path_buf();
         assert!(buffer_path.exists());
 
-        let response = store.delete(&ShellSessionDeleteParams {
+        let response = store.delete(&DurableTabSessionDeleteParams {
             id: saved.id.clone(),
             elevated: false,
         })?;
         assert!(response.deleted);
         assert_eq!(
             store.connection.query_row(
-                "SELECT COUNT(*) FROM shell_sessions WHERE id = ?1",
+                "SELECT COUNT(*) FROM durable_tab_sessions WHERE id = ?1",
                 params![&saved.id],
                 |row| row.get::<_, i64>(0),
             )?,
@@ -1599,7 +1803,7 @@ mod tests {
         );
         assert_eq!(
             store.connection.query_row(
-                "SELECT COUNT(*) FROM shell_session_buffers WHERE session_id = ?1",
+                "SELECT COUNT(*) FROM durable_tab_session_buffers WHERE tab_id = ?1",
                 params![&saved.id],
                 |row| row.get::<_, i64>(0),
             )?,
@@ -1610,7 +1814,7 @@ mod tests {
 
         assert!(
             !store
-                .delete(&ShellSessionDeleteParams {
+                .delete(&DurableTabSessionDeleteParams {
                     id: saved.id,
                     elevated: false,
                 })?
@@ -1629,20 +1833,20 @@ mod tests {
         let error = store.save(params.clone(), 100).unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session name must not be empty"));
+            .contains("durable tab-session name must not be empty"));
 
         params.name = "valid".to_string();
         params.layout_json = "{".to_string();
         let error = store.save(params.clone(), 100).unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session layout_json must be valid JSON"));
+            .contains("durable tab-session layout_json must be valid JSON"));
 
         params.layout_json = "[]".to_string();
         let error = store.save(params, 100).unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session layout_json must be a JSON object"));
+            .contains("durable tab-session layout_json must be a JSON object"));
         Ok(())
     }
 
@@ -1655,11 +1859,11 @@ mod tests {
         let error = store.save(save, 100).unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session id must be a valid UUID"));
+            .contains("durable tab-session id must be a valid UUID"));
 
         let error = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: "not-a-uuid".to_string(),
                     elevated: false,
                 },
@@ -1668,17 +1872,17 @@ mod tests {
             .unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session id must be a valid UUID"));
+            .contains("durable tab-session id must be a valid UUID"));
 
         let error = store
-            .delete(&ShellSessionDeleteParams {
+            .delete(&DurableTabSessionDeleteParams {
                 id: "not-a-uuid".to_string(),
                 elevated: false,
             })
             .unwrap_err();
         assert!(error
             .to_string()
-            .contains("shell-session id must be a valid UUID"));
+            .contains("durable tab-session id must be a valid UUID"));
         Ok(())
     }
 
@@ -1687,7 +1891,7 @@ mod tests {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let saved = store.save(save_params(&directory, "repeat", "repeat.tmp")?, 100)?;
-        let params = ShellSessionGetParams {
+        let params = DurableTabSessionGetParams {
             id: saved.id,
             elevated: false,
         };
@@ -1711,7 +1915,7 @@ mod tests {
         let first = store.save(save_params(&directory, "old", "old.tmp")?, 100)?;
         let old_path = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: first.id.clone(),
                     elevated: false,
                 },
@@ -1734,7 +1938,7 @@ mod tests {
 
         let updated = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: first.id,
                     elevated: false,
                 },
@@ -1751,9 +1955,9 @@ mod tests {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let first = store.save(save_params(&directory, "old", "missing-old.tmp")?, 100)?;
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
         let old_path =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         fs::remove_file(old_path)?;
 
         let mut update = save_params(&directory, "new", "replacement.tmp")?;
@@ -1763,13 +1967,13 @@ mod tests {
         assert_eq!(updated.id, first.id);
         assert_eq!(updated.revision, 2);
 
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &updated.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &updated.id)?;
         let replacement =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         fs::remove_file(replacement)?;
         assert!(
             store
-                .delete(&ShellSessionDeleteParams {
+                .delete(&DurableTabSessionDeleteParams {
                     id: updated.id,
                     elevated: false,
                 })?
@@ -1783,19 +1987,19 @@ mod tests {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let first = store.save(save_params(&directory, "old", "old.tmp")?, 100)?;
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
         let original_path =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         let outside = directory.0.join("outside.buffer");
         fs::write(&outside, b"must survive")?;
         store.connection.execute(
-            "UPDATE shell_session_buffers SET path = ?1 WHERE session_id = ?2",
+            "UPDATE durable_tab_session_buffers SET path = ?1 WHERE tab_id = ?2",
             params![outside.to_string_lossy(), first.id],
         )?;
 
         let restored = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: first.id.clone(),
                     elevated: false,
                 },
@@ -1811,16 +2015,16 @@ mod tests {
         assert!(!original_path.exists());
         assert_eq!(fs::read(&outside)?, b"must survive");
 
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &first.id)?;
         let updated_path =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         store.connection.execute(
-            "UPDATE shell_session_buffers SET path = ?1 WHERE session_id = ?2",
+            "UPDATE durable_tab_session_buffers SET path = ?1 WHERE tab_id = ?2",
             params![outside.to_string_lossy(), first.id],
         )?;
         assert!(
             store
-                .delete(&ShellSessionDeleteParams {
+                .delete(&DurableTabSessionDeleteParams {
                     id: first.id,
                     elevated: false,
                 })?
@@ -1839,14 +2043,14 @@ mod tests {
         let outside = directory.0.join("outside-expiry.buffer");
         fs::write(&outside, b"must survive expiry")?;
         store.connection.execute(
-            "UPDATE shell_session_buffers SET buffer_id = 'not-a-uuid', path = ?1
-              WHERE session_id = ?2",
+            "UPDATE durable_tab_session_buffers SET buffer_id = 'not-a-uuid', path = ?1
+              WHERE tab_id = ?2",
             params![outside.to_string_lossy(), saved.id],
         )?;
 
         let error = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: saved.id.clone(),
                     elevated: false,
                 },
@@ -1855,12 +2059,12 @@ mod tests {
             .unwrap_err();
         assert!(error
             .to_string()
-            .contains("corrupt shell-session buffer_id: expected UUID"));
+            .contains("corrupt durable tab-session buffer_id: expected UUID"));
 
         store.run_maintenance(100 + RETENTION_SECONDS + 1);
         assert!(store
             .list(
-                &ShellSessionsListParams { elevated: false },
+                &DurableTabSessionsListParams { elevated: false },
                 100 + RETENTION_SECONDS + 1,
             )?
             .sessions
@@ -1876,9 +2080,9 @@ mod tests {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let saved = store.save(save_params(&directory, "junction", "junction.tmp")?, 100)?;
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &saved.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &saved.id)?;
         let original =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         let session_directory = original
             .parent()
             .context("stored buffer had no session directory")?
@@ -1901,7 +2105,7 @@ mod tests {
 
         let get_error = store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: saved.id.clone(),
                     elevated: false,
                 },
@@ -1910,7 +2114,7 @@ mod tests {
             .unwrap_err();
         assert!(get_error.to_string().contains("escapes buffer root"));
         assert!(store
-            .delete(&ShellSessionDeleteParams {
+            .delete(&DurableTabSessionDeleteParams {
                 id: saved.id.clone(),
                 elevated: false,
             })
@@ -1937,7 +2141,7 @@ mod tests {
         assert_eq!(fork.revision, 1);
         assert!(store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: first.id,
                     elevated: false,
                 },
@@ -1984,9 +2188,9 @@ mod tests {
         let mut writer = StoreCore::open(directory.0.clone(), 100, None)?;
         let mut collector = StoreCore::open(directory.0.clone(), 100, None)?;
         let buffer_root = writer.buffer_root.clone();
-        let session_id = Uuid::new_v4().to_string();
+        let tab_id = Uuid::new_v4().to_string();
         let buffer_id = Uuid::new_v4().to_string();
-        let session_directory = buffer_root.join(&session_id);
+        let session_directory = buffer_root.join(&tab_id);
         fs::create_dir_all(&session_directory)?;
         let buffer_path = session_directory.join(format!("{buffer_id}.buffer"));
 
@@ -1995,17 +2199,17 @@ mod tests {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         fs::write(&buffer_path, b"precommit")?;
         transaction.execute(
-            "INSERT INTO shell_sessions
+            "INSERT INTO durable_tab_sessions
                 (id, name, layout_json, elevated, created_at, updated_at,
                  last_used_at, revision)
              VALUES (?1, 'shared', '{}', 0, 100, 100, 100, 1)",
-            params![session_id],
+            params![tab_id],
         )?;
         transaction.execute(
-            "INSERT INTO shell_session_buffers
-                (buffer_id, session_id, pane_key, path)
+            "INSERT INTO durable_tab_session_buffers
+                (buffer_id, tab_id, pane_key, path)
              VALUES (?1, ?2, 'pane-1', ?3)",
-            params![buffer_id, session_id, buffer_path.to_string_lossy()],
+            params![buffer_id, tab_id, buffer_path.to_string_lossy()],
         )?;
 
         let (started_tx, started_rx) = mpsc::channel();
@@ -2037,7 +2241,7 @@ mod tests {
             let saved = store.save(save_params(&directory, "old", "old.tmp")?, 100)?;
             store
                 .get(
-                    &ShellSessionGetParams {
+                    &DurableTabSessionGetParams {
                         id: saved.id,
                         elevated: false,
                     },
@@ -2052,7 +2256,7 @@ mod tests {
         let store = StoreCore::open(directory.0.clone(), 100 + RETENTION_SECONDS + 1, None)?;
         assert!(store
             .list(
-                &ShellSessionsListParams { elevated: false },
+                &DurableTabSessionsListParams { elevated: false },
                 100 + RETENTION_SECONDS + 1,
             )?
             .sessions
@@ -2066,18 +2270,21 @@ mod tests {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let saved = store.save(save_params(&directory, "old", "periodic.tmp")?, 100)?;
-        let (session_id, buffer_id) = stored_buffer_ids(&store, &saved.id)?;
+        let (tab_id, buffer_id) = stored_buffer_ids(&store, &saved.id)?;
         let durable_path =
-            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &session_id, &buffer_id)?;
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &tab_id, &buffer_id)?;
         let expired_now = 100 + RETENTION_SECONDS + 1;
 
         assert!(store
-            .list(&ShellSessionsListParams { elevated: false }, expired_now)?
+            .list(
+                &DurableTabSessionsListParams { elevated: false },
+                expired_now
+            )?
             .sessions
             .is_empty());
         assert!(store
             .get(
-                &ShellSessionGetParams {
+                &DurableTabSessionGetParams {
                     id: saved.id.clone(),
                     elevated: false,
                 },
@@ -2085,7 +2292,7 @@ mod tests {
             )?
             .is_none());
         let last_used: i64 = store.connection.query_row(
-            "SELECT last_used_at FROM shell_sessions WHERE id = ?1",
+            "SELECT last_used_at FROM durable_tab_sessions WHERE id = ?1",
             params![saved.id],
             |row| row.get(0),
         )?;
@@ -2096,8 +2303,10 @@ mod tests {
         assert_eq!(
             store
                 .connection
-                .query_row("SELECT COUNT(*) FROM shell_sessions", [], |row| row
-                    .get::<_, i64>(0),)?,
+                .query_row("SELECT COUNT(*) FROM durable_tab_sessions", [], |row| row
+                    .get::<_, i64>(
+                    0
+                ),)?,
             0
         );
         Ok(())
@@ -2143,7 +2352,7 @@ mod tests {
         assert_eq!(store.last_maintenance_at, Some(due));
         assert_eq!(
             store.connection.query_row(
-                "SELECT value FROM shell_session_metadata WHERE key = ?1",
+                "SELECT value FROM durable_tab_session_metadata WHERE key = ?1",
                 params![LAST_MAINTENANCE_KEY],
                 |row| row.get::<_, i64>(0),
             )?,

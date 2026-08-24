@@ -5,7 +5,7 @@ last updated: 2026-08-19
 issue id: durable-sessions (bucket 1)
 ---
 
-# Durable shell sessions
+# Durable tab sessions
 
 ## Abstract
 
@@ -14,7 +14,7 @@ layout, each pane's profile and working directory, the scrollback, and any agent
 CLI conversation that was running inside it. Restarting Terminal — deliberately
 or after a crash — throws away the same thing for every tab at once.
 
-Durable shell sessions save that arrangement so it can be brought back. A saved
+Durable tab sessions save that arrangement so it can be brought back. A saved
 session is a row in a master-owned SQLite database plus, optionally, one
 scrollback sidecar per pane. It survives the tab closing, the window closing,
 Terminal exiting, and Terminal crashing, because nothing about it lives in the
@@ -31,8 +31,8 @@ described here.
 
 | What | Where |
 | --- | --- |
-| Session rows | `shell-sessions.db` under the runtime state directory |
-| Scrollback sidecars | `shell-sessions/` under the same directory |
+| Session rows | `durable-tab-sessions.db` under the runtime state directory |
+| Scrollback sidecars | `durable-tab-sessions/` under the same directory |
 
 Both paths resolve through `runtime_paths.rs`, so a packaged build keeps them
 package-private and an unpackaged dev build falls back to
@@ -44,12 +44,12 @@ monotonically increasing revision. Elevated and unelevated sessions are stored
 in one database but never mix: every request carries the caller's elevation and
 the store scopes reads and writes by it.
 
-Master exposes the store over ACP as `_intellterm.wta/shell_sessions/*`:
+Master exposes the store over ACP as `_intellterm.wta/durable_tab_sessions/*`:
 
 | Method | Used by |
 | --- | --- |
 | `save` | Terminal, when a tab or window closes |
-| `list` | the `/tab-history` view, `wtcli list-shell-sessions` |
+| `list` | the `/tab-history` view, `wtcli list-tab-sessions` |
 | `get` | Terminal, when restoring one session |
 | `delete` | the `/tab-history` view |
 
@@ -58,12 +58,12 @@ buffer sidecars that no live row references are removed with them.
 
 ## Saving
 
-`TerminalPage::_PersistShellSession` runs from `_HandleCloseTabRequested`, and
+`TerminalPage::_PersistDurableTabSession` runs from `_HandleCloseTabRequested`, and
 `TerminalPage::CloseWindow` runs the same per-tab save before raising
 `CloseWindowRequested` — closing the window is the case that matters most, and
 it never goes through the tab-close path.
 
-Two settings-driven gates decide what is written. `GetShellSessionCloseActions`
+Two settings-driven gates decide what is written. `GetDurableTabSessionCloseActions`
 maps the existing **Settings → Startup → "When Terminal starts"** preference:
 
 | `firstWindowPreference` | Saved |
@@ -72,7 +72,7 @@ maps the existing **Settings → Startup → "When Terminal starts"** preference
 | `persistedWindowLayout` | layout, cwd, profiles, agent bindings |
 | `persistedWindowLayoutAndContent` | the above plus scrollback sidecars |
 
-`ShouldPersistShellSession` then requires the tab to be worth saving at all: it
+`ShouldPersistDurableTabSession` then requires the tab to be worth saving at all: it
 must have received user input, already own a durable id, or have a resumable
 agent session bound to one of its panes. A tab that only ever ran its profile's
 startup commands is not a session the user built.
@@ -111,7 +111,7 @@ skipping panes whose agent session belongs to an agent pane (that history is
 replayed through ACP instead, and replaying both would double it).
 
 **On demand.** `/tab-history` lists saved sessions; Enter on a row calls
-`wtcli restore-shell-session`, which reaches `TerminalPage::RestoreProtocolShellSession`
+`wtcli restore-tab-session`, which reaches `TerminalPage::RestoreProtocolDurableTabSession`
 through the COM protocol server. That handler fetches the row, rebuilds the
 action list, and attaches each pane's sidecar path.
 
@@ -120,7 +120,7 @@ durable id matches, and focuses that tab instead of opening a second copy. The
 picker also allows only one Enter request in flight at a time.
 
 Every restored pane gets a fresh `SessionId` — it really is a new shell — and
-`ShellSessionRestorePath` tells `ControlCore::RestoreFromPath` to seed its buffer
+`DurableTabSessionBufferPath` tells `ControlCore::RestoreFromPath` to seed its buffer
 from the sidecar. `_AddTabIdentityMetadata` stamps the durable id back onto the
 first pane's args so the restored tab keeps its identity across a later save or
 a move to another window.

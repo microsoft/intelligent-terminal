@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 pub fn render(
     frame: &mut Frame,
     area: Rect,
-    sessions: &[crate::shell_session_store::ShellSessionSummary],
+    sessions: &[crate::durable_tab_session_store::DurableTabSessionSummary],
     open: &std::collections::HashSet<String>,
     query: &str,
     search_focused: bool,
@@ -96,8 +96,7 @@ pub fn render(
         );
     } else if visible_sessions.is_empty() {
         frame.render_widget(
-            Paragraph::new("No matching tabs")
-                .style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("No matching tabs").style(Style::default().fg(Color::DarkGray)),
             list_area,
         );
     } else {
@@ -178,7 +177,7 @@ pub fn render(
 }
 
 pub(crate) fn matches_query(
-    session: &crate::shell_session_store::ShellSessionSummary,
+    session: &crate::durable_tab_session_store::DurableTabSessionSummary,
     query: &str,
 ) -> bool {
     if query.is_empty() {
@@ -253,7 +252,7 @@ struct FormattedRow {
 const OPEN_COLUMN_WIDTH: usize = 8;
 
 fn format_row(
-    session: &crate::shell_session_store::ShellSessionSummary,
+    session: &crate::durable_tab_session_store::DurableTabSessionSummary,
     width: usize,
     now: i64,
     is_open: bool,
@@ -319,8 +318,8 @@ fn relative_unit(value: i64, unit: &str) -> String {
 mod tests {
     use super::*;
 
-    fn summary() -> crate::shell_session_store::ShellSessionSummary {
-        crate::shell_session_store::ShellSessionSummary {
+    fn summary() -> crate::durable_tab_session_store::DurableTabSessionSummary {
+        crate::durable_tab_session_store::DurableTabSessionSummary {
             id: "id".to_string(),
             name: "2panes".to_string(),
             active_pane_cwd: r"C:\Windows\system32".to_string(),

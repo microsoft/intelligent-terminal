@@ -557,5 +557,5 @@ impl HooksCliFilter {
 pub(crate) enum InitialView {
     Chat,
     Sessions,
-    ShellSessions,
+    DurableTabSessions,
 }

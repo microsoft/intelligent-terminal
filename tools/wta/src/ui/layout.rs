@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 use super::config_popup;
 use super::{
     action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup, shell_sessions_view, user_input,
+    model_popup, permission, recommendations, setup, durable_tab_sessions_view, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -91,21 +91,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
 
-    if app.current_tab().current_view == View::ShellSessions {
+    if app.current_tab().current_view == View::DurableTabSessions {
         let tab = app.current_tab_mut();
-        shell_sessions_view::render(
+        durable_tab_sessions_view::render(
             frame,
             area,
-            &tab.shell_sessions,
-            &tab.shell_sessions_open,
-            &tab.shell_sessions_query,
-            tab.shell_sessions_search_focused,
-            &mut tab.shell_sessions_list_state,
-            tab.shell_sessions_loading,
-            tab.shell_sessions_error.as_deref(),
-            tab.shell_session_restore_in_flight,
-            tab.shell_session_delete_confirmation.as_deref(),
-            tab.shell_session_delete_in_flight,
+            &tab.durable_tab_sessions,
+            &tab.durable_tab_sessions_open,
+            &tab.durable_tab_sessions_query,
+            tab.durable_tab_sessions_search_focused,
+            &mut tab.durable_tab_sessions_list_state,
+            tab.durable_tab_sessions_loading,
+            tab.durable_tab_sessions_error.as_deref(),
+            tab.durable_tab_session_restore_in_flight,
+            tab.durable_tab_session_delete_confirmation.as_deref(),
+            tab.durable_tab_session_delete_in_flight,
         );
         return;
     }

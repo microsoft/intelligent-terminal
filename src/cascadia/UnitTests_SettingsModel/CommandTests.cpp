@@ -464,7 +464,7 @@ namespace SettingsModelUnitTests
                     "agentSessionId": "agent-session-1",
                     "agentResumeCommandline": "claude --resume agent-session-1",
                     "agentPaneSessionId": "acp-session-2",
-                    "agentPaneView": "shell_sessions",
+                    "agentPaneView": "durable_tab_sessions",
                     "agentPaneOpen": true,
                     "agentPanePosition": "right"
                 }
@@ -491,11 +491,11 @@ namespace SettingsModelUnitTests
                 }
             },
             {
-                "name":"action11_durableShellSession",
+                "name":"action11_durableTabSession",
                 "command": {
                     "action": "newWindow",
-                    "durableShellSessionId": "shell-session-serialized",
-                    "durableShellSessionRevision": 42
+                    "durableTabSessionId": "tab-session-serialized",
+                    "durableTabSessionRevision": 42
                 }
             }
         ])" };
@@ -651,7 +651,7 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-1" }, terminalArgs.AgentSessionId());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude --resume agent-session-1" }, terminalArgs.AgentResumeCommandline());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-2" }, terminalArgs.AgentPaneSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell_sessions" }, terminalArgs.AgentPaneView());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"durable_tab_sessions" }, terminalArgs.AgentPaneView());
             VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, terminalArgs.AgentPanePosition());
         }
@@ -681,19 +681,19 @@ namespace SettingsModelUnitTests
             VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
         }
         {
-            const auto command = commands.Lookup(L"action11_durableShellSession");
+            const auto command = commands.Lookup(L"action11_durableTabSession");
             const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
             const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-serialized" }, terminalArgs.DurableShellSessionId());
-            VERIFY_ARE_EQUAL(42LL, terminalArgs.DurableShellSessionRevision());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"tab-session-serialized" }, terminalArgs.DurableTabSessionId());
+            VERIFY_ARE_EQUAL(42LL, terminalArgs.DurableTabSessionRevision());
 
             const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
-            VERIFY_ARE_EQUAL("shell-session-serialized", serialized["durableShellSessionId"].asString());
-            VERIFY_ARE_EQUAL(42LL, serialized["durableShellSessionRevision"].asInt64());
+            VERIFY_ARE_EQUAL("tab-session-serialized", serialized["durableTabSessionId"].asString());
+            VERIFY_ARE_EQUAL(42LL, serialized["durableTabSessionRevision"].asInt64());
 
             const auto roundTripped = implementation::NewTerminalArgs::FromJson(serialized);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-serialized" }, roundTripped.DurableShellSessionId());
-            VERIFY_ARE_EQUAL(42LL, roundTripped.DurableShellSessionRevision());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"tab-session-serialized" }, roundTripped.DurableTabSessionId());
+            VERIFY_ARE_EQUAL(42LL, roundTripped.DurableTabSessionRevision());
         }
     }
 }

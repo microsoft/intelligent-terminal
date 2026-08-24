@@ -71,15 +71,15 @@ void FormatPanesHuman(const Json::Value& panes)
 }
 
 
-void FormatShellSessionsHuman(const Json::Value& shellSessions)
+void FormatDurableTabSessionsHuman(const Json::Value& durableTabSessions)
 {
-    if (!shellSessions.isArray() || shellSessions.empty())
+    if (!durableTabSessions.isArray() || durableTabSessions.empty())
     {
-        printf("No saved shell sessions.\n");
+        printf("No saved tab sessions.\n");
         return;
     }
 
-    constexpr char idHeader[] = "SHELL_SESSION_ID";
+    constexpr char idHeader[] = "TAB_SESSION_ID";
     constexpr char nameHeader[] = "NAME";
     constexpr char openedHeader[] = "OPENED";
 
@@ -94,9 +94,9 @@ void FormatShellSessionsHuman(const Json::Value& shellSessions)
     };
 
     std::vector<Row> rows;
-    rows.reserve(shellSessions.size());
+    rows.reserve(durableTabSessions.size());
 
-    for (const auto& session : shellSessions)
+    for (const auto& session : durableTabSessions)
     {
         Row row{
             session["id"].asString(),

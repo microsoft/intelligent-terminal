@@ -256,9 +256,9 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
-        Windows::Foundation::IAsyncOperation<hstring> ListProtocolShellSessions();
-        Windows::Foundation::IAsyncOperation<bool> FocusProtocolShellSession(hstring id);
-        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring id);
+        Windows::Foundation::IAsyncOperation<hstring> ListProtocolDurableTabSessions();
+        Windows::Foundation::IAsyncOperation<bool> FocusProtocolDurableTabSession(hstring id);
+        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolDurableTabSession(hstring id);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
@@ -819,17 +819,17 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
-        struct _ShellSessionSaveResult
+        struct _DurableTabSessionSaveResult
         {
             winrt::hstring id;
             int64_t revision{ 0 };
             bool forked{ false };
         };
-        static _ShellSessionSaveResult _ParseShellSessionSaveResponse(std::string_view json);
-        static void _ApplyShellSessionSaveResult(Tab* tab, const _ShellSessionSaveResult& save);
+        static _DurableTabSessionSaveResult _ParseDurableTabSessionSaveResponse(std::string_view json);
+        static void _ApplyDurableTabSessionSaveResult(Tab* tab, const _DurableTabSessionSaveResult& save);
         void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _AddTabIdentityMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
-        void _PersistShellSession(Tab* tab);
+        void _PersistDurableTabSession(Tab* tab);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
         // lifetime. `_SetupControl` clears any stale mark when a new control

@@ -11,13 +11,13 @@
 
 namespace winrt::TerminalApp::implementation
 {
-    struct ShellSessionCloseActions
+    struct DurableTabSessionCloseActions
     {
         bool save{ false };
         bool persistScrollback{ false };
     };
 
-    inline constexpr ShellSessionCloseActions GetShellSessionCloseActions(
+    inline constexpr DurableTabSessionCloseActions GetDurableTabSessionCloseActions(
         const winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference preference) noexcept
     {
         using winrt::Microsoft::Terminal::Settings::Model::FirstWindowPreference;
@@ -34,7 +34,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    inline constexpr bool ShouldPersistShellSession(
+    inline constexpr bool ShouldPersistDurableTabSession(
         const bool hasUserInput,
         const bool hasDurableId,
         const bool hasAgentSession) noexcept
@@ -42,15 +42,15 @@ namespace winrt::TerminalApp::implementation
         return hasUserInput || hasDurableId || hasAgentSession;
     }
 
-    inline std::optional<winrt::guid> TryParseShellSessionId(
-        const winrt::hstring& durableShellSessionId)
+    inline std::optional<winrt::guid> TryParseTabSessionId(
+        const winrt::hstring& durableTabSessionId)
     {
-        if (durableShellSessionId.empty())
+        if (durableTabSessionId.empty())
         {
             return std::nullopt;
         }
 
-        std::wstring text{ durableShellSessionId };
+        std::wstring text{ durableTabSessionId };
         if (text.front() != L'{')
         {
             text.insert(text.begin(), L'{');
@@ -67,9 +67,9 @@ namespace winrt::TerminalApp::implementation
 
     inline constexpr bool ShouldResumeAgentSession(
         const bool hasAgentSession,
-        const bool hasShellSessionRestorePath) noexcept
+        const bool hasDurableTabSessionBufferPath) noexcept
     {
-        return hasAgentSession && hasShellSessionRestorePath;
+        return hasAgentSession && hasDurableTabSessionBufferPath;
     }
 
     // A persisted agent pane is worth restoring as soon as it carries any
@@ -155,7 +155,7 @@ namespace winrt::TerminalApp::implementation
                 std::find(agentPaneSessionIds.begin(), agentPaneSessionIds.end(), terminalArgs.AgentSessionId()) == agentPaneSessionIds.end() &&
                 terminalArgs.SessionId() != winrt::guid{})
             {
-                terminalArgs.ShellSessionRestorePath(pathForSession(terminalArgs.SessionId()));
+                terminalArgs.DurableTabSessionBufferPath(pathForSession(terminalArgs.SessionId()));
             }
         }
     }
