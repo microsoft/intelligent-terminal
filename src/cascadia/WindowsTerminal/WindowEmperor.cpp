@@ -629,7 +629,11 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
         if (isEmbedding)
         {
-            // We were launched as a COM server. We have no windows and also don't want to exit.
+            // We were launched as a COM server. Our ExeServer hosts both the
+            // defterm handoff class and TerminalProtocolComServer, so this is
+            // just as likely a wtcli protocol activation as a console handoff.
+            // Stay headless and leave the saved layout alone; whichever
+            // activation actually wants a window restores it.
             //
             // TODO: Here we could start a timer and exit after, say, 5 seconds
             // if no windows are created. But that's a minor concern.
