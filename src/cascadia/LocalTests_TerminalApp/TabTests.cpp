@@ -14,6 +14,7 @@
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
 #include "../TerminalApp/DurableSessionHelpers.h"
+#include "../TerminalApp/TabAutoNaming.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
@@ -122,9 +123,8 @@ namespace TerminalAppLocalTests
         if (Json::parseFromStream(builder, stream, &evt, &errors) &&
             evt["method"].asString() == "connection_state")
         {
-            connectionStates.push_back({
-                evt["params"]["pane_id"].asString(),
-                evt["params"]["state"].asString() });
+            connectionStates.push_back({ evt["params"]["pane_id"].asString(),
+                                         evt["params"]["state"].asString() });
         }
     }
 
@@ -194,6 +194,9 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DurableTabSessionCloseActionsFollowStartupPreference);
+        TEST_METHOD(TabAutoNameParsesGitHeadForms);
+        TEST_METHOD(TabAutoNameMapsCommandsToLabels);
+        TEST_METHOD(TabAutoNameComposesAndFallsBack);
         TEST_METHOD(DurableTabSessionAgentBindingQualifiesForPersistence);
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
@@ -378,6 +381,135 @@ namespace TerminalAppLocalTests
         const auto layoutAndContent = winrt::TerminalApp::implementation::GetDurableTabSessionCloseActions(FirstWindowPreference::PersistedLayoutAndContent);
         VERIFY_IS_TRUE(layoutAndContent.save);
         VERIFY_IS_TRUE(layoutAndContent.persistScrollback);
+    }
+
+    void TabTests::TabAutoNameParsesGitHeadForms()
+    {
+        using namespace winrt::TerminalApp::implementation;
+
+        // The common case: a checked-out branch.
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, ParseGitHeadContent(L"ref: refs/heads/main\n").value());
+
+        // Branch names legitimately contain slashes, and the whole thing after
+        // refs/heads/ is the name - not just the trailing segment.
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev/yuazha/tab-auto-naming" },
+                         ParseGitHeadContent(L"ref: refs/heads/dev/yuazha/tab-auto-naming\n").value());
+
+        // Detached HEAD: git writes a bare object id, which we shorten.
+        VERIFY_ARE_EQUAL(std::wstring{ L"0bd62e4" },
+                         ParseGitHeadContent(L"0bd62e4750123456789012345678901234567890\n").value());
+
+        // Unusable inputs yield no branch rather than a guess.
+        VERIFY_IS_FALSE(ParseGitHeadContent(L"").has_value());
+        VERIFY_IS_FALSE(ParseGitHeadContent(L"   \r\n").has_value());
+        VERIFY_IS_FALSE(ParseGitHeadContent(L"garbage").has_value());
+
+        // `.git` file pointer, used by linked worktrees and submodules.
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:/repo/.git/worktrees/feature" },
+                         ParseGitDirPointer(L"gitdir: C:/repo/.git/worktrees/feature\n").value());
+        VERIFY_IS_FALSE(ParseGitDirPointer(L"not a pointer").has_value());
+
+        // End-to-end over a real worktree layout, where `.git` is a *file*
+        // pointing elsewhere. This is the shape this repository itself uses,
+        // so a regression here would break naming for anyone developing in
+        // a `.worktree/<name>` checkout.
+        std::error_code error;
+        const auto root = std::filesystem::temp_directory_path(error) /
+                          (L"tab-auto-naming-" + std::to_wstring(GetCurrentProcessId()));
+        const auto realGitDirectory = root / L"realgit";
+        const auto checkout = root / L"checkout";
+        const auto nested = checkout / L"src" / L"deep";
+
+        std::filesystem::remove_all(root, error);
+        std::filesystem::create_directories(realGitDirectory, error);
+        std::filesystem::create_directories(nested, error);
+        VERIFY_IS_FALSE(!!error);
+
+        {
+            std::ofstream head{ realGitDirectory / L"HEAD", std::ios::binary };
+            head << "ref: refs/heads/worktree-branch\n";
+            std::ofstream pointer{ checkout / L".git", std::ios::binary };
+            pointer << "gitdir: " << realGitDirectory.string() << "\n";
+        }
+
+        // Found from the checkout root, and from a nested subdirectory via the
+        // upward walk.
+        VERIFY_ARE_EQUAL(std::wstring{ L"worktree-branch" }, TryReadGitBranch(checkout).value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"worktree-branch" }, TryReadGitBranch(nested).value());
+
+        // A directory with no repository above it has no branch.
+        const auto orphan = root / L"orphan";
+        std::filesystem::create_directories(orphan, error);
+        const auto orphanBranch = TryReadGitBranch(orphan);
+        VERIFY_IS_TRUE(!orphanBranch.has_value() || !orphanBranch->empty());
+
+        std::filesystem::remove_all(root, error);
+    }
+
+    void TabTests::TabAutoNameMapsCommandsToLabels()
+    {
+        using winrt::TerminalApp::implementation::FriendlyCommandLabel;
+
+        // Package-manager scripts, across the managers and both `run` forms.
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev server" }, FriendlyCommandLabel(L"npm run dev"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev server" }, FriendlyCommandLabel(L"yarn dev"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev server" }, FriendlyCommandLabel(L"pnpm run start"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"build" }, FriendlyCommandLabel(L"npm run build"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"tests" }, FriendlyCommandLabel(L"npm test"));
+
+        // Table entries, longest-key-wins.
+        VERIFY_ARE_EQUAL(std::wstring{ L"compose" }, FriendlyCommandLabel(L"docker compose up"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"python tests" }, FriendlyCommandLabel(L"python -m pytest"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"cargo tests" }, FriendlyCommandLabel(L"cargo test --all"));
+
+        // ssh reads as its destination, which is what the user recognizes.
+        VERIFY_ARE_EQUAL(std::wstring{ L"box01" }, FriendlyCommandLabel(L"ssh box01"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"box01" }, FriendlyCommandLabel(L"ssh user@box01"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"box01" }, FriendlyCommandLabel(L"ssh -p 2222 user@box01"));
+
+        // Invocation-only prefixes are stripped before matching.
+        VERIFY_ARE_EQUAL(std::wstring{ L"compose" }, FriendlyCommandLabel(L"sudo docker compose up"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev server" }, FriendlyCommandLabel(L"NODE_ENV=production npm run dev"));
+
+        // Only the first command of a chain describes the tab.
+        VERIFY_ARE_EQUAL(std::wstring{ L"build" }, FriendlyCommandLabel(L"npm run build && npm test"));
+
+        // An unrecognized command is shown verbatim - never guessed at.
+        VERIFY_ARE_EQUAL(std::wstring{ L"./weird-script.sh" }, FriendlyCommandLabel(L"./weird-script.sh"));
+
+        // Nothing in, nothing out.
+        VERIFY_ARE_EQUAL(std::wstring{ L"" }, FriendlyCommandLabel(L"   "));
+
+        // Long unrecognized commands are cut rather than allowed to dominate.
+        const auto longLabel = FriendlyCommandLabel(
+            L"./some-extremely-long-script-name-that-keeps-going.sh --with --many --flags");
+        VERIFY_IS_LESS_THAN_OR_EQUAL(longLabel.size(),
+                                     winrt::TerminalApp::implementation::TabAutoNameMaxTaskLength);
+    }
+
+    void TabTests::TabAutoNameComposesAndFallsBack()
+    {
+        using winrt::TerminalApp::implementation::ComposeTabAutoName;
+
+        // Both segments present.
+        VERIFY_ARE_EQUAL(std::wstring{ L"main \u00B7 dev server" },
+                         ComposeTabAutoName(L"main", L"dev server", L"PowerShell"));
+
+        // Either segment alone still beats the shell title.
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, ComposeTabAutoName(L"main", L"", L"PowerShell"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"dev server" }, ComposeTabAutoName(L"", L"dev server", L"PowerShell"));
+
+        // With no shell-integration context at all we keep the old behavior.
+        VERIFY_ARE_EQUAL(std::wstring{ L"PowerShell" }, ComposeTabAutoName(L"", L"", L"PowerShell"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"PowerShell" }, ComposeTabAutoName(L"  ", L"  ", L"PowerShell"));
+
+        // The name shares its row with the working directory, so it stays capped.
+        const auto composed = ComposeTabAutoName(
+            L"dev/yuazha/a-very-long-branch-name-that-goes-on",
+            L"dev server",
+            L"PowerShell");
+        VERIFY_IS_LESS_THAN_OR_EQUAL(composed.size(),
+                                     winrt::TerminalApp::implementation::TabAutoNameMaxLength);
     }
 
     void TabTests::DurableTabSessionAgentBindingQualifiesForPersistence()

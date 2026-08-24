@@ -238,6 +238,7 @@ fn case_insensitive_match_ranges(text: &str, query: &str) -> Vec<(usize, usize)>
         .collect()
 }
 
+#[derive(Debug)]
 struct FormattedRow {
     name: String,
     cwd: String,
@@ -250,6 +251,15 @@ struct FormattedRow {
 /// right-aligned whether or not a session is currently open in a tab. The
 /// label itself is left-aligned inside that column.
 const OPEN_COLUMN_WIDTH: usize = 8;
+
+/// Width kept available for the working directory when a session has one.
+///
+/// Auto-generated names ("branch · task") are much longer than the shell
+/// titles this list used to show, and a long enough name would otherwise
+/// consume the whole left column and drop the cwd entirely. The cwd is what
+/// distinguishes two sessions on the same branch, so it keeps a reserved
+/// share of the row.
+const MIN_CWD_WIDTH: usize = 16;
 
 fn format_row(
     session: &crate::durable_tab_session_store::DurableTabSessionSummary,
@@ -271,7 +281,16 @@ fn format_row(
     }
 
     let left_width = width - right_width - 2;
-    let name = super::layout::truncate_to_width(&session.name, left_width);
+    // Cap the name so a long generated one cannot squeeze out the cwd, but let
+    // it use the full column when there is no cwd to protect.
+    let name_budget = if session.active_pane_cwd.is_empty() {
+        left_width
+    } else {
+        left_width
+            .saturating_sub(MIN_CWD_WIDTH + 2)
+            .max(left_width / 2)
+    };
+    let name = super::layout::truncate_to_width(&session.name, name_budget);
     let name_width = UnicodeWidthStr::width(name.as_str());
     let cwd = if session.active_pane_cwd.is_empty() || name_width + 2 >= left_width {
         String::new()
@@ -346,6 +365,37 @@ mod tests {
         item.active_pane_cwd = r"C:\repos\portal".to_string();
         assert!(matches_query(&item, "PO"));
         assert!(!matches_query(&item, "bash"));
+    }
+
+    #[test]
+    fn long_generated_name_does_not_hide_the_cwd() {
+        let mut item = summary();
+        // What auto-naming now produces: "branch · task".
+        item.name = "dev/yuazha/tab-auto-naming \u{b7} dev server".to_string();
+        item.active_pane_cwd = r"C:\repos\portal".to_string();
+
+        let row = format_row(&item, 100, 86_400, false);
+
+        // The cwd is what separates two sessions on the same branch, so it has
+        // to survive a long name.
+        assert!(
+            !row.cwd.is_empty(),
+            "cwd was squeezed out by the name: {:?}",
+            row
+        );
+        assert!(!row.name.is_empty());
+    }
+
+    #[test]
+    fn name_may_use_the_full_column_without_a_cwd() {
+        let mut item = summary();
+        item.name = "dev/yuazha/tab-auto-naming \u{b7} dev server".to_string();
+        item.active_pane_cwd = String::new();
+
+        let row = format_row(&item, 100, 86_400, false);
+
+        assert!(row.cwd.is_empty());
+        assert_eq!(row.name, item.name);
     }
 
     #[test]
