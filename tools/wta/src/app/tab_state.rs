@@ -766,6 +766,9 @@ impl TabSession {
                             trailing_marker: None,
                         });
                     }
+                    // A replayed prompt still carries the terminal-agent
+                    // template, so the header shows only the request the user
+                    // actually typed; the wrapper is never rendered.
                     let prompt = replay_user_request(&text);
                     current = Some((collapsed_prompt_preview(prompt), Vec::new()));
                 }

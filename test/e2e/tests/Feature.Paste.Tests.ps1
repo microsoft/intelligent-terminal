@@ -87,6 +87,10 @@ Describe 'Feature §2 agent pane paste' -Tag 'Feature' -Skip:(-not $script:Ready
             ($lines[$inputStart..($lines.Count - 1)] -join "`n")
         }
     }
+    BeforeEach {
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Escape | Out-Null
+        & $script:clearPasteDraft
+    }
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
         if ($null -ne $script:originalClipboard) { Set-Clipboard -Value $script:originalClipboard }

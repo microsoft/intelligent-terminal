@@ -2199,6 +2199,7 @@ get time"#
     assert_eq!(tab.completed_turns.len(), 2);
 
     let t0 = &tab.completed_turns[0];
+    // Header is the request the user actually typed, not the template wrapper.
     assert_eq!(t0.prompt, "get time");
     assert_eq!(t0.details.len(), 1);
     assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
@@ -9674,6 +9675,56 @@ fn clicking_input_dialog_restores_input_navigation_after_mouse_turn_selection() 
 
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
     assert_eq!(app.current_tab().input, "x");
+}
+
+#[test]
+fn double_click_in_input_dialog_preserves_word_selection() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().input = "INPUT_DOUBLE_CLICK_MARKER".into();
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("INPUT_DOUBLE_CLICK_MARKER")
+                .map(|column| (row as u16, column as u16 + 2))
+        })
+        .expect("input marker must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.text_selection.selected_text(), None);
+    render_to_text(&mut app, 80, 16);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    render_to_text(&mut app, 80, 16);
+
+    assert_eq!(
+        app.text_selection.selected_text().as_deref(),
+        Some("INPUT_DOUBLE_CLICK_MARKER")
+    );
 }
 
 #[test]

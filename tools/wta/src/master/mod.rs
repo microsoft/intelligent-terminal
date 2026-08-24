@@ -477,8 +477,7 @@ struct MasterStateInner {
     /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
     /// drops just that agent's set on CLI death, so a crashed-and-respawned
     /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real
-    /// `session/load` from disk.
+    /// had — such a resume falls back to a real `session/load` from disk.
     orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// Stable tab identity retained when a helper disconnect wins the race
     /// against the terminal's close-by-tab request. This lets a surviving

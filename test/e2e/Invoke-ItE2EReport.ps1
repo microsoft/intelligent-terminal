@@ -51,7 +51,13 @@ $cfg.TestResult.Enabled = $true
 $cfg.TestResult.OutputFormat = 'NUnitXml'
 $cfg.TestResult.OutputPath = (Join-Path $OutDir 'results.xml')
 
-$result = Invoke-Pester -Configuration $cfg
+$pesterOutput = @(Invoke-Pester -Configuration $cfg)
+$result = $pesterOutput |
+    Where-Object { $_.PSObject.Properties.Name -contains 'Tests' -and $_.PSObject.Properties.Name -contains 'FailedCount' } |
+    Select-Object -Last 1
+if (-not $result) {
+    throw 'Pester did not return a test result object.'
+}
 
 # ── Shared helpers ──────────────────────────────────────────────────────────
 function Get-FailureWhere($err) {
