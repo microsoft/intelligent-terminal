@@ -16,11 +16,105 @@
 //! the user hot-swaps the model from a decoupled call site.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use agent_client_protocol as acp;
+use serde::{Deserialize, Serialize};
 
 use crate::app_contracts::AcpModelInfo;
+
+pub(crate) const WTA_CLOUD_CATALOG_AVAILABLE: &str = "_intellterm.wta/cloud_catalog_available";
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CloudModelCatalogMetadata {
+    pub(crate) models: Vec<AcpModelInfo>,
+    pub(crate) source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudCatalogNotification {
+    models: Vec<AcpModelInfo>,
+    source: String,
+}
+
+pub(crate) fn inject_wta_cloud_catalog(
+    meta: &mut Option<acp::schema::v1::Meta>,
+    models: &[AcpModelInfo],
+    source: &str,
+) -> Result<(), serde_json::Error> {
+    if models.is_empty() {
+        return Ok(());
+    }
+    crate::session_registry::inject_wta_meta(
+        meta,
+        &crate::session_registry::WtaMeta {
+            cloud_models: Some(serde_json::to_string(models)?),
+            cloud_models_source: Some(source.to_string()),
+            ..Default::default()
+        },
+    );
+    Ok(())
+}
+
+pub(crate) fn cloud_catalog_from_wta_meta(
+    wta: &crate::session_registry::WtaMeta,
+) -> CloudModelCatalogMetadata {
+    let models = wta
+        .cloud_models
+        .as_deref()
+        .and_then(|raw| match serde_json::from_str(raw) {
+            Ok(models) => Some(models),
+            Err(error) => {
+                tracing::warn!(
+                    target: "cloud_models",
+                    %error,
+                    source = ?wta.cloud_models_source,
+                    "invalid cloud model catalog in private WTA metadata"
+                );
+                None
+            }
+        })
+        .unwrap_or_default();
+    CloudModelCatalogMetadata {
+        models,
+        source: wta.cloud_models_source.clone(),
+    }
+}
+
+pub(crate) fn build_wta_cloud_catalog_notification(
+    models: &[AcpModelInfo],
+    source: &str,
+) -> acp::schema::v1::ExtNotification {
+    let params = CloudCatalogNotification {
+        models: models.to_vec(),
+        source: source.to_string(),
+    };
+    let json = serde_json::to_string(&params)
+        .expect("CloudCatalogNotification serialization is infallible for owned data");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtNotification::new(WTA_CLOUD_CATALOG_AVAILABLE, Arc::from(raw))
+}
+
+pub(crate) fn parse_wta_cloud_catalog_notification(
+    notification: &acp::schema::v1::ExtNotification,
+) -> Option<Result<CloudModelCatalogMetadata, serde_json::Error>> {
+    if !crate::session_registry::ext_method_matches(
+        &notification.method,
+        WTA_CLOUD_CATALOG_AVAILABLE,
+    ) {
+        return None;
+    }
+
+    Some(
+        serde_json::from_str::<CloudCatalogNotification>(notification.params.get()).map(
+            |catalog| CloudModelCatalogMetadata {
+                models: catalog.models,
+                source: Some(catalog.source),
+            },
+        ),
+    )
+}
 
 /// How one session expects a model switch to be delivered.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,7 +122,7 @@ enum ModelSwitchChannel {
     /// Legacy `session/set_model`.
     Legacy,
     /// Legacy after the agent rejected `session/set_config_option`.
-    LegacyFallback,
+    LegacyFallback { config_id: String },
     /// `session/set_config_option` carrying this config id (e.g. `"model"`).
     Config { config_id: String },
 }
@@ -51,7 +145,7 @@ fn record_loaded_channel_config(session_id: &str, config_id: &str) {
     let mut channels = MODEL_SWITCHES.write().unwrap();
     if !matches!(
         channels.get(session_id),
-        Some(ModelSwitchChannel::LegacyFallback)
+        Some(ModelSwitchChannel::LegacyFallback { .. })
     ) {
         channels.insert(
             session_id.to_string(),
@@ -60,6 +154,17 @@ fn record_loaded_channel_config(session_id: &str, config_id: &str) {
             },
         );
     }
+}
+
+pub(crate) fn is_model_config(session_id: &str, config_id: &str) -> bool {
+    matches!(
+        MODEL_SWITCHES.read().unwrap().get(session_id),
+        Some(ModelSwitchChannel::Config {
+            config_id: known_id
+        }) | Some(ModelSwitchChannel::LegacyFallback {
+            config_id: known_id
+        }) if known_id == config_id
+    )
 }
 
 pub(crate) fn forget_session(session_id: &str) {
@@ -94,7 +199,7 @@ pub(crate) fn models_from_load_session(
 ) -> (Vec<AcpModelInfo>, Option<String>) {
     let had_confirmed_fallback = matches!(
         MODEL_SWITCHES.read().unwrap().get(session_id),
-        Some(ModelSwitchChannel::LegacyFallback)
+        Some(ModelSwitchChannel::LegacyFallback { .. })
     );
     if !had_confirmed_fallback {
         forget_session(session_id);
@@ -135,8 +240,10 @@ fn model_option_from_config(
     // non-Select entry happened to come first, hiding a valid Select later in
     // the list.
     let (opt, sel) = opts.iter().find_map(|o| {
-        let is_model = matches!(o.category, Some(acp::schema::v1::SessionConfigOptionCategory::Model))
-            || o.id.0.as_ref() == "model";
+        let is_model = matches!(
+            o.category,
+            Some(acp::schema::v1::SessionConfigOptionCategory::Model)
+        ) || o.id.0.as_ref() == "model";
         if !is_model {
             return None;
         }
@@ -184,7 +291,7 @@ pub(crate) async fn apply_session_model(
     conn: &crate::protocol::acp::conn::ClientLink,
     session_id: acp::schema::v1::SessionId,
     model_id: String,
-) -> acp::Result<()> {
+) -> acp::Result<Option<Vec<acp::schema::v1::SessionConfigOption>>> {
     // Snapshot under the read lock and release it before the await — the lock
     // guard isn't Send and must not be held across the suspension point.
     let session_key = session_id.to_string();
@@ -199,24 +306,28 @@ pub(crate) async fn apply_session_model(
             match conn
                 .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
                     session_id.clone(),
-                    config_id,
+                    config_id.clone(),
                     model_id.as_str(),
                 ))
                 .await
             {
-                Ok(_) => Ok(()),
+                Ok(response) => Ok(Some(response.config_options)),
                 Err(e) if e.code == acp::ErrorCode::MethodNotFound => {
-                    MODEL_SWITCHES
-                        .write()
-                        .unwrap()
-                        .insert(session_key, ModelSwitchChannel::LegacyFallback);
-                    apply_legacy_set_model(conn, session_id, model_id).await
+                    MODEL_SWITCHES.write().unwrap().insert(
+                        session_key,
+                        ModelSwitchChannel::LegacyFallback { config_id },
+                    );
+                    apply_legacy_set_model(conn, session_id, model_id)
+                        .await
+                        .map(|()| None)
                 }
                 Err(e) => Err(e),
             }
         }
-        ModelSwitchChannel::Legacy | ModelSwitchChannel::LegacyFallback => {
-            apply_legacy_set_model(conn, session_id, model_id).await
+        ModelSwitchChannel::Legacy | ModelSwitchChannel::LegacyFallback { .. } => {
+            apply_legacy_set_model(conn, session_id, model_id)
+                .await
+                .map(|()| None)
         }
     }
 }
@@ -293,6 +404,25 @@ mod tests {
     }"#;
 
     #[test]
+    fn cloud_catalog_parsing_preserves_sibling_proposal_marker() {
+        let wta = crate::session_registry::WtaMeta {
+            cloud_models: Some(
+                r#"[{"id":"cloud-model","name":"Cloud Model","description":null}]"#.to_string(),
+            ),
+            cloud_models_source: Some("clean_probe".to_string()),
+            proposal_mcp: Some("http-v1".to_string()),
+            ..Default::default()
+        };
+
+        let catalog = cloud_catalog_from_wta_meta(&wta);
+
+        assert_eq!(catalog.models.len(), 1);
+        assert_eq!(catalog.models[0].id, "cloud-model");
+        assert_eq!(catalog.source.as_deref(), Some("clean_probe"));
+        assert_eq!(wta.proposal_mcp.as_deref(), Some("http-v1"));
+    }
+
+    #[test]
     fn model_extraction_across_channels() {
         let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         MODEL_SWITCHES.write().unwrap().clear();
@@ -318,8 +448,8 @@ mod tests {
 
         // Notifications are session-scoped and must not overwrite the channel
         // selected for the active session.
-        let update: acp::schema::v1::ConfigOptionUpdate = serde_json::from_value(
-            serde_json::json!({
+        let update: acp::schema::v1::ConfigOptionUpdate =
+            serde_json::from_value(serde_json::json!({
                 "configOptions": [{
                     "id": "background-model",
                     "name": "Model",
@@ -328,12 +458,10 @@ mod tests {
                     "currentValue": "haiku",
                     "options": [{"value": "haiku", "name": "Haiku"}]
                 }]
-            }),
-        )
-        .expect("valid config option update");
-        let (models, current) =
-            models_from_config_options("background", &update.config_options)
-                .expect("model selector");
+            }))
+            .expect("valid config option update");
+        let (models, current) = models_from_config_options("background", &update.config_options)
+            .expect("model selector");
         assert_eq!(models[0].id, "haiku");
         assert_eq!(current.as_deref(), Some("haiku"));
         assert_eq!(
@@ -419,15 +547,19 @@ mod tests {
             .on_receive_request(
                 |_req: acp::schema::v1::AgentRequest,
                  responder: acp::Responder<serde_json::Value>,
-                 _cx| async move { responder.respond_with_error(acp::Error::method_not_found()) },
+                 _cx| async move {
+                    responder.respond_with_error(acp::Error::method_not_found())
+                },
                 acp::on_receive_request!(),
             )
             .on_receive_notification(
                 |_n: acp::schema::v1::AgentNotification, _cx| async move { Ok(()) },
                 acp::on_receive_notification!(),
             );
-        let (client, client_io_fut) =
-            conn::spawn_client(client_builder, conn::byte_streams(cw.compat_write(), cr.compat()));
+        let (client, client_io_fut) = conn::spawn_client(
+            client_builder,
+            conn::byte_streams(cw.compat_write(), cr.compat()),
+        );
 
         let agent_builder = acp::Agent
             .builder()
@@ -464,8 +596,10 @@ mod tests {
                 |_n: acp::schema::v1::ClientNotification, _cx| async move { Ok(()) },
                 acp::on_receive_notification!(),
             );
-        let (_agent, agent_io_fut) =
-            conn::spawn_agent(agent_builder, conn::byte_streams(aw.compat_write(), ar.compat()));
+        let (_agent, agent_io_fut) = conn::spawn_agent(
+            agent_builder,
+            conn::byte_streams(aw.compat_write(), ar.compat()),
+        );
 
         tokio::task::spawn_local(async move {
             let _ = client_io_fut.await;
@@ -499,12 +633,14 @@ mod tests {
             );
             assert_eq!(
                 channel_for("s-fallback"),
-                ModelSwitchChannel::LegacyFallback,
+                ModelSwitchChannel::LegacyFallback {
+                    config_id: "model".into()
+                },
                 "MethodNotFound on set_config_option must flip the channel to Legacy"
             );
 
-            let loaded: acp::schema::v1::LoadSessionResponse = serde_json::from_value(
-                serde_json::json!({
+            let loaded: acp::schema::v1::LoadSessionResponse =
+                serde_json::from_value(serde_json::json!({
                     "configOptions": [{
                         "id": "model",
                         "name": "Model",
@@ -513,13 +649,14 @@ mod tests {
                         "currentValue": "haiku",
                         "options": [{"value": "haiku", "name": "Haiku"}]
                     }]
-                }),
-            )
-            .expect("valid load_session response");
+                }))
+                .expect("valid load_session response");
             let _ = models_from_load_session("s-fallback", &loaded);
             assert_eq!(
                 channel_for("s-fallback"),
-                ModelSwitchChannel::LegacyFallback,
+                ModelSwitchChannel::LegacyFallback {
+                    config_id: "model".into()
+                },
                 "loading a session must preserve a confirmed Legacy fallback"
             );
         });

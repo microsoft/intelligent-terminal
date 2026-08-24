@@ -189,8 +189,8 @@
     <value>اسے فعال کرنے سے آپ کے ایجنٹس میں سیشنز ٹریک کرنے کے لیے انٹیگریشن hooks انسٹال ہوں گے۔</value>
     <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>سیاق و سباق کا استعمال اور سیشن لاگت دکھائیں۔</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>دستیاب ہونے پر، ٹرمینل کے نیچے والے بار میں سیاق و سباق کی کھڑکی کا استعمال اور سیشن کی قیمت دکھائیں۔</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>سیاق و سباق کا استعمال اور سیشن لاگت دکھائیں</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>دستیاب ہونے پر، ٹرمینل کے نیچے والے بار میں سیاق و سباق کی کھڑکی کا استعمال اور سیشن کی لاگت دکھائیں۔</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>پین کی پوزیشن</value>
   </data>
@@ -375,4 +375,12 @@
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>استعمال</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>ٹوکن</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>سیاق و سباق کی کھڑکی</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
+  <data name="AgentPane_DefaultTitle" xml:space="preserve">
+    <value>AI اسسٹنٹ</value>
+    <comment>Default title shown in the agent pane title bar before an agent reports its name. "AI assistant" refers to the built-in AI coding assistant, not a human assistant.</comment>
+  </data>
+  <data name="AgentPane_ConnectingTitle" xml:space="preserve">
+    <value>AI اسسٹنٹ · جڑ رہا ہے</value>
+    <comment>Status shown in the agent pane title bar while the built-in AI coding assistant is connecting. Preserve the centered dot separator.</comment>
+  </data>
 </root>

@@ -34,14 +34,14 @@ $publicFns = @(
     # Policy (agent GPO via HKCU)
     'Get-WtAgentPolicyState', 'Set-WtAgentPolicy', 'Restore-WtAgentPolicy', 'Test-WtAgentPolicyControllable',
     # Ui
-    'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
+    'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Get-UiTextBounds', 'Invoke-UiMouseDrag', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable',
     'Send-WtWindowKey', 'Set-WtWindowForeground', 'Test-WtWindowKeyFocusable', 'Open-WtSettings', 'Test-CommandPaletteOpen', 'Invoke-SettingsNav',
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
     # Agent / Autofix / Sessions
-    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Send-AgentPrompt', 'Wait-AgentState',
+    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Get-PendingTerminalActionProposal', 'Wait-TerminalActionProposal', 'Resolve-AgentOwnerTabId', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSessions', 'Get-AgentPaneSession', 'Wait-NewAgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
     'Send-AgentMouseEvent', 'Send-AgentMouseClick',

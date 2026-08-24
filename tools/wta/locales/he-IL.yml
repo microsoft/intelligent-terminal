@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  הקש Enter כדי לנסות שוב, או E
 chat.activity_thinking: "חושב…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ברוכים הבאים ל-מסוף חכם!"
-chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI. בדוק אם יש שגיאות."
+chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI."
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ נתיב חנות מיושן"
 hooks.installed_but_disabled: "⚠ מותקן אך מושבת"
 hooks.not_installed: "✗ לא מותקן"
 hooks.uninstall_skipped: "דולג (CLI לא נמצא ב-PATH)"
-hooks.install_attempted: "בוצע ניסיון התקנת wt-agent-hooks (אידמפוטנטי). הפעל `wta hooks status` כדי לבדוק את התוצאה. יומן מעקב: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks מותקן עבור %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "עכשיו"
 time.minute_singular: "לפני דקה אחת"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
+commands.config.summary: "קבע את תצורת הפעלה זו של הסוכן"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "תצורת הפעלה (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "הסוכן המחובר לא פרסם אפשרויות הפעלה הניתנות לקביעת תצורה."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "עדכון %{option} נכשל: %{error}"
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

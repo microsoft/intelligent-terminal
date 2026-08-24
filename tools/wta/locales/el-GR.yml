@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμά
 chat.activity_thinking: "Σκέφτομαι…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
-chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
+chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI."
 chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ η διαδρομή marketplace είναι π
 hooks.installed_but_disabled: "⚠ εγκατεστημένο αλλά απενεργοποιημένο"
 hooks.not_installed: "✗ δεν έχει εγκατασταθεί"
 hooks.uninstall_skipped: "παραλείφθηκε (το CLI δεν βρίσκεται στο PATH)"
-hooks.install_attempted: "Δοκιμάστηκε η εγκατάσταση wt-agent-hooks (idempotent). Εκτελέστε `wta hooks status` για έλεγχο αποτελεσμάτων. Αρχείο καταγραφής: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Το wt-agent-hooks είναι εγκατεστημένο για %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "μόλις τώρα"
 time.minute_singular: "πριν από %{count} λεπτό"
@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
+commands.config.summary: "Διαμόρφωση αυτής της περιόδου λειτουργίας παράγοντα"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Μετακίνηση του πλαισίου παράγοντα αυτής της καρτέλας (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Διαμόρφωση περιόδου λειτουργίας (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Ο συνδεδεμένος παράγοντας δεν διαφήμισε καμία διαμορφώσιμη επιλογή περιόδου λειτουργίας."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Αποτυχία ενημέρωσης του %{option}: %{error}"
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}

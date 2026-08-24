@@ -5,24 +5,41 @@ use crate::app::{App, PermissionState};
 use crate::theme;
 use crate::ui::card::{self, CARD_MIN_SIZE};
 
-/// Render the permission card. Embedded above the input box; `layout.rs`
-/// reserves the row budget via `App::permission_panel_height`, which is
-/// either ≥ `CARD_MIN_SIZE` (full card) or exactly 1 (compact fallback —
-/// the agent flow is blocked on this prompt, so we must remain visible).
+pub(crate) const MAX_QUEUE_PREVIEW: usize = 3;
+
+fn queue_position(total: usize) -> String {
+    format!("[1/{}]", total.max(1))
+}
+
+fn queued_summary(permission: &PermissionState) -> String {
+    permission
+        .target
+        .as_deref()
+        .filter(|target| !target.is_empty())
+        .unwrap_or(&permission.title)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Render the permission card. The action-panel planner reserves either at
+/// least `CARD_MIN_SIZE` rows or a one-row compact fallback. The agent flow
+/// is blocked on this prompt, so it must remain visible.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let Some(perm) = app.current_tab().permission.front() else {
         return;
     };
 
     if area.height < CARD_MIN_SIZE {
-        render_compact(frame, perm, area);
+        render_compact(frame, perm, app.current_tab().permission.len(), area);
         return;
     }
 
     let Some((content_area, button_area)) =
         card::render_card_shell(frame, area, theme::CARD_BORDER)
     else {
-        render_compact(frame, perm, area);
+        render_compact(frame, perm, app.current_tab().permission.len(), area);
         return;
     };
 
@@ -34,9 +51,15 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         // restating exactly what's being authorized is intentional even
         // if it repeats a preceding chat card (see
         // `client.rs::request_permission`).
-        let header = match &perm.kind_label {
+        let title = match &perm.kind_label {
             Some(icon) => format!("{icon} {}", perm.title),
             None => perm.title.clone(),
+        };
+        let total = app.current_tab().permission.len();
+        let header = if total > 1 {
+            format!("{}  {}", queue_position(total), title)
+        } else {
+            title
         };
         let mut lines = vec![Line::styled(header, theme::CARD_DESCRIPTION)];
         if let Some(target) = &perm.target {
@@ -47,19 +70,29 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // card so it doesn't render as an unreadable wall of
                 // text (see `ui/command_format.rs`).
                 for entry in crate::ui::command_format::command_display_lines(target) {
-                    let text = match entry {
-                        crate::ui::command_format::CommandLine::Statement(s) => format!("$ {s}"),
-                        crate::ui::command_format::CommandLine::Folded { remaining } => {
-                            format!("… (+{remaining} more)")
-                        }
-                    };
-                    lines.push(Line::styled(text, theme::CARD_CODE));
+                    lines.push(Line::styled(entry.rendered_text(""), theme::CARD_CODE));
                 }
             } else {
                 // Paths are shown as-is — the code styling alone
                 // distinguishes it from the title.
                 lines.push(Line::styled(target.clone(), theme::CARD_CODE));
             }
+        }
+        for queued in app
+            .current_tab()
+            .permission
+            .iter()
+            .skip(1)
+            .take(MAX_QUEUE_PREVIEW)
+        {
+            lines.push(Line::styled(
+                format!("  • {}", queued_summary(queued)),
+                theme::DIM,
+            ));
+        }
+        let hidden = total.saturating_sub(1 + MAX_QUEUE_PREVIEW);
+        if hidden > 0 {
+            lines.push(Line::styled(format!("  … +{hidden}"), theme::DIM));
         }
         let content = Paragraph::new(lines)
             .alignment(crate::rtl::text_alignment())
@@ -97,16 +130,23 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 /// informed that a permission is pending and what to press — the agent is
 /// blocked until they answer, so silently hiding the card would deadlock the
 /// flow.
-fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
+fn render_compact(frame: &mut Frame, perm: &PermissionState, total: usize, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
     let default_desc = t!("permission.compact.default_description").into_owned();
-    let desc_one_line = perm
+    let description = perm
         .description
         .lines()
         .next()
         .unwrap_or(default_desc.as_str());
+    let desc_with_position;
+    let desc_one_line = if total > 1 {
+        desc_with_position = format!("{} {}", queue_position(total), description);
+        desc_with_position.as_str()
+    } else {
+        description
+    };
     let prefix_owned = t!("permission.compact.prefix").into_owned();
     let prefix = prefix_owned.as_str();
     let separator = "  ";
@@ -117,8 +157,7 @@ fn render_compact(frame: &mut Frame, perm: &PermissionState, area: Rect) {
     // eat the separator — and forced `.max(1)` so 1 char of description
     // would render even when there was genuinely no room, pushing the hint
     // off-screen.
-    let overhead =
-        prefix.chars().count() + separator.chars().count() + hint.chars().count();
+    let overhead = prefix.chars().count() + separator.chars().count() + hint.chars().count();
     let budget = (area.width as usize).saturating_sub(overhead);
     let total = desc_one_line.chars().count();
     let desc: String = if budget == 0 {

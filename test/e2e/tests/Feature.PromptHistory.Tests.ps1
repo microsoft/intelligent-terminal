@@ -51,7 +51,14 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
         function Get-HistoryInputRowPattern {
             param([Parameter(Mandatory)][string]$Text)
-            '(?m)^\s*[│║|]\s*>\s*' + [regex]::Escape($Text)
+            '(?m)^\s*(?<border>\S+)\s*>\s*' + [regex]::Escape($Text) +
+                '[^\r\n]*\s*\k<border>\r?$'
+        }
+
+        function Get-HistoryInputContinuationPattern {
+            param([Parameter(Mandatory)][string]$Text)
+            '(?m)^\s*(?<border>\S+)\s{3,}' + [regex]::Escape($Text) +
+                '[^\r\n]*\s*\k<border>\r?$'
         }
     }
 
@@ -59,7 +66,7 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
     It 'Prompt history recall works' {
         $tab = New-HistoryTestTab -Title 'prompt-history-order'
-        $id = [guid]::NewGuid().ToString('N')
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
         $older = "HISTORY_OLDER_$id reply OK"
         $newer = "HISTORY_NEWER_$id reply OK"
 
@@ -82,7 +89,7 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
 
     It 'Prompt history preserves drafts and multiline prompts' {
         $tab = New-HistoryTestTab -Title 'prompt-history-multiline'
-        $id = [guid]::NewGuid().ToString('N')
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
         $lineOne = "HISTORY_LINE_ONE_$id"
         $lineTwo = "HISTORY_LINE_TWO_$id reply OK"
         $draft = "HISTORY_DRAFT_$id"
@@ -102,12 +109,75 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
         Send-AgentKey -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -Key Up | Out-Null
         $recalled = Get-HistoryInputText -PaneSessionId $tab.Pane.PaneSessionId
         $recalled | Should -Match (Get-HistoryInputRowPattern -Text $lineOne)
-        $recalled | Should -Match ('(?m)^\s*[│║|]\s{3,}' + [regex]::Escape($lineTwo)) -Because 'the recalled prompt must retain its second line'
+        $recalled | Should -Match (Get-HistoryInputContinuationPattern -Text $lineTwo) -Because 'the recalled prompt must retain its second line'
 
         Send-AgentKey -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -Key Down | Out-Null
         (Get-HistoryInputText -PaneSessionId $tab.Pane.PaneSessionId) |
             Should -Match (Get-HistoryInputRowPattern -Text $draft) -Because 'leaving history navigation must restore the unsent draft'
         Clear-AgentInput -App $script:app -PaneSessionId $tab.Pane.PaneSessionId | Out-Null
+    }
+
+    It 'Completed turns restore multiline prompts when expanded' {
+        $tab = New-HistoryTestTab -Title 'completed-turn-multiline'
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 8)
+        $lineOne = "COMPLETED_LINE_ONE_$id"
+        $lineTwo = "COMPLETED_LINE_TWO_$id"
+        $paneId = $tab.Pane.PaneSessionId
+        $evidenceDir = Join-Path $PSScriptRoot '..\artifacts\multiline-completed-turn'
+        New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+
+        Send-AgentPrompt -App $script:app -PaneSessionId $paneId -Text $lineOne -NoSubmit | Out-Null
+        Send-AgentShiftEnter -App $script:app -PaneSessionId $paneId | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $paneId -Text $lineTwo -NoSubmit | Out-Null
+
+        $activeRows = [regex]::Escape($lineOne) + '[^\r\n]*\r?\n[^\r\n]*' + [regex]::Escape($lineTwo)
+        $activeReady = Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 40
+            $text -match $activeRows
+        }
+        Save-UiScreenshot -App $script:app -Path (Join-Path $evidenceDir 'active-multiline.png') | Out-Null
+        $activeReady | Should -BeTrue -Because 'the live Shift+Enter prompt must render as two input rows'
+
+        Send-AgentKey -App $script:app -PaneSessionId $paneId -Key Enter | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $paneId -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
+
+        $expandedFirstRow = '(?m)^[^\r\n]*>[^\S\r\n]*' + [regex]::Escape($lineOne) + '[^\r\n]*\r?$'
+        # capture-pane may normalize leading blanks; the Rust renderer test owns
+        # exact four-cell indentation, while this live test proves a distinct row.
+        $expandedContinuation = '(?m)^[^\S\r\n]*' + [regex]::Escape($lineTwo) + '[^\r\n]*\r?$'
+        $turnCanceledPattern = Get-WtaLocalizedTextRegex -Key 'chat.turn_canceled'
+        $turnCanceledPattern | Should -Not -BeNullOrEmpty -Because 'the bundled cancellation marker must be discoverable'
+        $completionReady = Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50) -match $turnCanceledPattern
+        }
+        $expandedText = Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50
+        Set-Content -LiteralPath (Join-Path $evidenceDir 'expanded-capture.txt') -Value $expandedText -Encoding utf8NoBOM
+        $expandedReady = $completionReady -and
+            $expandedText -match $expandedFirstRow -and
+            $expandedText -match $expandedContinuation
+        Save-UiScreenshot -App $script:app -Path (Join-Path $evidenceDir 'expanded-multiline.png') | Out-Null
+        $expandedReady | Should -BeTrue -Because 'the expanded completed turn must restore both original prompt rows'
+
+        Send-AgentKey -App $script:app -PaneSessionId $paneId -Key Tab | Out-Null
+        Send-AgentKey -App $script:app -PaneSessionId $paneId -Key Enter | Out-Null
+        $collapsedRow = '(?m)^[^\r\n]*>[^\S\r\n]*' +
+            [regex]::Escape($lineOne) + '[^\S\r\n]+' + [regex]::Escape($lineTwo) + '[^\r\n]*\r?$'
+        $collapsedReady = Test-Until -TimeoutSec 8 -IntervalSec 0.25 -Condition {
+            (Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50) -match $collapsedRow
+        }
+        Save-UiScreenshot -App $script:app -Path (Join-Path $evidenceDir 'collapsed-summary.png') | Out-Null
+        $collapsedReady | Should -BeTrue -Because 'the collapsed completed turn must remain a one-line summary'
+        (Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50) |
+            Should -Not -Match $expandedContinuation -Because 'collapsed mode must not leave a separate continuation row'
+
+        Send-AgentKey -App $script:app -PaneSessionId $paneId -Key Enter | Out-Null
+        $reexpandedReady = Test-Until -TimeoutSec 8 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $paneId -MaxLines 50
+            $text -match $expandedFirstRow -and $text -match $expandedContinuation
+        }
+        Save-UiScreenshot -App $script:app -Path (Join-Path $evidenceDir 'reexpanded-multiline.png') | Out-Null
+        $reexpandedReady | Should -BeTrue -Because 'expanding again must restore the original line break'
+        Send-AgentKey -App $script:app -PaneSessionId $paneId -Key Escape | Out-Null
     }
 
     It 'Prompt history is isolated per tab' {

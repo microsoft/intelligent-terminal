@@ -58,6 +58,29 @@ struct AgentSourceProbeResult {
     agents: Vec<AgentSourceProbeEntry>,
 }
 
+#[derive(serde::Serialize)]
+struct HostAgentProbeResult {
+    agents: Vec<AgentSourceProbeEntry>,
+}
+
+pub(crate) fn run_host_agents() -> Result<()> {
+    let agents = crate::agent_registry::KNOWN_AGENTS
+        .iter()
+        .filter(|profile| crate::agent_check::host_agent_available(profile.id))
+        .map(|profile| AgentSourceProbeEntry {
+            id: profile.id,
+            display_name: profile.display_name,
+        })
+        .collect();
+
+    println!(
+        "{}",
+        serde_json::to_string(&HostAgentProbeResult { agents })
+            .context("serialize Host agent probe")?
+    );
+    Ok(())
+}
+
 pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
     let distro = wsl_distro.trim();
     anyhow::ensure!(!distro.is_empty(), "--wsl-distro must not be empty");
@@ -144,7 +167,12 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(
+                agent,
+                None,
+                None,
+                crate::protocol::acp::spawn::ChildEnvironmentPolicy::ApplySharedProvider,
+            )?;
             let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(
@@ -202,59 +230,6 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     );
 
     tracing::info!("probe-host-sessions ok: {} row(s)", rows.len());
-    let _ = std::io::Write::flush(&mut std::io::stdout());
-    crate::logging::shutdown_flush();
-    std::process::exit(0);
-}
-
-/// Drive the production WSL ACP history scan
-/// ([`crate::wsl_acp::scan_running_distros_acp`]) on a tokio `LocalSet` (the ACP
-/// connection is `!Send`) and print the discovered sessions as JSON.
-/// Diagnostic-only: exercises the real `wsl.exe` spawn + `session/list`
-/// path that seeds the `/sessions` view.
-pub(crate) async fn run_wsl_sessions(cli: Option<&str>) -> Result<()> {
-    use crate::agent_sessions::CliSource;
-    tracing::info!("probe-wsl-sessions start: cli={:?}", cli);
-
-    let filter: Option<CliSource> = match cli {
-        None => None,
-        Some("copilot") => Some(CliSource::Copilot),
-        Some("claude") => Some(CliSource::Claude),
-        Some("codex") => Some(CliSource::Codex),
-        Some("gemini") => Some(CliSource::Gemini),
-        Some("opencode") => Some(CliSource::OpenCode),
-        Some(other) => {
-            anyhow::bail!(
-                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini, opencode"
-            );
-        }
-    };
-
-    let local = tokio::task::LocalSet::new();
-    let rows = local
-        .run_until(crate::wsl_acp::scan_running_distros_acp(filter.as_ref()))
-        .await;
-
-    let json: Vec<_> = rows
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "key": r.key,
-                "cli": format!("{:?}", r.cli_source),
-                "title": r.title,
-                "cwd": r.cwd.to_string_lossy(),
-                "distro": r.location.distro(),
-            })
-        })
-        .collect();
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json).context("serialize WSL session probe")?
-    );
-
-    tracing::info!("probe-wsl-sessions ok: {} row(s)", rows.len());
-    // Force-exit like the other probes: a distro CLI may leave orphan
-    // grandchildren that keep the tokio reactor blocked on drop.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     crate::logging::shutdown_flush();
     std::process::exit(0);

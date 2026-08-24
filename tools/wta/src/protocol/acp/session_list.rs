@@ -58,8 +58,10 @@ pub(crate) async fn fetch_session_list(
     let stderr_log = AgentStderrLog::new(client_label.to_string());
     let stderr_task = child.stderr.take().map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-session-list"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-session-list"),
+        conn::byte_streams(outgoing, incoming),
+    );
     let io_label = client_label.to_string();
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {

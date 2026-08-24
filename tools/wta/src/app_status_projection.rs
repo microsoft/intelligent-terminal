@@ -21,21 +21,27 @@ impl App {
             ConnectionState::Failed(_) => "failed",
             ConnectionState::Disconnected => "disconnected",
         };
-        // Include selected_agent only once — when connected after user selection.
-        // This avoids triggering _RebuildAgentStack mid-FRE.
+        // Include selected_agent only once, after the selected Agent connects,
+        // so C++ persists only a completed first-run selection.
         let selected = if self.state == ConnectionState::Connected {
             self.pending_agent_selection.take()
         } else {
             None
         };
+        let display_model = self
+            .confirmed_model_display()
+            .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
+            "agent_id": self.current_agent_id,
             "name": self.agent_name,
             "version": self.agent_version,
-            "model": self.agent_model,
+            "model": display_model,
             "backend": self.current_agent_source.display_suffix(),
+            "agent_source": self.current_agent_source.kind(),
             "state": state_str,
             "available_models": self.available_models,
             "current_model_id": self.current_model_id,
+            "host_catalog_ready": self.host_catalog_ready,
         });
         if let Some(agent_id) = selected {
             params["selected_agent"] = serde_json::Value::String(agent_id);

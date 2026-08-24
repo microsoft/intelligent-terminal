@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Ýttu á Enter til að reyna aftur eða Esc t
 chat.activity_thinking: "Hugsa..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Velkomin í Snjallútstöð!"
-chat.welcome_disclaimer: "Snjallútstöð notar AI. Athugaðu hvort villur séu."
+chat.welcome_disclaimer: "Snjallútstöð notar AI."
 chat.plan_header: "Áætlun:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "rétt í þessu"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "Ekki er hægt að skipta um fulltrúa utan Win
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
+commands.config.summary: "Stilla þessa fulltrúaotu"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Færa agentspjald þessa flipa (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Stilling lotu (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Tengdi fulltrúinn auglýsti enga stillanlega lotuvalkosti."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Tókst ekki að uppfæra %{option}: %{error}"
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}

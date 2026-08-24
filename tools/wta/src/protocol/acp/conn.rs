@@ -26,20 +26,20 @@
 
 use std::future::Future;
 
-use agent_client_protocol as acp;
 use acp::schema::v1::{
-    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CreateTerminalRequest,
-    CreateTerminalResponse, ExtNotification, ExtRequest, ExtResponse, InitializeRequest,
-    InitializeResponse,
-    KillTerminalRequest, KillTerminalResponse, ListSessionsRequest, ListSessionsResponse,
-    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
-    PromptRequest, PromptResponse, ReadTextFileRequest, ReadTextFileResponse,
-    ReleaseTerminalRequest, ReleaseTerminalResponse, RequestPermissionRequest,
-    RequestPermissionResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
-    TerminalOutputRequest, TerminalOutputResponse, WaitForTerminalExitRequest,
-    WaitForTerminalExitResponse, WriteTextFileRequest, WriteTextFileResponse,
+    self, AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
+    CloseSessionResponse, CreateTerminalRequest, CreateTerminalResponse, ExtNotification,
+    ExtRequest, ExtResponse, InitializeRequest, InitializeResponse, KillTerminalRequest,
+    KillTerminalResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
+    LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
+    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest, ReleaseTerminalResponse,
+    RequestPermissionRequest, RequestPermissionResponse, SessionId, SessionNotification,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+    SetSessionModeResponse, TerminalOutputRequest, TerminalOutputResponse,
+    WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
+    WriteTextFileResponse,
 };
+use agent_client_protocol as acp;
 use serde::{Deserialize, Serialize};
 
 /// Legacy `session/set_model` request, removed from schema 1.1 but still spoken
@@ -95,7 +95,9 @@ async fn await_ready<T: Clone>(ready: &Ready<T>) -> acp::Result<T> {
             return Ok(v.clone());
         }
         if ready.failed.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(acp::Error::internal_error().data("ACP connection setup failed before ready"));
+            return Err(
+                acp::Error::internal_error().data("ACP connection setup failed before ready")
+            );
         }
         notified.await;
     }
@@ -107,6 +109,7 @@ async fn await_ready<T: Clone>(ready: &Ready<T>) -> acp::Result<T> {
 #[derive(Clone, Debug)]
 pub struct ClientLink {
     cell: std::sync::Arc<Ready<acp::ConnectionTo<acp::Agent>>>,
+    shutdown: std::sync::Arc<TransportDeath>,
 }
 
 impl ClientLink {
@@ -118,7 +121,10 @@ impl ClientLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
-    pub async fn authenticate(&self, req: AuthenticateRequest) -> acp::Result<AuthenticateResponse> {
+    pub async fn authenticate(
+        &self,
+        req: AuthenticateRequest,
+    ) -> acp::Result<AuthenticateResponse> {
         self.cx().await?.send_request(req).block_task().await
     }
 
@@ -127,6 +133,13 @@ impl ClientLink {
     }
 
     pub async fn load_session(&self, req: LoadSessionRequest) -> acp::Result<LoadSessionResponse> {
+        self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn close_session(
+        &self,
+        req: CloseSessionRequest,
+    ) -> acp::Result<CloseSessionResponse> {
         self.cx().await?.send_request(req).block_task().await
     }
 
@@ -184,16 +197,37 @@ impl ClientLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
-    pub async fn list_sessions(&self, req: ListSessionsRequest) -> acp::Result<ListSessionsResponse> {
+    pub async fn list_sessions(
+        &self,
+        req: ListSessionsRequest,
+    ) -> acp::Result<ListSessionsResponse> {
         self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
-        let value = self.cx().await?.send_request(v1::ClientRequest::ExtMethodRequest(req))
+        let value = self
+            .cx()
+            .await?
+            .send_request(v1::ClientRequest::ExtMethodRequest(req))
             .block_task()
             .await?;
         serde_json::from_value(value)
             .map_err(|e| acp::Error::internal_error().data(format!("ext response decode: {e}")))
+    }
+
+    /// End this client transport intentionally. The connection task owns the
+    /// pipe, so dropping a `ClientLink` alone cannot close it; signaling the
+    /// shared transport latch lets `connect_with` unwind and release the pipe.
+    pub fn shutdown(&self) {
+        self.shutdown.signal();
+    }
+
+    /// Whether the transport latch has already observed peer death or an
+    /// intentional shutdown.
+    pub fn transport_ended(&self) -> bool {
+        self.shutdown
+            .dead
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 }
 
@@ -258,8 +292,22 @@ impl AgentLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
-    pub async fn kill_terminal(&self, req: KillTerminalRequest) -> acp::Result<KillTerminalResponse> {
+    pub async fn kill_terminal(
+        &self,
+        req: KillTerminalRequest,
+    ) -> acp::Result<KillTerminalResponse> {
         self.cx().await?.send_request(req).block_task().await
+    }
+
+    pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
+        let value = self
+            .cx()
+            .await?
+            .send_request(v1::AgentRequest::ExtMethodRequest(req))
+            .block_task()
+            .await?;
+        serde_json::from_value(value)
+            .map_err(|e| acp::Error::internal_error().data(format!("ext response decode: {e}")))
     }
 
     pub async fn session_notification(&self, notif: SessionNotification) -> acp::Result<()> {
@@ -370,6 +418,7 @@ where
     let WatchedTransport { inner, death } = transport;
     let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
+    let shutdown = death.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
@@ -400,12 +449,13 @@ where
             });
             // Connection ended; if it never became ready, wake waiters so they
             // surface an error instead of spinning/blocking forever.
-            cell.failed.store(true, std::sync::atomic::Ordering::Release);
+            cell.failed
+                .store(true, std::sync::atomic::Ordering::Release);
             cell.notify.notify_waiters();
             r
         }
     };
-    (ClientLink { cell }, handle_io)
+    (ClientLink { cell, shutdown }, handle_io)
 }
 
 /// Drive a pre-wired agent builder over `transport`, returning an [`AgentLink`]
@@ -449,7 +499,8 @@ where
                 Err(acp::Error::internal_error()
                     .data("ACP connection task ended without reporting a result"))
             });
-            cell.failed.store(true, std::sync::atomic::Ordering::Release);
+            cell.failed
+                .store(true, std::sync::atomic::Ordering::Release);
             cell.notify.notify_waiters();
             r
         }
@@ -499,8 +550,7 @@ use v1 as _schema_marker;
 mod transport_death_tests {
     //! Regression guard for AgentMasterDeath (#329): `spawn_client` /
     //! `spawn_agent`'s `handle_io` must resolve when the transport peer dies, so
-    //! the helper can leave `Connected` and show the `/restart` degraded state
-    //! (`client.rs`: `handle_io.await` -> `AgentFailure::TransportLost`).
+    //! the helper can terminate when `client.rs` observes `handle_io.await`.
     //!
     //! Under ACP 1.0 a `pending` `main_fn` left `connect_with` hung on a *clean*
     //! EOF (exactly what killing wta-master produces), so `handle_io` never fired
@@ -523,28 +573,32 @@ mod transport_death_tests {
             let (near, far) = tokio::io::duplex(64 * 1024);
             let (near_r, near_w) = tokio::io::split(near);
 
-            let builder = acp::Client
-                .builder()
-                .name("test-client")
-                .on_receive_request(
-                    |_req: v1::AgentRequest, responder: acp::Responder<serde_json::Value>, _cx| async move {
-                        responder.respond_with_error(acp::Error::method_not_found())
-                    },
-                    acp::on_receive_request!(),
-                )
-                .on_receive_notification(
-                    |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
-                    acp::on_receive_notification!(),
-                );
+            let builder =
+                acp::Client
+                    .builder()
+                    .name("test-client")
+                    .on_receive_request(
+                        |_req: v1::AgentRequest,
+                         responder: acp::Responder<serde_json::Value>,
+                         _cx| async move {
+                            responder.respond_with_error(acp::Error::method_not_found())
+                        },
+                        acp::on_receive_request!(),
+                    )
+                    .on_receive_notification(
+                        |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
+                        acp::on_receive_notification!(),
+                    );
 
-            let (_link, handle_io) =
-                spawn_client(builder, byte_streams(near_w.compat_write(), near_r.compat()));
+            let (_link, handle_io) = spawn_client(
+                builder,
+                byte_streams(near_w.compat_write(), near_r.compat()),
+            );
 
             // Simulate wta-master death: closing the far end makes `near` read EOF.
             drop(far);
 
-            let res =
-                tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
+            let res = tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
             assert!(
                 res.is_ok(),
                 "client handle_io must resolve when the master (transport far end) \
@@ -566,27 +620,31 @@ mod transport_death_tests {
             let (near, far) = tokio::io::duplex(64 * 1024);
             let (near_r, near_w) = tokio::io::split(near);
 
-            let builder = acp::Agent
-                .builder()
-                .name("test-agent")
-                .on_receive_request(
-                    |_req: v1::ClientRequest, responder: acp::Responder<serde_json::Value>, _cx| async move {
-                        responder.respond_with_error(acp::Error::method_not_found())
-                    },
-                    acp::on_receive_request!(),
-                )
-                .on_receive_notification(
-                    |_notif: v1::ClientNotification, _cx| async move { Ok(()) },
-                    acp::on_receive_notification!(),
-                );
+            let builder =
+                acp::Agent
+                    .builder()
+                    .name("test-agent")
+                    .on_receive_request(
+                        |_req: v1::ClientRequest,
+                         responder: acp::Responder<serde_json::Value>,
+                         _cx| async move {
+                            responder.respond_with_error(acp::Error::method_not_found())
+                        },
+                        acp::on_receive_request!(),
+                    )
+                    .on_receive_notification(
+                        |_notif: v1::ClientNotification, _cx| async move { Ok(()) },
+                        acp::on_receive_notification!(),
+                    );
 
-            let (_link, handle_io) =
-                spawn_agent(builder, byte_streams(near_w.compat_write(), near_r.compat()));
+            let (_link, handle_io) = spawn_agent(
+                builder,
+                byte_streams(near_w.compat_write(), near_r.compat()),
+            );
 
             drop(far);
 
-            let res =
-                tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
+            let res = tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
             assert!(
                 res.is_ok(),
                 "agent handle_io must resolve when the peer (transport far end) dies"
@@ -751,5 +809,20 @@ mod transport_death_tests {
         d.signal();
         d.signal(); // a second signal must be a harmless no-op
         assert!(is_dead(&d));
+    }
+
+    #[test]
+    fn client_link_shutdown_signals_its_transport() {
+        let death = std::sync::Arc::new(TransportDeath::default());
+        let link = ClientLink {
+            cell: std::sync::Arc::new(Ready::default()),
+            shutdown: death.clone(),
+        };
+
+        assert!(!link.transport_ended());
+        link.shutdown();
+
+        assert!(link.transport_ended());
+        assert!(is_dead(&death));
     }
 }

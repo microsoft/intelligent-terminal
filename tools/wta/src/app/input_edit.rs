@@ -77,8 +77,7 @@ impl TabSession {
         }
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
-        self.attachments
-            .on_text_deleted(previous..self.cursor_pos);
+        self.attachments.on_text_deleted(previous..self.cursor_pos);
         self.cursor_pos = previous;
         self.refresh_command_popup();
     }
@@ -89,9 +88,9 @@ impl TabSession {
             return;
         }
         self.reset_input_history_navigation();
-        let range = self
-            .attachments
-            .expand_deletion_range(prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos);
+        let range = self.attachments.expand_deletion_range(
+            prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
+        );
         self.input.replace_range(range.clone(), "");
         self.attachments.on_text_deleted(range.clone());
         self.cursor_pos = range.start;
@@ -114,8 +113,7 @@ impl TabSession {
         }
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
-        self.attachments
-            .on_text_deleted(self.cursor_pos..next);
+        self.attachments.on_text_deleted(self.cursor_pos..next);
         self.refresh_command_popup();
     }
 
@@ -248,7 +246,7 @@ impl TabSession {
             self.move_position_candidates = commands::match_move_positions(prefix);
         } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
-            // partial name. `is_command_prefix` already guarantees the
+            // name query. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
@@ -288,7 +286,6 @@ impl TabSession {
             .get(self.command_popup_selected)
             .copied()
     }
-
 }
 
 pub(super) fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {

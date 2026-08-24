@@ -1,13 +1,14 @@
 #[macro_use]
 extern crate rust_i18n;
 
+mod action_links;
 mod agent_check;
 mod agent_hooks_installer;
-mod agent_tools;
 mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
 mod agent_source;
+mod agent_tools;
 mod app;
 mod app_contracts;
 mod cli;
@@ -15,10 +16,14 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_model_provider;
 mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
+#[cfg(test)]
+#[path = "hook_contract_tests.rs"]
+mod hook_contract_tests;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
@@ -44,8 +49,6 @@ mod ui;
 mod ui_trace;
 mod usage;
 mod win32;
-mod wsl;
-mod wsl_acp;
 mod wt_protocol_events;
 
 use anyhow::Result;
@@ -112,6 +115,10 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         allowed_agent_ids: cli.allowed_agent_ids,
         initial_auth_agent: cli.initial_auth_agent,
         acp_model: cli.acp_model,
+        follows_global_acp_model: cli.follows_global_acp_model,
+        custom_model_selection: cli.custom_model_selection,
+        custom_models: cli.custom_models,
+        cloud_models: cli.cloud_models,
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
@@ -125,7 +132,6 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         initial_load_session_id: cli.initial_load_session_id,
         initial_load_cwd: cli.initial_load_cwd,
         start_stashed: cli.start_stashed,
-        assume_master_down: cli.assume_master_down,
     }
 }
 
@@ -216,8 +222,7 @@ fn process_label(cli: &Cli) -> String {
         Some(Command::ProbeModels { .. })
         | Some(Command::ProbeAgentSources { .. })
         | Some(Command::ProbeSessions { .. })
-        | Some(Command::ProbeHostSessions { .. })
-        | Some(Command::ProbeWslSessions { .. }) => "probe".to_string(),
+        | Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
         }) => "install-hooks".to_string(),

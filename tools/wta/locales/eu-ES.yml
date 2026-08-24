@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Sakatu Enter berriro saiatzeko, edo Esc atzer
 chat.activity_thinking: "Pentsatzen…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Ongi etorri Terminal Adimenduna-era!"
-chat.welcome_disclaimer: "Terminal Adimenduna-ek AI erabiltzen du. Egiaztatu akatsak."
+chat.welcome_disclaimer: "Terminal Adimenduna-ek AI erabiltzen du."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "⚠ merkatu-bidea zaharkitua"
 hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
 hooks.not_installed: "✗ instalatu gabe"
 hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
-hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalatuta %{clis}(r)entzat"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "oraintxe"
@@ -215,8 +215,17 @@ system.agent_switch_unavailable: "Agente-aldaketa ez dago erabilgarri Windows Te
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfiguratu agentearen saio hau"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mugitu fitxa honen agente-panela (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Saioaren konfigurazioa (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Konektatutako agenteak ez du saio-aukera konfiguragarririk iragarri."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Ezin izan da %{option} eguneratu: %{error}"
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

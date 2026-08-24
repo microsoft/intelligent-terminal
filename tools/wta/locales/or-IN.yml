@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  ପୁଣି ଚେଷ୍ଟା କରିବ�
 chat.activity_thinking: "ଚିନ୍ତା କରୁଛି…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ କୁ ସ୍ୱାଗତ!"
-chat.welcome_disclaimer: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ AI ବ୍ୟବହାର କରେ। ଭୁଲ ଯାଞ୍ଚ କରନ୍ତୁ।"
+chat.welcome_disclaimer: "ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ AI ବ୍ୟବହାର କରେ।"
 chat.plan_header: "ଯୋଜନା:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -190,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ ମାର୍କେଟପ୍ଲେସ ପଥ �
 hooks.installed_but_disabled: "⚠ ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି କିନ୍ତୁ ନିଷ୍କ୍ରିୟ"
 hooks.not_installed: "✗ ଇନ୍‌ଷ୍ଟଲ୍ ନାହିଁ"
 hooks.uninstall_skipped: "ଛାଡ଼ି ଦିଆଗଲା (CLI PATH ରେ ନାହିଁ)"
-hooks.install_attempted: "wt-agent-hooks ଇନ୍‌ଷ୍ଟଲ୍ ଚେଷ୍ଟା ହୋଇଛି (ଆଇଡେମ୍ପୋଟେଣ୍ଟ)। ଫଳାଫଳ ଯାଞ୍ଚ କରିବା ପାଇଁ `wta hooks status` ଚଳାନ୍ତୁ। ଟ୍ରେସ ଲଗ୍: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ %{clis} ପାଇଁ wt-agent-hooks ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ଏମାତ୍ର"
@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "ୱିଣ୍ଡୋଜ୍ ଟର୍ମିନା
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ଏହି ଏଜେଣ୍ଟ୍ ସେସନ୍ କନ୍ଫିଗର୍ କରନ୍ତୁ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ଏହି ଟ୍ୟାବ୍‌ର ଏଜେଣ୍ଟ୍ ପେନ୍‌କୁ ସ୍ଥានାନ୍ତର କରନ୍ତୁ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ମଡେଲ ବାଛନ୍ତୁ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ସଂଯୁକ୍ତ ଏଜେଣ୍ଟ କୌଣସି ଚୟନଯୋଗ୍ୟ ମଡେଲ ଘୋଷଣା କଲା ନାହିଁ।"
 system.model_set: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ %{model} କୁ ସେଟ୍ କରାଗଲା।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ସେସନ୍ କନ୍ଫିଗରେସନ୍ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ସଂଯୋଜିତ ଏଜେଣ୍ଟ୍ କୌଣସି କନ୍ଫିଗର୍-ଯୋଗ୍ୟ ସେସନ୍ ବିକଳ୍ପ ବିଜ୍ଞାପିତ କରିନାହିଁ।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} ଅପଡେଟ୍ କରିବାରେ ବିଫଳ ହେଲା: %{error}"
 system.model_unknown: "ଅଜଣା ମଡେଲ %{model} — ଉପଲବ୍ଧ ତାଲିକା ଦେଖିବାକୁ /model ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="%{model}","/model"}

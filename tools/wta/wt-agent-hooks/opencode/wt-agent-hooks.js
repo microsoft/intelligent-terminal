@@ -1,5 +1,7 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 
+import { appendFileSync, mkdirSync } from "node:fs"
+
 function eventMessage(value) {
   if (typeof value === "string") return value
   if (value && typeof value === "object") {
@@ -10,6 +12,46 @@ function eventMessage(value) {
   return ""
 }
 
+// Every other CLI reaches the bridge through a shell, so `CreateProcess`
+// resolves the `wtcli.exe` on PATH — which is the MSIX app-execution alias, a
+// zero-byte reparse point. This plugin spawns an argv array instead, and Bun
+// does its own PATH lookup, which rejects the alias outright ("Executable not
+// found in $PATH"). Terminal injects the real path for exactly this case;
+// falling back to the bare name keeps unpackaged dev builds working, where the
+// name resolves to an ordinary file.
+function bridgeCommand() {
+  const injected = process.env.WTCLI_PATH
+  return injected && injected.length > 0 ? injected : "wtcli.exe"
+}
+
+// A spawn failure here must never disturb OpenCode, but it must not be
+// invisible either: this exact failure shipped once and left no trace anywhere,
+// because the handler was empty.
+//
+// Written straight to a file rather than reported through the bridge, because
+// the thing being reported IS the bridge being unreachable — any channel that
+// went through wtcli or the protocol server would fail for the same reason.
+// Terminal already injects the directory, and the bug report tars that tree
+// recursively.
+function noteBridgeFailure(topic, error) {
+  try {
+    const dir = process.env.WTA_HOOK_LOG_DIR
+    if (!dir) return
+    // The directory is created by whichever wta or Terminal component logs
+    // first, so it usually exists — but "usually" is not good enough here.
+    // The states where this note matters most are the degraded ones (wta never
+    // started, blocked by policy), which are exactly the states where nothing
+    // has created it yet, and `appendFileSync` fails with ENOENT straight into
+    // the catch below. Recursive mkdir is idempotent, so pay it every time.
+    mkdirSync(dir, { recursive: true })
+    const message = error && error.message ? error.message : String(error)
+    const line = `${new Date().toISOString()} opencode bridge spawn failed topic=${topic} cmd=${bridgeCommand()} err=${message}\n`
+    appendFileSync(`${dir}\\hook-trace.log`, line)
+  } catch {
+    // Diagnostics are best effort; never let them become the failure.
+  }
+}
+
 export const WtAgentHooks = async ({ directory }) => {
   const rootSessions = new Map()
   const childSessions = new Set()
@@ -18,23 +60,17 @@ export const WtAgentHooks = async ({ directory }) => {
     Boolean(process.env.WT_COM_CLSID) &&
     Boolean(process.env.WT_SESSION) &&
     process.env.OPENCODE_CLIENT !== "acp"
-  const script = `${import.meta.dir}\\wt-agent-hooks\\send-event.ps1`
-
   function emit(topic, sessionID, payload = {}) {
     if (!enabled || !sessionID) return
 
     try {
       const child = Bun.spawn({
         cmd: [
-          "powershell.exe",
-          "-NoProfile",
-          "-NonInteractive",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          script,
-          "-CliSource",
+          bridgeCommand(),
+          "agent-hook",
+          "--cli-source",
           "opencode",
+          "--event",
           topic,
         ],
         stdin: new TextEncoder().encode(
@@ -49,8 +85,9 @@ export const WtAgentHooks = async ({ directory }) => {
         windowsHide: true,
       })
       void child.exited.catch(() => {})
-    } catch {
+    } catch (error) {
       // Session tracking must never affect OpenCode's own execution.
+      noteBridgeFailure(topic, error)
     }
   }
 
@@ -104,13 +141,6 @@ export const WtAgentHooks = async ({ directory }) => {
       emit("agent.tool.starting", input.sessionID, {
         tool_name: input.tool,
         tool_input: output.args,
-      })
-    },
-
-    "tool.execute.after": async (input) => {
-      if (!isRootSession(input.sessionID)) return
-      emit("agent.tool.finished", input.sessionID, {
-        tool_name: input.tool,
       })
     },
 

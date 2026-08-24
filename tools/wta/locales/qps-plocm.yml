@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # 
 chat.activity_thinking: "[!! Thi_nking... !!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[!! Welco_me to Intelligent Terminal! !!]"
-chat.welcome_disclaimer: "[!! Inte_lligent Terminal uses AI. Check for mistakes. !!]"
+chat.welcome_disclaimer: "[!! Inte_lligent Terminal uses AI. !!]"
 chat.plan_header: "[!! Pla_n: !!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -177,7 +177,7 @@ hooks.marketplace_path_stale: "[!! ⚠ m_arketplace path stale !!]"
 hooks.installed_but_disabled: "[!! ⚠ i_nstalled but disabled !!]"
 hooks.not_installed: "[!! ✗ n_ot installed !!]"
 hooks.uninstall_skipped: "[!! ski_pped (CLI not on PATH) !!]"
-hooks.install_attempted: "[!! wt-_agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log !!]"
+hooks.install_succeeded: "[!! ✓ wt-_agent-hooks installed for %{clis} !!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "[!! just now !!]"
 time.minute_singular: "[!! %{count} minute ago !!]"
@@ -213,8 +213,17 @@ system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
+commands.config.summary: "[!! Con_figure this agent session !!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[!! Mo_ve this tab's agent pane (/move <position>) !!]"  # {Locked="/move","<position>"}
 model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"
 system.model_set: "[!! Mod_el for this pane set to %{model}. !!]"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "[!! Ses_sion configuration (↑ ↓ • Enter • Esc) !!]"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "[!! The_ connected agent did not advertise any configurable session options. !!]"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "[!! Fai_led to update %{option}: %{error} !!]"
 system.model_unknown: "[!! Unk_nown model %{model} — type /model to see the available list. !!]"  # {Locked="%{model}","/model"}

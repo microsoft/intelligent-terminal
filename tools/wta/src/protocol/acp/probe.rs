@@ -1,10 +1,12 @@
 //! Lightweight ACP model-list probe.
 //!
-//! Spawned by the Settings UI when the user picks a new ACP agent so
-//! the model dropdown can populate before any agent pane rebuild.
+//! Used by both the Settings `probe-models` command and wta-master's clean
+//! cloud discovery so both paths share the same handshake and retry policy.
 //! Does the minimum work — `initialize` + `new_session` — reads the
 //! agent-advertised model list off the `NewSessionResponse`, prints
-//! it as a single JSON object to stdout, then drops the child.
+//! it as a single JSON object to stdout, then drops the child. The
+//! child runs with provider overrides scrubbed so this catalog remains
+//! the agent's native cloud catalog rather than the selected shared provider.
 //!
 //! Output shape (stdout, one JSON object — caller reads the whole
 //! stream and `serde_json::from_str`s it):
@@ -19,12 +21,18 @@
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use serde::Serialize;
+use std::future::Future;
 use std::time::Duration;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app_contracts::AcpModelInfo;
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
+use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog, ChildEnvironmentPolicy};
+
+const MODEL_PROBE_ENVIRONMENT_POLICY: ChildEnvironmentPolicy =
+    ChildEnvironmentPolicy::CleanCloudDiscovery;
+const MODEL_PROBE_MAX_ATTEMPTS: usize = 3;
+const MODEL_PROBE_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Serialize)]
 pub struct ProbeResult {
@@ -36,7 +44,52 @@ pub struct ProbeResult {
 /// pane (e.g. `"copilot --acp --stdio"`,
 /// `"npx -y @zed-industries/claude-code-acp"`).
 pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None)?;
+    retry_model_probe(
+        || probe_models_impl(agent_cmd, MODEL_PROBE_ENVIRONMENT_POLICY),
+        MODEL_PROBE_RETRY_DELAY,
+    )
+    .await
+}
+
+async fn retry_model_probe<F, Fut>(mut probe: F, retry_delay: Duration) -> Result<ProbeResult>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<ProbeResult>>,
+{
+    for attempt in 1..=MODEL_PROBE_MAX_ATTEMPTS {
+        match probe().await {
+            Ok(result)
+                if !result.available_models.is_empty() || attempt == MODEL_PROBE_MAX_ATTEMPTS =>
+            {
+                return Ok(result);
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    attempt,
+                    max_attempts = MODEL_PROBE_MAX_ATTEMPTS,
+                    "model probe returned an empty catalog; retrying"
+                );
+            }
+            Err(error) if attempt == MODEL_PROBE_MAX_ATTEMPTS => return Err(error),
+            Err(error) => {
+                tracing::warn!(
+                    attempt,
+                    max_attempts = MODEL_PROBE_MAX_ATTEMPTS,
+                    %error,
+                    "model probe failed; retrying"
+                );
+            }
+        }
+        tokio::time::sleep(retry_delay).await;
+    }
+    unreachable!("the bounded model probe loop always returns on its final attempt")
+}
+
+async fn probe_models_impl(
+    agent_cmd: &str,
+    environment_policy: ChildEnvironmentPolicy,
+) -> Result<ProbeResult> {
+    let mut spawned = spawn_agent_process(agent_cmd, None, None, environment_policy)?;
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -44,7 +97,12 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         spawned.child.id()
     );
 
-    let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
+    let outgoing = spawned
+        .child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
     let stderr_log = AgentStderrLog::new(spawned.label().to_string());
     let stderr_task = spawned
@@ -53,8 +111,10 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         .take()
         .map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-probe"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-probe"),
+        conn::byte_streams(outgoing, incoming),
+    );
 
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
@@ -62,10 +122,8 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         }
     });
 
-    // Tighter than the full client's timeouts: the probe is
-    // user-blocking, so we'd rather fail fast and let the user retry
-    // than make them stare at the dropdown placeholder for 60s+.
-    // Cached adapters complete in <2s.
+    // Tighter than the full client's timeouts so a failed attempt can retry
+    // promptly. Cached adapters complete in <2s.
     let init_timeout_secs: u64 = if spawned.is_npx { 25 } else { 10 };
 
     let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
@@ -113,8 +171,13 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
 
     let cwd = std::env::current_dir().unwrap_or_default();
     let session_started = std::time::Instant::now();
+    // Native CLIs may fetch their cloud model catalog during session/new.
+    // Copilot can legitimately take longer than 10 seconds under load, while
+    // adapter probes already receive a larger initialize budget and must keep
+    // the full three-attempt probe within the Settings caller's 120s ceiling.
+    let session_timeout_secs = if spawned.is_npx { 10 } else { 20 };
     let session_result = tokio::time::timeout(
-        Duration::from_secs(10),
+        Duration::from_secs(session_timeout_secs),
         conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
     )
     .await;
@@ -139,7 +202,12 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         },
     );
     let session_resp = session_result
-        .map_err(|_| anyhow!("new_session timed out after 10s during probe"))?
+        .map_err(|_| {
+            anyhow!(
+                "new_session timed out after {}s during probe",
+                session_timeout_secs
+            )
+        })?
         .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
     let (available_models, current_model_id) =
@@ -189,7 +257,12 @@ pub struct SessionProbeResult {
 /// preamble (kept inline rather than shared so the probe stays a
 /// self-contained diagnostic).
 pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None)?;
+    let mut spawned = spawn_agent_process(
+        agent_cmd,
+        None,
+        None,
+        ChildEnvironmentPolicy::ApplySharedProvider,
+    )?;
     tracing::debug!(
         "session probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -197,7 +270,12 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         spawned.child.id()
     );
 
-    let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
+    let outgoing = spawned
+        .child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
     let stderr_log = AgentStderrLog::new(spawned.label().to_string());
     let stderr_task = spawned
@@ -206,8 +284,10 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         .take()
         .map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-probe-sessions"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-probe-sessions"),
+        conn::byte_streams(outgoing, incoming),
+    );
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
             tracing::warn!("session probe handle_io failed: {:#}", e);
@@ -281,4 +361,76 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         list_sessions_error,
         sessions,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    #[test]
+    fn model_catalog_probe_uses_clean_cloud_environment() {
+        assert_eq!(
+            MODEL_PROBE_ENVIRONMENT_POLICY,
+            ChildEnvironmentPolicy::CleanCloudDiscovery
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn model_probe_retries_failures_until_success() {
+        let attempts = Rc::new(Cell::new(0));
+        let attempts_for_probe = Rc::clone(&attempts);
+
+        let result = retry_model_probe(
+            move || {
+                let attempt = attempts_for_probe.get() + 1;
+                attempts_for_probe.set(attempt);
+                async move {
+                    if attempt < MODEL_PROBE_MAX_ATTEMPTS {
+                        Err(anyhow!("transient failure"))
+                    } else {
+                        Ok(ProbeResult {
+                            available_models: vec![AcpModelInfo {
+                                id: "cloud-model".into(),
+                                name: "Cloud Model".into(),
+                                description: None,
+                            }],
+                            current_model_id: None,
+                        })
+                    }
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect("the final probe attempt should succeed");
+
+        assert_eq!(attempts.get(), MODEL_PROBE_MAX_ATTEMPTS);
+        assert_eq!(result.available_models[0].id, "cloud-model");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn model_probe_retries_empty_catalogs_without_changing_result_semantics() {
+        let attempts = Rc::new(Cell::new(0));
+        let attempts_for_probe = Rc::clone(&attempts);
+
+        let result = retry_model_probe(
+            move || {
+                attempts_for_probe.set(attempts_for_probe.get() + 1);
+                async {
+                    Ok(ProbeResult {
+                        available_models: Vec::new(),
+                        current_model_id: None,
+                    })
+                }
+            },
+            Duration::ZERO,
+        )
+        .await
+        .expect("an empty catalog remains a successful probe result");
+
+        assert_eq!(attempts.get(), MODEL_PROBE_MAX_ATTEMPTS);
+        assert!(result.available_models.is_empty());
+    }
 }

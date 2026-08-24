@@ -10,13 +10,20 @@ pub const ATTACHMENT_TOKEN: Style = Style::new().fg(Color::Cyan);
 // pane's color scheme — light text on dark schemes, dark text on light
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
+pub const DISCLAIMER_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
+pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
+pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);
+pub const NOTICE_WARNING: Style = Style::new().fg(Color::Yellow);
+pub const NOTICE_ERROR: Style = Style::new().fg(Color::Red);
 pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_SUCCESS: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_FAILURE: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);
-pub const TOOL_CALL_CANCELED: Style = Style::new().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+pub const TOOL_CALL_CANCELED: Style = Style::new()
+    .fg(Color::DarkGray)
+    .add_modifier(Modifier::ITALIC);
 pub const PLAN_STYLE: Style = Style::new().fg(Color::Cyan);
 pub const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 pub const IN_PROGRESS: Style = Style::new()
@@ -24,21 +31,21 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
+pub const SEARCH_MATCH: Style = Style::new()
+    .fg(Color::Yellow)
+    .add_modifier(Modifier::BOLD)
+    .add_modifier(Modifier::UNDERLINED);
 // Match the /sessions cursor: cyan foreground with no full-row background.
 pub const SELECTED: Style = Style::new().fg(Color::Cyan);
 // Preserve the selection when the pane loses focus without presenting it as
 // the active keyboard target.
-pub const SELECTED_INACTIVE: Style = Style::new()
-    .fg(Color::Cyan)
-    .add_modifier(Modifier::DIM);
+pub const SELECTED_INACTIVE: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::DIM);
 pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 // Dimmed default fg rather than Color::Gray (ANSI 7, near-white) so secondary
 // text stays readable on light schemes while still reading as "muted" (#234).
-pub const RECOMMENDATION_DETAIL: Style = Style::new()
-    .fg(Color::Reset)
-    .add_modifier(Modifier::DIM);
+pub const RECOMMENDATION_DETAIL: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 // Card-style recommendation UI.
 // Border color = `#FFF @ 10%` over `#000`: 0×0.9 + 255×0.1 ≈ 26 → #1A1A1A.
 pub const CARD_FRAME_COLOR: Color = Color::Rgb(26, 26, 26);

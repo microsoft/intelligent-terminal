@@ -55,8 +55,9 @@ function Wait-WtCommandFailure {
 function Wait-Autofix {
     <#
     .SYNOPSIS
-        Wait for the autofix request to be submitted to the agent (the real observable
-        signal). Requires a listener started before the failing command.
+        Wait for the autofix request to be submitted to the agent. Prefers the protocol
+        event and falls back to the helper's structured autofix log because current
+        production builds do not consistently forward the agent_event to wtcli listeners.
     .NOTES
         The autofix prompt's `initial_prompt` ("A command failed. Diagnose...") rides on the
         `agent.session.start` agent_event, NOT `agent.prompt.submit` (which carries no
@@ -65,10 +66,25 @@ function Wait-Autofix {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$Listener, [string]$TabId, [int]$TimeoutSec = 45)
     process {
-        Wait-WtEvent -Listener $Listener -TimeoutSec $TimeoutSec -Predicate {
-            $_.method -eq 'agent_event' -and
-            ("$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error') -and
-            (-not $TabId -or "$($_.params.tab_id)" -eq "$TabId")
+        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Because 'an autofix request event or helper log' -Condition {
+            $event = @(Get-WtEvents -Listener $Listener -Predicate {
+                    $_.method -eq 'agent_event' -and
+                    ("$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error') -and
+                    (-not $TabId -or "$($_.params.tab_id)" -eq "$TabId")
+                }) | Select-Object -First 1
+            if ($event) { return $event }
+
+            $log = Get-ItLogText -App $Listener.App -Name 'wta-main_helper-*.log' -SinceStart
+            $pattern = if ($TabId) {
+                'autofix: sending auto-fix prompt.*tab_id=' + [regex]::Escape($TabId)
+            }
+            else {
+                'autofix: sending auto-fix prompt'
+            }
+            if ($log -match $pattern) {
+                return [pscustomobject]@{ method = 'helper_log'; line = $Matches[0] }
+            }
+            $null
         }
     }
 }

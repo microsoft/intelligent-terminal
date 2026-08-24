@@ -146,6 +146,13 @@ function Stop-StaleItInstances {
         Closing all IT windows first makes each launch deterministic and freshly-owned.
     #>
     [CmdletBinding()] param([int]$GraceSec = 6)
+    $ancestorIds = [System.Collections.Generic.HashSet[int]]::new()
+    $ancestorId = $PID
+    while ($ancestorId -gt 0 -and $ancestorIds.Add($ancestorId)) {
+        $ancestor = Get-CimInstance Win32_Process -Filter "ProcessId=$ancestorId" -ErrorAction SilentlyContinue
+        if (-not $ancestor -or $ancestor.ParentProcessId -eq $ancestorId) { break }
+        $ancestorId = [int]$ancestor.ParentProcessId
+    }
     $locs = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' } |
             ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
     if (-not $locs) { return }
@@ -157,12 +164,28 @@ function Stop-StaleItInstances {
     }
     $procs = @(& $find)
     if (-not $procs.Count) { return }
+    $hostingAncestors = @($procs | Where-Object { $ancestorIds.Contains([int]$_.Id) })
+    if ($hostingAncestors.Count) {
+        $ids = ($hostingAncestors | ForEach-Object Id) -join ','
+        if ($env:ITE2E_PRESERVE_ANCESTOR_PID -ne $ids) {
+            throw "Refusing to run ItE2E from an Intelligent Terminal process tree because cold start would terminate the test runner (ancestor pid(s): $ids). Launch the suite from an independent conhost or stock Windows Terminal."
+        }
+        Write-ItLog -Level WARN -Message "Preserving explicitly protected Intelligent Terminal ancestor pid(s) [$ids]; shared COM registration may make the run fail safely."
+        $procs = @($procs | Where-Object { -not $ancestorIds.Contains([int]$_.Id) })
+    }
+    if (-not $procs.Count) { return }
+    $staleIds = @($procs | ForEach-Object { [int]$_.Id })
     Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale IT instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
     foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
-    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition { -not @(& $find).Count } | Out-Null
-    foreach ($p in @(& $find)) {
-        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-        Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$($p.Id)"
+    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
+        -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
+    } | Out-Null
+    foreach ($staleId in $staleIds) {
+        $stale = @(& $find) | Where-Object Id -eq $staleId | Select-Object -First 1
+        if ($stale) {
+            Stop-Process -InputObject $stale -Force -ErrorAction SilentlyContinue
+            Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
+        }
     }
     Start-Sleep -Milliseconds 500   # let the OS tear down the shared COM monarch registration
 }
@@ -286,6 +309,16 @@ function Start-Terminal {
     }
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
+    # Wait until shell activation has created the first real window before probing COM.
+    # An immediate COM activation while the process exists but has no HWND races startup
+    # and can create a second logical window in the same WindowsTerminal process.
+    $hwnd = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Quiet -Because "WT window HWND" -Condition {
+        $w = Get-WtWindowHwnds -App $app | Where-Object { [int]$_.pid -eq [int]$app.Pid } | Select-Object -First 1
+        if ($w) { $w.hwnd } else { $null }
+    }
+    if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
+    else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
+
     # Bring COM online and resolve the brand CLSID. Best-effort while the FRE overlay is up
     # (the overlay replaces the window content, so the COM tab/pane surface may not be ready).
     if ($ShowFre) {
@@ -295,14 +328,6 @@ function Start-Terminal {
     else {
         Resolve-WtComClsid -App $app -TimeoutSec $TimeoutSec | Out-Null
     }
-
-    # Resolve the window HWND for this pid (for winapp ui targeting).
-    $hwnd = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Quiet -Because "WT window HWND" -Condition {
-        $w = Get-WtWindowHwnds -App $app | Where-Object { [int]$_.pid -eq [int]$app.Pid } | Select-Object -First 1
-        if ($w) { $w.hwnd } else { $null }
-    }
-    if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
-    else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
 
     # Capture the WT logical window id (informational; agent panes are XAML chrome and never
     # appear in list-panes, so window scoping of the agent pane itself relies on the

@@ -332,6 +332,78 @@ function Invoke-UiClick {
     }
 }
 
+function Get-UiTextBounds {
+    <# Return UIA TextPattern bounding rectangles for exact text in a named control. #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][string]$Text,
+        [string]$ControlName = 'Agent Pane'
+    )
+    process {
+        if (-not $App.Hwnd) { throw "Get-UiTextBounds needs `$App.Hwnd (launch via Start-Terminal)." }
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$App.Hwnd)
+        $condition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            $ControlName
+        )
+        $control = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) |
+            Where-Object { $_.Current.ClassName -eq 'TermControl' } |
+            Select-Object -First 1
+        if (-not $control) { throw "UIA text control '$ControlName' was not found." }
+        $pattern = $control.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+        $document = $pattern.DocumentRange
+        $documentText = $document.GetText(-1)
+        $textIndex = $documentText.IndexOf($Text, [StringComparison]::Ordinal)
+        if ($textIndex -lt 0) { throw "Text '$Text' was not found in '$ControlName'." }
+
+        $range = $document.Clone()
+        $null = $range.MoveEndpointByRange(
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
+            $range,
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+        $null = $range.MoveEndpointByUnit(
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start,
+            [System.Windows.Automation.Text.TextUnit]::Character,
+            $textIndex)
+        $null = $range.MoveEndpointByRange(
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
+            $range,
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+        $null = $range.MoveEndpointByUnit(
+            [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,
+            [System.Windows.Automation.Text.TextUnit]::Character,
+            $Text.Length)
+        @($range.GetBoundingRectangles())
+    }
+}
+
+function Invoke-UiMouseDrag {
+    <# Send a real mouse drag between absolute screen coordinates through Windows App CLI. #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][int]$FromX,
+        [Parameter(Mandatory)][int]$FromY,
+        [Parameter(Mandatory)][int]$ToX,
+        [Parameter(Mandatory)][int]$ToY,
+        [switch]$Right,
+        [int]$HoldMs = 50
+    )
+    process {
+        if (-not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
+            throw 'No interactive desktop is available for physical mouse injection.'
+        }
+        $args = @('drag', "$FromX,$FromY", "$ToX,$ToY", '--hold-ms', $HoldMs)
+        if ($Right) { $args += '--right' }
+        $result = Invoke-WinAppUi -App $App -UiArgs $args
+        if ($result.ExitCode -ne 0) { throw "winapp ui drag failed: $($result.StdErr.Trim())" }
+        $App
+    }
+}
+
 function Set-UiValue {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector, [Parameter(Mandatory)][string]$Value)

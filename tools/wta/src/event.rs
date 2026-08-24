@@ -26,6 +26,7 @@ fn map_crossterm_event(event: Event) -> Option<AppEvent> {
                     | MouseEventKind::Down(MouseButton::Left)
                     | MouseEventKind::Drag(MouseButton::Left)
                     | MouseEventKind::Up(MouseButton::Left)
+                    | MouseEventKind::Down(MouseButton::Right)
             ) =>
         {
             Some(AppEvent::Mouse(mouse))
@@ -220,14 +221,33 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_mouse_and_paste_events_are_dropped() {
+    fn right_click_copy_event_is_forwarded() {
         let mouse = MouseEvent {
-            kind: MouseEventKind::Moved,
+            kind: MouseEventKind::Down(MouseButton::Right),
             column: 4,
             row: 7,
             modifiers: KeyModifiers::NONE,
         };
-        assert!(map_crossterm_event(Event::Mouse(mouse)).is_none());
+        assert!(matches!(
+            map_crossterm_event(Event::Mouse(mouse)),
+            Some(AppEvent::Mouse(mapped)) if mapped == mouse
+        ));
+    }
+
+    #[test]
+    fn unsupported_mouse_and_paste_events_are_dropped() {
+        for kind in [
+            MouseEventKind::Moved,
+            MouseEventKind::Up(MouseButton::Right),
+        ] {
+            let mouse = MouseEvent {
+                kind,
+                column: 4,
+                row: 7,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(map_crossterm_event(Event::Mouse(mouse)).is_none());
+        }
         assert!(map_crossterm_event(Event::Paste("text".to_string())).is_none());
     }
 }

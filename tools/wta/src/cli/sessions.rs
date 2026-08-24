@@ -109,8 +109,8 @@ pub(crate) async fn register_launched(
         title: String::new(),
     };
     // A WSL delegate carries its distro so the master stamps the row
-    // `Wsl { distro }` → the session view shows the `[WSL-<distro>]`
-    // prefix.
+    // `Wsl { distro }` → the session view names the distro in the row
+    // suffix.
     let req = match wsl_distro {
         Some(distro) => crate::session_registry::build_born_bound_request_wsl(&event, distro),
         None => crate::session_registry::build_born_bound_request(&event),

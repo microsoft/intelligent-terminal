@@ -355,8 +355,7 @@ namespace winrt::TerminalApp::implementation
 
         if (_focused())
         {
-            auto lastFocusedControl = GetActiveTerminalControl();
-            if (lastFocusedControl)
+            if (auto lastFocusedControl{ GetActiveTerminalControl() })
             {
                 lastFocusedControl.Focus(_focusState);
 
@@ -560,9 +559,11 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
-        auto control = GetActiveTerminalControl();
-        const auto currentOffset = control.ScrollOffset();
-        control.ScrollViewport(::base::ClampAdd(currentOffset, delta));
+        if (auto control{ GetActiveTerminalControl() })
+        {
+            const auto currentOffset = control.ScrollOffset();
+            control.ScrollViewport(::base::ClampAdd(currentOffset, delta));
+        }
     }
 
     // Method Description:
@@ -576,60 +577,68 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
-        // Cross-window agent-pane drag stash (Content kind only).
-        // BuildStartupKind::Content is used when serializing for a
-        // cross-window move (see TerminalPage::_MoveTab → _MoveContent).
-        // Persist is for app restart (no live source-window peer) and
-        // MovePane is intra-window (same Tab, no StableId change), so
-        // neither needs the stash.
-        //
-        // For every leaf pane whose content is an AgentPaneContent, we
-        // record (live ContentId → this tab's StableId) so the target
-        // window's _MakeTerminalPane can recognize it as an agent pane
-        // and rewrap + emit `tab_renamed` (handled by part 3).
-        if (kind == BuildStartupKind::Content && _rootPane)
-        {
-            const auto& myStableId = _stableId;
-            const auto sourceProfileGuid = _agentSourceProfileGuid;
-            _rootPane->WalkTree([&myStableId, &sourceProfileGuid](const auto& p) {
-                if (!p->_IsLeaf())
-                {
-                    return false;
-                }
-                const auto& content = p->GetContent();
-                if (!content)
-                {
-                    return false;
-                }
-                if (!content.try_as<winrt::TerminalApp::AgentPaneContent>())
-                {
-                    return false;
-                }
-                // AgentPaneContent.GetNewTerminalArgs(Content) forwards
-                // to the inner TerminalPaneContent which fills ContentId
-                // from the underlying TermControl.
-                const auto newArgs = content.GetNewTerminalArgs(BuildStartupKind::Content);
-                const auto& termArgs = newArgs.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
-                if (!termArgs)
-                {
-                    return false;
-                }
-                const auto cid = termArgs.ContentId();
-                if (cid == 0)
-                {
-                    return false;
-                }
-                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                    cid,
-                    myStableId,
-                    sourceProfileGuid);
-                return false;
-            });
-        }
-
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.
         auto state = _rootPane->BuildStartupActions(0, 1, kind);
+
+        // Content serialization is a live cross-window move. Preserve the
+        // helper and record enough identity for the destination to restore
+        // AgentPaneContent and rekey the existing WTA session.
+        if (kind == BuildStartupKind::Content && _rootPane)
+        {
+            uint64_t firstPaneContentId = 0;
+            if (state.firstPane)
+            {
+                const auto firstPaneArgs = state.firstPane->GetTerminalArgsForPane(BuildStartupKind::Content).try_as<NewTerminalArgs>();
+                if (firstPaneArgs)
+                {
+                    firstPaneContentId = firstPaneArgs.ContentId();
+                }
+            }
+
+            const auto& stableId = _stableId;
+            const auto sourceProfileGuid = _agentSourceProfileGuid;
+            _rootPane->WalkTree([&stableId, &sourceProfileGuid, firstPaneContentId](const auto& pane) {
+                if (!pane->_IsLeaf())
+                {
+                    return false;
+                }
+
+                const auto& content = pane->GetContent();
+                const auto agentContent = content ? content.try_as<winrt::TerminalApp::AgentPaneContent>() : nullptr;
+                if (!agentContent)
+                {
+                    return false;
+                }
+
+                const auto args = content.GetNewTerminalArgs(BuildStartupKind::Content);
+                const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
+                if (!terminalArgs)
+                {
+                    return false;
+                }
+
+                const auto contentId = terminalArgs.ContentId();
+                if (contentId == 0)
+                {
+                    return false;
+                }
+
+                const auto attachDisposition = contentId == firstPaneContentId ?
+                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab :
+                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                    contentId,
+                    stableId,
+                    sourceProfileGuid,
+                    attachDisposition);
+                if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+                {
+                    impl->PrepareForCrossWindowTransfer();
+                }
+                return false;
+            });
+        }
 
         {
             ActionAndArgs newTabAction{};
@@ -2468,8 +2477,7 @@ namespace winrt::TerminalApp::implementation
     // If, after the calculation, the tab is read-only we hide the close button on the tab view item
     void Tab::_RecalculateAndApplyReadOnly()
     {
-        const auto control = GetActiveTerminalControl();
-        if (control)
+        if (const auto control{ GetActiveTerminalControl() })
         {
             const auto isReadOnlyActive = control.ReadOnly();
             _tabStatus.IsReadOnlyActive(isReadOnlyActive);

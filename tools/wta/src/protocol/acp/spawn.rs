@@ -1,13 +1,10 @@
 //! Shared agent-process spawn logic for the ACP layer.
 //!
 //! Both [`crate::master`] (spawning the shared agent CLI) and
-//! [`super::probe::probe_models`] need to spawn an ACP agent the same
-//! way: parse the user-facing cmdline, resolve bare names via
-//! [`crate::agent_registry`], optionally wrap in `cmd /c`, scrub the
-//! claude-code-acp guard env var, and pipe stdio with `kill_on_drop`.
-//! They diverge only after `spawn()` — master drives a full prompt loop
-//! over the helper pipes; the probe attaches raw stdio, runs `initialize`
-//! + `new_session`, and exits.
+//! [`super::probe::probe_models`] share command parsing, executable
+//! resolution, stdio, and lifecycle setup. They choose different explicit
+//! child-environment policies: normal master startup may apply the shared
+//! provider, while cloud model discovery removes every provider override.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -22,6 +19,29 @@ const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Provider configuration inherited by an ACP child.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChildEnvironmentPolicy {
+    /// Normal agent startup: scrub WTA-only metadata, then inject a complete
+    /// shared provider configuration when the authoritative agent supports it.
+    ApplySharedProvider,
+    /// Cloud catalog discovery: remove both shared and agent-native provider
+    /// overrides so the probe cannot rediscover the selected shared provider.
+    CleanCloudDiscovery,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SharedProviderSelection<'a> {
+    /// Backward-compatible behavior for callers that do not declare whether
+    /// they follow Terminal's current provider selection.
+    Inherit,
+    /// The helper authoritatively selected the agent's native provider.
+    Disabled,
+    /// Apply the master-resolved Terminal custom-provider configuration.
+    Custom(&'a crate::custom_model_provider::Config),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StderrPhase {
@@ -72,11 +92,18 @@ impl AgentStderrLog {
         })
     }
 
+    /// Kill the child, drain its stderr, and return the captured startup lines
+    /// so the caller can surface them.
+    ///
+    /// The lines are the only description of *why* the agent died. Without
+    /// them the user sees the transport symptom — "response to `initialize`
+    /// never received: oneshot canceled" — while the actual cause (a missing
+    /// CLI, a broken sandbox, an auth prompt) reaches the log only.
     pub(crate) async fn finish_failed_startup(
         &self,
         child: &mut tokio::process::Child,
         stderr_task: Option<tokio::task::JoinHandle<()>>,
-    ) {
+    ) -> Vec<String> {
         let _ = child.start_kill();
         if let Some(mut stderr_task) = stderr_task {
             if tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, &mut stderr_task)
@@ -87,7 +114,7 @@ impl AgentStderrLog {
                 let _ = stderr_task.await;
             }
         }
-        self.mark_failed();
+        self.mark_failed()
     }
 
     pub(crate) fn mark_initialized(&self) {
@@ -99,14 +126,18 @@ impl AgentStderrLog {
         inner.startup_lines.clear();
     }
 
-    pub(crate) fn mark_failed(&self) {
+    /// Promote the captured startup stderr to the log and return it.
+    ///
+    /// Returns empty when the phase already advanced (a second call, or the
+    /// agent had already initialized), so a caller can't double-report.
+    pub(crate) fn mark_failed(&self) -> Vec<String> {
         let startup_lines = {
             let mut inner = self
                 .inner
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if inner.phase != StderrPhase::Startup {
-                return;
+                return Vec::new();
             }
             inner.phase = StderrPhase::Failed;
             inner.startup_lines.drain(..).collect::<Vec<_>>()
@@ -121,7 +152,7 @@ impl AgentStderrLog {
                 "agent startup failed; promoting captured stderr"
             );
         }
-        for line in startup_lines {
+        for line in &startup_lines {
             tracing::warn!(
                 target: "agent_stderr",
                 agent = %self.agent,
@@ -129,6 +160,7 @@ impl AgentStderrLog {
                 "{line}"
             );
         }
+        startup_lines
     }
 
     fn log_line(&self, line: &str) {
@@ -196,8 +228,31 @@ impl AgentSpawn {
 /// the agent's `execute_command` tool — which inherits the agent process cwd
 /// when its shell wrapper doesn't explicitly set one — starts in the user's
 /// project. None preserves the parent's cwd (probe path, where it doesn't
-/// matter).
-pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
+/// matter). `agent_id` is authoritative when supplied by the master, so a
+/// custom command whose executable happens to match a built-in agent cannot
+/// inherit that built-in's BYOK configuration.
+pub(crate) fn spawn_agent_process(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+) -> Result<AgentSpawn> {
+    spawn_agent_process_with_provider(
+        agent_cmd,
+        cwd,
+        agent_id,
+        environment_policy,
+        SharedProviderSelection::Inherit,
+    )
+}
+
+pub(crate) fn spawn_agent_process_with_provider(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -233,6 +288,16 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
+    configure_child_environment(
+        &mut cmd,
+        agent_cmd,
+        agent_id,
+        environment_policy,
+        provider_selection,
+    )?;
+    if is_npx && should_omit_optional_dependencies(agent_cmd, agent_id) {
+        cmd.arg("--omit=optional");
+    }
 
     // Give the agent CLI a fresh PATH and make this package's `wta.exe`
     // App Execution Alias the first match. The package-specific alias directory
@@ -263,15 +328,13 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     }
     cmd.env("WTA_CLI_PATH", wta_cli_directory()?.join("wta.exe"));
 
-    // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
-    // CLI → node → powershell process chain) where to write their diagnostic
-    // trace. PowerShell can't resolve our package-private log dir on its own
-    // (it only sees the un-redirected `%LOCALAPPDATA%`, and doesn't know the
-    // package family name), so we hand it the already-resolved path. The hook
-    // falls back to bare `%LOCALAPPDATA%\IntelligentTerminal\logs` when this
-    // is unset (unpackaged dev runs, or an older wta that didn't set it).
-    // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
-    // `hook-trace.log` lands alongside this build's Rust + C++ logs.
+    // Keep the log path available to pre-0.1.5 hook bundles while startup
+    // auto-upgrade replaces their PowerShell bridge with `wtcli agent-hook`.
+    // The only reader is the deleted `send-event.ps1`, which can still be
+    // cached on disk for one agent lifetime after an IT upgrade.
+    //
+    // RETIREMENT (#620): delete once no supported upgrade path can leave a
+    // pre-0.1.5 `wt-agent-hooks` bundle installed.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
     // Forward the user's locale to the agent process via standard POSIX
@@ -327,7 +390,7 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     })
 }
 
-fn wta_cli_directory() -> Result<PathBuf> {
+pub(crate) fn wta_cli_directory() -> Result<PathBuf> {
     let package_family = crate::runtime_paths::current_package_family_name();
     let local_app_data = std::env::var_os("LOCALAPPDATA");
     let current_exe =
@@ -369,21 +432,124 @@ fn prepend_directory_to_path(
     .context("failed to prepend the wta CLI directory to the agent PATH")
 }
 
+fn resolve_spawn_profile(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> &'static crate::agent_registry::AgentProfile {
+    let agent_id =
+        agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    crate::agent_registry::lookup_profile_by_id(agent_id)
+}
+
+fn configure_child_environment(
+    command: &mut tokio::process::Command,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
+) -> Result<Option<crate::agent_registry::ByokMode>> {
+    let profile = resolve_spawn_profile(agent_cmd, agent_id);
+    let configured_provider = match environment_policy {
+        ChildEnvironmentPolicy::ApplySharedProvider => match provider_selection {
+            SharedProviderSelection::Inherit => {
+                crate::custom_model_provider::configure_child(command, profile.byok_mode)
+            }
+            SharedProviderSelection::Disabled => {
+                crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
+                Ok(None)
+            }
+            SharedProviderSelection::Custom(config) => {
+                crate::custom_model_provider::configure_child_with_config(
+                    command,
+                    profile.byok_mode,
+                    config,
+                )
+            }
+        },
+        ChildEnvironmentPolicy::CleanCloudDiscovery => {
+            crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
+            Ok(None)
+        }
+    }?;
+    configure_adapter_executable_environment(command, profile, crate::agent_check::find_exe)?;
+    Ok(configured_provider)
+}
+
+fn configure_adapter_executable_environment(
+    command: &mut tokio::process::Command,
+    profile: &crate::agent_registry::AgentProfile,
+    find_executable: impl FnOnce(&str) -> Option<String>,
+) -> Result<()> {
+    let (variable, missing_message) = match profile.id {
+        crate::agent_registry::CLAUDE_AGENT_ID => (
+            "CLAUDE_CODE_EXECUTABLE",
+            "Claude native binary not found. Reinstall Claude Code or set \
+             CLAUDE_CODE_EXECUTABLE to the full path of claude.exe",
+        ),
+        crate::agent_registry::CODEX_AGENT_ID => (
+            "CODEX_PATH",
+            "Codex executable not found. Reinstall Codex or set CODEX_PATH to its full path",
+        ),
+        _ => return Ok(()),
+    };
+    let executable = find_executable(profile.id).ok_or_else(|| anyhow!(missing_message))?;
+    command.env(variable, executable);
+    Ok(())
+}
+
+fn should_omit_optional_dependencies(agent_cmd: &str, agent_id: Option<&str>) -> bool {
+    matches!(
+        resolve_spawn_profile(agent_cmd, agent_id).id,
+        crate::agent_registry::CLAUDE_AGENT_ID | crate::agent_registry::CODEX_AGENT_ID
+    )
+}
+
 /// Spawn an ACP agent in the selected per-tab execution source.
 pub(crate) fn spawn_agent_process_for_source(
     agent_cmd: &str,
     cwd: Option<&Path>,
+    agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    environment_policy: ChildEnvironmentPolicy,
+) -> Result<AgentSpawn> {
+    spawn_agent_process_for_source_with_provider(
+        agent_cmd,
+        cwd,
+        agent_id,
+        source,
+        environment_policy,
+        SharedProviderSelection::Inherit,
+    )
+}
+
+pub(crate) fn spawn_agent_process_for_source_with_provider(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    environment_policy: ChildEnvironmentPolicy,
+    provider_selection: SharedProviderSelection<'_>,
 ) -> Result<AgentSpawn> {
     match source {
-        crate::agent_source::AgentSource::Host => spawn_agent_process(agent_cmd, cwd),
+        crate::agent_source::AgentSource::Host => spawn_agent_process_with_provider(
+            agent_cmd,
+            cwd,
+            agent_id,
+            environment_policy,
+            provider_selection,
+        ),
         crate::agent_source::AgentSource::Wsl { distro } => {
-            spawn_wsl_agent_process(agent_cmd, distro)
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
         }
     }
 }
 
-fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> {
+fn spawn_wsl_agent_process(
+    agent_cmd: &str,
+    distro: &str,
+    _agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+) -> Result<AgentSpawn> {
     let parts = crate::coordinator::split_windows_commandline(agent_cmd);
     let raw_program = parts
         .first()
@@ -395,7 +561,7 @@ fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> 
     let adapter_package = is_npx
         .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
         .flatten();
-    let script = wsl_agent_launch_script(&parts);
+    let script = wsl_agent_launch_script(&parts, environment_policy);
 
     let mut command = tokio::process::Command::new("wsl.exe");
     command
@@ -411,17 +577,24 @@ fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> 
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Shared-provider configuration is Host-only. Remove any Windows-side
+    // provider variables (including preexisting WSLENV forwarding) while
+    // leaving the distro's own environment untouched for normal launches.
+    // Clean probes additionally unset provider keys inside the Linux shell via
+    // `wsl_agent_launch_script`.
+    crate::custom_model_provider::scrub_child_for_cloud_discovery(&mut command);
+    scrub_provider_environment_from_wslenv(&mut command);
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
     let child = command.spawn().map_err(|error| {
-            anyhow!(
-                "failed to spawn agent '{}' in WSL distro '{}': {}",
-                agent_cmd,
-                distro,
-                error
-            )
-        })?;
+        anyhow!(
+            "failed to spawn agent '{}' in WSL distro '{}': {}",
+            agent_cmd,
+            distro,
+            error
+        )
+    })?;
 
     Ok(AgentSpawn {
         child,
@@ -432,13 +605,53 @@ fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> 
     })
 }
 
-fn wsl_agent_launch_script(parts: &[String]) -> String {
+fn scrub_provider_environment_from_wslenv(command: &mut tokio::process::Command) {
+    let wslenv = remove_wslenv_names(
+        &std::env::var("WSLENV").unwrap_or_default(),
+        crate::custom_model_provider::cloud_discovery_environment_keys(),
+    );
+    command.env("WSLENV", wslenv);
+}
+
+fn remove_wslenv_names(current: &str, names: &[&str]) -> String {
+    wslenv_entries(current)
+        .into_iter()
+        .filter(|entry| {
+            !names
+                .iter()
+                .any(|name| wslenv_name(entry).eq_ignore_ascii_case(name))
+        })
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn wslenv_entries(current: &str) -> Vec<String> {
+    current
+        .split(':')
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn wslenv_name(entry: &str) -> &str {
+    entry.split('/').next().unwrap_or(entry)
+}
+
+fn wsl_agent_launch_script(parts: &[String], environment_policy: ChildEnvironmentPolicy) -> String {
     let invocation = parts
         .iter()
         .map(|part| crate::coordinator::sh_quote(part))
         .collect::<Vec<_>>()
         .join(" ");
-    let inner = format!("exec 1>&3 3>&-; unset CLAUDECODE; exec {invocation}");
+    let mut unset_names = vec!["CLAUDECODE"];
+    if environment_policy == ChildEnvironmentPolicy::CleanCloudDiscovery {
+        unset_names
+            .extend_from_slice(crate::custom_model_provider::cloud_discovery_environment_keys());
+    }
+    let inner = format!(
+        "exec 1>&3 3>&-; unset {}; exec {invocation}",
+        unset_names.join(" ")
+    );
     format!(
         "bash -lc {} 3>&1 >/dev/null",
         crate::coordinator::sh_quote(&inner)
@@ -484,6 +697,141 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_agent_id_overrides_command_inference() {
+        assert_eq!(
+            resolve_spawn_profile("copilot --acp --stdio", None).byok_mode,
+            crate::agent_registry::ByokMode::CopilotProviderEnvironment
+        );
+        assert_eq!(
+            resolve_spawn_profile("copilot --acp --stdio", Some("custom:test-agent")).byok_mode,
+            crate::agent_registry::ByokMode::Unsupported
+        );
+    }
+
+    #[test]
+    fn normal_wsl_launch_preserves_only_the_distros_provider_environment() {
+        let script = wsl_agent_launch_script(
+            &["copilot".to_string(), "--acp".to_string()],
+            ChildEnvironmentPolicy::ApplySharedProvider,
+        );
+
+        assert!(script.contains("unset CLAUDECODE"));
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert!(
+                !script.contains(key),
+                "normal WSL launch must preserve the distro's own {key}: {script}"
+            );
+        }
+    }
+
+    #[test]
+    fn clean_cloud_policy_scrubs_builtin_provider_environment() {
+        let mut command = tokio::process::Command::new("cloud-probe");
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            command.env(key, "must-not-leak");
+        }
+
+        let applied = configure_child_environment(
+            &mut command,
+            "copilot --acp --stdio",
+            Some("copilot"),
+            ChildEnvironmentPolicy::CleanCloudDiscovery,
+            SharedProviderSelection::Inherit,
+        )
+        .expect("clean cloud policy should not require shared configuration");
+
+        assert_eq!(applied, None);
+        let configured_env: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&None),
+                "cloud policy must scrub {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_provider_selection_scrubs_inherited_byok_environment() {
+        let mut command = tokio::process::Command::new("copilot");
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            command.env(key, "stale-provider-value");
+        }
+
+        let applied = configure_child_environment(
+            &mut command,
+            "copilot --acp --stdio",
+            Some("copilot"),
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            SharedProviderSelection::Disabled,
+        )
+        .expect("native provider selection should not require BYOK configuration");
+
+        assert_eq!(applied, None);
+        let configured_env: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&None),
+                "native provider selection must scrub stale {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_spawns_use_the_same_executables_as_preflight() {
+        for (agent_id, variable, executable) in [
+            ("claude", "CLAUDE_CODE_EXECUTABLE", r"C:\Claude\claude.exe"),
+            ("codex", "CODEX_PATH", r"C:\Codex\codex.exe"),
+        ] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            configure_adapter_executable_environment(&mut command, profile, |requested_id| {
+                assert_eq!(requested_id, agent_id);
+                Some(executable.to_string())
+            })
+            .unwrap();
+            let configured_env: std::collections::HashMap<_, _> =
+                command.as_std().get_envs().collect();
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(variable)),
+                Some(&Some(std::ffi::OsStr::new(executable)))
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_spawns_fail_before_launch_when_preflight_executable_is_missing() {
+        for agent_id in ["claude", "codex"] {
+            let mut command = tokio::process::Command::new("npx");
+            let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+            let error = configure_adapter_executable_environment(&mut command, profile, |_| None)
+                .unwrap_err();
+            assert!(error.to_string().contains("not found"));
+        }
+    }
+
+    #[test]
+    fn only_builtin_host_adapters_omit_optional_npm_dependencies() {
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
+            Some("claude")
+        ));
+        assert!(should_omit_optional_dependencies(
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
+            Some("codex")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "npx -y @example/custom-agent",
+            Some("custom:test")
+        ));
+        assert!(!should_omit_optional_dependencies(
+            "copilot --acp --stdio",
+            Some("copilot")
+        ));
+    }
 
     #[test]
     fn packaged_wta_cli_uses_package_specific_execution_alias() {
@@ -533,10 +881,83 @@ mod tests {
             "model; touch /tmp/nope".to_string(),
         ];
         assert_eq!(
-            wsl_agent_launch_script(&parts),
+            wsl_agent_launch_script(&parts, ChildEnvironmentPolicy::ApplySharedProvider),
             "bash -lc 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
              '\\''--model'\\'' '\\''model; touch /tmp/nope'\\''' 3>&1 >/dev/null"
         );
+    }
+
+    #[test]
+    fn wsl_forwarding_names_match_each_shared_provider_mode() {
+        use crate::agent_registry::ByokMode;
+
+        let cases = [
+            (
+                ByokMode::CopilotProviderEnvironment,
+                vec![
+                    "COPILOT_PROVIDER_BASE_URL",
+                    "COPILOT_PROVIDER_API_KEY",
+                    "COPILOT_PROVIDER_TYPE",
+                    "COPILOT_MODEL",
+                    "COPILOT_OFFLINE",
+                ],
+            ),
+            (
+                ByokMode::OpenCodeConfigContent,
+                vec![
+                    "OPENCODE_CONFIG_CONTENT",
+                    "INTELLIGENT_TERMINAL_MODEL_API_KEY",
+                ],
+            ),
+            (ByokMode::Unsupported, Vec::new()),
+        ];
+
+        for (mode, expected) in cases {
+            assert_eq!(
+                crate::custom_model_provider::shared_provider_environment_keys(mode),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn wslenv_host_isolation_removes_shared_provider_forwarding() {
+        let current = "PATH/p:copilot_provider_base_url:\
+                       INTELLIGENT_TERMINAL_MODEL_API_KEY:KEEP/u";
+        let isolated = remove_wslenv_names(
+            current,
+            crate::custom_model_provider::cloud_discovery_environment_keys(),
+        );
+
+        assert_eq!(isolated, "PATH/p:KEEP/u");
+    }
+
+    #[test]
+    fn wslenv_clean_cloud_discovery_removes_all_provider_forwarding() {
+        let current = "PATH/p:WTA_CUSTOM_MODEL_BASE_URL:\
+                       COPILOT_PROVIDER_API_KEY:OPENCODE_CONFIG_CONTENT:KEEP/u";
+        let cleaned = remove_wslenv_names(
+            current,
+            crate::custom_model_provider::cloud_discovery_environment_keys(),
+        );
+
+        assert_eq!(cleaned, "PATH/p:KEEP/u");
+    }
+
+    #[test]
+    fn clean_cloud_wsl_script_unsets_provider_configuration() {
+        let script = wsl_agent_launch_script(
+            &["copilot".to_string(), "--acp".to_string()],
+            ChildEnvironmentPolicy::CleanCloudDiscovery,
+        );
+
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert!(
+                script.contains(key),
+                "clean WSL probe must unset {key}: {script}"
+            );
+        }
+        assert!(script.contains("unset CLAUDECODE"));
     }
 
     #[test]
@@ -565,6 +986,36 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(inner.phase, StderrPhase::Failed);
         assert!(inner.startup_lines.is_empty());
+    }
+
+    /// `mark_failed` must hand the captured lines back, not just log them —
+    /// they are what turns a pane's "oneshot canceled" into an actionable
+    /// message. The second call returns empty so a caller can't double-report.
+    #[test]
+    fn mark_failed_returns_the_captured_lines_once() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("cannot preserve mount namespace");
+        log.log_line("unexpected eof from helper process");
+
+        let promoted = log.mark_failed();
+        assert_eq!(
+            promoted,
+            vec![
+                "cannot preserve mount namespace".to_string(),
+                "unexpected eof from helper process".to_string(),
+            ]
+        );
+        assert!(log.mark_failed().is_empty(), "second call must be empty");
+    }
+
+    /// An agent that initialized successfully has nothing to promote, so a
+    /// later failure path can't resurrect stale startup noise.
+    #[test]
+    fn mark_failed_returns_nothing_after_initialize() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("startup detail");
+        log.mark_initialized();
+        assert!(log.mark_failed().is_empty());
     }
 
     #[test]

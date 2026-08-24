@@ -301,8 +301,7 @@ async fn resolve_pane_by_session_id(
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
-    resolver_invocation:
-        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
+    resolver_invocation: Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 async fn build_terminal_context(
@@ -461,12 +460,10 @@ pub(super) async fn resolve_provider_context(
     // a failing pwsh pane while bash is active) and mis-gate the near-match.
     // Resolve the explicit source pane's JSON by *session id* (not by
     // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
-    // won't accept — see `resolve_pane_by_session_id`); fall back to the
-    // active pane if that lookup can't resolve it.
+    // won't accept — see `resolve_pane_by_session_id`). If that lookup fails,
+    // omit shell context rather than borrowing an unrelated active pane.
     resolved.context_pane = match explicit_source.as_deref() {
-        Some(src) => resolve_pane_by_session_id(shell_mgr, src)
-            .await
-            .or_else(|| active.clone()),
+        Some(src) => resolve_pane_by_session_id(shell_mgr, src).await,
         None => active,
     };
     // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
@@ -621,9 +618,11 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(crate::agent_tools::command_resolution::CommandResolverInvocation::new(
-        executable, shell, cwd,
-    ))
+    Some(
+        crate::agent_tools::command_resolution::CommandResolverInvocation::new(
+            executable, shell, cwd,
+        ),
+    )
 }
 
 #[async_trait]

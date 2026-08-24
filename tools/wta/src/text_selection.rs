@@ -38,6 +38,7 @@ struct ClickRecord {
 #[derive(Default)]
 pub(crate) struct TextSelection {
     buffer: Option<Buffer>,
+    click_buffer: Option<Buffer>,
     selection: Option<Selection>,
     last_click: Option<ClickRecord>,
 }
@@ -60,6 +61,11 @@ impl TextSelection {
                     return None;
                 };
                 let click_count = self.register_click(point, now);
+                if click_count == 1 {
+                    self.click_buffer = self.buffer.clone();
+                } else if let Some(buffer) = self.click_buffer.as_ref() {
+                    self.buffer = Some(buffer.clone());
+                }
                 let buffer = self.buffer.as_ref()?;
                 self.selection = Some(match click_count {
                     2 => {
@@ -101,6 +107,7 @@ impl TextSelection {
                 }
                 if self.selection.is_some_and(|selection| selection.moved) {
                     self.last_click = None;
+                    self.click_buffer = None;
                 }
                 None
             }
@@ -128,7 +135,12 @@ impl TextSelection {
         selected_text(buffer, selection).filter(|text| !text.is_empty())
     }
 
+    pub(crate) fn click_count(&self) -> Option<u8> {
+        self.last_click.map(|click| click.count)
+    }
+
     pub(crate) fn clear(&mut self) {
+        self.click_buffer = None;
         self.selection = None;
         self.last_click = None;
     }
@@ -405,10 +417,7 @@ mod tests {
             ),
             None
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngamma")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngamma"));
     }
 
     #[test]
@@ -479,10 +488,7 @@ mod tests {
             ),
             now,
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngamma")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngamma"));
     }
 
     #[test]
@@ -553,10 +559,7 @@ mod tests {
             ),
             now,
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngam")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngam"));
     }
 
     #[test]
@@ -697,11 +700,9 @@ mod tests {
         let mut rendered = buffer();
         state.snapshot_and_render(&mut rendered);
         assert!(rendered[(0, 0)].modifier.contains(Modifier::REVERSED));
-        assert!(
-            !state.buffer.as_ref().unwrap()[(0, 0)]
-                .modifier
-                .contains(Modifier::REVERSED)
-        );
+        assert!(!state.buffer.as_ref().unwrap()[(0, 0)]
+            .modifier
+            .contains(Modifier::REVERSED));
     }
 
     #[test]

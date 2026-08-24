@@ -32,6 +32,14 @@ pub enum AcpAuthFlow {
     InProtocol,
 }
 
+/// How an agent consumes Intelligent Terminal's shared BYOK provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ByokMode {
+    Unsupported,
+    CopilotProviderEnvironment,
+    OpenCodeConfigContent,
+}
+
 /// Complete profile for a known agent CLI.
 #[derive(Debug, Clone)]
 pub struct AgentProfile {
@@ -59,6 +67,8 @@ pub struct AgentProfile {
     pub acp_model_flags: &'static [&'static str],
     /// Authentication flow required for ACP sessions.
     pub acp_auth_flow: AcpAuthFlow,
+    /// Whether and how this agent consumes the shared BYOK provider.
+    pub byok_mode: ByokMode,
 
     // ── Delegate mode ──
     /// How the agent CLI accepts a startup prompt.
@@ -97,6 +107,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_launch_command: "",
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::External,
+        byok_mode: ByokMode::CopilotProviderEnvironment,
         delegate_prompt_flag: PromptFlag::Flag("-i"),
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g @github/copilot",
@@ -116,9 +127,10 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // `claude` shim implies node/npx are present, so this works whenever
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
-        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0",
+        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
+        byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
         install_hint: "npm install -g @anthropic-ai/claude-code",
@@ -135,9 +147,10 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &[],
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
-        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.4",
+        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.13",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
+        byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
         install_hint: "npm install -g @openai/codex",
@@ -158,6 +171,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_launch_command: "",
         acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::InProtocol,
+        byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g @google/gemini-cli",
@@ -177,6 +191,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // interactive TUI accepts `--model` and an initial `--prompt`.
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
+        byok_mode: ByokMode::OpenCodeConfigContent,
         delegate_prompt_flag: PromptFlag::Flag("--prompt"),
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g opencode-ai",
@@ -196,6 +211,7 @@ pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     acp_launch_command: "",
     acp_model_flags: &[],
     acp_auth_flow: AcpAuthFlow::None,
+    byok_mode: ByokMode::Unsupported,
     delegate_prompt_flag: PromptFlag::Flag("-i"),
     model_flags: &["--model", "-m"],
     install_hint: "",
@@ -286,6 +302,13 @@ pub fn is_known_id(id: &str) -> bool {
     KNOWN_AGENTS.iter().any(|p| p.id == id)
 }
 
+/// Whether a running ACP session can accept model changes without replacing
+/// its agent process. Gemini currently accepts `--model` only at launch.
+pub fn supports_live_model_switch(id: &str) -> bool {
+    let canonical_id = id.to_ascii_lowercase();
+    is_known_id(&canonical_id) && canonical_id != GEMINI_AGENT_ID
+}
+
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
 /// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
 /// `"codex"`, `"gemini"`, `"opencode"` — or `"unknown"` if nothing matches.
@@ -331,7 +354,7 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
 /// E.g. `build_acp_command("copilot", Some("gpt-5"))` → `"copilot --acp --stdio --model gpt-5"`.
 /// For agents whose CLI doesn't speak ACP natively (claude, codex), this
 /// returns the adapter launch command instead — e.g.
-/// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp"`.
+/// `build_acp_command("claude", None)` → `"npx -y @agentclientprotocol/claude-agent-acp@0.65.0"`.
 pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
     let profile = lookup_profile_by_id(agent_id);
 
@@ -516,12 +539,55 @@ mod tests {
     #[test]
     fn is_cli_available_returns_false_for_obviously_bogus_name() {
         // A 64-char random-looking name will not exist on any sane PATH.
-        assert!(!is_cli_available("zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"));
+        assert!(!is_cli_available(
+            "zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"
+        ));
+    }
+
+    #[test]
+    fn byok_modes_are_declared_per_agent() {
+        assert_eq!(
+            lookup_profile_by_id("copilot").byok_mode,
+            ByokMode::CopilotProviderEnvironment
+        );
+        assert_eq!(
+            lookup_profile_by_id("opencode").byok_mode,
+            ByokMode::OpenCodeConfigContent
+        );
+        for agent in ["claude", "codex", "gemini", "unknown"] {
+            assert_eq!(
+                lookup_profile_by_id(agent).byok_mode,
+                ByokMode::Unsupported,
+                "{agent} must not receive shared BYOK configuration"
+            );
+        }
+    }
+
+    #[test]
+    fn live_model_switch_capability_matches_agent_transport() {
+        for agent in ["copilot", "claude", "codex", "opencode"] {
+            assert!(
+                supports_live_model_switch(agent),
+                "{agent} should keep its live ACP session when the model changes"
+            );
+        }
+        for agent in ["gemini", "custom:test", "unknown", ""] {
+            assert!(
+                !supports_live_model_switch(agent),
+                "{agent:?} must not receive live ACP model changes"
+            );
+        }
+
+        assert!(supports_live_model_switch("CoPiLoT"));
+        assert!(!supports_live_model_switch("GeMiNi"));
     }
 
     #[test]
     fn resolve_agent_id_from_cmd_recognises_bare_names_with_flags() {
-        assert_eq!(resolve_agent_id_from_cmd("copilot --acp --stdio"), "copilot");
+        assert_eq!(
+            resolve_agent_id_from_cmd("copilot --acp --stdio"),
+            "copilot"
+        );
         assert_eq!(resolve_agent_id_from_cmd("gemini --acp"), "gemini");
         assert_eq!(resolve_agent_id_from_cmd("opencode acp"), "opencode");
         assert_eq!(resolve_agent_id_from_cmd("claude --resume foo"), "claude");
@@ -531,11 +597,11 @@ mod tests {
     fn resolve_agent_id_from_cmd_recognises_adapter_launches() {
         // Exact match against the known adapter command.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.59.0"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.65.0"),
             "claude",
         );
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.4"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.13"),
             "codex",
         );
         assert_eq!(
@@ -548,7 +614,9 @@ mod tests {
         );
         // Adapter prefix with extra trailing args still resolves.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.59.0 --debug"),
+            resolve_agent_id_from_cmd(
+                "npx -y @agentclientprotocol/claude-agent-acp@0.65.0 --debug"
+            ),
             "claude",
         );
         assert_eq!(
@@ -572,7 +640,7 @@ mod tests {
     #[test]
     fn strip_acp_flags_recognises_codex_adapter_compatibility_commands() {
         for command in [
-            "npx -y @agentclientprotocol/codex-acp@1.1.4",
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
             "npx -y @agentclientprotocol/codex-acp",
             "npx -y @zed-industries/codex-acp",
             "npx -y @zed-industries/codex-acp --debug",
@@ -588,7 +656,7 @@ mod tests {
     fn codex_acp_launch_command_stays_pinned() {
         assert_eq!(
             build_acp_command("codex", None),
-            "npx -y @agentclientprotocol/codex-acp@1.1.4",
+            "npx -y @agentclientprotocol/codex-acp@1.1.13",
         );
     }
 
@@ -648,9 +716,9 @@ mod tests {
 
     #[test]
     fn resolve_agent_id_from_cmd_falls_back_to_unknown() {
-        assert_eq!(resolve_agent_id_from_cmd(""),           "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd(""), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("   "), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("npx"), "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
     }
 

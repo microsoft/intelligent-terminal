@@ -1,13 +1,17 @@
 use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
 use ratatui::prelude::*;
 
+use super::config_popup;
 use super::{
-    agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
-    permission, recommendations, setup,
+    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
+    model_popup, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    app.completed_turn_hits.clear();
+    app.completed_turn_action_links.clear();
+    app.input_dialog_area = None;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -52,6 +56,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let tab_id = app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_string();
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
+        let source_filter = app.current_location_filter();
         let origin_filter = app.sessions_origin_filter;
         let pane_focused = app.pane_focused;
         let tab = app.tab_sessions.entry(tab_id).or_default();
@@ -76,6 +81,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             &mut tab.agents_list_state,
             activity_frame,
             cli_filter.as_ref(),
+            &source_filter,
             origin_filter,
             show_loading,
             &tab.agents_view.search_query,
@@ -95,12 +101,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         (area, None)
     };
 
-    let rec_panel_h = if app.current_tab().turn.recommendations().is_some() {
-        app.rec_panel_height(main_area.width)
-    } else {
-        0
-    };
-    let perm_panel_h = app.permission_panel_height(main_area.width);
     let input_height = {
         let tab = app.current_tab();
         input::input_height(&tab.input, tab.cursor_pos, main_area.width)
@@ -119,45 +119,72 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
     let welcome_visible =
         app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected;
-    let hint_visible = welcome_visible || transient_visible;
-    let hint_h: u16 = if hint_visible { 1 } else { 0 };
-    let rec_hint_h: u16 = if app.current_tab().turn.recommendations().is_some() {
-        1
-    } else {
-        0
-    };
+    let hint_requested = welcome_visible || transient_visible;
 
     // The host (Windows Terminal) renders the agent bar in XAML above this
     // pane, so wta uses the full pane area for chat / recommendations / input.
     //
-    // Layout: chat sized to its content, rec panel right below, blank
-    // filler, optional one-row transient hint, optional one-row rec nav
-    // hint, a permanently reserved activity row directly above the input,
-    // and input at the bottom. Cap chat at
-    // `pane_height - rec - permission - input - activity - hints`
-    // so the recommendation card always renders in full — chat_scroll lets
-    // the user reach older history if it overflows.
+    // A single planner owns every vertical degradation decision. This keeps
+    // height prediction and rendering in sync when a short pane switches
+    // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width);
-    let reserved_below = rec_panel_h
-        .saturating_add(perm_panel_h)
-        .saturating_add(input_height)
-        .saturating_add(hint_h)
-        .saturating_add(rec_hint_h)
-        .saturating_add(1);
-    let chat_max = main_area.height.saturating_sub(reserved_below).max(1);
-    let chat_height = chat_estimate.min(chat_max);
+    let recommendation_natural_height =
+        app.current_tab()
+            .turn
+            .recommendations()
+            .map(|recommendations| {
+                action_panel::recommendation_panel_height(recommendations, main_area.width)
+            });
+    let permission_natural_height = app.current_tab().permission.front().map(|permission| {
+        let queue = &app.current_tab().permission;
+        let queued = queue
+            .iter()
+            .skip(1)
+            .take(permission::MAX_QUEUE_PREVIEW)
+            .map(|queued| {
+                queued
+                    .target
+                    .as_deref()
+                    .filter(|target| !target.is_empty())
+                    .unwrap_or(&queued.title)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            });
+        let hidden = queue
+            .len()
+            .saturating_sub(1 + permission::MAX_QUEUE_PREVIEW);
+        action_panel::permission_queue_card_height(
+            permission,
+            queue.len(),
+            queued,
+            hidden,
+            main_area.width,
+        )
+        .min(u16::MAX as usize) as u16
+    });
+    let panel_layout = action_panel::plan(action_panel::LayoutRequest {
+        available_rows: main_area.height,
+        input_height,
+        chat_natural_height: chat_estimate,
+        hint_requested,
+        activity_requested: chat::should_show_activity(app),
+        recommendation_natural_height,
+        permission_natural_height,
+    });
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(chat_height),
-            Constraint::Length(rec_panel_h),
-            Constraint::Length(perm_panel_h),
+            Constraint::Length(panel_layout.chat_height),
+            Constraint::Length(panel_layout.recommendation_height),
+            Constraint::Length(panel_layout.permission_height),
             Constraint::Min(0),
-            Constraint::Length(hint_h),
-            Constraint::Length(rec_hint_h),
-            Constraint::Length(1),
-            Constraint::Length(input_height),
+            Constraint::Length(panel_layout.hint_height),
+            Constraint::Length(panel_layout.recommendation_hint_height),
+            Constraint::Length(panel_layout.activity_height),
+            Constraint::Length(panel_layout.input_height),
         ])
         .split(main_area);
 
@@ -196,13 +223,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .split(chunks[6]);
 
     chat::render(frame, app, h_chat[1]);
-    app.sync_rec_scroll_max(main_area.width);
-    recommendations::render(frame, app, h_rec[1]);
+    app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
+    recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
 
-    if hint_visible {
+    if panel_layout.hint_height > 0 {
         // The hint is a single non-wrapping row; in a narrow pane the raw
         // string overruns the width and ratatui clips it mid-token. Truncate
         // with an ellipsis instead so it always reads as a deliberate, if
@@ -222,10 +249,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             frame.render_widget(line, chunks[4]);
         }
     }
-    if app.current_tab().turn.recommendations().is_some() {
+    if panel_layout.recommendation_hint_height > 0 {
         recommendations::render_hint(frame, chunks[5]);
     }
     chat::render_activity(frame, app, h_activity[1]);
+    app.input_dialog_area = Some(chunks[7]);
     input::render(frame, app, chunks[7]);
 
     if let Some(debug_area) = debug_area {
@@ -248,8 +276,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         model_popup::render_popup(frame, model_state, chunks[7]);
     }
 
+    if let Some(config_state) = app.config_popup_state() {
+        config_popup::render_popup(frame, config_state, chunks[7]);
+    }
+
     if let Some(agent_state) = app.agent_popup_state() {
         agent_popup::render_popup(frame, agent_state, chunks[7]);
+    }
+
+    if let Some(request) = app.current_tab().user_input.front() {
+        user_input::render(frame, request, chunks[7]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

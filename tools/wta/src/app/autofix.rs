@@ -64,10 +64,7 @@ pub enum AutofixBarSnapshot {
         hotkey_hint: String,
     },
     /// Analysis in progress ("Analyzing…"). Non-interactive.
-    Pending {
-        pane_id: String,
-        summary: String,
-    },
+    Pending { pane_id: String, summary: String },
     /// Analysis finished; a result (a fix or an explanation) is waiting in
     /// the agent pane chat. Surfaced ONLY when the pane is not open — the
     /// bar invites the user to open the pane and review. Once the pane
@@ -222,14 +219,6 @@ impl App {
             tab.autofix.generation
         };
 
-        // The auto-fix kind is carried by PromptSubmission::is_autofix,
-        // so the text doesn't need a marker prefix — just the raw error
-        // summary + instruction.
-        let prompt_text = format!(
-            "{}\nDiagnose the error and suggest a fix.",
-            notification.summary
-        );
-
         // Route through the target tab's ACP session. `tab_id` carries the
         // failing tab's StableId so the ACP layer's `tab_to_session` map
         // routes (or lazy-creates) to the right session even when the
@@ -252,13 +241,16 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
-        let prompt = PromptSubmission::new_autofix(prompt_text, Some(pane_context));
+        let prompt =
+            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context));
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
             context: TurnContext::with_target_pane(notification.pane_id.clone()),
-            autofix: Some(AutofixContext { generation: new_gen }),
+            autofix: Some(AutofixContext {
+                generation: new_gen,
+            }),
         };
         // Install the turn on the target tab — bypasses session_to_tab
         // lookup so a tab with no ACP session yet still gets the prompt
@@ -299,7 +291,12 @@ impl App {
     // tab_changed, `project_active_tab_state` re-emits the new active
     // tab's snapshot so the bar matches.
 
-    pub(super) fn emit_autofix_state_pending(&mut self, target_tab_id: &str, pane_id: &str, summary: &str) {
+    pub(super) fn emit_autofix_state_pending(
+        &mut self,
+        target_tab_id: &str,
+        pane_id: &str,
+        summary: &str,
+    ) {
         let snapshot = AutofixBarSnapshot::Pending {
             pane_id: pane_id.to_string(),
             summary: summary.to_string(),
@@ -316,7 +313,12 @@ impl App {
     /// bar shows a clickable hint; the user activates the fix via the
     /// pill or the hotkey, which fires `autofix_execute_from_detected`
     /// and replays through `trigger_autofix_inner` with `force=true`.
-    pub(super) fn emit_autofix_state_detected(&mut self, target_tab_id: &str, pane_id: &str, summary: &str) {
+    pub(super) fn emit_autofix_state_detected(
+        &mut self,
+        target_tab_id: &str,
+        pane_id: &str,
+        summary: &str,
+    ) {
         let snapshot = AutofixBarSnapshot::Detected {
             pane_id: pane_id.to_string(),
             summary: summary.to_string(),

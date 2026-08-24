@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om teru
 chat.activity_thinking: "Dink na…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Welkom by Intelligente Terminaal!"
-chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI. Kyk vir foute."
+chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -179,7 +179,7 @@ hooks.marketplace_path_stale: "⚠ markpad verouderd"
 hooks.installed_but_disabled: "⚠ geïnstalleer maar gedeaktiveer"
 hooks.not_installed: "✗ nie geïnstalleer nie"
 hooks.uninstall_skipped: "oorgeslaan (CLI nie op PATH nie)"
-hooks.install_attempted: "wt-agent-hooks-installasie probeer (idempotent). Voer `wta hooks status` uit om die resultaat te ondersoek. Spoerlog: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks geïnstalleer vir %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "nou net"
 time.minute_singular: "%{count} minuut gelede"
@@ -216,8 +216,17 @@ system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
+commands.config.summary: "Stel hierdie agent-sessie op"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Skuif hierdie oortjie se agentpaneel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessie-konfigurasie (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Die gekoppelde agent het geen konfigureerbare sessie-opsies geadverteer nie."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Kon nie %{option} bywerk nie: %{error}"
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}

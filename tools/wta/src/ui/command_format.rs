@@ -95,6 +95,18 @@ pub(crate) enum CommandLine {
     Folded { remaining: usize },
 }
 
+impl CommandLine {
+    /// Formats this row exactly as command cards render it. `indent` lets
+    /// inline chat cards add their leading padding while permission cards
+    /// use the terminal-cell text directly.
+    pub(crate) fn rendered_text(&self, indent: &str) -> String {
+        match self {
+            Self::Statement(statement) => format!("{indent}$ {statement}"),
+            Self::Folded { remaining } => format!("{indent}… (+{remaining} more)"),
+        }
+    }
+}
+
 /// Formats a (possibly multi-statement) command into the display rows a
 /// card should show: one per top-level statement, each truncated
 /// individually, capped at `MAX_COMMAND_LINES` with any remainder folded
@@ -139,8 +151,12 @@ mod tests {
             "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null",
         );
         assert_eq!(lines.len(), 2);
-        assert!(matches!(&lines[0], CommandLine::Statement(s) if s == "winget list --name PowerToys 2>$null"));
-        assert!(matches!(&lines[1], CommandLine::Statement(s) if s == "winget list --name Foundry 2>$null"));
+        assert!(
+            matches!(&lines[0], CommandLine::Statement(s) if s == "winget list --name PowerToys 2>$null")
+        );
+        assert!(
+            matches!(&lines[1], CommandLine::Statement(s) if s == "winget list --name Foundry 2>$null")
+        );
     }
 
     /// A `;` inside a quoted string (or inside a PowerShell array literal)
@@ -180,5 +196,17 @@ mod tests {
             }
             CommandLine::Folded { .. } => panic!("expected a Statement line"),
         }
+    }
+
+    #[test]
+    fn rendered_text_matches_card_prefixes() {
+        assert_eq!(
+            CommandLine::Statement("cargo test".into()).rendered_text(""),
+            "$ cargo test"
+        );
+        assert_eq!(
+            CommandLine::Folded { remaining: 2 }.rendered_text("    "),
+            "    … (+2 more)"
+        );
     }
 }
