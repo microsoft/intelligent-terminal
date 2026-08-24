@@ -357,7 +357,7 @@ namespace winrt::TerminalApp::implementation
         // the whole label rather than appending to the agent identity below.
         if (_isDurableTabSessionsView)
         {
-            AgentLabelText().Text(RS_(L"AgentPane_DurableTabSessionsTitle"));
+            AgentLabelText().Text(RS_(L"AgentPane_TabHistoryTitle"));
             return;
         }
 

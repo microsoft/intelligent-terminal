@@ -1,10 +1,3 @@
----
-author: Intelligent Terminal
-created on: 2026-08-04
-last updated: 2026-08-19
-issue id: durable-sessions (bucket 1)
----
-
 # Durable tab sessions
 
 ## Abstract

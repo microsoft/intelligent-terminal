@@ -325,6 +325,10 @@
     <value>Dijagnostika</value>
     <comment>Tooltip for the diagnostics button when there is no active diagnostic.</comment>
   </data>
+  <data name="AgentPane_TabHistoryTitle" xml:space="preserve">
+    <value>Povijest kartica</value>
+  <comment>Title shown in the agent pane title bar when the saved tab-history view is active. It lists previously saved terminal tabs that can be restored.</comment>
+  </data>
   <data name="AgentPane_SessionsTitle" xml:space="preserve">
     <value>Sesije agenata</value>
     <comment>Title shown in the agent pane title bar when the session-management view is active. In this context, agent refers to an AI agent, not a human representative.</comment>
