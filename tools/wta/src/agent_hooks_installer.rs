@@ -3818,7 +3818,58 @@ fn read_installed_copilot_any(home: &Path) -> InstalledProbe {
     if let Some(live) = read_live_copilot(home) {
         return Ok(Some(live));
     }
-    read_installed_copilot(home)
+    let copied = read_installed_copilot(home)?;
+    if copied.is_some() {
+        return Ok(copied);
+    }
+    Ok(read_stale_live_copilot(home))
+}
+
+/// A `wt-local` registration that no longer resolves to a readable plugin
+/// directory.
+///
+/// This is what an Intelligent Terminal upgrade leaves behind. The package
+/// directory is versioned, so a new build lands beside `wta.exe` at a new
+/// path while the registration still names the old one, and the moment the
+/// old package is removed Copilot silently drops the plugin: `copilot plugin
+/// list` reports "No plugins installed" and exits 0, and no hook fires again.
+///
+/// The install itself survives — `enabledPlugins` still carries it, and
+/// rewriting `source.path` alone brings the plugin straight back with no
+/// reinstall. So this has to reach `decide_upgrade` as a live install whose
+/// source has moved, not as "nothing installed", which would skip the one
+/// repair that runs without the user opening Settings.
+///
+/// The `enabledPlugins` entry is required: a marketplace registered but never
+/// installed from is genuinely not installed, and treating it otherwise would
+/// send `upgrade_copilot` after a plugin that was never there.
+fn read_stale_live_copilot(home: &Path) -> Option<InstalledInfo> {
+    let enabled = copilot_enabled_plugin_entry(home)?;
+    let dir = copilot_marketplace_info(home).path?;
+    Some(InstalledInfo {
+        // Unreadable, and deliberately not guessed: the decision below turns
+        // on the source path, not on the version.
+        version: None,
+        enabled,
+        loads_live: true,
+        live_source: Some(PathBuf::from(dir)),
+        gemini_source: None,
+        gemini_type: None,
+    })
+}
+
+/// Our `enabledPlugins` entry, or `None` when Copilot has no record of the
+/// plugin at all. `Some(false)` means installed but switched off.
+fn copilot_enabled_plugin_entry(home: &Path) -> Option<bool> {
+    let path = home.join(".copilot").join("settings.json");
+    let text = fs::read_to_string(&path).ok()?;
+    let v = serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)).ok()?;
+    Some(
+        v.get("enabledPlugins")?
+            .get(format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME))?
+            .as_bool()
+            .unwrap_or(true),
+    )
 }
 
 /// Read Copilot's copied-install entry directly from
@@ -4226,6 +4277,25 @@ fn upgrade_state_path() -> Option<PathBuf> {
         .map(|root| root.join("hooks-upgrade-state.json"))
 }
 
+/// Cache token standing for "this CLI has already been checked against this
+/// bundle".
+///
+/// The hook version alone is not enough. An Intelligent Terminal upgrade
+/// installs to a versioned package directory, so the bundle moves to a new
+/// path on every release while the hook version usually stays put — and a
+/// live install registered against the old path stops loading the moment that
+/// package is removed. Folding the resolved directory into the token makes
+/// the package move a cache miss, which is the only automatic signal that a
+/// registration needs repointing.
+///
+/// `None` when either half is unresolvable, which keeps the full check
+/// running rather than caching an answer we can't describe.
+fn bundle_fingerprint(version: Option<&Version>, dir: Option<&Path>) -> Option<String> {
+    let version = version?;
+    let dir = dir?;
+    Some(format!("{} {}", version, dir.display()))
+}
+
 /// Load the cached bundle versions. Crash-safe: any IO/parse failure
 /// returns the empty state (= forces a full upgrade check next run).
 fn load_upgrade_state(path: &Path) -> UpgradeState {
@@ -4393,16 +4463,19 @@ pub fn upgrade_installed_hooks() {
     let mut state_dirty = false;
     for cli in CliKind::ALL.iter().copied() {
         let bundle_version = read_bundled_version(cli);
-        let bundle_version_str = bundle_version.map(|v| v.to_string());
+        let fingerprint = bundle_fingerprint(
+            bundle_version.as_ref(),
+            bundle::resolve_cli_dir(cli).as_deref(),
+        );
 
-        // Fast path: bundle version matches the cached entry → nothing
+        // Fast path: bundle fingerprint matches the cached entry → nothing
         // changed since last time we checked this CLI. Skip without any
         // further IO or spawn.
-        if bundle_version_str.is_some() && bundle_version_str.as_deref() == state.get(cli) {
+        if fingerprint.is_some() && fingerprint.as_deref() == state.get(cli) {
             tracing::debug!(
                 target: "agent_hooks",
                 cli = cli.name(),
-                bundle = ?bundle_version_str,
+                bundle = ?fingerprint,
                 "fast-path cache hit; no upgrade needed",
             );
             continue;
@@ -4413,7 +4486,7 @@ pub fn upgrade_installed_hooks() {
 
         // Cache completed checks, including intentional skips. Failed
         // OpenCode file copies must retry on the next startup.
-        if state.record_completed(cli, bundle_version_str, completed) {
+        if state.record_completed(cli, fingerprint, completed) {
             state_dirty = true;
         } else {
             tracing::warn!(

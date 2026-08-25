@@ -3379,6 +3379,91 @@ fn read_installed_copilot_any_leaves_copied_records_unmarked() {
     assert_eq!(info.version, Some("0.1.2".parse().unwrap()));
 }
 
+/// What an Intelligent Terminal upgrade leaves behind: the registration names
+/// a package directory that no longer exists. Copilot drops the plugin
+/// silently, but `enabledPlugins` still records the install and repointing
+/// `source.path` restores it — so this has to surface as a live install whose
+/// source moved, not as "nothing installed".
+#[test]
+fn read_installed_copilot_any_surfaces_a_registration_whose_directory_is_gone() {
+    let home = unique_dir("copilot-pruned-pkg");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let old_pkg = unique_dir("copilot-old-package");
+    write_copilot_settings(&cfg_dir, &old_pkg, Some(true));
+    fs::remove_dir_all(&old_pkg).unwrap();
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(info.loads_live);
+    assert_eq!(info.live_source.as_deref(), Some(old_pkg.as_path()));
+    assert_eq!(info.version, None);
+}
+
+/// The repair has to actually be reachable: a gone-directory registration
+/// must resolve to `UpdatePlugin` so `cleanup_stale_copilot_marketplace`
+/// rewrites the path.
+#[test]
+fn decide_repairs_a_registration_whose_directory_is_gone() {
+    let home = unique_dir("copilot-pruned-decide");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    let old_pkg = unique_dir("copilot-old-package-decide");
+    write_copilot_settings(&cfg_dir, &old_pkg, Some(true));
+    fs::remove_dir_all(&old_pkg).unwrap();
+    let new_pkg = unique_dir("copilot-new-package-decide");
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&new_pkg),
+    );
+    assert_eq!(a, UpgradeAction::UpdatePlugin);
+}
+
+/// A marketplace registered but never installed from is genuinely not
+/// installed — chasing it would send `upgrade_copilot` after a plugin that
+/// was never there.
+#[test]
+fn read_installed_copilot_any_ignores_a_gone_directory_without_an_install() {
+    let home = unique_dir("copilot-pruned-noinstall");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let old_pkg = unique_dir("copilot-old-package-noinstall");
+    write_copilot_settings(&cfg_dir, &old_pkg, None);
+    fs::remove_dir_all(&old_pkg).unwrap();
+
+    assert!(read_installed_copilot_any(&home).unwrap().is_none());
+}
+
+/// A surviving copied record still outranks a gone registration: it is a real
+/// install the CLI can still load, so it keeps driving the upgrade path.
+#[test]
+fn read_installed_copilot_any_prefers_a_copied_record_over_a_gone_directory() {
+    let home = unique_dir("copilot-pruned-vs-copied");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+    let old_pkg = unique_dir("copilot-old-package-vs-copied");
+    write_copilot_settings(&cfg_dir, &old_pkg, Some(true));
+    fs::remove_dir_all(&old_pkg).unwrap();
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(!info.loads_live);
+    assert_eq!(info.version, Some("0.1.2".parse().unwrap()));
+}
+
 /// A registration pointing at a pruned worktree has no readable manifest, so
 /// the version stays unknown rather than being reported as the bundle's.
 #[test]
@@ -3830,6 +3915,42 @@ fn decide_gemini_reinstall_when_type_is_not_local() {
 }
 
 // ---- auto-upgrade: state file --------------------------------------
+
+/// An Intelligent Terminal upgrade ships the same hook version from a new
+/// versioned package directory. Keying the cache on the version alone would
+/// hit the fast path and never notice, leaving a registration pointing at the
+/// removed package — and the plugin silently unloaded.
+#[test]
+fn bundle_fingerprint_changes_when_only_the_package_directory_moves() {
+    let v: Version = "0.1.6".parse().unwrap();
+    let old_pkg = Path::new(r"C:\pkg\IntelligentTerminal_0.8.0.2_x64\wt-agent-hooks\copilot");
+    let new_pkg = Path::new(r"C:\pkg\IntelligentTerminal_0.9.0.0_x64\wt-agent-hooks\copilot");
+
+    let before = bundle_fingerprint(Some(&v), Some(old_pkg));
+    let after = bundle_fingerprint(Some(&v), Some(new_pkg));
+    assert!(before.is_some());
+    assert_ne!(before, after);
+}
+
+/// The version still has to participate: a hook bump in place must not be
+/// mistaken for an already-checked bundle.
+#[test]
+fn bundle_fingerprint_changes_when_only_the_version_moves() {
+    let dir = Path::new(r"C:\pkg\wt-agent-hooks\copilot");
+    let before = bundle_fingerprint(Some(&"0.1.6".parse().unwrap()), Some(dir));
+    let after = bundle_fingerprint(Some(&"0.1.7".parse().unwrap()), Some(dir));
+    assert_ne!(before, after);
+}
+
+/// Either half missing means we can't describe what was checked, so no entry
+/// is cached and the full check runs again next startup.
+#[test]
+fn bundle_fingerprint_is_none_when_either_half_is_unresolvable() {
+    let v: Version = "0.1.6".parse().unwrap();
+    let dir = Path::new(r"C:\pkg\wt-agent-hooks\copilot");
+    assert_eq!(bundle_fingerprint(None, Some(dir)), None);
+    assert_eq!(bundle_fingerprint(Some(&v), None), None);
+}
 
 #[test]
 fn upgrade_state_round_trips_through_disk() {
