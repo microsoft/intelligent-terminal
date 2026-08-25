@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Đã tự động chẩn đoán một lỗi lệnh gần đây"
 chat.turn_canceled: "(đã hủy)"
+chat.turn_adjusted: "(đã điều chỉnh)"
 chat.turn_executed: "→ đã thực thi: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ để di chuyển • ← → để chuyển
 recommendations.button_run_command: "[ Chạy lệnh ]"
 recommendations.button_send_to_delegate: "[ Gửi cho đại biểu ]"
 recommendations.button_insert_in_terminal: "Chèn vào Terminal"
+recommendations.button_adjust_command: "Điều chỉnh"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
 recommendations.button_open_in_new_panel: "Mở trong Bảng mới ↵"
 recommendations.button_open_tab: "Mở Tab ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Mở bộ chọn phiên lịch sử (Ctrl+Shift+/)" 
 commands.agent.summary: "Chọn agent cho bảng này (/agent <id> để chuyển trực tiếp)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Mô tả cách bạn muốn điều chỉnh lệnh Terminal."
 commands.delegate.summary: "Chuẩn bị nhiệm vụ và mở tác nhân đại diện (/delegate <intent>)"
 
 # ── Thực thi đề xuất (src/coordinator.rs) ───────────────────────────

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automaticky diagnostikováno nedávné selhání příkazu"
 chat.turn_canceled: "(zrušeno)"
+chat.turn_adjusted: "(upraveno)"
 chat.turn_executed: "→ provedeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -84,6 +85,7 @@ commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+
 commands.agent.summary: "Vyberte agent pro tuto kartu (/agent <id> pro přímé přepnutí)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Popište, jak chcete upravit příkaz terminálu."
 commands.delegate.summary: "Připravte úkol a otevřete zástupce delegáta (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -91,6 +93,7 @@ recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání t
 recommendations.button_run_command: "[ Spustit příkaz ]"
 recommendations.button_send_to_delegate: "[ Odeslat delegátovi ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
+recommendations.button_adjust_command: "Upravit"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"
 recommendations.button_open_in_new_panel: "Otevřít v novém panelu ↵"
 recommendations.button_open_tab: "Otevřít kartu ↵"

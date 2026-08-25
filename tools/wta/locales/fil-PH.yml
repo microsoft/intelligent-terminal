@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Awtomatikong na-diagnose ang kamakailang pagkabigo ng command"
 chat.turn_canceled: "(kinansela)"
+chat.turn_adjusted: "(inayos)"
 chat.turn_executed: "→ naisagawa: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit 
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_send_to_delegate: "[ Ipadala sa delegado ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
+recommendations.button_adjust_command: "Ayusin"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
 recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
 recommendations.button_open_tab: "Buksan ang Tab ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Piliin ang agent para sa tab na ito (/agent <id> para magpalit nang diretso)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Ilarawan kung paano mo gustong ayusin ang command sa Terminal."
 commands.delegate.summary: "Maghanda ng gawain at magbukas ng delegadong ahente (/delegate <intent>)"
 
 # ── Pagpapatupad ng rekomendasyon (src/coordinator.rs) ───────────────────────────

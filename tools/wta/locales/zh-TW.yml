@@ -44,6 +44,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自動診斷最近的一次命令失敗"
 chat.turn_canceled: "(已取消)"
+chat.turn_adjusted: "(已調整)"
 chat.turn_executed: "→ 已執行: %{title}"
 
 # ── 輸入預留位置 (src/ui/input.rs) ────────────────────────────────────────────
@@ -74,6 +75,7 @@ recommendations.nav_hint: "(↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter �
 recommendations.button_run_command: "[ 執行命令 ]"
 recommendations.button_send_to_delegate: "[發送給代表]"
 recommendations.button_insert_in_terminal: "插入終端機"
+recommendations.button_adjust_command: "調整"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"
 recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
 recommendations.button_open_tab: "開啟索引標籤 ↵"
@@ -205,6 +207,7 @@ commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
 commands.agent.summary: "為此分頁選擇智能體（使用 /agent <id> 可直接切換）"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "請描述您想如何調整終端機命令。"
 commands.delegate.summary: "準備任務並開啟委派代理程式 (/delegate <intent>)"
 
 # ── 建議執行 (src/coordinator.rs) ───────────────────────────

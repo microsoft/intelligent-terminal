@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Kua tātaringia aunoatia te rahunga whakahau tata"
 chat.turn_canceled: "(whakakorea)"
+chat.turn_adjusted: "(whakatikaina)"
 chat.turn_executed: "→ kua mahia: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
 recommendations.button_send_to_delegate: "[ Tukuna ki te kaikawe ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
+recommendations.button_adjust_command: "Whakatika"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
 recommendations.button_open_in_new_panel: "Whakatuwherahia i te Papa Hou ↵"
 recommendations.button_open_tab: "Whakatuwhera Ripa ↵"
@@ -209,6 +211,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Kōwhiria te māngai mō tēnei papa (/agent <id> ki te huri tika)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Whakaahuatia me pēhea tō hiahia ki te whakatika i te tono kāpeka."
 commands.delegate.summary: "Whakaritea he mahi ka whakatuwheratia he kaihoko kaitakawaenga (/delegate <intent>)"
 
 # ── Whakahaere tūtohutanga (src/coordinator.rs) ───────────────────────────

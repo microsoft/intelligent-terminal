@@ -51,6 +51,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
 chat.turn_canceled: "(បានបោះបង់)"
+chat.turn_adjusted: "(បានកែសម្រួល)"
 chat.turn_executed: "→ បានដំណើរការ: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← �
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
 recommendations.button_send_to_delegate: "[ ផ្ញើទៅកាន់ប្រតិភូ ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
+recommendations.button_adjust_command: "កែសម្រួល"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
 recommendations.button_open_in_new_panel: "បើកក្នុងផ្តាំងថ្មី ↵"
 recommendations.button_open_tab: "បើកផ្ទាំង ↵"
@@ -226,6 +228,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "ជ្រើសរើសភ្នាក់ងារសម្រាប់ផ្តាំងនេះ (/agent <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "សូមពិពណ៌នាអំពីរបៀបដែលអ្នកចង់កែសម្រួលពាក្យបញ្ជា Terminal។"
 commands.delegate.summary: "រៀបចំកិច្ចការមួយ ហើយបើកភ្នាក់ងារតំណាង (/delegate <intent>)"
 
 # ── ការអនុវត្តអនុសាសន៍ (src/coordinator.rs) ───────────────────────────

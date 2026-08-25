@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ການລົ້ມເຫລວຄຳສັ່ງຫຼ້າສຸດໄດ້ຮັບການວິນິດໄສໂດຍອັດຕະໂນມັດ"
 chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
+chat.turn_adjusted: "(ປັບແຕ່ງແລ້ວ)"
 chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບ�
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_send_to_delegate: "[ ສົ່ງໃຫ້ຜູ້ແທນ ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_adjust_command: "ປັບແຕ່ງ"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "ເລືອກຕົວແທນສຳລັບ pane ນີ້ (/agent <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ອະທິບາຍວ່າ ທ່ານຕ້ອງການປັບແຕ່ງຄຳສັ່ງ Terminal ແນວໃດ."
 commands.delegate.summary: "ກະກຽມໜ້າວຽກ ແລະເປີດຕົວແທນ (/delegate <intent>)"
 
 # ── ການດຳເນີນການຄຳແນະນຳ (src/coordinator.rs) ───────────────────────────

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Falliment riċenti ta' kmand iddijanjostikat awtomatikament"
 chat.turn_canceled: "(ikkanċellat)"
+chat.turn_adjusted: "(aġġustat)"
 chat.turn_executed: "→ ġie eżegwit: %{title}"
 
 # ── Placeholders tal-input (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-bu
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
 recommendations.button_send_to_delegate: "[ Ibgħat lid-delegat ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
+recommendations.button_adjust_command: "Aġġusta"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
 recommendations.button_open_in_new_panel: "Iftaħ f'Pannell Ġdid ↵"
 recommendations.button_open_tab: "Iftaħ Tab ↵"
@@ -209,6 +211,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Agħżel il-aġent għal dan il-pannell (/agent <id> biex tibdel direttament)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Iddeskrivi kif tixtieq taġġusta l-kmand tat-Terminal."
 commands.delegate.summary: "Ipprepara kompitu u tiftaħ aġent delegat (/delegate <intent>)"
 
 # ── Eżekuzzjoni tar-rakkomandazzjoni (src/coordinator.rs) ───────────────────────────

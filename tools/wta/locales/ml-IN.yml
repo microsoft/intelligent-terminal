@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "സമീപകാല കമാൻഡ് പരാജയം സ്വയം നിർണ്ണയിച്ചു"
 chat.turn_canceled: "(റദ്ദാക്കി)"
+chat.turn_adjusted: "(ക്രമീകരിച്ചു)"
 chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
 
 # ── ഇന്‍പുട്ട് പ്ലേസ്‌ഹോള്‍ഡറുകള്‍ (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "ചരിത്ര സെഷനുകളുടെ �
 commands.agent.summary: "ഈ ടാബിനായി ഏജന്റ് തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ടെർമിനൽ കമാൻഡ് എങ്ങനെ ക്രമീകരിക്കണമെന്ന് വിവരിക്കുക."
 commands.delegate.summary: "ഒരു ടാസ്‌ക് തയ്യാറാക്കി ഒരു ഡെലിഗേറ്റ് ഏജൻ്റ് തുറക്കുക (/delegate <intent>)"
 
 # ── ശുപാര്‍ശ പാനല്‍ (src/ui/recommendations.rs) ───────────────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്�
 recommendations.button_run_command: "[ കമാന്‍ഡ് പ്രവര്‍ത്തിപ്പിക്കുക ]"
 recommendations.button_send_to_delegate: "[ പ്രതിനിധിക്ക് അയയ്‌ക്കുക ]"
 recommendations.button_insert_in_terminal: "ടെര്‍മിനലില്‍ ചേര്‍ക്കുക"
+recommendations.button_adjust_command: "ക്രമീകരിക്കുക"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "പുതിയ ടാബില്‍ തുറക്കുക ↵"
 recommendations.button_open_in_new_panel: "പുതിയ പാനലില്‍ തുറക്കുക ↵"
 recommendations.button_open_tab: "ടാബ് തുറക്കുക ↵"

@@ -576,6 +576,10 @@ impl App {
         }
 
         match key.code {
+            KeyCode::Up | KeyCode::Down if self.current_tab().command_adjustment.is_some() => {
+                // Adjust is an explicit input mode. Keep focus in its editor
+                // until the user submits or presses Esc.
+            }
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
@@ -760,6 +764,14 @@ impl App {
             KeyCode::Esc if self.show_notification_banner => {
                 self.dismiss_notifications();
             }
+            KeyCode::Esc if self.current_tab().command_adjustment.is_some() => {
+                let tab = self.current_tab_mut();
+                tab.command_adjustment = None;
+                tab.recommendation_focus = RecommendationFocus::Button;
+                tab.clear_input();
+                let tab_id = self.active_tab_key().to_string();
+                self.recompute_chip_override(&tab_id);
+            }
             KeyCode::Esc
                 if self.current_tab().turn.recommendations().is_some()
                     || (self.current_tab().autofix.pane_id.is_some()
@@ -880,6 +892,11 @@ impl App {
                             self.turn_execute_card(&session_id);
                         }
                     }
+                    return;
+                }
+
+                if self.current_tab().command_adjustment.is_some() {
+                    self.submit_command_adjustment();
                     return;
                 }
 

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
 chat.turn_canceled: "(ακυρώθηκε)"
+chat.turn_adjusted: "(προσαρμόστηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -79,6 +80,7 @@ recommendations.nav_hint: "(↑ ↓ για πλοήγηση • ← → για �
 recommendations.button_run_command: "[ Εκτέλεση εντολής ]"
 recommendations.button_send_to_delegate: "[Αποστολή σε εκπρόσωπο]"
 recommendations.button_insert_in_terminal: "Εισαγωγή στο Terminal"
+recommendations.button_adjust_command: "Προσαρμογή"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Άνοιγμα σε νέα καρτέλα ↵"
 recommendations.button_open_in_new_panel: "Άνοιγμα σε νέο πλαίσιο ↵"
 recommendations.button_open_tab: "Άνοιγμα καρτέλας ↵"
@@ -211,6 +213,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Επιλέξτε το πράκτορα για αυτό το πλαίσιο (/agent <id> για άμεση εναλλαγή)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Περιγράψτε πώς θέλετε να προσαρμόσετε την εντολή του τερματικού."
 commands.delegate.summary: "Προετοιμάστε μια εργασία και ανοίξτε έναν εκπρόσωπο αντιπροσώπου (/delegate <intent>)"
 
 # ── Εκτέλεση σύστασης (src/coordinator.rs) ───────────────────────────

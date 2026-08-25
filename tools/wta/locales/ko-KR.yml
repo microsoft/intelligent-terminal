@@ -44,6 +44,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "최근 명령 실패를 자동으로 진단했습니다"
 chat.turn_canceled: "(취소됨)"
+chat.turn_adjusted: "(조정됨)"
 chat.turn_executed: "→ 실행됨: %{title}"
 
 # ── 입력 자리 표시자 (src/ui/input.rs) ────────────────────────────────────────────
@@ -74,6 +75,7 @@ recommendations.nav_hint: "(↑ ↓ 탐색 • ← → 버튼 전환 • Enter �
 recommendations.button_run_command: "[ 명령 실행 ]"
 recommendations.button_send_to_delegate: "[ 대리인에게 보내기 ]"
 recommendations.button_insert_in_terminal: "터미널에 삽입"
+recommendations.button_adjust_command: "조정"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "새 탭에서 열기 ↵"
 recommendations.button_open_in_new_panel: "새 패널에서 열기 ↵"
 recommendations.button_open_tab: "탭 열기 ↵"
@@ -205,6 +207,7 @@ commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
 commands.agent.summary: "이 탭의 에이전트 선택 (/agent <id>로 바로 전환)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "터미널 명령을 어떻게 조정할지 설명해 주세요."
 commands.delegate.summary: "작업 준비 및 위임 에이전트 열기(/delegate <intent>)"
 
 # ── 추천 실행 (src/coordinator.rs) ───────────────────────────

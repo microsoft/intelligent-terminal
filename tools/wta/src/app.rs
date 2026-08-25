@@ -54,7 +54,9 @@ enum AgentReconnectState {
 enum AuthRecoveryState {
     #[default]
     Idle,
-    WaitingForMaster { request_id: String },
+    WaitingForMaster {
+        request_id: String,
+    },
     Connecting,
 }
 
@@ -79,9 +81,9 @@ pub use crate::turn_context::TurnContext;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
-    PendingPreparation, PreparedActionMode, RecommendationFocus, TabSession, ToolCallContent,
-    ToolCallKind, ToolCallLocation, ToolCallOutput, UserInputState, View,
+    ChatMessage, CommandAdjustment, CompletedTurn, ConfigPickerState, NoticeKind,
+    PendingPreparation, PermissionState, PreparedActionMode, RecommendationFocus, TabSession,
+    ToolCallContent, ToolCallKind, ToolCallLocation, ToolCallOutput, UserInputState, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -134,8 +136,8 @@ use crate::coordinator::{recommended_choice_index, RecommendationChoice, Recomme
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    AgentReconnectRequest, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    AgentLifecycleRequest, PromptSubmission, RenameSessionRequest,
+    AgentLifecycleRequest, AgentReconnectRequest, CancelRequest, DropSessionRequest,
+    LoadSessionForTab, NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
@@ -3563,7 +3565,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
             tab.loading_session = false;
             tab.loading_target_session_id = None;
@@ -5105,8 +5107,7 @@ impl App {
         //    this arm is always consumed even if there is no selection.
         if self.command_popup_visible() {
             let selected_agent = self.selected_agent_command_candidate();
-            if let Some(parsed) =
-                agent_command_on_enter(&self.current_tab().input, selected_agent)
+            if let Some(parsed) = agent_command_on_enter(&self.current_tab().input, selected_agent)
             {
                 self.current_tab_mut().clear_input();
                 self.handle_slash_command(parsed);
@@ -5441,6 +5442,8 @@ impl App {
             prompt_id,
             target_session_id: String::new(),
             mode: PreparedActionMode::DelegateSend,
+            title: intent.to_string(),
+            revision_root_index: None,
         });
         self.current_tab_mut().clear_input();
         self.turn_submit_prompt(&session_key, submitted);
@@ -5480,7 +5483,21 @@ impl App {
             .as_ref()
             .map(|pane| pane.session_id.clone())
             .or_else(|| self.source_session_id.clone())
+            .or_else(|| {
+                self.current_tab()
+                    .pane_targets
+                    .candidates()
+                    .into_iter()
+                    .find(|pane| pane.is_active)
+                    .map(|pane| pane.session_id.clone())
+            })
             .unwrap_or_default();
+        if target_session_id.is_empty() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("pane_picker.target_unavailable").into_owned(),
+            ));
+            return;
+        }
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(tab_id.clone()),
@@ -5516,8 +5533,93 @@ impl App {
             prompt_id: prompt.id,
             target_session_id,
             mode: PreparedActionMode::Command,
+            title: intent.to_string(),
+            revision_root_index: None,
         });
         self.current_tab_mut().clear_input();
+        self.turn_submit_prompt(&session_key, submitted);
+        let _ = self.prompt_tx.send(prompt);
+    }
+
+    fn submit_command_adjustment(&mut self) {
+        if !self.current_tab().turn.accepts_new_prompt() {
+            self.current_tab_mut()
+                .messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            return;
+        }
+        let adjustment_text = self.current_tab().input.trim().to_string();
+        if adjustment_text.is_empty() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("command_card.adjustment_required").into_owned(),
+            ));
+            return;
+        }
+        let Some(adjustment) = self.current_tab().command_adjustment.clone() else {
+            return;
+        };
+        let normalized_target =
+            crate::pane_context::normalize_pane_session_id(&adjustment.target_session_id);
+        let descriptor = self
+            .current_tab()
+            .pane_targets
+            .panes
+            .get(&normalized_target)
+            .cloned();
+        if descriptor.is_none() {
+            self.current_tab_mut().messages.push(ChatMessage::warning(
+                t!("pane_picker.target_unavailable").into_owned(),
+            ));
+            return;
+        }
+        let model_text = crate::protocol::acp::prompt::terminal_command_adjustment_request(
+            &adjustment.title,
+            &adjustment.current_command,
+            &adjustment_text,
+        );
+        let tab_id = self.active_tab_key().to_string();
+        let descriptor = descriptor.expect("checked above");
+        let pane_context = PaneContext {
+            pane_id: self.pane_id.clone(),
+            tab_id: Some(tab_id),
+            window_id: self.window_id.clone(),
+            cwd: (!descriptor.cwd.is_empty()).then(|| descriptor.cwd.clone()),
+            source_pane_id: Some(adjustment.target_session_id.clone()),
+            cached_source: Some(crate::pane_context::CachedPaneMetadata {
+                title: descriptor.title,
+                profile: descriptor.profile,
+                cwd: descriptor.cwd,
+                shell: descriptor.shell,
+            }),
+        };
+        let prompt = PromptSubmission::new(model_text, Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: adjustment_text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext {
+                target_pane_id: Some(adjustment.target_session_id.clone()),
+            },
+            autofix: None,
+        };
+        let session_key = self
+            .current_tab()
+            .session_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        let tab = self.current_tab_mut();
+        if let Some(turn) = tab.completed_turns.get_mut(adjustment.history_index) {
+            turn.trailing_marker = Some(t!("chat.turn_adjusted").into_owned());
+        }
+        tab.pending_preparation = Some(PendingPreparation {
+            prompt_id: prompt.id,
+            target_session_id: adjustment.target_session_id,
+            mode: PreparedActionMode::Command,
+            title: adjustment.title,
+            revision_root_index: Some(adjustment.revision_root_index),
+        });
+        tab.command_adjustment = None;
+        tab.clear_input();
         self.turn_submit_prompt(&session_key, submitted);
         let _ = self.prompt_tx.send(prompt);
     }
@@ -5531,7 +5633,7 @@ impl App {
     fn cmd_clear(&mut self) {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.scroll_to_bottom();
     }
 
@@ -5587,7 +5689,7 @@ impl App {
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -5785,7 +5887,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
@@ -6174,7 +6276,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
@@ -6314,8 +6416,10 @@ impl App {
     /// Returns the number of buttons for the currently selected choice card.
     /// Send actions have 2 buttons (Run, Insert); OpenAndSend has 1 button.
     fn button_count_for_selected(&self) -> usize {
-        if self.current_tab().active_prepared_mode.is_some() {
-            return 1;
+        match self.current_tab().active_prepared_mode {
+            Some(PreparedActionMode::Command) => return 3,
+            Some(PreparedActionMode::DelegateSend) => return 1,
+            None => {}
         }
         self.selected_recommendation_choice()
             .map(|c| if self.is_send_choice(c) { 2 } else { 1 })

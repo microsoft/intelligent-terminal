@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Sapan kamachiykuq pantarisqa ñakaq qhawasqa"
 chat.turn_canceled: "(saqisqa)"
+chat.turn_adjusted: "(allinchasqa)"
 chat.turn_executed: "→ ruwasqa: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq �
 recommendations.button_run_command: "[ Kamachiyta purichiy ]"
 recommendations.button_send_to_delegate: "[ Kachayman kachay ]"
 recommendations.button_insert_in_terminal: "Terminal nisqaman churay"
+recommendations.button_adjust_command: "Allinchay"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Musuq Ripa nisqapi kichay ↵"
 recommendations.button_open_in_new_panel: "Musuq K'iti nisqapi kichay ↵"
 recommendations.button_open_tab: "Ripa kichay ↵"
@@ -209,6 +211,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Kay k'itipaq agente akllay (/agent <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Terminal nisqa kamachiyta imayna allinchayta munasqaykita willay."
 commands.delegate.summary: "Huk ruwayta wakichiy hinaspa huk delegado agente kichay (/delegate <intent>) ."
 
 # ── Recomendación ruwariy (src/coordinator.rs) ───────────────────────────

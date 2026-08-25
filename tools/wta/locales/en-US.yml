@@ -55,6 +55,7 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Auto-diagnosed a recent command failure"
 # Trailing marker on a chat turn that the user canceled (pressed Esc).
 chat.turn_canceled: "(canceled)"
+chat.turn_adjusted: "(adjusted)"  # Marks a prepared command version that the user refined into a newer revision
 # Trailing marker after the user executed a suggested action. %{title} is the
 # action title, e.g. "Run: Get-Date".
 chat.turn_executed: "→ executed: %{title}"
@@ -103,6 +104,7 @@ commands.config.summary: "Configure this agent session"  # Agent means an AI cod
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Describe how you want to adjust the terminal command."
 commands.delegate.summary: "Prepare a task and open a delegate agent (/delegate <intent>)"  # {Locked="/delegate","<intent>"}
 
 # ── Pane picker ─────────────────────────────────────────────────────────────
@@ -147,6 +149,7 @@ system.config_update_failed: "Failed to update %{option}: %{error}"
 recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_adjust_command: "Adjust"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_send_to_delegate: "[ Send to delegate ]"  # Button sends the prepared task prompt to the newly opened AI agent pane
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"

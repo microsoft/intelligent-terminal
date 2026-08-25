@@ -51,6 +51,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Վերջին հրամանի ձախողումը ինքնաշխատ ախտորոշվել է"
 chat.turn_canceled: "(չեղարկվել է)"
+chat.turn_adjusted: "(ճշգրտվել է)"
 chat.turn_executed: "→ կատարվել է: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ──────────────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ commands.sessions.summary: "Բացել պատմական նիստերի ընտր�
 commands.agent.summary: "Ընտրեք գործակալն այս ներդիրի համար (/agent <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Նկարագրեք, թե ինչպես եք ուզում կարգավորել տերմինալի հրամանը։"
 commands.delegate.summary: "Պատրաստեք առաջադրանք և բացեք պատվիրակային գործակալ (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ recommendations.nav_hint: "(↑ ↓ նավարկելու համար • ← → 
 recommendations.button_run_command: "[ Գործարկել հրամանը ]"
 recommendations.button_send_to_delegate: "[Ուղարկել պատվիրակին]"
 recommendations.button_insert_in_terminal: "Տեղադրել տերմինալում"
+recommendations.button_adjust_command: "Կարգավորել"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Բացել նոր ներդիրում ↵"
 recommendations.button_open_in_new_panel: "Բացել նոր վահանակում ↵"
 recommendations.button_open_tab: "Բացել ներդիր ↵"

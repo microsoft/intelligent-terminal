@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ఇటీవలి కమాండ్ వైఫల్యం స్వయంచాలకంగా నిర్ధారించబడింది"
 chat.turn_canceled: "(రద్దు చేయబడింది)"
+chat.turn_adjusted: "(సర్దుబాటు చేయబడింది)"
 chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 
 # ── ఇన్‌పుట్ ప్లేస్‌హోల్డర్‌లు (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎ�
 commands.agent.summary: "ఈ ట్యాబ్ కోసం ఏజెంట్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "టెర్మినల్ ఆదేశాన్ని మీరు ఎలా సర్దుబాటు చేయాలనుకుంటున్నారో వివరించండి."
 commands.delegate.summary: "టాస్క్‌ని సిద్ధం చేసి, డెలిగేట్ ఏజెంట్‌ను తెరవండి (/delegate <intent>)"
 
 # ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ నావిగేట్ చేయడాన�
 recommendations.button_run_command: "[ కమాండ్ అమలు చేయండి ]"
 recommendations.button_send_to_delegate: "[ప్రతినిధికి పంపండి ]"
 recommendations.button_insert_in_terminal: "టెర్మినల్‌లో చొప్పించండి"
+recommendations.button_adjust_command: "సర్దుబాటు చేయి"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "కొత్త ట్యాబ్‌లో తెరవండి ↵"
 recommendations.button_open_in_new_panel: "కొత్త ప్యానెల్‌లో తెరవండి ↵"
 recommendations.button_open_tab: "ట్యాబ్ తెరవండి ↵"

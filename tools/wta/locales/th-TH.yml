@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "วินิจฉัยความล้มเหลวของคำสั่งล่าสุดโดยอัตโนมัติ"
 chat.turn_canceled: "(ยกเลิกแล้ว)"
+chat.turn_adjusted: "(ปรับแล้ว)"
 chat.turn_executed: "→ ดำเนินการแล้ว: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ เลื่อนเลือก • ← �
 recommendations.button_run_command: "[ เรียกใช้คำสั่ง ]"
 recommendations.button_send_to_delegate: "[ ส่งไปยังผู้รับมอบสิทธิ์ ]"
 recommendations.button_insert_in_terminal: "แทรกใน Terminal"
+recommendations.button_adjust_command: "ปรับ"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "เปิดในแท็บใหม่ ↵"
 recommendations.button_open_in_new_panel: "เปิดในแผงใหม่ ↵"
 recommendations.button_open_tab: "เปิดแท็บ ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "เลือกตัวแทนสำหรับแผงนี้ (/agent <id> เพื่อสลับโดยตรง)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "อธิบายว่าคุณต้องการปรับคำสั่งเทอร์มินัลอย่างไร"
 commands.delegate.summary: "เตรียมงานและเปิดตัวแทนรับมอบสิทธิ์ (/delegate <intent>)"
 
 # ── การดำเนินการคำแนะนำ (src/coordinator.rs) ───────────────────────────

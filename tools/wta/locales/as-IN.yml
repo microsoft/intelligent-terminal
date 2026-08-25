@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "শেহতীয়া আদেশ বিফলতা স্বয়ংক্ৰিয়ভাৱে নিৰ্ণয় কৰা হৈছে"
 chat.turn_canceled: "(বাতিল কৰা হৈছে)"
+chat.turn_adjusted: "(সংশোধন কৰা হৈছে)"
 chat.turn_executed: "→ সম্পাদন কৰা হ’ল: %{title}"
 
 # ── ইনপুট প্লেচহ'ল্ডাৰ (src/ui/input.rs) ────────────────────────────────────
@@ -87,6 +88,7 @@ commands.sessions.summary: "ঐতিহাসিক ছেশ্যন পি�
 commands.agent.summary: "এই পেনৰ বাবে এজেণ্ট বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "আপুনি টাৰ্মিনেল কমাণ্ডটো কেনেদৰে সংশোধন কৰিব বিচাৰে সেয়া বৰ্ণনা কৰক।"
 commands.delegate.summary: "এটা কাম প্ৰস্তুত কৰক আৰু এটা প্ৰতিনিধি এজেন্ট খোলক (/delegate <intent>)"
 
 # ── পৰামৰ্শ পেনেল (src/ui/recommendations.rs) ───────────────────────────────
@@ -95,6 +97,7 @@ recommendations.nav_hint: "(↑ ↓ নেভিগেট কৰিবলৈ •
 recommendations.button_run_command: "[ কমাণ্ড চলাওক ]"
 recommendations.button_send_to_delegate: "[ প্ৰতিনিধিলৈ পঠাওক ]"
 recommendations.button_insert_in_terminal: "টাৰ্মিনেলত সন্নিবেশ কৰক"
+recommendations.button_adjust_command: "সংশোধন কৰক"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "নতুন টেবত খোলক ↵"
 recommendations.button_open_in_new_panel: "নতুন পেনেলত খোলক ↵"
 recommendations.button_open_tab: "টেব খোলক ↵"

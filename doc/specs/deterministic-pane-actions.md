@@ -14,7 +14,7 @@ command execution:
 - A plain `<prompt>` follows the normal Copilot workflow, with the selected
   pane supplied as preferred terminal context.
 - `/command <intent>` (`/cmd` alias) requires Copilot to produce exactly one
-  terminal command proposal. WTA shows the standard **Run / Insert** card.
+  terminal command proposal. WTA shows a **Run / Insert / Adjust** card.
 - `$ <command>` bypasses the model and runs the literal command in the selected
   pane.
 - `/delegate <intent>` immediately creates a new tab or panel and starts the
@@ -34,7 +34,7 @@ does not call `list_panes` when opened or while the selection changes.
    model result, and `$` marks literal input. None of these concepts implicitly
    changes another.
 2. **Host-owned mechanics.** Pane selection, tab/panel creation, agent launch,
-   target binding, and Run/Insert choice never come from the model.
+   target binding, and Run/Insert/Adjust choice never come from the model.
 3. **Confirmation boundary.** A model result becomes a proposal card; only a
    user click/keypress executes it.
 4. **In-memory pane discovery.** WT publishes pane snapshots after structural or
@@ -83,13 +83,24 @@ On Enter:
    - the persistent target, or the default source pane when no `@` selection
      has been made;
    - target shell/title/cwd and recent output;
-   - a requirement to propose exactly one `send` action.
-2. The model returns the proposed payload through
-   `request_terminal_actions`.
-3. WTA ignores any model-authored target and binds the proposal to the selected
-   GUID snapshotted when the turn was submitted.
-4. WTA shows the normal command card with **Run** and **Insert** actions.
+   - a requirement to return only the exact terminal input as assistant text.
+2. At the ACP turn boundary, WTA treats the complete assistant message as the
+   literal payload and locally creates exactly one `send` action.
+3. WTA binds that host-created action to the selected GUID snapshotted when the
+   turn was submitted. The model cannot choose or override the target.
+4. WTA shows the command card with **Run**, **Insert**, and **Adjust** actions.
 5. Run sends exactly one trailing Enter; Insert sends no trailing Enter.
+6. Adjust focuses the input for a natural-language correction. WTA submits the
+   original intent, current command, correction, and the same snapshotted pane
+   context through the literal-output-only preparation path, then replaces the
+   card without executing it.
+
+Command history presents adjustments as a revision tree with at most two
+levels. The original `/command` turn is the root. Every later adjustment is a
+sibling child of that root, even when it was derived from the immediately
+preceding revision. Once a correction is submitted, the prior version is
+marked **Adjusted** rather than canceled, failed, or left with an ambiguous
+unexecuted state.
 
 The model may rewrite prose into a shell command, complete a partial command, or
 prepare text appropriate for an interactive program already running in the
@@ -224,10 +235,13 @@ in flight.
 
 ## Model preparation contract
 
-### Reuse the existing proposal tool
+### Host-synthesize command proposals
 
-Use the existing per-session `request_terminal_actions` MCP endpoint as the
-structured model-output channel. Do not parse assistant prose as commands.
+For `/command`, the model returns only literal terminal input in its final
+assistant message. At `AgentMessageEnd`, the helper consumes the complete
+message and locally constructs the single `send` action. The model does not
+decide whether to call `request_terminal_actions`; such calls are rejected
+during command preparation.
 
 Add an internal preparation mode to `PromptSubmission`:
 
@@ -254,15 +268,17 @@ Add dedicated prompt templates:
 - `prepare-pane-input.md` (terminal command proposal)
 - `prepare-delegate-prompt.md`
 
-Both tell the model:
+The command preparation prompt tells the model:
 
 - understand the user's intent using supplied terminal context;
-- call `request_terminal_actions` exactly once;
-- use exactly one action with `type: "send"`;
-- put only the proposed payload in `input`;
-- do not include a pane ID;
-- do not execute tools or perform the task itself;
-- end without additional assistant prose.
+- return only the exact terminal input as the final assistant message;
+- do not call tools, use Markdown, explain, execute, or choose a pane;
+- treat the full response as literal terminal input.
+
+The delegate preparation prompt still uses `request_terminal_actions` with one
+`send` action because its host-created destination and model payload complete
+independently. It also tells the model not to perform the delegated task and to
+end without additional assistant prose.
 
 The command template requires a shell command without explanatory prose or its
 own newline. The delegate template includes the configured delegate name/model
@@ -295,12 +311,13 @@ The model never supplies `target_session_id` or `mode`.
 
 ### Card behavior
 
-Command preparation uses the standard two-button terminal card:
+Command preparation uses a three-button terminal card:
 
-| Action | Payload sent |
+| Action | Behavior |
 |---|---|
 | Insert | trailing CR/LF removed |
 | Run | trailing CR/LF removed, then one `\r` |
+| Adjust | recompile from the original intent, current command, and correction; execute nothing |
 
 Delegate preparation remains a single **Send** action with exactly one trailing
 `\r`.
@@ -363,8 +380,8 @@ the model branch; it never closes an already-created delegate pane.
 | Initial pane snapshot not received | `@` shows loading; no query fallback. |
 | No eligible pane | Show "No writable panes in this tab." |
 | Selected pane removed during preparation | Cancel/expire proposal; keep original intent. |
-| Model returns prose without tool call | Mark preparation failed; execute nothing. |
-| Model proposes open/multiple actions | Reject proposal; execute nothing. |
+| Model returns empty command text | Mark preparation failed; execute nothing. |
+| Model calls the proposal tool during `/command` | Reject the call and wait for final command text. |
 | Model preparation fails after delegate launch | Keep interactive delegate pane open; offer retry. |
 | Delegate launch fails while model runs | Cancel operation; discard later proposal by operation ID. |
 | Delegate pane closes before confirmation | Expire Send card. |
@@ -392,10 +409,11 @@ plain prompt
 ```text
 persistent/default target GUID
   -> ACP command-proposal prompt
-  -> model request_terminal_actions(send payload)
-  -> helper validates send-only proposal
-  -> helper builds standard Run / Insert card with trusted GUID
-  -> user chooses Run or Insert
+  -> model returns exact terminal input as final text
+  -> helper locally creates one send action with trusted GUID
+  -> helper builds Run / Insert / Adjust card
+  -> user chooses Run, Insert, or Adjust
+  -> Adjust repeats preparation against the same trusted GUID
   -> wtcli -> COM SendInput -> exact TermControl
 ```
 
@@ -495,7 +513,11 @@ Primary files:
 - Picker selection survives metadata updates by GUID.
 - Removed panes clear persistent targets and expire cards.
 - Committed targets survive subsequent ordinary prompts.
-- `/command` and `/cmd` produce the same standard Run/Insert card.
+- `/command` and `/cmd` produce the same Run/Insert/Adjust card.
+- Adjust preserves the card target and deterministically replaces only its
+  command payload.
+- Adjusted command versions form sibling children under the original command;
+  revision history never nests beyond two levels.
 - `$` bypasses the model and binds literal execution to the snapshotted target.
 - Preparation accepts one Send and rejects open, open_and_send, multiple
   choices/actions, empty payloads, and stale prompt IDs.

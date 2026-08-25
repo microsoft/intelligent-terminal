@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Yaqindagi buyruq xatosi avtomatik tarzda tashxis qilindi"
 chat.turn_canceled: "(bekor qilindi)"
+chat.turn_adjusted: "(moslashtirildi)"
 chat.turn_executed: "→ bajarildi: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"
 commands.agent.summary: "Bu panel uchun agentni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Terminal buyrugʻini qanday moslashtirmoqchi ekaningizni tasvirlab bering."
 commands.delegate.summary: "Vazifa tayyorlang va delegat agentini oching (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • ← → tugmalarni alm
 recommendations.button_run_command: "[ Buyruqni bajarish ]"
 recommendations.button_send_to_delegate: "[ Vakilga yuborish ]"
 recommendations.button_insert_in_terminal: "Terminal-ga kiritish"
+recommendations.button_adjust_command: "Moslashtir"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Yangi varaqda ochish ↵"
 recommendations.button_open_in_new_panel: "Yangi panelda ochish ↵"
 recommendations.button_open_tab: "Varaqni ochish ↵"

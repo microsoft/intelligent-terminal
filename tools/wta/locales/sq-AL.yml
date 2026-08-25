@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Dështim i fundit i komandës është diagnostikuar automatikisht"
 chat.turn_canceled: "(anuluar)"
+chat.turn_adjusted: "(rregulluar)"
 chat.turn_executed: "→ ekzekutuar: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndër
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
 recommendations.button_send_to_delegate: "[Dërgo delegatit]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
+recommendations.button_adjust_command: "Rregullo"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
 recommendations.button_open_in_new_panel: "Hap në panelin e ri ↵"
 recommendations.button_open_tab: "Hap skedën ↵"
@@ -209,6 +211,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Zgjidhni agjentin për këtë skedë (/agent <id> për të kaluar drejtpërdrejt)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Përshkruani si dëshironi ta rregulloni komandën e terminalit."
 commands.delegate.summary: "Përgatitni një detyrë dhe hapni një agjent delegatësh (/delegate <intent>)"
 
 # ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────

@@ -219,9 +219,16 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let turns: usize = tab
         .completed_turns
         .iter()
-        .map(|turn| {
+        .enumerate()
+        .map(|(index, turn)| {
             rendered_lines_height(
-                &build_completed_turn_lines(turn, false, false, wrap_width),
+                &build_completed_turn_lines_at_depth(
+                    turn,
+                    false,
+                    false,
+                    wrap_width,
+                    tab.command_revision_parents.contains_key(&index),
+                ),
                 wrap_width,
             )
         })
@@ -403,12 +410,16 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
         for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
             let is_selected = selected_idx == Some(idx);
-            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
-                turn,
-                is_selected,
-                pane_focused,
-                wrap_width,
-            );
+            let (mut turn_lines, prompt_rows) =
+                build_completed_turn_lines_with_prompt_rows_at_depth(
+                    turn,
+                    is_selected,
+                    pane_focused,
+                    wrap_width,
+                    app.current_tab()
+                        .command_revision_parents
+                        .contains_key(&idx),
+                );
             let turn_height = rendered_lines_height(&turn_lines, wrap_width);
             turn_hit_offsets.push((
                 idx,
@@ -620,20 +631,55 @@ fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<Prom
     rows
 }
 
+#[cfg(test)]
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
-    build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
+    build_completed_turn_lines_at_depth(turn, is_selected, pane_focused, wrap_width, false)
 }
 
+fn build_completed_turn_lines_at_depth<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+    is_command_revision: bool,
+) -> Vec<Line<'a>> {
+    build_completed_turn_lines_with_prompt_rows_at_depth(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        is_command_revision,
+    )
+    .0
+}
+
+#[cfg(test)]
 fn build_completed_turn_lines_with_prompt_rows<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
+    build_completed_turn_lines_with_prompt_rows_at_depth(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        false,
+    )
+}
+
+fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+    is_command_revision: bool,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
@@ -660,12 +706,13 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         theme::DIM
     };
 
+    let content_width = wrap_width.saturating_sub(if is_command_revision { 4 } else { 0 });
     let mut lines = if turn.expanded {
         let mut prompt_lines = Vec::new();
         push_prompt_prefixed_lines(
             &mut prompt_lines,
             &turn.prompt,
-            wrap_width.saturating_sub(2).max(1),
+            content_width.saturating_sub(2).max(1),
         );
         for (index, line) in prompt_lines.iter_mut().enumerate() {
             for span in &mut line.spans {
@@ -699,6 +746,14 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         ])]
     };
 
+    if is_command_revision {
+        for (index, line) in lines.iter_mut().enumerate() {
+            line.spans.insert(
+                0,
+                Span::styled(if index == 0 { "  ↳ " } else { "    " }, theme::DIM),
+            );
+        }
+    }
     let prompt_rows = completed_turn_prompt_rows(&lines, wrap_width);
 
     // Index of the line that should receive an inline trailing marker (eg
@@ -718,9 +773,23 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
-            lines.extend(build_message_lines_with_details(
-                msg, false, false, None, 0, wrap_width, true,
-            ));
+            let mut detail_lines = build_message_lines_with_details(
+                msg,
+                false,
+                false,
+                None,
+                0,
+                content_width,
+                true,
+            );
+            if is_command_revision {
+                for line in &mut detail_lines {
+                    if !line.spans.is_empty() {
+                        line.spans.insert(0, Span::raw("    "));
+                    }
+                }
+            }
+            lines.extend(detail_lines);
         }
     }
 
@@ -1387,6 +1456,20 @@ mod tests {
         );
         assert_eq!(expanded[1].spans[0].style, theme::SELECTED);
         assert_eq!(turn_height(&turn, 80), expanded.len());
+    }
+
+    #[test]
+    fn command_revision_renders_as_one_level_child() {
+        let turn = CompletedTurn {
+            prompt: "only show folders".into(),
+            details: vec![ChatMessage::Agent("● Suggested 1 option".into())],
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        let lines = build_completed_turn_lines_at_depth(&turn, false, true, 80, true);
+        assert_eq!(line_text(&lines[0]), "  ↳ ▼ > only show folders");
+        assert!(line_text(&lines[1]).starts_with("    "));
     }
 
     fn assert_tool_call(

@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+pub(crate) fn normalize_pane_session_id(session_id: &str) -> String {
+    session_id
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .to_ascii_lowercase()
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedPaneMetadata {
     pub title: String,
@@ -51,5 +59,13 @@ mod tests {
         assert_eq!(ctx(Some("src"), None).effective_source_pane_id(), Some("src"));
         // Neither → None (must not invent a target pane).
         assert_eq!(ctx(None, None).effective_source_pane_id(), None);
+    }
+
+    #[test]
+    fn pane_session_ids_ignore_guid_braces_and_case() {
+        assert_eq!(
+            normalize_pane_session_id("{A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126}"),
+            normalize_pane_session_id("a6a3dec8-3d75-4afa-ba75-ed5f633e3126")
+        );
     }
 }

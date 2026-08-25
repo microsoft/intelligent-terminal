@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
 chat.turn_canceled: "(avbruten)"
+chat.turn_adjusted: "(justerat)"
 chat.turn_executed: "→ utförd: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ för att navigera • ← → för att växl
 recommendations.button_run_command: "[ Kör kommando ]"
 recommendations.button_send_to_delegate: "[ Skicka till ombud ]"
 recommendations.button_insert_in_terminal: "Infoga i Terminal"
+recommendations.button_adjust_command: "Justera"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Öppna i ny flik ↵"
 recommendations.button_open_in_new_panel: "Öppna i ny panel ↵"
 recommendations.button_open_tab: "Öppna flik ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shi
 commands.agent.summary: "Välj agenten för den här panelen (/agent <id> för att växla direkt)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beskriv hur du vill justera terminalkommandot."
 commands.delegate.summary: "Förbered en uppgift och öppna en delegatagent (/delegate <intent>)"
 
 # ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────

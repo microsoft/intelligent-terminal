@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ସମ୍ପ୍ରତି କମାଣ୍ଡ ବିଫଳତା ସ୍ୱୟଂଚାଳିତ ଭାବେ ନିଦାନ କରାଯାଇଛି"
 chat.turn_canceled: "(ବାତିଲ କରାଗଲା)"
+chat.turn_adjusted: "(ସମଯୋଜନ କରାଗଲା)"
 chat.turn_executed: "→ କାର୍ଯ୍ୟକାରୀ ହୋଇଛି: %{title}"
 
 # ── ଇନ୍‌ପୁଟ୍ ପ୍ଲେସହୋଲ୍ଡର (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "ଇତିହାସିକ ସେସନ୍ ପିକ�
 commands.agent.summary: "ଏହି ଟ୍ୟାବ୍ ପାଇଁ ଏଜେଣ୍ଟ୍ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ଆପଣ ଟର୍ମିନାଲ କମାଣ୍ଡକୁ କିପରି ସମଯୋଜନ କରିବାକୁ ଚାହୁଁଛନ୍ତି ତାହା ବର୍ଣ୍ଣନା କରନ୍ତୁ।"
 commands.delegate.summary: " ଏକ କାର୍ଯ୍ୟ ପ୍ରସ୍ତୁତ କରନ୍ତୁ ଏବଂ ଏକ ପ୍ରତିନିଧୀ ଏଜେଣ୍ଟ ଖୋଲନ୍ତୁ (/delegate <intent>)"
 
 # ── ସୁପାରିଶ ପ୍ୟାନେଲ (src/ui/recommendations.rs) ───────────────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରିବାକ�
 recommendations.button_run_command: "[ କମାଣ୍ଡ ଚଳାନ୍ତୁ ]"
 recommendations.button_send_to_delegate: " [ପ୍ରତିନିଧୀଙ୍କୁ ପଠାନ୍ତୁ]"
 recommendations.button_insert_in_terminal: "ଟର୍ମିନାଲରେ ସନ୍ନିବେଶ କରନ୍ତୁ"
+recommendations.button_adjust_command: "ସମଯୋଜନ କରନ୍ତୁ"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "ନୂଆ ଟ୍ୟାବରେ ଖୋଲନ୍ତୁ ↵"
 recommendations.button_open_in_new_panel: "ନୂଆ ପ୍ୟାନେଲରେ ଖୋଲନ୍ତୁ ↵"
 recommendations.button_open_tab: "ଟ୍ୟାବ ଖୋଲନ୍ତୁ ↵"

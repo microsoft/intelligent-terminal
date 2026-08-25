@@ -44,6 +44,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "直近のコマンド失敗を自動診断しました"
 chat.turn_canceled: "(キャンセル済み)"
+chat.turn_adjusted: "(調整済み)"
 chat.turn_executed: "→ 実行済み: %{title}"
 
 # ── 入力プレースホルダー (src/ui/input.rs) ────────────────────────────────────────────
@@ -74,6 +75,7 @@ recommendations.nav_hint: "(↑ ↓ で移動 • ← → でボタン切り替�
 recommendations.button_run_command: "[ コマンドを実行 ]"
 recommendations.button_send_to_delegate: "[代理人に送信]"
 recommendations.button_insert_in_terminal: "ターミナルに挿入"
+recommendations.button_adjust_command: "調整"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "新しいタブで開く ↵"
 recommendations.button_open_in_new_panel: "新しいパネルで開く ↵"
 recommendations.button_open_tab: "タブを開く ↵"
@@ -205,6 +207,7 @@ commands.sessions.summary: "過去のセッション ピッカーを開く（Ctr
 commands.agent.summary: "このタブのエージェントを選択（直接切り替えるには /agent <id>）"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ターミナル コマンドをどのように調整したいか説明してください。"
 commands.delegate.summary: "タスクを準備し、代理エージェントを開きます (/delegate <intent>)"
 
 # ── 推奨事項の実行 (src/coordinator.rs) ───────────────────────────

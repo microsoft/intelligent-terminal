@@ -22,7 +22,7 @@
 use async_trait::async_trait;
 
 use crate::coordinator::default_supported_delegate_agents;
-use crate::pane_context::PaneContext;
+use crate::pane_context::{normalize_pane_session_id, PaneContext};
 use crate::shell::ShellManager;
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
@@ -302,14 +302,6 @@ async fn resolve_pane_by_session_id(
         }
     }
     None
-}
-
-fn normalize_pane_session_id(session_id: &str) -> String {
-    session_id
-        .trim()
-        .trim_start_matches('{')
-        .trim_end_matches('}')
-        .to_ascii_lowercase()
 }
 
 struct PlannerTerminalContext {

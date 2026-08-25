@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "حالیہ کمانڈ کی ناکامی کا خودکار طور پر تشخیص کیا گیا"
 chat.turn_canceled: "(منسوخ)"
+chat.turn_adjusted: "(ایڈجسٹ کیا گیا)"
 chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
 
 # ── ان پٹ پلیس ہولڈرز (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "تاریخی سیشنز کا انتخاب کار ک�
 commands.agent.summary: "اس ٹیب کے لیے ایجنٹ منتخب کریں (براہ راست تبدیل کرنے کے لیے /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "بیان کریں کہ آپ ٹرمینل کمانڈ کو کیسے ایڈجسٹ کرنا چاہتے ہیں۔"
 commands.delegate.summary: "ایک ٹاسک تیار کریں اور ڈیلیگیٹ ایجنٹ کھولیں (/delegate <intent>)"
 
 # ── سفارشات پینل (src/ui/recommendations.rs) ───────────────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ نیویگیٹ کرنے کے لیے • ← 
 recommendations.button_run_command: "[ کمانڈ چلائیں ]"
 recommendations.button_send_to_delegate: "[ مندوب کو بھیجیں ]"
 recommendations.button_insert_in_terminal: "ٹرمینل میں داخل کریں"
+recommendations.button_adjust_command: "ایڈجسٹ کریں"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "نئی ٹیب میں کھولیں ↵"
 recommendations.button_open_in_new_panel: "نئے پینل میں کھولیں ↵"
 recommendations.button_open_tab: "ٹیب کھولیں ↵"

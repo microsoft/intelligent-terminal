@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "[!!_(Auto-diagnosed a recent command failure)_!!]"
 chat.turn_canceled: "[!!_(canceled)_!!]"
+chat.turn_adjusted: "[!! (adjust_ed) !!]"
 chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to s
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
 recommendations.button_send_to_delegate: "[[ Śéñď ţö ďéĺéğåţé ]!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
+recommendations.button_adjust_command: "[!! Adj_ust !!]"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
 recommendations.button_open_in_new_panel: "[!!_Open in New Panel ↵_!!]"
 recommendations.button_open_tab: "[!!_Open Tab ↵_!!]"
@@ -208,6 +210,7 @@ commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+
 commands.agent.summary: "[!!_Pick the agent for this tab (/agent <id> to switch directly)_!!]"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "[!! Des_cribe how you want to adjust the terminal command. !!]"
 commands.delegate.summary: "[Ṗŕéṗåŕé å ţåśķ åñď öṗéñ å ďéĺéğåţé åğéñţ (/delegate <intent>)!!]"
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Nýleg skipanavilla sjálfgreind"
 chat.turn_canceled: "(hætt við)"
+chat.turn_adjusted: "(aðlagað)"
 chat.turn_executed: "→ keyrt: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ til að fletta • ← → til að skipta um
 recommendations.button_run_command: "[ Keyra skipun ]"
 recommendations.button_send_to_delegate: "[ Senda til fulltrúa ]"
 recommendations.button_insert_in_terminal: "Setja inn í Terminal"
+recommendations.button_adjust_command: "Aðlaga"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Opna í nýjum flipa ↵"
 recommendations.button_open_in_new_panel: "Opna í nýju spjaldi ↵"
 recommendations.button_open_tab: "Opna flipa ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Veldu fulltrúaið fyrir þetta spjald (/agent <id> til að skipta beint)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Lýstu því hvernig þú vilt aðlaga Terminal-skipunina."
 commands.delegate.summary: "Undirbúa verkefni og opna umboðsmann (/delegate <intent>)"
 
 # ── Framkvæmd ráðleggingar (src/coordinator.rs) ───────────────────────────

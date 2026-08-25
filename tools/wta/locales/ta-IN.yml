@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "சமீபத்திய கட்டளை தோல்வி தானாகவே கண்டறியப்பட்டது"
 chat.turn_canceled: "(ரத்து செய்யப்பட்டது)"
+chat.turn_adjusted: "(சரிசெய்யப்பட்டது)"
 chat.turn_executed: "→ செயல்படுத்தப்பட்டது: %{title}"
 
 # ── உள்ளீடு இடப்பிடி (src/ui/input.rs) ────────────────────────────────────
@@ -86,6 +87,7 @@ commands.sessions.summary: "வரலாற்று அமர்வுகள்
 commands.agent.summary: "இந்தப் பலகத்திற்கான ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "டெர்மினல் கட்டளையை நீங்கள் எவ்வாறு சரிசெய்ய விரும்புகிறீர்கள் என்பதை விவரிக்கவும்."
 commands.delegate.summary: "ஒரு பணியைத் தயாரித்து, ஒரு பிரதிநிதி முகவரைத் திறக்கவும் (/delegate <intent>)"
 
 # ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────
@@ -94,6 +96,7 @@ recommendations.nav_hint: "(↑ ↓ வழிசெலுத்த • ← → �
 recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
 recommendations.button_send_to_delegate: "[ பிரதிநிதிக்கு அனுப்பு ]"
 recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
+recommendations.button_adjust_command: "சரிசெய்"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"
 recommendations.button_open_in_new_panel: "புதிய பலகத்தில் திற ↵"
 recommendations.button_open_tab: "தாவலைத் திற ↵"

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Автоматически диагностирован недавний сбой команды"
 chat.turn_canceled: "(отменено)"
+chat.turn_adjusted: "(скорректировано)"
 chat.turn_executed: "→ выполнено: %{title}"
 
 # ── Заполнители ввода (src/ui/input.rs) ────────────────────────────────────────────
@@ -83,6 +84,7 @@ commands.sessions.summary: "Открыть выбор прошлых сеанс�
 commands.agent.summary: "Выберите агент для этой вкладки (/agent <id> для прямого переключения)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Опишите, как вы хотите скорректировать команду терминала."
 commands.delegate.summary: "Подготовьте задачу и откройте агент делегата (/delegate <intent>)"
 # ── Панель рекомендаций (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - названия клавиш и символ клавиши Enter, не переводить
@@ -90,6 +92,7 @@ recommendations.nav_hint: "(↑ ↓ навигация • ← → перекл�
 recommendations.button_run_command: "[ Выполнить команду ]"
 recommendations.button_send_to_delegate: "[ Отправить делегату ]"
 recommendations.button_insert_in_terminal: "Вставить в терминал"
+recommendations.button_adjust_command: "Скорректировать"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Открыть в новой вкладке ↵"
 recommendations.button_open_in_new_panel: "Открыть в новой панели ↵"
 recommendations.button_open_tab: "Открыть вкладку ↵"

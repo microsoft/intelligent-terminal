@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Samodejno diagnosticirana nedavna napaka ukaza"
 chat.turn_canceled: "(preklicano)"
+chat.turn_adjusted: "(prilagojeno)"
 chat.turn_executed: "→ izvedeno: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -83,6 +84,7 @@ commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Loc
 commands.agent.summary: "Izberite agent za ta zavihek (/agent <id> za neposreden preklop)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Opišite, kako želite prilagoditi ukaz terminala."
 commands.delegate.summary: "Pripravite nalogo in odprite pooblaščenega posrednika (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -90,6 +92,7 @@ recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje g
 recommendations.button_run_command: "[ Zaženi ukaz ]"
 recommendations.button_send_to_delegate: "[ Pošlji pooblaščencu ]"
 recommendations.button_insert_in_terminal: "Vstavi v terminal"
+recommendations.button_adjust_command: "Prilagodi"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Odpri v novem zavihku ↵"
 recommendations.button_open_in_new_panel: "Odpri v novem podoknu ↵"
 recommendations.button_open_tab: "Odpri zavihek ↵"

@@ -52,6 +52,20 @@ pub(crate) fn terminal_command_request(intent: &str) -> String {
     )
 }
 
+pub(crate) fn terminal_command_adjustment_request(
+    original_intent: &str,
+    current_command: &str,
+    adjustment: &str,
+) -> String {
+    format!(
+        "{}\n\n## Original User Intent\n{}\n\n## Current Terminal Input\n{}\n\n## Requested Adjustment\n{}",
+        EMBEDDED_PANE_INPUT_PREPARATION_PROMPT.trim(),
+        original_intent.trim(),
+        current_command.trim_matches(['\r', '\n']),
+        adjustment.trim()
+    )
+}
+
 pub(crate) fn delegate_preparation_request(intent: &str) -> String {
     format!(
         "{}\n\n## User Intent\n{}",
@@ -259,9 +273,9 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 mod tests {
     use super::{
         delegate_preparation_request, load_planner_prompt_template_from_root,
-        merge_runtime_sections, terminal_command_request, DEFAULT_PROMPT_FILE_NAME,
-        EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT, RUNTIME_CONTEXT_MARKER,
-        USER_PROMPT_FILE_NAME,
+        merge_runtime_sections, terminal_command_adjustment_request, terminal_command_request,
+        DEFAULT_PROMPT_FILE_NAME, EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT,
+        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -296,10 +310,8 @@ mod tests {
 
     #[test]
     fn merge_runtime_sections_removes_marker_when_context_is_empty() {
-        let merged = merge_runtime_sections(
-            &format!("before\n{}\nafter", RUNTIME_CONTEXT_MARKER),
-            &[],
-        );
+        let merged =
+            merge_runtime_sections(&format!("before\n{}\nafter", RUNTIME_CONTEXT_MARKER), &[]);
 
         assert_eq!(merged, "before\n\nafter");
     }
@@ -325,8 +337,17 @@ mod tests {
     fn preparation_requests_embed_intent_and_restrict_model_authority() {
         let pane = terminal_command_request("run parser tests");
         assert!(pane.contains("run parser tests"));
-        assert!(pane.contains("exactly one `send` action"));
-        assert!(pane.contains("host owns the target pane"));
+        assert!(pane.contains("Return only that terminal input"));
+        assert!(pane.contains("Do not call"));
+        assert!(pane.contains("deterministically"));
+        assert!(!pane.contains("request_terminal_actions"));
+
+        let adjustment =
+            terminal_command_adjustment_request("list files", "Get-ChildItem", "include hidden");
+        assert!(adjustment.contains("## Original User Intent\nlist files"));
+        assert!(adjustment.contains("## Current Terminal Input\nGet-ChildItem"));
+        assert!(adjustment.contains("## Requested Adjustment\ninclude hidden"));
+        assert!(adjustment.contains("Return only that terminal input"));
 
         let delegate = delegate_preparation_request("investigate flaky tests");
         assert!(delegate.contains("investigate flaky tests"));

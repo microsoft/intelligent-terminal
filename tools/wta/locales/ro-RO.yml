@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Eșec recent al comenzii diagnosticat automat"
 chat.turn_canceled: "(anulat)"
+chat.turn_adjusted: "(ajustat)"
 chat.turn_executed: "→ executat: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ pentru navigare • ← → pentru comutarea
 recommendations.button_run_command: "[ Rulează comanda ]"
 recommendations.button_send_to_delegate: "[ Trimite către delegat ]"
 recommendations.button_insert_in_terminal: "Inserare în Terminal"
+recommendations.button_adjust_command: "Ajustează"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Deschide în filă nouă ↵"
 recommendations.button_open_in_new_panel: "Deschide în panou nou ↵"
 recommendations.button_open_tab: "Deschide filă ↵"
@@ -209,6 +211,7 @@ commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shi
 commands.agent.summary: "Alegeți agentul pentru această filă (/agent <id> pentru a comuta direct)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Descrie cum vrei să ajustezi comanda terminalului."
 commands.delegate.summary: "Pregătește o sarcină și deschide un agent delegat (/delegate <intent>)"
 
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────

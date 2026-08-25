@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
 chat.turn_canceled: "(bertan behera utzita)"
+chat.turn_adjusted: "(doituta)"
 chat.turn_executed: "→ exekutatuta: %{title}"
 
 # ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ nabigatzeko • ← → ekintzak aldatzeko �
 recommendations.button_run_command: "[ Exekutatu komandoa ]"
 recommendations.button_send_to_delegate: "[ Bidali ordezkariari ]"
 recommendations.button_insert_in_terminal: "Txertatu Terminalean"
+recommendations.button_adjust_command: "Doitu"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
 recommendations.button_open_in_new_panel: "Ireki Panel Berrian ↵"
 recommendations.button_open_tab: "Ireki Fitxa ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Aukeratu fitxa honetarako agentea (/agent <id> zuzenean aldatzeko)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Deskribatu nola doitu nahi duzun terminaleko komandoa."
 commands.delegate.summary: "Prestatu zeregin bat eta ireki ordezkari ordezkari bat (/delegate <intent>)"
 
 # ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────

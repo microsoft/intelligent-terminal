@@ -2233,13 +2233,23 @@ impl App {
                         .get("generation")
                         .and_then(|value| value.as_u64())
                         .unwrap_or_default();
-                    let panes = params
-                        .get("panes")
-                        .cloned()
-                        .and_then(|value| {
-                            serde_json::from_value::<Vec<tab_state::PaneDescriptor>>(value).ok()
-                        })
-                        .unwrap_or_default();
+                    let Some(panes_value) = params.get("panes").cloned() else {
+                        tracing::warn!(target: "pane_catalog", "snapshot missing panes");
+                        return;
+                    };
+                    let panes =
+                        match serde_json::from_value::<Vec<tab_state::PaneDescriptor>>(panes_value)
+                        {
+                            Ok(panes) => panes,
+                            Err(error) => {
+                                tracing::warn!(
+                                    target: "pane_catalog",
+                                    %error,
+                                    "ignoring malformed pane snapshot"
+                                );
+                                return;
+                            }
+                        };
                     let invalidated_session = {
                         let tab = self.tab_mut(target_tab);
                         let previous_agent_target =
@@ -2258,9 +2268,9 @@ impl App {
                             .and_then(|prompt| prompt.context.target_pane_id())
                             .map(str::to_string);
                         let target_missing = target.as_ref().is_some_and(|target| {
-                            !tab.pane_targets
-                                .panes
-                                .contains_key(&target.to_ascii_lowercase())
+                            !tab.pane_targets.panes.contains_key(
+                                &crate::pane_context::normalize_pane_session_id(target),
+                            )
                         });
                         (
                             (mode != Some(PreparedActionMode::DelegateSend) && target_missing)
@@ -2437,7 +2447,7 @@ impl App {
                         tab.clear_chat_history();
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
-                        tab.completed_turns.clear();
+                        tab.clear_completed_turns();
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

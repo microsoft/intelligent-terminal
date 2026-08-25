@@ -93,13 +93,23 @@ pub fn render_buttons(
     buttons: &[String],
     focused: Option<usize>,
 ) {
+    render_buttons_with_style(frame, area, buttons, focused, theme::BUTTON_FOCUSED);
+}
+
+pub fn render_buttons_with_style(
+    frame: &mut Frame,
+    area: Rect,
+    buttons: &[String],
+    focused: Option<usize>,
+    focused_style: Style,
+) {
     let mut spans: Vec<Span> = Vec::new();
     for (i, label) in buttons.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
         let style = if focused == Some(i) {
-            theme::BUTTON_FOCUSED
+            focused_style
         } else {
             theme::BUTTON_PLAIN
         };
@@ -108,4 +118,3 @@ pub fn render_buttons(
     let para = Paragraph::new(Line::from(spans));
     frame.render_widget(para, area);
 }
-

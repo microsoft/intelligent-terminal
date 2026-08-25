@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
 chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
+chat.turn_adjusted: "(تەڭشەلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچى
 commands.agent.summary: "بۇ بەت ئۈچۈن ۋاكالەتچى تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /agent <id>)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "تېرمىنال بۇيرۇقىنى قانداق تەڭشىمەكچى ئىكەنلىكىڭىزنى چۈشەندۈرۈڭ."
 commands.delegate.summary: " بىر ۋەزىپە تەييارلاپ ، ۋەكىل ۋاكالەتچىسى ئېچىڭ (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇ
 recommendations.button_run_command: "[ بۇيرۇقنى ئىجرا قىلىش ]"
 recommendations.button_send_to_delegate: " [ۋەكىل ئەۋەتىش]"
 recommendations.button_insert_in_terminal: "تېرمىنالغا قىستۇرۇش"
+recommendations.button_adjust_command: "تەڭشەش"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "يېڭى بەتكۈچتە ئېچىش ↵"
 recommendations.button_open_in_new_panel: "يېڭى تاختىدا ئېچىش ↵"
 recommendations.button_open_tab: "بەتكۈچ ئېچىش ↵"

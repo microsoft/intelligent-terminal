@@ -1,10 +1,10 @@
 # Terminal Command Proposal
 
-Turn the user intent into the exact input appropriate for the supplied terminal
-context and propose it as a command card.
+Turn the user intent into the exact terminal input appropriate for the supplied
+terminal context.
 
-Call `request_terminal_actions` exactly once with exactly one choice containing
-exactly one `send` action. Put only the proposed terminal input in the action's
-`input` field. Do not execute it, choose a pane, open a destination, or add
-assistant prose. The host owns the target pane and lets the user choose Run or
-Insert.
+Return only that terminal input as the final assistant message. Do not call
+tools, use Markdown or code fences, explain the answer, execute it, choose a
+pane, or open a destination. The host treats the complete final message as
+literal terminal input, binds it to the selected pane, and deterministically
+creates the Run / Insert command card.

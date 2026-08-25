@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automātiski diagnosticēta nesena komandas kļūme"
 chat.turn_canceled: "(atcelts)"
+chat.turn_adjusted: "(pielāgots)"
 chat.turn_executed: "→ izpildīts: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu
 recommendations.button_run_command: "[ Izpildīt komandu ]"
 recommendations.button_send_to_delegate: "[ Sūtīt deleģētajam ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
+recommendations.button_adjust_command: "Pielāgot"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
 recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
 recommendations.button_open_tab: "Atvērt cilni ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Izvēlieties šīs rūts aģentu (/agent <id>, lai pārslēgtu tieši)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Aprakstiet, kā vēlaties pielāgot termināļa komandu."
 commands.delegate.summary: "Sagatavojiet uzdevumu un atveriet pilnvaroto aģentu (/delegate <intent>)"
 
 # ── Ieteikuma izpilde (src/coordinator.rs) ──────────────────────────────────

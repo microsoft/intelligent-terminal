@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Hiljutine käsutõrge automaatselt diagnoositud"
 chat.turn_canceled: "(tühistatud)"
+chat.turn_adjusted: "(kohandatud)"
 chat.turn_executed: "→ käivitatud: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetami
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_send_to_delegate: "[ Saada delegaadile ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
+recommendations.button_adjust_command: "Kohanda"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
 recommendations.button_open_in_new_panel: "Ava uuel paneelil ↵"
 recommendations.button_open_tab: "Ava vahekaart ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)" 
 commands.agent.summary: "Valige selle vahekaardi agent (/agent <id> otse vahetamiseks)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Kirjeldage, kuidas soovite terminalikäsku kohandada."
 commands.delegate.summary: "Valmistage ette ülesanne ja avage volitatud agent (/delegate <intent>)"
 
 # ── Soovituse täitmine (src/coordinator.rs) ─────────────────────────────────

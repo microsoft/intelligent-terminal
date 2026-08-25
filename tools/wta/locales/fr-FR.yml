@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Échec récent d'une commande diagnostiqué automatiquement"
 chat.turn_canceled: "(annulé)"
+chat.turn_adjusted: "(ajusté)"
 chat.turn_executed: "→ exécuté : %{title}"
 
 # ── Espaces réservés de saisie (src/ui/input.rs) ────────────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ naviguer • ← → changer d’action • 
 recommendations.button_run_command: "[ Exécuter la commande ]"
 recommendations.button_send_to_delegate: "[ Envoyer au délégué ]"
 recommendations.button_insert_in_terminal: "Insérer dans le terminal"
+recommendations.button_adjust_command: "Ajuster"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Ouvrir dans un nouvel onglet ↵"
 recommendations.button_open_in_new_panel: "Ouvrir dans un nouveau panneau ↵"
 recommendations.button_open_tab: "Ouvrir l'onglet ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Ouvrir le sélecteur de sessions précédentes (Ctrl
 commands.agent.summary: "Choisir l’agent pour cet onglet (/agent <id> pour changer directement)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Décrivez comment vous voulez ajuster la commande du terminal."
 commands.delegate.summary: "Préparer une tâche et ouvrir un agent délégué (/delegate <intent>)"
 
 # ── Exécution des recommandations (src/coordinator.rs) ───────────────────────────

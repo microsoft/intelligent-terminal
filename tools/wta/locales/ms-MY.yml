@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Kegagalan arahan baru-baru ini didiagnosis secara automatik"
 chat.turn_canceled: "(dibatalkan)"
+chat.turn_adjusted: "(dilaraskan)"
 chat.turn_executed: "→ dilaksanakan: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk menukar tin
 recommendations.button_run_command: "[ Jalankan arahan ]"
 recommendations.button_send_to_delegate: "[ Hantar kepada perwakilan ]"
 recommendations.button_insert_in_terminal: "Sisipkan dalam Terminal"
+recommendations.button_adjust_command: "Laraskan"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Buka dalam Tab Baharu ↵"
 recommendations.button_open_in_new_panel: "Buka dalam Panel Baharu ↵"
 recommendations.button_open_tab: "Buka Tab ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "Buka pemilih sesi sejarah (Ctrl+Shift+/)"  # {Locked
 commands.agent.summary: "Pilih ejen untuk tab ini (/agent <id> untuk menukar terus)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Terangkan cara anda mahu melaraskan perintah Terminal."
 commands.delegate.summary: "Sediakan tugas dan buka ejen perwakilan (/delegate <intent>)"
 
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
 use crate::coordinator::OpenTarget;
+use crate::pane_context::normalize_pane_session_id;
 
 use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
@@ -84,6 +85,17 @@ pub struct PendingPreparation {
     pub prompt_id: u64,
     pub target_session_id: String,
     pub mode: PreparedActionMode,
+    pub title: String,
+    pub revision_root_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandAdjustment {
+    pub title: String,
+    pub current_command: String,
+    pub target_session_id: String,
+    pub history_index: usize,
+    pub revision_root_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -122,12 +134,12 @@ impl PaneTargetState {
         self.generation = generation;
         self.panes = panes
             .into_iter()
-            .map(|pane| (pane.session_id.to_ascii_lowercase(), pane))
+            .map(|pane| (normalize_pane_session_id(&pane.session_id), pane))
             .collect();
         if self
             .agent_target_session_id
             .as_ref()
-            .is_some_and(|target| !self.panes.contains_key(&target.to_ascii_lowercase()))
+            .is_some_and(|target| !self.panes.contains_key(&normalize_pane_session_id(target)))
         {
             self.agent_target_session_id = None;
         }
@@ -138,7 +150,7 @@ impl PaneTargetState {
     pub fn agent_target(&self) -> Option<&PaneDescriptor> {
         self.agent_target_session_id
             .as_ref()
-            .and_then(|target| self.panes.get(&target.to_ascii_lowercase()))
+            .and_then(|target| self.panes.get(&normalize_pane_session_id(target)))
     }
 }
 
@@ -533,6 +545,7 @@ pub struct TabSession {
     pub(crate) active_direct_proposal_id: Option<String>,
     pub(crate) pending_preparation: Option<PendingPreparation>,
     pub(crate) active_prepared_mode: Option<PreparedActionMode>,
+    pub(crate) command_adjustment: Option<CommandAdjustment>,
     pub(crate) pending_delegate: Option<PendingDelegate>,
     pub usage: Option<crate::usage::UsageSnapshot>,
     pub usage_staleness: crate::usage::UsageStaleness,
@@ -540,6 +553,9 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Maps each command revision to its root command turn. Revisions are
+    /// always rendered one level below the root, never nested recursively.
+    pub command_revision_parents: HashMap<usize, usize>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -895,6 +911,12 @@ impl TabSession {
         self.completed_turn_selection_visible_pending = false;
     }
 
+    pub fn clear_completed_turns(&mut self) {
+        self.completed_turns.clear();
+        self.command_revision_parents.clear();
+        self.clear_completed_turn_selection();
+    }
+
     pub fn select_completed_turn(&mut self, index: usize) -> bool {
         if index >= self.completed_turns.len() {
             return false;
@@ -987,6 +1009,24 @@ mod pane_target_tests {
         state.replace_snapshot(1, vec![pane("kept", "Kept", false)]);
 
         assert!(state.agent_target_session_id.is_none());
+    }
+
+    #[test]
+    fn snapshot_preserves_target_across_guid_format_changes() {
+        let mut state = PaneTargetState::default();
+        state.agent_target_session_id = Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126".to_string());
+
+        state.replace_snapshot(
+            1,
+            vec![pane(
+                "{a6a3dec8-3d75-4afa-ba75-ed5f633e3126}",
+                "PowerShell",
+                true,
+            )],
+        );
+
+        assert!(state.agent_target_session_id.is_some());
+        assert!(state.agent_target().is_some());
     }
 
     #[test]

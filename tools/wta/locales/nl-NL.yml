@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
 chat.turn_canceled: "(geannuleerd)"
+chat.turn_adjusted: "(aangepast)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
 
 # ── Invoertijdelijke aanduidingen (src/ui/input.rs) ────────────────────────────────────────────
@@ -78,6 +79,7 @@ recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen 
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
 recommendations.button_send_to_delegate: "[ Verzenden naar afgevaardigde ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
+recommendations.button_adjust_command: "Aanpassen"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
 recommendations.button_open_in_new_panel: "Openen in nieuw deelvenster ↵"
 recommendations.button_open_tab: "Tabblad openen ↵"
@@ -210,6 +212,7 @@ commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+
 commands.agent.summary: "Het agent voor dit tabblad kiezen (/agent <id> om direct te wisselen)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beschrijf hoe u de terminalopdracht wilt aanpassen."
 commands.delegate.summary: "Een taak voorbereiden en een gemachtigde agent openen (/delegate <intent>)"
 
 # ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────

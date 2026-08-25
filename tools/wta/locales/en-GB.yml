@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Auto-diagnosed a recent command failure"
 chat.turn_canceled: "(cancelled)"
+chat.turn_adjusted: "(adjusted)"
 chat.turn_executed: "→ executed: %{title}"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
@@ -73,6 +74,7 @@ commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command
 commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Describe how you want to adjust the terminal command."
 commands.delegate.summary: "Prepare a task and open a delegate agent (/delegate <intent>)"  # {Locked="/delegate","<intent>"}
 pane_picker.title: "Select terminal pane (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 pane_picker.empty: "No writable terminal panes are available."
@@ -85,6 +87,7 @@ direct_command.execution_unavailable: "Terminal command execution is unavailable
 recommendations.nav_hint: "(↑ ↓ to navigate • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_adjust_command: "Adjust"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_send_to_delegate: "[ Send to delegate ]"  # Button sends the prepared task prompt to the newly opened AI agent pane
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"

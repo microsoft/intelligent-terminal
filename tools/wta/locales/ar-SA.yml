@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "تم التشخيص التلقائي لفشل أمر حديث"
 chat.turn_canceled: "(تم الإلغاء)"
+chat.turn_adjusted: "(تم التعديل)"
 chat.turn_executed: "→ تم التنفيذ: %{title}"
 
 # ── عناصر نائبة للإدخال (src/ui/input.rs) ────────────────────────────────────
@@ -87,6 +88,7 @@ commands.sessions.summary: "فتح منتقي الجلسات التاريخية 
 commands.agent.summary: "اختر عامل لعلامة التبويب هذه (/agent <id> للتبديل مباشرةً)"  # {Locked="/agent","<id>"}
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "صِف كيف تريد تعديل أمر الطرفية."
 commands.delegate.summary: "قم بإعداد مهمة وفتح وكيل مفوض (/delegate <intent>)"
 
 # ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────
@@ -95,6 +97,7 @@ recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بي
 recommendations.button_run_command: "[ تشغيل الأمر ]"
 recommendations.button_send_to_delegate: "[إرسال إلى المفوض]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
+recommendations.button_adjust_command: "تعديل"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
 recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
 recommendations.button_open_tab: "فتح علامة تبويب ↵"
