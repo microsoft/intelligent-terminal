@@ -85,6 +85,7 @@ const MAX_TOOL_DETAIL_LINES: usize = 32;
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
     static TOOL_DETAIL_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static RENDERED_HEIGHT_LINE_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -105,6 +106,16 @@ pub(crate) fn reset_tool_detail_build_count() {
 #[cfg(test)]
 pub(crate) fn tool_detail_build_count() -> usize {
     TOOL_DETAIL_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn reset_rendered_height_line_scan_count() {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn rendered_height_line_scan_count() -> usize {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(Cell::get)
 }
 
 #[cfg(test)]
@@ -337,6 +348,9 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
 }
 
 fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    #[cfg(test)]
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(count.get() + lines.len()));
+
     let width = wrap_width.max(1);
     lines
         .iter()
@@ -1101,13 +1115,14 @@ fn build_completed_turn_lines_with_geometry<'a>(
         // formatting matches. `is_last_message=false` and
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
+        let mut rendered_height = rendered_lines_height(&lines, wrap_width);
         for (detail_index, msg) in turn.details.iter().enumerate() {
             let display = match msg {
                 ChatMessage::ToolCall { id, status, .. } => {
                     let expanded = tool_expanded(id);
                     tool_rows.push(ToolRowGeometry {
                         detail_index,
-                        row_offset: rendered_lines_height(&lines, wrap_width),
+                        row_offset: rendered_height,
                         expanded,
                         marker: tool_call_presentation(status).0,
                     });
@@ -1115,9 +1130,11 @@ fn build_completed_turn_lines_with_geometry<'a>(
                 }
                 _ => ToolDisplay::Live,
             };
-            lines.extend(build_message_lines_with_details(
-                msg, false, false, None, 0, wrap_width, display,
-            ));
+            let message_lines =
+                build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            rendered_height =
+                rendered_height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
+            lines.extend(message_lines);
         }
     }
 
@@ -1664,6 +1681,38 @@ mod tests {
         .expect("counter thread must finish");
 
         assert_eq!(completed_turn_line_build_count(), 0);
+    }
+
+    #[test]
+    fn completed_tool_geometry_scans_rendered_lines_linearly() {
+        let turn = CompletedTurn {
+            prompt: "tools".into(),
+            details: (0..100)
+                .map(|index| ChatMessage::ToolCall {
+                    id: format!("tool-{index}"),
+                    title: format!("Read file {index}"),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(format!(r"C:\repo\file-{index}.txt")),
+                    location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                })
+                .collect(),
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        reset_rendered_height_line_scan_count();
+        build_completed_turn_lines_with_geometry(&turn, false, false, 80, |_| false);
+
+        assert!(
+            rendered_height_line_scan_count() <= 110,
+            "tool geometry must measure the prompt once and each message once",
+        );
     }
 
     #[test]

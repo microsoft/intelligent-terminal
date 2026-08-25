@@ -3922,7 +3922,7 @@ impl App {
                     self.handle_setup_enter(opt);
                 }
             }
-            KeyCode::Char('o') | KeyCode::Char('O') => {
+            KeyCode::Char('o') | KeyCode::Char('O') if key.modifiers.is_empty() => {
                 // Open install URL if the selected option is an install-related one
                 if let Some(ref setup) = self.setup {
                     if let Some(opt) = setup.options.get(setup.selected_index) {
