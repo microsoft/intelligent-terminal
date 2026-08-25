@@ -128,8 +128,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // height prediction and rendering in sync when a short pane switches
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
-    let chat_estimate =
-        chat::estimated_block_height(app, chat_content_width, main_area.height);
+    let chat_estimate = chat::estimated_block_height(app, chat_content_width, main_area.height);
     let recommendation_natural_height =
         app.current_tab()
             .turn
@@ -223,7 +222,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(chunks[6]);
 
-    chat::render(frame, app, h_chat[1]);
+    chat::render(frame, app, h_chat[1], h_chat[2]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
     recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {

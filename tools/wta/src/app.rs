@@ -79,12 +79,12 @@ use autofix::*;
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
-pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
     ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput, UserInputState, View,
 };
+pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
@@ -3565,7 +3565,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
             tab.loading_session = false;
             tab.loading_target_session_id = None;
@@ -5133,7 +5133,7 @@ impl App {
     fn cmd_clear(&mut self) {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.scroll_to_bottom();
     }
 
@@ -5189,7 +5189,7 @@ impl App {
         tab.clear_chat_history();
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
-        tab.completed_turns.clear();
+        tab.clear_completed_turns();
         tab.session_id = None;
         tab.scroll_to_bottom();
     }
@@ -5365,7 +5365,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.session_id = None;
         }
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
@@ -5754,7 +5754,7 @@ impl App {
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
-            tab.completed_turns.clear();
+            tab.clear_completed_turns();
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {

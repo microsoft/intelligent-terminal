@@ -233,10 +233,12 @@ impl App {
             return;
         };
         let tab = self.current_tab_mut();
-        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+        let Some(turn) = tab.completed_turns.get(click.turn_index) else {
             return;
         };
-        turn.expanded = click.previous_expanded;
+        if turn.expanded != click.previous_expanded {
+            tab.toggle_completed_turn(click.turn_index);
+        }
         tab.selected_completed_turn_idx = click.previous_selected_index;
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
@@ -1408,7 +1410,7 @@ impl App {
                 exit_code,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                let update_content = |message: &mut ChatMessage| {
+                let update_content = |message: &mut ChatMessage| -> bool {
                     let ChatMessage::ToolCall {
                         output: card_output,
                         exit_code: card_exit_code,
@@ -1416,7 +1418,7 @@ impl App {
                         ..
                     } = message
                     else {
-                        return;
+                        return false;
                     };
                     let mut contains_terminal = false;
                     for item in content {
@@ -1441,14 +1443,23 @@ impl App {
                             *card_exit_code = exit_code;
                         }
                     }
+                    contains_terminal
                 };
                 for message in &mut tab.messages {
                     update_content(message);
                 }
-                for turn in &mut tab.completed_turns {
+                let mut invalidated_turns = Vec::new();
+                for (index, turn) in tab.completed_turns.iter_mut().enumerate() {
+                    let mut changed = false;
                     for message in &mut turn.details {
-                        update_content(message);
+                        changed |= update_content(message);
                     }
+                    if changed {
+                        invalidated_turns.push(index);
+                    }
+                }
+                for index in invalidated_turns {
+                    tab.invalidate_completed_turn_height(index);
                 }
             }
             AppEvent::HideToolCall { session_id, id } => {
@@ -2321,7 +2332,7 @@ impl App {
                         tab.clear_chat_history();
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
-                        tab.completed_turns.clear();
+                        tab.clear_completed_turns();
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
