@@ -515,7 +515,11 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary(
     // Detection is by object identity against our own scriptblock — never by
     // text matching, which a renderer could accidentally satisfy.
     const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
-    const auto identityCheck = script.find("[object]::ReferenceEquals($current, $Global:__ShellInteg_Wrapper)", rearmFunc);
+    // -eq, NOT [object]::ReferenceEquals: re-arm runs at script load and from the
+    // readline boundary, and a static method call under Constrained Language Mode
+    // aborts the enclosing script even from inside try/catch.
+    const auto identityCheck = script.find("if ($current -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
+    const auto noStaticCall = script.substr(rearmFunc).find("[object]::ReferenceEquals");
     const auto adopt = script.find("$Global:__ShellInteg_OriginalPrompt = $current", identityCheck);
     const auto reinstall = script.find("Set-Item Function:\\global:prompt $Global:__ShellInteg_Wrapper", adopt);
 
@@ -531,6 +535,8 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary(
                    L"The wrapper scriptblock must be captured after prompt is defined");
     VERIFY_IS_TRUE(rearmFunc < identityCheck && identityCheck < adopt && adopt < reinstall,
                    L"Re-arm must detect replacement by object identity, adopt the newcomer, then reinstall the wrapper");
+    VERIFY_ARE_EQUAL(std::string::npos, noStaticCall,
+                     L"Re-arm must not invoke static methods - blocked in Constrained Language Mode, and the failure aborts the script even from inside try/catch");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper()
@@ -606,9 +612,9 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GuardsAgainstChainingPrompt
     VERIFY_ARE_NOT_EQUAL(std::string::npos, clearFlag);
     VERIFY_ARE_NOT_EQUAL(std::string::npos, retainPrev);
     VERIFY_IS_TRUE(promptStart < reentryGuard && reentryGuard < servePrev,
-                   L"Re-entry must be detected before any rendering work and serve the displaced prompt");
+                   L"reentry must be detected before any rendering work and serve the displaced prompt");
     VERIFY_IS_TRUE(setFlag < delegation && delegation < clearFlag,
-                   L"The re-entrancy flag must be set around the delegation and cleared in finally");
+                   L"The reentrancy flag must be set around the delegation and cleared in finally");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()

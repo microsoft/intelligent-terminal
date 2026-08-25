@@ -613,9 +613,18 @@ function Global:__ShellInteg_Rearm {
     # the next shell, which sources only this version.
     if ($null -eq $Global:__ShellInteg_Wrapper) { return }
 
+    # Identity is compared with -eq rather than a static reference-equality
+    # method. This runs unconditionally at script load and from
+    # PSConsoleHostReadLine, and under Constrained Language Mode a static method
+    # call raises "Method invocation is supported only on core types", which
+    # aborts the enclosing script even from inside try/catch - breaking profile
+    # sourcing or the input path. ScriptBlock does not override Equals, so -eq is
+    # reference identity here (verified: two scriptblocks with identical text
+    # compare False), and the operator is permitted in Constrained Language Mode.
+    # That keeps re-arming working there instead of disabling it.
     $current = $function:prompt
     if ($null -eq $current) { return }
-    if ([object]::ReferenceEquals($current, $Global:__ShellInteg_Wrapper)) { return }
+    if ($current -eq $Global:__ShellInteg_Wrapper) { return }
 
     # Best-effort. This runs from PSConsoleHostReadLine, so a throw here would
     # break the input path, and at script load, where it would break profile
@@ -623,7 +632,7 @@ function Global:__ShellInteg_Rearm {
     # profile, which makes Set-Item raise SessionStateUnauthorizedAccessException.
     # Shell integration is a convenience; never let it take the shell down.
     try {
-        if (-not [object]::ReferenceEquals($current, $Global:__ShellInteg_OriginalPrompt)) {
+        if ($current -ne $Global:__ShellInteg_OriginalPrompt) {
             # Retain the renderer being displaced, in case the newcomer chains
             # back into us.
             $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
