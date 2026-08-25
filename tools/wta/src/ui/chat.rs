@@ -373,7 +373,7 @@ fn breathing_dot(frame: usize) -> &'static str {
     }
 }
 
-const CHAT_RENDER_OVERSCAN_ROWS: usize = 32;
+const CHAT_RENDER_MARGIN_ROWS: usize = 32;
 
 struct CompletedTurnHitOffset {
     turn_index: usize,
@@ -477,7 +477,7 @@ fn plan_completed_turn_viewport(
         }
         requested_rows = visible_height
             .saturating_add(effective_offset.saturating_sub(skipped_rows_below))
-            .saturating_add(CHAT_RENDER_OVERSCAN_ROWS);
+            .saturating_add(CHAT_RENDER_MARGIN_ROWS);
         let mut built_rows = if skip_base_lines {
             0
         } else {
@@ -492,7 +492,7 @@ fn plan_completed_turn_viewport(
                 rendered_rows_below = turn_end;
                 requested_rows = visible_height
                     .saturating_add(effective_offset.saturating_sub(skipped_rows_below))
-                    .saturating_add(CHAT_RENDER_OVERSCAN_ROWS);
+                    .saturating_add(CHAT_RENDER_MARGIN_ROWS);
                 continue;
             }
 
@@ -545,7 +545,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     let mut effective_offset = app.current_tab().chat_scroll.offset;
     let mut requested_rows = visible_height
         .saturating_add(effective_offset)
-        .saturating_add(CHAT_RENDER_OVERSCAN_ROWS);
+        .saturating_add(CHAT_RENDER_MARGIN_ROWS);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();

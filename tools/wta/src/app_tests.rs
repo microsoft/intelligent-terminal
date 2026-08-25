@@ -10735,7 +10735,7 @@ fn completed_tool_output_update_invalidates_cached_turn_height() {
         session_id: DEFAULT_TAB_ID.into(),
         terminal_id: "terminal-cache-id".into(),
         output: ToolCallOutput {
-            text: "TERMINAL_CACHE_NEW_OUTPUT\nsecond line".into(),
+            text: concat!("TERMINAL_CACHE_NEW_OUTPUT", "\n", "second line").into(),
             truncated: false,
         },
         exit_code: Some(0),
