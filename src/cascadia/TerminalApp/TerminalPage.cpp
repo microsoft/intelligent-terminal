@@ -8354,6 +8354,36 @@ namespace winrt::TerminalApp::implementation
         return layout;
     }
 
+    // Saves every tab in this window as a durable tab session, applying the
+    // same eligibility rule the per-tab close path uses: a tab nobody ever
+    // interacted with is not worth restoring.
+    //
+    // Closing a window through its 'X' reaches this via CloseWindow, but
+    // quitting (the `quit` action closes every window with a bare
+    // PostQuitMessage) and session end (WM_ENDSESSION on shutdown, sign-out,
+    // or a servicing restart) both bypass that path, so WindowEmperor calls
+    // this directly on its way out. The one-shot guard keeps a window that
+    // already went through CloseWindow from saving twice.
+    void TerminalPage::PersistDurableTabSessions()
+    {
+        if (!TryClaimDurableTabSessionPersist(_durableTabSessionsPersisted))
+        {
+            return;
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                try
+                {
+                    _PersistDurableTabSession(tabImpl.get());
+                }
+                CATCH_LOG()
+            }
+        }
+    }
+
     void TerminalPage::PersistState()
     {
         // There are two persistence mechanisms in play here:
@@ -8507,17 +8537,7 @@ namespace winrt::TerminalApp::implementation
         // close never reaches — so without this, the single most common way to
         // finish for the day ("close the terminal") would neither save the
         // sessions nor keep them running.
-        for (const auto& tab : _tabs)
-        {
-            if (const auto tabImpl = _GetTabImpl(tab))
-            {
-                try
-                {
-                    _PersistDurableTabSession(tabImpl.get());
-                }
-                CATCH_LOG()
-            }
-        }
+        PersistDurableTabSessions();
 
         CloseWindowRequested.raise(*this, nullptr);
     }

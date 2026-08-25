@@ -132,6 +132,20 @@ namespace winrt::TerminalApp::implementation
         return true;
     }
 
+    // A window can reach its final save from either the close path or the
+    // quit/session-end path, and both may run for the same window. Latch the
+    // first one so a tab is never written to the store twice.
+    inline bool TryClaimDurableTabSessionPersist(bool& alreadyPersisted) noexcept
+    {
+        if (alreadyPersisted)
+        {
+            return false;
+        }
+
+        alreadyPersisted = true;
+        return true;
+    }
+
     template<typename TPathForSession>
     inline void SetPersistedLayoutAgentRestorePaths(
         std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,

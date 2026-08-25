@@ -291,6 +291,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalWindow::PersistDurableTabSessions()
+    {
+        if (_root)
+        {
+            _root->PersistDurableTabSessions();
+        }
+    }
+
     winrt::Windows::UI::Xaml::ElementTheme TerminalWindow::GetRequestedTheme()
     {
         return Theme().RequestedTheme();

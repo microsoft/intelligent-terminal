@@ -46,15 +46,18 @@ Master exposes the store over ACP as `_intellterm.wta/durable_tab_sessions/*`:
 | `get` | Terminal, when restoring one session |
 | `delete` | the `/tab-history` view |
 
-Maintenance runs once a day: rows past their retention window are deleted, and
-buffer sidecars that no live row references are removed with them.
+Maintenance runs once a day: rows whose last use is more than 14 days old are
+deleted, and buffer sidecars that no live row references are removed with them.
 
 ## Saving
 
 `TerminalPage::_PersistDurableTabSession` runs from `_HandleCloseTabRequested`, and
-`TerminalPage::CloseWindow` runs the same per-tab save before raising
-`CloseWindowRequested` — closing the window is the case that matters most, and
-it never goes through the tab-close path.
+`TerminalPage::PersistDurableTabSessions` runs the same per-tab save for every tab
+in a window. `CloseWindow` calls it before raising `CloseWindowRequested`, and
+`WindowEmperor::_finalizeSessionPersistence` calls it for every surviving window —
+quitting and session end (sign-out, shutdown, a servicing restart) tear the process
+down with a bare `PostQuitMessage` and never reach `CloseWindow`. A one-shot latch
+per window keeps a tab from being written twice when both paths run.
 
 Two settings-driven gates decide what is written. `GetDurableTabSessionCloseActions`
 maps the existing **Settings → Startup → "When Terminal starts"** preference:

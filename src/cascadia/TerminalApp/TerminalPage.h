@@ -186,6 +186,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine CloseWindow();
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetWindowLayout();
         void PersistState();
+        void PersistDurableTabSessions();
         std::vector<IPaneContent> Panes() const;
 
         void ToggleFocusMode();
@@ -804,6 +805,7 @@ namespace winrt::TerminalApp::implementation
 
         bool _displayingCloseDialog{ false };
         bool _windowCloseAccepted{ false };
+        bool _durableTabSessionsPersisted{ false };
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _AboutButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);

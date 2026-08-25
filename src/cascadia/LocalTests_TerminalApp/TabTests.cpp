@@ -195,6 +195,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DurableTabSessionCloseActionsFollowStartupPreference);
         TEST_METHOD(DurableTabSessionAgentBindingQualifiesForPersistence);
+        TEST_METHOD(DurableTabSessionPersistIsClaimedOnce);
         TEST_METHOD(AgentSessionRestoreRequiresDurableRestoreContext);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
@@ -388,6 +389,19 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(ShouldPersistDurableTabSession(true, false, false));
         VERIFY_IS_TRUE(ShouldPersistDurableTabSession(false, true, false));
         VERIFY_IS_TRUE(ShouldPersistDurableTabSession(false, false, true));
+    }
+
+    void TabTests::DurableTabSessionPersistIsClaimedOnce()
+    {
+        using winrt::TerminalApp::implementation::TryClaimDurableTabSessionPersist;
+
+        // Closing a window saves its tabs, and so does quitting or signing
+        // out. Both can run for the same window, so only the first wins.
+        bool persisted = false;
+        VERIFY_IS_TRUE(TryClaimDurableTabSessionPersist(persisted));
+        VERIFY_IS_TRUE(persisted);
+        VERIFY_IS_FALSE(TryClaimDurableTabSessionPersist(persisted));
+        VERIFY_IS_FALSE(TryClaimDurableTabSessionPersist(persisted));
     }
 
     void TabTests::AgentSessionRestoreRequiresDurableRestoreContext()
