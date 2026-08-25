@@ -330,6 +330,15 @@ impl StoreCore {
             )
             .context("failed to initialize durable tab-session database")?;
         ensure_active_pane_cwd_column(&mut connection)?;
+        // Best effort: a stale bookkeeping table only costs one extra
+        // maintenance sweep, so never fail the open over it.
+        if let Err(error) = adopt_legacy_metadata_table(&connection) {
+            tracing::warn!(
+                target: "durable_tab_sessions",
+                error = %error,
+                "failed to adopt the legacy durable tab-session metadata table"
+            );
+        }
         let last_maintenance_at = connection
             .query_row(
                 "SELECT value FROM durable_tab_session_metadata WHERE key = ?1",
@@ -1055,6 +1064,38 @@ fn canonical_db_uuid(id: &str, column: &str) -> Result<String> {
         .with_context(|| format!("corrupt durable tab-session {column}: expected UUID"))
 }
 
+/// Folds the pre-rename `shell_session_metadata` bookkeeping table into the
+/// current one and drops it.
+///
+/// `rename_legacy_tables` only renames the two data tables, so a database
+/// migrated by an earlier build keeps the legacy metadata table alongside a
+/// freshly created empty one — which loses `last_maintenance_at` and forces a
+/// redundant retention sweep. Running this on every open is idempotent and
+/// also repairs databases that were already half-migrated.
+fn adopt_legacy_metadata_table(connection: &Connection) -> Result<()> {
+    let has_legacy: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'shell_session_metadata'",
+            [],
+            |row| row.get(0),
+        )
+        .context("failed to inspect the legacy durable tab-session metadata table")?;
+    if has_legacy == 0 {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "
+            INSERT INTO durable_tab_session_metadata(key, value)
+                SELECT key, value FROM shell_session_metadata
+                WHERE true
+                ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value);
+            DROP TABLE shell_session_metadata;
+            ",
+        )
+        .context("failed to fold the legacy durable tab-session metadata table")
+}
+
 fn ensure_active_pane_cwd_column(connection: &mut Connection) -> Result<()> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1409,6 +1450,13 @@ fn rename_legacy_tables(database: &Path) -> Result<()> {
             )
             .context("failed to rename the legacy durable tab-session buffer key")?;
     }
+    if has_table("shell_session_metadata")? && !has_table("durable_tab_session_metadata")? {
+        connection
+            .execute_batch(
+                "ALTER TABLE shell_session_metadata RENAME TO durable_tab_session_metadata",
+            )
+            .context("failed to rename the legacy durable tab-session metadata table")?;
+    }
     connection
         .execute_batch("DROP INDEX IF EXISTS shell_sessions_last_used_idx")
         .context("failed to drop the legacy durable tab-session index")
@@ -1682,6 +1730,7 @@ mod tests {
                 ALTER TABLE durable_tab_session_buffers RENAME COLUMN tab_id TO session_id;
                 ALTER TABLE durable_tab_session_buffers RENAME TO shell_session_buffers;
                 ALTER TABLE durable_tab_sessions RENAME TO shell_sessions;
+                ALTER TABLE durable_tab_session_metadata RENAME TO shell_session_metadata;
                 ",
             )?;
         }
@@ -1689,6 +1738,8 @@ mod tests {
         let mut store = StoreCore::open(directory.0.clone(), 200, None)?;
         assert!(!directory.0.join(LEGACY_DATABASE_FILE).exists());
         assert!(!directory.0.join(LEGACY_BUFFER_DIRECTORY).exists());
+        assert!(!has_table(&store.connection, "shell_session_metadata")?);
+        assert_eq!(store.last_maintenance_at, Some(100));
 
         let list = store.list(&DurableTabSessionsListParams { elevated: false }, 200)?;
         assert_eq!(list.sessions.len(), 1);
@@ -1727,6 +1778,79 @@ mod tests {
         assert_eq!(list.sessions.len(), 1);
         assert_eq!(list.sessions[0].id, id);
         Ok(())
+    }
+
+    /// An earlier build renamed only the two data tables, so a database it
+    /// migrated keeps `shell_session_metadata` next to an empty new one. That
+    /// drops `last_maintenance_at` and forces a redundant retention sweep on
+    /// every open, so opening must fold the legacy row in and drop the table.
+    #[test]
+    fn opening_folds_a_half_migrated_metadata_table() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        {
+            let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
+            store.save(save_params(&directory, "kept", "kept.tmp")?, 100)?;
+        }
+        {
+            // Reproduce the half-migrated shape: the legacy bookkeeping table
+            // holds the real timestamp, the current one was created empty.
+            let connection = Connection::open(directory.0.join(DATABASE_FILE))?;
+            connection.execute_batch(
+                "
+                ALTER TABLE durable_tab_session_metadata RENAME TO shell_session_metadata;
+                CREATE TABLE durable_tab_session_metadata (
+                    key   TEXT PRIMARY KEY NOT NULL,
+                    value INTEGER NOT NULL
+                );
+                ",
+            )?;
+        }
+
+        let store = StoreCore::open(directory.0.clone(), 150, None)?;
+        assert!(!has_table(&store.connection, "shell_session_metadata")?);
+        assert_eq!(
+            store.last_maintenance_at,
+            Some(100),
+            "the legacy timestamp must survive so the sweep is not repeated"
+        );
+        Ok(())
+    }
+
+    /// The legacy value must never clobber a newer one already recorded under
+    /// the current name.
+    #[test]
+    fn folding_legacy_metadata_keeps_the_newest_timestamp() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        {
+            StoreCore::open(directory.0.clone(), 500, None)?;
+        }
+        {
+            let connection = Connection::open(directory.0.join(DATABASE_FILE))?;
+            connection.execute_batch(
+                "
+                CREATE TABLE shell_session_metadata (
+                    key   TEXT PRIMARY KEY NOT NULL,
+                    value INTEGER NOT NULL
+                );
+                INSERT INTO shell_session_metadata(key, value)
+                    VALUES ('last_maintenance_at', 1);
+                ",
+            )?;
+        }
+
+        let store = StoreCore::open(directory.0.clone(), 600, None)?;
+        assert!(!has_table(&store.connection, "shell_session_metadata")?);
+        assert_eq!(store.last_maintenance_at, Some(500));
+        Ok(())
+    }
+
+    fn has_table(connection: &Connection, name: &str) -> Result<bool> {
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![name],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
     }
 
     #[test]
