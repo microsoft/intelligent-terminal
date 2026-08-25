@@ -11500,7 +11500,7 @@ fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
             location_is_command: true,
             cwd: None,
             output: Some(ToolCallOutput {
-                text: "diagnostic one\ndiagnostic two".into(),
+                text: concat!("diagnostic one", "\n", "diagnostic two").into(),
                 truncated: false,
             }),
             exit_code: Some(1),
