@@ -64,7 +64,6 @@ delegate_picker.title: "Delegoni destinacionin"
 delegate_picker.tab: "Skeda e re"
 delegate_picker.panel: "Paneli i ri"
 delegate_picker.intent_required: "Përshkruani punën që duhet deleguar."
-delegate_picker.pane_not_allowed: "/delegate krijon gjithmonë një destinacion të ri dhe nuk pranon @pane."
 delegate_picker.not_configured: "Asnjë agjent i deleguar nuk është konfiguruar."
 delegate_picker.no_parent_pane: "Asnjë panel pune nuk është i disponueshëm për t'u ndarë."
 delegate_picker.launch_failed: "Delegati nuk mund të hapej: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Zgjidh panelin e terminalit (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nuk disponohen panele terminale të shkrueshme."
-pane_picker.target_unavailable: "Paneli i zgjedhur nuk është më i disponueshëm."
+command_card.target_unavailable: "Paneli i zgjedhur nuk është më i disponueshëm."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Zgjidhni agjentin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

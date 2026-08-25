@@ -64,7 +64,6 @@ delegate_picker.title: "مقصد را تفویض کنید"
 delegate_picker.tab: "برگه جدید"
 delegate_picker.panel: "پنل جدید"
 delegate_picker.intent_required: "کاری را که باید واگذار کنید را شرح دهید."
-delegate_picker.pane_not_allowed: "/delegate همیشه یک مقصد جدید ایجاد می کند و @pane را نمی پذیرد."
 delegate_picker.not_configured: "هیچ نماینده نمایندگی پیکربندی نشده است."
 delegate_picker.no_parent_pane: "هیچ صفحه کاری برای تقسیم در دسترس نیست."
 delegate_picker.launch_failed: "نماینده راه اندازی نشد: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "صفحه پایانه را انتخاب کنید (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "هیچ صفحه پایانه قابل نوشتن در دسترس نیست."
-pane_picker.target_unavailable: "صفحه انتخاب شده دیگر در دسترس نیست."
+command_card.target_unavailable: "صفحه انتخاب شده دیگر در دسترس نیست."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "انتخاب عامل (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

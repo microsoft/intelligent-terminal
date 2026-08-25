@@ -64,7 +64,6 @@ delegate_picker.title: " ડેલિગેટ ડેસ્ટિનેશન "
 delegate_picker.tab: "નવું ટેબ"
 delegate_picker.panel: "નવી પેનલ"
 delegate_picker.intent_required: "નિયુક્ત કરવા માટેના કાર્યનું વર્ણન કરો."
-delegate_picker.pane_not_allowed: "/delegate હંમેશા નવું ગંતવ્ય બનાવે છે અને @pane સ્વીકારતું નથી."
 delegate_picker.not_configured: "કોઈ પ્રતિનિધિ એજન્ટ ગોઠવેલ નથી."
 delegate_picker.no_parent_pane: "વિભાજિત કરવા માટે કોઈ કાર્યકારી ફલક ઉપલબ્ધ નથી."
 delegate_picker.launch_failed: "પ્રતિનિધિને લોંચ કરી શકાયું નથી: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "પસંદગી %{choice} નિષ્ફળ
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ટર્મિનલ ફલક પસંદ કરો (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "કોઈ લખી શકાય તેવા ટર્મિનલ પેન ઉપલબ્ધ નથી."
-pane_picker.target_unavailable: "પસંદ કરેલ ફલક હવે ઉપલબ્ધ નથી."
+command_card.target_unavailable: "પસંદ કરેલ ફલક હવે ઉપલબ્ધ નથી."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "એજન્ટ પસંદ કરો (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

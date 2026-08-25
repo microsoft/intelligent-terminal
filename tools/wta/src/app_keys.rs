@@ -503,29 +503,6 @@ impl App {
             return;
         }
 
-        if self.current_tab().pane_targets.picker_open {
-            match key.code {
-                KeyCode::Up => {
-                    let tab = self.current_tab_mut();
-                    tab.pane_targets.picker_selected =
-                        tab.pane_targets.picker_selected.saturating_sub(1);
-                    self.sync_pane_picker_chip_target();
-                }
-                KeyCode::Down => {
-                    let count = self.current_tab().pane_targets.candidates().len();
-                    let tab = self.current_tab_mut();
-                    if tab.pane_targets.picker_selected + 1 < count {
-                        tab.pane_targets.picker_selected += 1;
-                    }
-                    self.sync_pane_picker_chip_target();
-                }
-                KeyCode::Enter => self.commit_pane_picker(),
-                KeyCode::Esc | KeyCode::Backspace | KeyCode::Delete => self.cancel_pane_picker(),
-                _ => {}
-            }
-            return;
-        }
-
         if self.current_tab().delegate_picker_open {
             match key.code {
                 KeyCode::Up | KeyCode::Down => {
@@ -813,7 +790,6 @@ impl App {
             }
             KeyCode::Esc => {
                 self.current_tab_mut().clear_input();
-                self.sync_pane_picker_chip_target();
             }
             KeyCode::Up if self.command_popup_visible() => {
                 self.command_popup_up();
@@ -930,6 +906,8 @@ impl App {
                     let is_agent_command = self
                         .agent_command_for_input(&self.current_tab().input)
                         .is_some();
+                    let source_pane_id = self.source_session_id.clone();
+                    let source_descriptor = self.source_pane_descriptor();
                     let tab = self.current_tab_mut();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
@@ -948,21 +926,17 @@ impl App {
                         .session_id
                         .clone()
                         .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                    let agent_target = tab.pane_targets.agent_target().cloned();
-                    let target_pane_id = agent_target.as_ref().map(|pane| pane.session_id.clone());
                     let pane_context = PaneContext {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
-                        cwd: agent_target
+                        cwd: source_descriptor
                             .as_ref()
                             .map(|pane| pane.cwd.clone())
                             .filter(|cwd| !cwd.is_empty())
                             .or_else(|| self.source_cwd.clone()),
-                        source_pane_id: target_pane_id
-                            .clone()
-                            .or_else(|| self.source_session_id.clone()),
-                        cached_source: agent_target.map(|pane| {
+                        source_pane_id: source_pane_id.clone(),
+                        cached_source: source_descriptor.map(|pane| {
                             crate::pane_context::CachedPaneMetadata {
                                 title: pane.title,
                                 profile: pane.profile,
@@ -991,7 +965,9 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
-                        context: TurnContext { target_pane_id },
+                        context: TurnContext {
+                            target_pane_id: source_pane_id,
+                        },
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
@@ -1001,19 +977,16 @@ impl App {
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_word_before_cursor();
-                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Backspace => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_before_cursor();
-                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Delete => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_at_cursor();
-                    self.sync_pane_picker_chip_target();
                 }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1052,9 +1025,6 @@ impl App {
                 // invisibly without a caret.
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().insert_input_char(c);
-                    if self.current_tab().pane_targets.picker_open {
-                        self.sync_pane_picker_chip_target();
-                    }
                 }
             }
             _ => {}

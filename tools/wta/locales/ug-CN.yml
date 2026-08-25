@@ -66,7 +66,6 @@ delegate_picker.title: " ۋەكىللەر مەنزىلى "
 delegate_picker.tab: " يېڭى بەتكۈچ"
 delegate_picker.panel: " يېڭى گۇرۇپپا"
 delegate_picker.intent_required: " ۋەكىللىك قىلىدىغان ئەسەرنى تەسۋىرلەڭ."
-delegate_picker.pane_not_allowed: " __ PH0__ ھەمىشە يېڭى مەنزىل ھاسىل قىلىدۇ ۋە @pane نى قوبۇل قىلمايدۇ."
 delegate_picker.not_configured: " ھېچقانداق ۋەكىل ۋاكالەتچىسى سەپلەنمىدى."
 delegate_picker.no_parent_pane: " بۆلۈنۈشكە ھېچقانداق خىزمەت تاختىسى يوق."
 delegate_picker.launch_failed: " ۋەكىلنى قوزغىتالمىدى: %{error}"
@@ -229,9 +228,7 @@ system.choice_execution_failed: "تاللاش %{choice} مەغلۇپ بولدى:
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: " تېرمىنال تاختىسىنى تاللاڭ (↑ ↓ • Enter • Esc)"
-pane_picker.empty: " يازغىلى بولىدىغان تېرمىنال تاختىسى يوق."
-pane_picker.target_unavailable: " تاللانغان تاختىنى ئەمدى ئىشلەتكىلى بولمايدۇ."
+command_card.target_unavailable: " تاللانغان تاختىنى ئەمدى ئىشلەتكىلى بولمايدۇ."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ۋاكالەتچى تاللاڭ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

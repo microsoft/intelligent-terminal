@@ -64,7 +64,6 @@ delegate_picker.title: " Deleģēt galamērķi "
 delegate_picker.tab: "Jauna cilne"
 delegate_picker.panel: "Jauns panelis"
 delegate_picker.intent_required: "Aprakstiet deleģējamo darbu."
-delegate_picker.pane_not_allowed: "/delegate vienmēr izveido jaunu galamērķi un nepieņem @pane."
 delegate_picker.not_configured: "Nav konfigurēts neviens pilnvarotais aģents."
 delegate_picker.no_parent_pane: "Nav pieejama neviena darba rūts, ko sadalīt."
 delegate_picker.launch_failed: "Nevarēja palaist delegātu: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Izvēle %{choice} neizdevās: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Atlasīt termināļa rūti (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nav pieejami rakstāmie termināļi."
-pane_picker.target_unavailable: "Atlasītā rūts vairs nav pieejama."
+command_card.target_unavailable: "Atlasītā rūts vairs nav pieejama."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Izvēlieties aģentu (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

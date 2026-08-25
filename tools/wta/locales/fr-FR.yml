@@ -64,7 +64,6 @@ delegate_picker.title: " Destination du délégué "
 delegate_picker.tab: "Nouvel onglet"
 delegate_picker.panel: "Nouveau panneau"
 delegate_picker.intent_required: "Décrivez le travail à déléguer."
-delegate_picker.pane_not_allowed: "/delegate crée toujours une nouvelle destination et n'accepte pas @pane."
 delegate_picker.not_configured: "Aucun agent délégué n'est configuré."
 delegate_picker.no_parent_pane: "Aucun volet de travail n'est disponible pour être divisé."
 delegate_picker.launch_failed: "Impossible de lancer le délégué : %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Le choix %{choice} a échoué : %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Sélectionner le volet des terminaux (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Aucun volet de terminal inscriptible n'est disponible."
-pane_picker.target_unavailable: "Le volet sélectionné n'est plus disponible."
+command_card.target_unavailable: "Le volet sélectionné n'est plus disponible."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Sélectionner l’agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

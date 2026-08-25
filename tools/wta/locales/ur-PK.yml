@@ -64,7 +64,6 @@ delegate_picker.title: " ڈیلیگیٹ منزل "
 delegate_picker.tab: "نیا ٹیب"
 delegate_picker.panel: "نیا پینل"
 delegate_picker.intent_required: " تفویض کرنے کے لیے کام کی وضاحت کریں۔"
-delegate_picker.pane_not_allowed: "/delegate ہمیشہ ایک نئی منزل بناتا ہے اور @pane کو قبول نہیں کرتا ہے۔"
 delegate_picker.not_configured: "کوئی ڈیلیگیٹ ایجنٹ کنفیگر نہیں ہے۔"
 delegate_picker.no_parent_pane: "کوئی ورکنگ پین تقسیم کرنے کے لیے دستیاب نہیں ہے۔"
 delegate_picker.launch_failed: " مندوب کو لانچ نہیں کیا جا سکا: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "انتخاب %{choice} ناکام ہو گیا: 
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ٹرمینل پین کو منتخب کریں (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "کوئی قابل تحریر ٹرمینل پینز دستیاب نہیں ہیں۔"
-pane_picker.target_unavailable: "منتخب کردہ پین اب دستیاب نہیں ہے۔"
+command_card.target_unavailable: "منتخب کردہ پین اب دستیاب نہیں ہے۔"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ایجنٹ منتخب کریں (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " Тағайындалған жерді тағайынд�
 delegate_picker.tab: "Жаңа қойынды"
 delegate_picker.panel: "Жаңа панель"
 delegate_picker.intent_required: "Өкілетті жұмысты сипаттаңыз."
-delegate_picker.pane_not_allowed: "/delegate әрқашан жаңа тағайындау жасайды және @pane қабылдамайды."
 delegate_picker.not_configured: "Ешбір делегат агенті конфигурацияланбаған."
 delegate_picker.no_parent_pane: "Бөлуге ешбір жұмыс аймағы қолжетімді емес."
 delegate_picker.launch_failed: "Өкілді іске қосу мүмкін болмады: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "%{choice} таңдауы сәтсіз аяқт�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Терминал тақтасын таңдау (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Жазылатын терминал тақталары қолжетімді емес."
-pane_picker.target_unavailable: "Таңдалған аумақ енді қолжетімді емес."
+command_card.target_unavailable: "Таңдалған аумақ енді қолжетімді емес."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Агентді таңдаңыз (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

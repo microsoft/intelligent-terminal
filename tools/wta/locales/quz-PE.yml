@@ -64,7 +64,6 @@ delegate_picker.title: " Delegado destino nisqaman "
 delegate_picker.tab: "Musuq tabla"
 delegate_picker.panel: "Musuq panel"
 delegate_picker.intent_required: "Deleganapaq llamkaymanta willakuy."
-delegate_picker.pane_not_allowed: "/delegate sapa kuti musuq chayanata ruwan chaymanta mana @pane chaskinchu."
 delegate_picker.not_configured: "Manan ima delegado agentepas ruwasqachu."
 delegate_picker.no_parent_pane: "Mana llamk'ana p'anqa rakinapaq kanchu."
 delegate_picker.launch_failed: "Manam atirqanichu kachasqata qallariyta: %{error} ."
@@ -219,9 +218,7 @@ system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Terminalpa panelninta akllay (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Mana qillqanapaq terminal paneles nisqakuna kanchu."
-pane_picker.target_unavailable: "Akllasqa p'anqaqa manañam kanñachu."
+command_card.target_unavailable: "Akllasqa p'anqaqa manañam kanñachu."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agente akllay (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

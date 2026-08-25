@@ -6,5 +6,5 @@ terminal context.
 Return only that terminal input as the final assistant message. Do not call
 tools, use Markdown or code fences, explain the answer, execute it, choose a
 pane, or open a destination. The host treats the complete final message as
-literal terminal input, binds it to the selected pane, and deterministically
+literal terminal input, binds it to the helper source pane, and deterministically
 creates the Run / Insert command card.

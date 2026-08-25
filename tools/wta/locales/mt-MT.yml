@@ -64,7 +64,6 @@ delegate_picker.title: " Id-destinazzjoni tad-delegat "
 delegate_picker.tab: "Tab ġdida"
 delegate_picker.panel: "Panew ġdid"
 delegate_picker.intent_required: "Iddeskrivi x-xogħol li tiddelega."
-delegate_picker.pane_not_allowed: "/delegate dejjem toħloq destinazzjoni ġdida u ma taċċettax @pane."
 delegate_picker.not_configured: "L-ebda aġent delegat mhu kkonfigurat."
 delegate_picker.no_parent_pane: "L-ebda pannell tax-xogħol mhu disponibbli biex jinqasam."
 delegate_picker.launch_failed: "Ma setgħetx tniedi d-delegat: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Agħżel il-ħġieġa tat-terminal (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "M'hemm l-ebda panew tat-terminal li jista' jinkiteb disponibbli."
-pane_picker.target_unavailable: "Il-panew magħżul m'għadux disponibbli."
+command_card.target_unavailable: "Il-panew magħżul m'għadux disponibbli."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agħżel aġent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

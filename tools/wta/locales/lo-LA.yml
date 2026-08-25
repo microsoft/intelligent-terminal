@@ -64,7 +64,6 @@ delegate_picker.title: " ຕົວແທນປາຍທາງ "
 delegate_picker.tab: "ແຖບໃໝ່"
 delegate_picker.panel: "ແຜງໃໝ່"
 delegate_picker.intent_required: "ອະທິບາຍວຽກເພື່ອມອບໝາຍ."
-delegate_picker.pane_not_allowed: "/delegate ສ້າງປາຍທາງໃໝ່ສະເໝີ ແລະບໍ່ຍອມຮັບ @pane."
 delegate_picker.not_configured: "ບໍ່ມີການກຳນົດຄ່າຕົວແທນຜູ້ແທນ."
 delegate_picker.no_parent_pane: "ບໍ່ມີແຖບເຮັດວຽກທີ່ສາມາດແຍກໄດ້."
 delegate_picker.launch_failed: "ບໍ່ສາມາດເປີດຕົວຜູ້ແທນໄດ້: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "ຕົວເລືອກ %{choice} ລົ້ມ
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ເລືອກ terminal pane (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "ບໍ່ມີແຖບເຄື່ອງຂຽນທີ່ສາມາດໃຊ້ໄດ້."
-pane_picker.target_unavailable: "ແຖບທີ່ເລືອກບໍ່ສາມາດໃຊ້ໄດ້ອີກຕໍ່ໄປ."
+command_card.target_unavailable: "ແຖບທີ່ເລືອກບໍ່ສາມາດໃຊ້ໄດ້ອີກຕໍ່ໄປ."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ເລືອກຕົວແທນ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

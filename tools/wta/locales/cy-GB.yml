@@ -65,7 +65,6 @@ delegate_picker.title: " Cyrchfan y cynadleddwyr "
 delegate_picker.tab: "Tab newydd"
 delegate_picker.panel: "Panel newydd"
 delegate_picker.intent_required: "Disgrifiwch y gwaith i'w ddirprwyo."
-delegate_picker.pane_not_allowed: " Mae /delegate bob amser yn creu cyrchfan newydd ac nid yw'n derbyn @pane."
 delegate_picker.not_configured: "Nid oes unrhyw asiant dirprwyo wedi'i ffurfweddu."
 delegate_picker.no_parent_pane: "Nid oes cwarel gweithio ar gael i'w hollti."
 delegate_picker.launch_failed: "Methu lansio'r cynrychiolydd: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Dewis cwarel terfynell (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nid oes unrhyw baneli terfynell ysgrifenadwy ar gael."
-pane_picker.target_unavailable: "Nid yw'r cwarel a ddewiswyd ar gael bellach."
+command_card.target_unavailable: "Nid yw'r cwarel a ddewiswyd ar gael bellach."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Dewiswch asiant (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

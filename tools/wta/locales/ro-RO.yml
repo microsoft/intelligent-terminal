@@ -64,7 +64,6 @@ delegate_picker.title: " Delegați destinația "
 delegate_picker.tab: "Filă nouă"
 delegate_picker.panel: "Panou nou"
 delegate_picker.intent_required: "Descrieți munca de delegat."
-delegate_picker.pane_not_allowed: "/delegate creează întotdeauna o nouă destinație și nu acceptă @pane."
 delegate_picker.not_configured: "Nu este configurat niciun agent delegat."
 delegate_picker.no_parent_pane: "Niciun panou de lucru nu este disponibil pentru a fi împărțit."
 delegate_picker.launch_failed: "Nu s-a putut lansa delegatul: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Selectați panoul terminal (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nu sunt disponibile panouri terminale inscriptibile."
-pane_picker.target_unavailable: "Paneul selectat nu mai este disponibil."
+command_card.target_unavailable: "Paneul selectat nu mai este disponibil."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Selectați agentul (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: "Делегирајте дестинација"
 delegate_picker.tab: "Ново јазиче"
 delegate_picker.panel: "Нов панел"
 delegate_picker.intent_required: "Опишете ја работата што треба да ја делегирате."
-delegate_picker.pane_not_allowed: "/delegate секогаш создава нова дестинација и не прифаќа @pane."
 delegate_picker.not_configured: "Не е конфигуриран агент за делегирање."
 delegate_picker.no_parent_pane: "Не е достапно работно окно за разделување."
 delegate_picker.launch_failed: "Не може да се стартува делегатот: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Изборот %{choice} не успеа: %{err
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Изберете го терминалот (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Не се достапни приклучни панели со можност за запишување."
-pane_picker.target_unavailable: "Избраното окно повеќе не е достапно."
+command_card.target_unavailable: "Избраното окно повеќе не е достапно."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Изберете агент (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -1197,9 +1197,9 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
-    /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
-    /// launching pane). Used by autofix to attribute which pane originated
-    /// the failing command we're about to fix.
+    /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` by the launching
+    /// pane). Ordinary prompts and deterministic commands use this immutable
+    /// binding instead of retargeting from focus.
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
     pub source_cwd: Option<String>,
@@ -5141,27 +5141,6 @@ impl App {
         })
     }
 
-    pub fn pane_popup_state(&self) -> Option<crate::ui::PanePopupState> {
-        let tab = self.current_tab();
-        if !tab.pane_targets.picker_open {
-            return None;
-        }
-        let candidates = tab
-            .pane_targets
-            .candidates()
-            .into_iter()
-            .map(|pane| crate::ui::PanePopupCandidate {
-                label: format!("@{}", pane.mention_label()),
-                detail: pane.picker_detail(),
-            })
-            .collect::<Vec<_>>();
-        Some(crate::ui::PanePopupState {
-            candidates,
-            selected: tab.pane_targets.picker_selected,
-            pane_focused: self.pane_focused,
-        })
-    }
-
     pub fn delegate_popup_state(&self) -> Option<crate::ui::DelegatePopupState> {
         self.current_tab()
             .delegate_picker_open
@@ -5169,44 +5148,6 @@ impl App {
                 selected: self.current_tab().delegate_picker_selected,
                 pane_focused: self.pane_focused,
             })
-    }
-
-    fn sync_pane_picker_chip_target(&mut self) {
-        let tab_id = self.active_tab_key().to_string();
-        self.recompute_chip_override(&tab_id);
-    }
-
-    fn cancel_pane_picker(&mut self) {
-        let tab = self.current_tab_mut();
-        tab.pane_targets.picker_open = false;
-        tab.clear_input();
-        self.sync_pane_picker_chip_target();
-    }
-
-    fn commit_pane_picker(&mut self) {
-        let candidate = {
-            let tab = self.current_tab();
-            tab.pane_targets
-                .candidates()
-                .get(tab.pane_targets.picker_selected)
-                .map(|pane| (pane.session_id.clone(), pane.mention_label()))
-        };
-        let Some((session_id, _display_label)) = candidate else {
-            self.current_tab_mut().pane_targets.picker_open = false;
-            self.sync_pane_picker_chip_target();
-            return;
-        };
-        let tab = self.current_tab_mut();
-        if tab.input.trim_start().eq_ignore_ascii_case("/command @") {
-            tab.replace_input("/command ".to_string());
-        } else if tab.input.trim_start().eq_ignore_ascii_case("/cmd @") {
-            tab.replace_input("/cmd ".to_string());
-        } else {
-            tab.clear_input();
-        }
-        tab.pane_targets.agent_target_session_id = Some(session_id);
-        tab.pane_targets.picker_open = false;
-        self.sync_pane_picker_chip_target();
     }
 
     /// Handle Enter for the slash-command system. Centralizes all three
@@ -5321,6 +5262,39 @@ impl App {
         }
     }
 
+    fn source_pane_descriptor(&self) -> Option<tab_state::PaneDescriptor> {
+        let source_session_id = self
+            .source_session_id
+            .as_deref()
+            .filter(|session_id| !session_id.trim().is_empty())?;
+        self.current_tab()
+            .pane_catalog
+            .get(source_session_id)
+            .cloned()
+    }
+
+    fn command_source_target(&self) -> Option<(String, Option<tab_state::PaneDescriptor>)> {
+        if let Some(source_session_id) = self
+            .source_session_id
+            .as_deref()
+            .filter(|session_id| !session_id.trim().is_empty())
+        {
+            return Some((
+                source_session_id.to_string(),
+                self.current_tab()
+                    .pane_catalog
+                    .get(source_session_id)
+                    .cloned(),
+            ));
+        }
+
+        self.current_tab()
+            .pane_catalog
+            .active_writable_pane()
+            .cloned()
+            .map(|pane| (pane.session_id.clone(), Some(pane)))
+    }
+
     fn try_execute_direct_pane_command(&mut self) -> bool {
         let input = self.current_tab().input.clone();
         let Some(command) = input.trim_start().strip_prefix('$') else {
@@ -5334,23 +5308,10 @@ impl App {
             return true;
         }
 
-        let target_pane_id = self
-            .current_tab()
-            .pane_targets
-            .agent_target()
-            .map(|pane| pane.session_id.clone())
-            .or_else(|| self.source_session_id.clone())
-            .or_else(|| {
-                self.current_tab()
-                    .pane_targets
-                    .candidates()
-                    .into_iter()
-                    .find(|pane| pane.is_active)
-                    .map(|pane| pane.session_id.clone())
-            });
+        let target_pane_id = self.command_source_target().map(|(target, _)| target);
         let Some(target_pane_id) = target_pane_id else {
             self.current_tab_mut().messages.push(ChatMessage::warning(
-                t!("pane_picker.target_unavailable").into_owned(),
+                t!("command_card.target_unavailable").into_owned(),
             ));
             return true;
         };
@@ -5425,15 +5386,6 @@ impl App {
             ));
             return;
         }
-        if intent
-            .split_whitespace()
-            .any(|token| token.starts_with('@'))
-        {
-            self.current_tab_mut().messages.push(ChatMessage::warning(
-                t!("delegate_picker.pane_not_allowed").into_owned(),
-            ));
-            return;
-        }
         if !self.current_tab().turn.accepts_new_prompt() {
             self.current_tab_mut()
                 .messages
@@ -5479,14 +5431,14 @@ impl App {
         };
         let parent_pane = self
             .current_tab()
-            .pane_targets
-            .candidates()
+            .pane_catalog
+            .writable_panes()
             .into_iter()
             .find(|pane| pane.is_active)
             .or_else(|| {
                 self.current_tab()
-                    .pane_targets
-                    .candidates()
+                    .pane_catalog
+                    .writable_panes()
                     .into_iter()
                     .next()
             })
@@ -5571,14 +5523,15 @@ impl App {
                 tab_id: Some(tab_id.clone()),
                 window_id: self.window_id.clone(),
                 cwd: None,
-                source_pane_id: self
-                    .current_tab()
-                    .pane_targets
-                    .candidates()
-                    .into_iter()
-                    .find(|pane| pane.is_active)
-                    .map(|pane| pane.session_id.clone()),
-                cached_source: None,
+                source_pane_id: self.source_session_id.clone(),
+                cached_source: self.source_pane_descriptor().map(|pane| {
+                    crate::pane_context::CachedPaneMetadata {
+                        title: pane.title,
+                        profile: pane.profile,
+                        cwd: pane.cwd,
+                        shell: pane.shell,
+                    }
+                }),
             }),
         );
         let prompt_id = prompt.id;
@@ -5634,23 +5587,10 @@ impl App {
         }
         let model_text = crate::protocol::acp::prompt::terminal_command_request(intent);
         let tab_id = self.active_tab_key().to_string();
-        let descriptor = self.current_tab().pane_targets.agent_target().cloned();
-        let target_session_id = descriptor
-            .as_ref()
-            .map(|pane| pane.session_id.clone())
-            .or_else(|| self.source_session_id.clone())
-            .or_else(|| {
-                self.current_tab()
-                    .pane_targets
-                    .candidates()
-                    .into_iter()
-                    .find(|pane| pane.is_active)
-                    .map(|pane| pane.session_id.clone())
-            })
-            .unwrap_or_default();
+        let (target_session_id, descriptor) = self.command_source_target().unwrap_or_default();
         if target_session_id.is_empty() {
             self.current_tab_mut().messages.push(ChatMessage::warning(
-                t!("pane_picker.target_unavailable").into_owned(),
+                t!("command_card.target_unavailable").into_owned(),
             ));
             return;
         }
@@ -5661,7 +5601,8 @@ impl App {
             cwd: descriptor
                 .as_ref()
                 .map(|pane| pane.cwd.clone())
-                .filter(|cwd| !cwd.is_empty()),
+                .filter(|cwd| !cwd.is_empty())
+                .or_else(|| self.source_cwd.clone()),
             source_pane_id: (!target_session_id.is_empty()).then(|| target_session_id.clone()),
             cached_source: descriptor.map(|pane| crate::pane_context::CachedPaneMetadata {
                 title: pane.title,
@@ -5718,13 +5659,13 @@ impl App {
             crate::pane_context::normalize_pane_session_id(&adjustment.target_session_id);
         let descriptor = self
             .current_tab()
-            .pane_targets
+            .pane_catalog
             .panes
             .get(&normalized_target)
             .cloned();
         if descriptor.is_none() {
             self.current_tab_mut().messages.push(ChatMessage::warning(
-                t!("pane_picker.target_unavailable").into_owned(),
+                t!("command_card.target_unavailable").into_owned(),
             ));
             return;
         }
@@ -5892,25 +5833,19 @@ impl App {
             tab.autofix.generation
         };
 
-        let agent_target = self
-            .tab_mut(&target_tab_id)
-            .pane_targets
-            .agent_target()
-            .cloned();
-        let source_pane_id = agent_target
-            .as_ref()
-            .map(|pane| pane.session_id.clone())
-            .or_else(|| self.source_session_id.clone());
+        let source_pane_id = self.source_session_id.clone();
+        let source_descriptor = self.source_pane_descriptor();
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
-            cwd: agent_target
+            cwd: source_descriptor
                 .as_ref()
                 .map(|pane| pane.cwd.clone())
-                .filter(|cwd| !cwd.is_empty()),
+                .filter(|cwd| !cwd.is_empty())
+                .or_else(|| self.source_cwd.clone()),
             source_pane_id: source_pane_id.clone(),
-            cached_source: agent_target.map(|pane| crate::pane_context::CachedPaneMetadata {
+            cached_source: source_descriptor.map(|pane| crate::pane_context::CachedPaneMetadata {
                 title: pane.title,
                 profile: pane.profile,
                 cwd: pane.cwd,

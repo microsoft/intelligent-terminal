@@ -241,7 +241,6 @@ impl TabSession {
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.
     pub fn refresh_command_popup(&mut self) {
-        self.pane_targets.picker_open = commands::is_pane_picker_prefix(&self.input);
         if let Some(prefix) = commands::move_position_prefix(&self.input) {
             self.command_popup_candidates.clear();
             self.move_position_candidates = commands::match_move_positions(prefix);

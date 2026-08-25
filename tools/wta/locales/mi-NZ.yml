@@ -64,7 +64,6 @@ delegate_picker.title: " Tukuna te haerenga "
 delegate_picker.tab: "Ripa hou"
 delegate_picker.panel: "Pawhiri hou"
 delegate_picker.intent_required: "Whakaahuahia nga mahi hei tuku."
-delegate_picker.pane_not_allowed: "Ka hanga e /delegate he waahi hou kaore e whakaae ki a @pane."
 delegate_picker.not_configured: "Karekau he kaihoko kaikawe i whirihora."
 delegate_picker.no_parent_pane: "Karekau he pihanga mahi e waatea ana hei wehe."
 delegate_picker.launch_failed: "Kaore i taea te whakarewa i te kaikawe: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Tīpakohia te pihanga kāpeka (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Karekau he pihanga kapeka tuhi e waatea ana."
-pane_picker.target_unavailable: "Ko te pihanga kua tohua kua kore e waatea."
+command_card.target_unavailable: "Ko te pihanga kua tohua kua kore e waatea."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Kōwhiria te māngai (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " Cieľ delegáta "
 delegate_picker.tab: "Nová karta"
 delegate_picker.panel: "Nový panel"
 delegate_picker.intent_required: "Popíšte prácu na delegovanie."
-delegate_picker.pane_not_allowed: "/delegate vždy vytvára nový cieľ a neprijíma @pane."
 delegate_picker.not_configured: "Nie je nakonfigurovaný žiadny agent delegáta."
 delegate_picker.no_parent_pane: "Nie je k dispozícii žiadny pracovný panel na rozdelenie."
 delegate_picker.launch_failed: "Nepodarilo sa spustiť delegáta: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Vyberte panel terminálu (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nie sú k dispozícii žiadne zapisovateľné terminály."
-pane_picker.target_unavailable: "Vybratý panel už nie je dostupný."
+command_card.target_unavailable: "Vybratý panel už nie je dostupný."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Vybrať agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

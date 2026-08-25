@@ -64,7 +64,6 @@ delegate_picker.title: " Delegera destination "
 delegate_picker.tab: "Ny flik"
 delegate_picker.panel: "Ny panel"
 delegate_picker.intent_required: "Beskriv arbetet att delegera."
-delegate_picker.pane_not_allowed: "/delegate skapar alltid en ny destination och accepterar inte @pane."
 delegate_picker.not_configured: "Ingen delegatagent är konfigurerad."
 delegate_picker.no_parent_pane: "Ingen arbetsruta är tillgänglig att dela."
 delegate_picker.launch_failed: "Det gick inte att starta delegaten: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Välj terminalpanel (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Inga skrivbara terminalrutor är tillgängliga."
-pane_picker.target_unavailable: "Den valda rutan är inte längre tillgänglig."
+command_card.target_unavailable: "Den valda rutan är inte längre tillgänglig."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Välj agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

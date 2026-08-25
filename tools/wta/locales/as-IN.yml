@@ -65,7 +65,6 @@ delegate_picker.title: " প্ৰতিনিধি গন্তব্যস্
 delegate_picker.tab: "নতুন টেব"
 delegate_picker.panel: "নতুন পেনেল"
 delegate_picker.intent_required: "প্ৰতিনিধিত্ব কৰিবলগীয়া কামৰ বৰ্ণনা কৰা।"
-delegate_picker.pane_not_allowed: "/delegate এ সদায় এটা নতুন গন্তব্যস্থান সৃষ্টি কৰে আৰু @pane গ্ৰহণ নকৰে।"
 delegate_picker.not_configured: "কোনো প্ৰতিনিধি এজেন্ট বিন্যাস কৰা হোৱা নাই।"
 delegate_picker.no_parent_pane: "বিভাজিত কৰিবলে কোনো কাম কৰা পেন উপলব্ধ নহয়।"
 delegate_picker.launch_failed: "প্ৰতিনিধি আৰম্ভ কৰিব পৰা নগ'ল: %{error}"
@@ -223,9 +222,7 @@ system.choice_execution_failed: "পছন্দ %{choice} ব্যৰ্থ �
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "টাৰ্মিনেল পেন নিৰ্ব্বাচন কৰক (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "কোনো লিখিব পৰা টাৰ্মিনেল পেন উপলব্ধ নহয়।"
-pane_picker.target_unavailable: "নিৰ্বাচিত পেন আৰু উপলব্ধ নহয়।"
+command_card.target_unavailable: "নিৰ্বাচিত পেন আৰু উপলব্ধ নহয়।"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "এজেণ্ট বাছনি কৰক (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " มอบหมายปลายทาง "
 delegate_picker.tab: "แท็บใหม่"
 delegate_picker.panel: "แผงใหม่"
 delegate_picker.intent_required: "อธิบายงานที่จะมอบหมาย"
-delegate_picker.pane_not_allowed: "/delegate สร้างปลายทางใหม่เสมอและไม่ยอมรับ @pane"
 delegate_picker.not_configured: "ไม่มีการกำหนดค่าตัวแทนผู้รับมอบสิทธิ์"
 delegate_picker.no_parent_pane: "ไม่มีบานหน้าต่างการทำงานให้แยก"
 delegate_picker.launch_failed: "ไม่สามารถเปิดตัวผู้รับมอบสิทธิ์: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "ตัวเลือก %{choice} ล้มเ
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "เลือกบานหน้าต่างเทอร์มินัล (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "ไม่มีบานหน้าต่างเทอร์มินัลที่เขียนได้"
-pane_picker.target_unavailable: "ช่องที่เลือกไม่สามารถใช้งานได้อีกต่อไป"
+command_card.target_unavailable: "ช่องที่เลือกไม่สามารถใช้งานได้อีกต่อไป"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "เลือกตัวแทน (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

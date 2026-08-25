@@ -39,39 +39,8 @@ fn default_true() -> bool {
 }
 
 impl PaneDescriptor {
-    pub fn display_label(&self) -> &str {
-        [&self.title, &self.shell, &self.profile]
-            .into_iter()
-            .find(|value| !value.trim().is_empty())
-            .map(String::as_str)
-            .unwrap_or("Terminal")
-    }
-
-    pub fn is_picker_candidate(&self) -> bool {
+    pub fn is_writable_terminal(&self) -> bool {
         self.visible && !self.read_only && !self.is_agent_pane && !self.session_id.is_empty()
-    }
-
-    pub fn mention_label(&self) -> String {
-        if self.ordinal == 0 {
-            self.display_label().to_string()
-        } else {
-            format!("{}-{}", self.ordinal, self.display_label())
-        }
-    }
-
-    pub fn picker_detail(&self) -> String {
-        let shell = if self.shell.trim().is_empty() {
-            self.profile.trim()
-        } else {
-            self.shell.trim()
-        };
-        let cwd = self.cwd.trim();
-        match (shell.is_empty(), cwd.is_empty()) {
-            (false, false) => format!("{shell}  ·  {cwd}"),
-            (false, true) => shell.to_string(),
-            (true, false) => format!("cwd: {cwd}"),
-            (true, true) => String::new(),
-        }
     }
 }
 
@@ -105,20 +74,17 @@ pub struct PendingDelegate {
 }
 
 #[derive(Debug, Default)]
-pub struct PaneTargetState {
+pub struct PaneCatalogState {
     pub generation: u64,
     pub panes: HashMap<String, PaneDescriptor>,
-    pub picker_open: bool,
-    pub picker_selected: usize,
-    pub agent_target_session_id: Option<String>,
 }
 
-impl PaneTargetState {
-    pub fn candidates(&self) -> Vec<&PaneDescriptor> {
+impl PaneCatalogState {
+    pub fn writable_panes(&self) -> Vec<&PaneDescriptor> {
         let mut panes: Vec<_> = self
             .panes
             .values()
-            .filter(|pane| pane.is_picker_candidate())
+            .filter(|pane| pane.is_writable_terminal())
             .collect();
         panes.sort_by(|left, right| {
             left.ordinal
@@ -137,21 +103,16 @@ impl PaneTargetState {
             .into_iter()
             .map(|pane| (normalize_pane_session_id(&pane.session_id), pane))
             .collect();
-        if self
-            .agent_target_session_id
-            .as_ref()
-            .is_some_and(|target| !self.panes.contains_key(&normalize_pane_session_id(target)))
-        {
-            self.agent_target_session_id = None;
-        }
-        let count = self.candidates().len();
-        self.picker_selected = self.picker_selected.min(count.saturating_sub(1));
     }
 
-    pub fn agent_target(&self) -> Option<&PaneDescriptor> {
-        self.agent_target_session_id
-            .as_ref()
-            .and_then(|target| self.panes.get(&normalize_pane_session_id(target)))
+    pub fn get(&self, session_id: &str) -> Option<&PaneDescriptor> {
+        self.panes.get(&normalize_pane_session_id(session_id))
+    }
+
+    pub fn active_writable_pane(&self) -> Option<&PaneDescriptor> {
+        self.writable_panes()
+            .into_iter()
+            .find(|pane| pane.is_active)
     }
 }
 
@@ -620,7 +581,7 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
-    pub pane_targets: PaneTargetState,
+    pub pane_catalog: PaneCatalogState,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
@@ -859,7 +820,6 @@ impl TabSession {
             && !self.model_picker_open
             && !self.config_picker.is_open()
             && !self.agent_picker_open
-            && !self.pane_targets.picker_open
             && !self.delegate_picker_open
     }
 
@@ -893,16 +853,6 @@ impl TabSession {
     }
 
     pub fn compute_chip_target(&self) -> Option<String> {
-        if self.pane_targets.picker_open {
-            return self
-                .pane_targets
-                .candidates()
-                .get(self.pane_targets.picker_selected)
-                .map(|pane| pane.session_id.clone());
-        }
-        if let Some(target) = self.pane_targets.agent_target() {
-            return Some(target.session_id.clone());
-        }
         self.compute_chip_card_target()
     }
 
@@ -1120,7 +1070,7 @@ pub struct AgentsViewState {
 }
 
 #[cfg(test)]
-mod pane_target_tests {
+mod pane_catalog_tests {
     use super::*;
 
     fn pane(id: &str, title: &str, active: bool) -> PaneDescriptor {
@@ -1140,7 +1090,7 @@ mod pane_target_tests {
 
     #[test]
     fn snapshot_replaces_catalog_and_ignores_older_generations() {
-        let mut state = PaneTargetState::default();
+        let mut state = PaneCatalogState::default();
         state.replace_snapshot(2, vec![pane("new", "New", false)]);
         state.replace_snapshot(1, vec![pane("old", "Old", false)]);
 
@@ -1150,20 +1100,8 @@ mod pane_target_tests {
     }
 
     #[test]
-    fn snapshot_removal_invalidates_persistent_target() {
-        let mut state = PaneTargetState::default();
-        state.agent_target_session_id = Some("gone".to_string());
-
-        state.replace_snapshot(1, vec![pane("kept", "Kept", false)]);
-
-        assert!(state.agent_target_session_id.is_none());
-    }
-
-    #[test]
-    fn snapshot_preserves_target_across_guid_format_changes() {
-        let mut state = PaneTargetState::default();
-        state.agent_target_session_id = Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126".to_string());
-
+    fn lookup_normalizes_guid_format() {
+        let mut state = PaneCatalogState::default();
         state.replace_snapshot(
             1,
             vec![pane(
@@ -1173,8 +1111,7 @@ mod pane_target_tests {
             )],
         );
 
-        assert!(state.agent_target_session_id.is_some());
-        assert!(state.agent_target().is_some());
+        assert!(state.get("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126").is_some());
     }
 
     #[test]
@@ -1188,11 +1125,11 @@ mod pane_target_tests {
         read_only.read_only = true;
         eligible.shell = "pwsh".to_string();
 
-        let mut state = PaneTargetState::default();
+        let mut state = PaneCatalogState::default();
         state.replace_snapshot(1, vec![read_only, hidden, agent, eligible]);
 
         let ids = state
-            .candidates()
+            .writable_panes()
             .into_iter()
             .map(|pane| pane.session_id.as_str())
             .collect::<Vec<_>>();
@@ -1200,57 +1137,35 @@ mod pane_target_tests {
     }
 
     #[test]
-    fn chip_target_tracks_picker_selection_and_persistent_target() {
-        let mut tab = TabSession::default();
-        tab.pane_targets.replace_snapshot(
-            1,
-            vec![
-                pane("first", "First", true),
-                pane("second", "Second", false),
-            ],
-        );
-        tab.pane_targets.picker_open = true;
-        tab.pane_targets.picker_selected = 1;
-
-        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
-
-        tab.pane_targets.picker_open = false;
-        tab.pane_targets.agent_target_session_id = Some("second".to_string());
-        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
-
-        tab.input.clear();
-        assert_eq!(tab.compute_chip_target().as_deref(), Some("second"));
-    }
-
-    #[test]
-    fn candidates_follow_snapshot_ordinals_and_labels_include_them() {
+    fn writable_panes_follow_snapshot_ordinals() {
         let mut first = pane("first", "PowerShell", false);
         first.ordinal = 1;
         let mut second = pane("second", "PowerShell", true);
         second.ordinal = 2;
-        let mut state = PaneTargetState::default();
+        let mut state = PaneCatalogState::default();
         state.replace_snapshot(1, vec![second, first]);
 
-        let labels = state
-            .candidates()
+        let ids = state
+            .writable_panes()
             .into_iter()
-            .map(PaneDescriptor::mention_label)
+            .map(|pane| pane.session_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(labels, vec!["1-PowerShell", "2-PowerShell"]);
+        assert_eq!(ids, vec!["first", "second"]);
     }
 
     #[test]
-    fn picker_detail_does_not_substitute_cwd_for_shell() {
-        let mut descriptor = pane("pane", "PowerShell", false);
-        descriptor.profile = "PowerShell".to_string();
-        descriptor.cwd = "C:\\Users\\example".to_string();
+    fn active_fallback_excludes_non_writable_panes() {
+        let mut active_agent = pane("agent", "Agent", true);
+        active_agent.is_agent_pane = true;
+        let active_shell = pane("shell", "PowerShell", true);
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(1, vec![active_agent, active_shell]);
 
         assert_eq!(
-            descriptor.picker_detail(),
-            "PowerShell  ·  C:\\Users\\example"
+            state
+                .active_writable_pane()
+                .map(|pane| pane.session_id.as_str()),
+            Some("shell")
         );
-
-        descriptor.profile.clear();
-        assert_eq!(descriptor.picker_detail(), "cwd: C:\\Users\\example");
     }
 }

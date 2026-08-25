@@ -64,7 +64,6 @@ delegate_picker.title: " Perduoti kelionės tikslą "
 delegate_picker.tab: "Naujas skirtukas"
 delegate_picker.panel: "Naujas skydelis"
 delegate_picker.intent_required: "Apibūdinkite deleguojamą darbą."
-delegate_picker.pane_not_allowed: "/delegate visada sukuria naują paskirties vietą ir nepriima @pane."
 delegate_picker.not_configured: "Nesukonfigūruotas įgaliotasis agentas."
 delegate_picker.no_parent_pane: "Nėra darbo srities, kurią būtų galima padalinti."
 delegate_picker.launch_failed: "Nepavyko paleisti įgaliotinio: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Pasirinkimas %{choice} nepavyko: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Pasirinkite terminalo sritį (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nėra jokių įrašomų terminalų skydelių."
-pane_picker.target_unavailable: "Pasirinkta sritis nebepasiekiama."
+command_card.target_unavailable: "Pasirinkta sritis nebepasiekiama."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Pasirinkite agentą (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

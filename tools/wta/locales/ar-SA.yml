@@ -65,7 +65,6 @@ delegate_picker.title: " وجهة التفويض "
 delegate_picker.tab: "علامة تبويب جديدة"
 delegate_picker.panel: "لوحة جديدة"
 delegate_picker.intent_required: "وصف العمل المراد تفويضه."
-delegate_picker.pane_not_allowed: "/delegate يقوم دائمًا بإنشاء وجهة جديدة ولا يقبل @pane."
 delegate_picker.not_configured: "لم يتم تكوين أي وكيل مفوض."
 delegate_picker.no_parent_pane: "لا يوجد جزء عمل متاح للتقسيم."
 delegate_picker.launch_failed: "تعذر تشغيل المفوض: %{error}"
@@ -222,9 +221,7 @@ system.choice_execution_failed: "فشل الاختيار %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: " حدد الجزء الطرفي (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "لا تتوفر أي أجزاء طرفية قابلة للكتابة."
-pane_picker.target_unavailable: "الجزء المحدد لم يعد متاحًا."
+command_card.target_unavailable: "الجزء المحدد لم يعد متاحًا."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "اختر عامل الذكاء الاصطناعي (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

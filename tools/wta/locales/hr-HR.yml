@@ -64,7 +64,6 @@ delegate_picker.title: " Delegiraj odredište "
 delegate_picker.tab: "Nova kartica"
 delegate_picker.panel: "Nova ploča"
 delegate_picker.intent_required: "Opišite posao koji delegirate."
-delegate_picker.pane_not_allowed: "/delegate uvijek stvara novo odredište i ne prihvaća @pane."
 delegate_picker.not_configured: "Nije konfiguriran nijedan delegirani agent."
 delegate_picker.no_parent_pane: "Nije dostupno radno okno za dijeljenje."
 delegate_picker.launch_failed: "Nije moguće pokrenuti delegata: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Odabir %{choice} nije uspio: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Odaberi terminalsko okno (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nema dostupnih terminalnih okna za pisanje."
-pane_picker.target_unavailable: "Odabrano okno više nije dostupno."
+command_card.target_unavailable: "Odabrano okno više nije dostupno."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Odaberite agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

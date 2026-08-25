@@ -64,7 +64,6 @@ delegate_picker.title: " Ceann-uidhe riochdaire "
 delegate_picker.tab: "Tab ùr"
 delegate_picker.panel: "Pannal ùr"
 delegate_picker.intent_required: "Thoir cunntas air an obair a tha thu airson a thiomnadh."
-delegate_picker.pane_not_allowed: " Bidh /delegate an-còmhnaidh a’ cruthachadh ceann-uidhe ùr agus cha ghabh e ri @pane."
 delegate_picker.not_configured: "Chan eil àidseant riochdachaidh sam bith air a rèiteachadh."
 delegate_picker.no_parent_pane: "Chan eil pana obrach ri fhaighinn airson sgoltadh."
 delegate_picker.launch_failed: "Cha b’ urrainn dhuinn an riochdaire a chuir air bhog: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Tagh pana crìche (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Chan eil lòsan crìochnachaidh a ghabhas sgrìobhadh rim faighinn."
-pane_picker.target_unavailable: "Chan eil am pana taghte ri fhaighinn tuilleadh."
+command_card.target_unavailable: "Chan eil am pana taghte ri fhaighinn tuilleadh."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Tagh àidhent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

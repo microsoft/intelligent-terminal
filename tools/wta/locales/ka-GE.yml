@@ -64,7 +64,6 @@ delegate_picker.title: "დანიშნულების ადგილი�
 delegate_picker.tab: "ახალი ჩანართი"
 delegate_picker.panel: "ახალი პანელი"
 delegate_picker.intent_required: "აღწერეთ სამუშაოს დელეგირება."
-delegate_picker.pane_not_allowed: "/delegate ყოველთვის ქმნის ახალ დანიშნულებას და არ იღებს @pane."
 delegate_picker.not_configured: "დელეგატის აგენტი არ არის კონფიგურირებული."
 delegate_picker.no_parent_pane: "სამუშაო პანელი არ არის ხელმისაწვდომი გასაყოფად."
 delegate_picker.launch_failed: "დელეგატის გაშვება ვერ მოხერხდა: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "არჩევანი %{choice} ვერ �
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "აირჩიეთ ტერმინალის პანელი (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "ჩასაწერი ტერმინალის პანელები არ არის ხელმისაწვდომი."
-pane_picker.target_unavailable: "არჩეული პანელი აღარ არის ხელმისაწვდომი."
+command_card.target_unavailable: "არჩეული პანელი აღარ არის ხელმისაწვდომი."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "აირჩიეთ აგენტი (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

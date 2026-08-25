@@ -69,7 +69,6 @@ delegate_picker.title: " ទិសដៅតំណាង "
 delegate_picker.tab: "ផ្ទាំងថ្មី។"
 delegate_picker.panel: "បន្ទះថ្មី។"
 delegate_picker.intent_required: "ពណ៌នាអំពីការងារដែលត្រូវផ្ទេរសិទ្ធិ។"
-delegate_picker.pane_not_allowed: "/delegate តែងតែបង្កើតទិសដៅថ្មី ហើយមិនទទួលយក @pane ទេ។"
 delegate_picker.not_configured: "គ្មានភ្នាក់ងារតំណាងណាមួយត្រូវបានកំណត់រចនាសម្ព័ន្ធទេ។"
 delegate_picker.no_parent_pane: "មិនមានផ្ទាំងការងារដែលអាចបំបែកបានទេ។"
 delegate_picker.launch_failed: "មិនអាចបើកដំណើរការប្រតិភូ៖ %{error}"
@@ -236,9 +235,7 @@ system.choice_execution_failed: "ជម្រើស %{choice} បានបរា
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ជ្រើសរើសផ្ទាំងស្ថានីយ (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "មិនមានផ្ទាំងស្ថានីយដែលអាចសរសេរបានទេ។"
-pane_picker.target_unavailable: "ផ្ទាំងដែលបានជ្រើសរើសលែងមានទៀតហើយ។"
+command_card.target_unavailable: "ផ្ទាំងដែលបានជ្រើសរើសលែងមានទៀតហើយ។"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ជ្រើសរើសភ្នាក់ងារ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

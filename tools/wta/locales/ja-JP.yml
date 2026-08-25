@@ -60,7 +60,6 @@ delegate_picker.title: " デリゲート先 "
 delegate_picker.tab: "新しいタブ"
 delegate_picker.panel: "新しいパネル"
 delegate_picker.intent_required: "委任する作業について説明します。"
-delegate_picker.pane_not_allowed: "/delegate は常に新しい宛先を作成し、@pane を受け入れません。"
 delegate_picker.not_configured: "代理エージェントが構成されていません。"
 delegate_picker.no_parent_pane: "分割できる作業ペインがありません。"
 delegate_picker.launch_failed: "デリゲートを起動できませんでした: %{error}"
@@ -215,9 +214,7 @@ system.choice_execution_failed: "選択肢 %{choice} が失敗しました: %{er
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "端子ペインの選択 (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "書き込み可能なターミナル ペインはありません。"
-pane_picker.target_unavailable: "選択したペインは使用できなくなりました。"
+command_card.target_unavailable: "選択したペインは使用できなくなりました。"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "エージェントを選択 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

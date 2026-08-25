@@ -64,7 +64,6 @@ delegate_picker.title: " Ceann scríbe toscaire "
 delegate_picker.tab: "Cluaisín nua"
 delegate_picker.panel: "Painéal nua"
 delegate_picker.intent_required: "Déan cur síos ar an obair atá le tarmligean."
-delegate_picker.pane_not_allowed: "Cruthaíonn /delegate ceann scríbe nua i gcónaí agus ní ghlacann sé le @pane."
 delegate_picker.not_configured: "Níl aon ghníomhaire toscaire cumraithe."
 delegate_picker.no_parent_pane: "Níl aon phána oibre ar fáil le scoilt."
 delegate_picker.launch_failed: "Níorbh fhéidir an toscaire a sheoladh: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Roghnaigh pana teirminéil (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Níl aon phána teirminéil inscríofa ar fáil."
-pane_picker.target_unavailable: "Níl an pána roghnaithe ar fáil a thuilleadh."
+command_card.target_unavailable: "Níl an pána roghnaithe ar fáil a thuilleadh."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Roghnaigh gníomhaire (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " Sendi áfangastað "
 delegate_picker.tab: "Nýr flipi"
 delegate_picker.panel: "Nýtt spjaldið"
 delegate_picker.intent_required: "Lýstu vinnunni sem á að úthluta."
-delegate_picker.pane_not_allowed: "/delegate býr alltaf til nýjan áfangastað og samþykkir ekki @pane."
 delegate_picker.not_configured: "Enginn umboðsmaður er stilltur."
 delegate_picker.no_parent_pane: "Enginn vinnugluggi er tiltækur til að skipta."
 delegate_picker.launch_failed: "Gat ekki ræst fulltrúann: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Val %{choice} mistókst: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Veldu flugstöðvarrúðuna (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Engin skrifanleg flugstöð er tiltæk."
-pane_picker.target_unavailable: "Valið svæði er ekki lengur tiltækt."
+command_card.target_unavailable: "Valið svæði er ekki lengur tiltækt."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Veldu fulltrúa (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

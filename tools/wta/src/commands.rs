@@ -160,14 +160,6 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
 ];
 
-/// True while the input is asking the user to choose a pane mention.
-pub fn is_pane_picker_prefix(input: &str) -> bool {
-    let trimmed = input.trim_start();
-    trimmed == "@"
-        || trimmed.eq_ignore_ascii_case("/command @")
-        || trimmed.eq_ignore_ascii_case("/cmd @")
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MovePositionSpec {
     pub name: &'static str,
@@ -426,15 +418,6 @@ mod tests {
         let delegate = parse("/delegate investigate the failure").unwrap();
         assert_eq!(delegate.kind, CommandKind::Delegate);
         assert_eq!(delegate.rest, "investigate the failure");
-    }
-
-    #[test]
-    fn pane_picker_prefix_is_deliberately_narrow() {
-        assert!(is_pane_picker_prefix("@"));
-        assert!(is_pane_picker_prefix("  /COMMAND @"));
-        assert!(is_pane_picker_prefix("/cmd @"));
-        assert!(!is_pane_picker_prefix("@PowerShell"));
-        assert!(!is_pane_picker_prefix("/delegate @"));
     }
 
     #[test]

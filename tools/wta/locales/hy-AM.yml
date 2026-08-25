@@ -69,7 +69,6 @@ delegate_picker.title: "Պատվիրակել նպատակակետը"
 delegate_picker.tab: "Նոր ներդիր"
 delegate_picker.panel: "Նոր վահանակ"
 delegate_picker.intent_required: "Նկարագրեք հանձնարարված աշխատանքը:"
-delegate_picker.pane_not_allowed: "/delegate-ը միշտ նոր նպատակակետ է ստեղծում և չի ընդունում @pane-ը:"
 delegate_picker.not_configured: "Պատվիրակային գործակալ կազմաձևված չէ:"
 delegate_picker.no_parent_pane: "Պառակտման համար աշխատանքային վահանակ չկա:"
 delegate_picker.launch_failed: "Չհաջողվեց գործարկել պատվիրակին՝ %{error}"
@@ -236,9 +235,7 @@ system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվ
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Ընտրեք տերմինալի վահանակ (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Գրավոր տերմինալային վահանակներ չկան:"
-pane_picker.target_unavailable: "Ընտրված վահանակն այլևս հասանելի չէ:"
+command_card.target_unavailable: "Ընտրված վահանակն այլևս հասանելի չէ:"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Ընտրեք գործակալը (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

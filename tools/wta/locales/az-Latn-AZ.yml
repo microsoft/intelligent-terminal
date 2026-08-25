@@ -65,7 +65,6 @@ delegate_picker.title: " Təyinat yeri "
 delegate_picker.tab: "Yeni tab"
 delegate_picker.panel: "Yeni panel"
 delegate_picker.intent_required: "Təqdim ediləcək işi təsvir edin."
-delegate_picker.pane_not_allowed: "/delegate həmişə yeni təyinat yaradır və @pane qəbul etmir."
 delegate_picker.not_configured: "Heç bir nümayəndə agenti konfiqurasiya edilməyib."
 delegate_picker.no_parent_pane: "Bölmək üçün heç bir işləyən panel yoxdur."
 delegate_picker.launch_failed: "Nümayəndələri işə salmaq mümkün olmadı: %{error}"
@@ -222,9 +221,7 @@ system.choice_execution_failed: "Seçim %{choice} uğursuz oldu: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Terminal panelini seçin (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Yazıla bilən terminal panelləri mövcud deyil."
-pane_picker.target_unavailable: "Seçilmiş panel artıq əlçatan deyil."
+command_card.target_unavailable: "Seçilmiş panel artıq əlçatan deyil."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agent seçin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

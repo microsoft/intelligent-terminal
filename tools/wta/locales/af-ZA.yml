@@ -65,7 +65,6 @@ delegate_picker.title: " Delegeer bestemming "
 delegate_picker.tab: "Nuwe oortjie"
 delegate_picker.panel: "Nuwe paneel"
 delegate_picker.intent_required: "Beskryf die werk om te delegeer."
-delegate_picker.pane_not_allowed: "/delegate skep altyd 'n nuwe bestemming en aanvaar nie @pane nie."
 delegate_picker.not_configured: "Geen afgevaardigde agent is opgestel nie."
 delegate_picker.no_parent_pane: "Geen werkvenster is beskikbaar om te verdeel nie."
 delegate_picker.launch_failed: "Kon nie die afgevaardigde begin nie: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "Keuse %{choice} het misluk: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Kies terminaalpaneel (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Geen skryfbare terminaalvensters is beskikbaar nie."
-pane_picker.target_unavailable: "Die geselekteerde paneel is nie meer beskikbaar nie."
+command_card.target_unavailable: "Die geselekteerde paneel is nie meer beskikbaar nie."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Kies agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

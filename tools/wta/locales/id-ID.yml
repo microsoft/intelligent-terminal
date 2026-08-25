@@ -64,7 +64,6 @@ delegate_picker.title: " Delegasikan tujuan "
 delegate_picker.tab: "Tab baru"
 delegate_picker.panel: "Panel baru"
 delegate_picker.intent_required: "Jelaskan pekerjaan yang akan didelegasikan."
-delegate_picker.pane_not_allowed: "/delegate selalu membuat tujuan baru dan tidak menerima @pane."
 delegate_picker.not_configured: "Tidak ada agen delegasi yang dikonfigurasi."
 delegate_picker.no_parent_pane: "Tidak ada panel kerja yang tersedia untuk dipisahkan."
 delegate_picker.launch_failed: "Tidak dapat meluncurkan delegasi: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Pilih panel terminal (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Tidak ada panel terminal yang dapat ditulisi yang tersedia."
-pane_picker.target_unavailable: "Panel yang dipilih tidak lagi tersedia."
+command_card.target_unavailable: "Panel yang dipilih tidak lagi tersedia."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Pilih agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

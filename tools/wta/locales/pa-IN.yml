@@ -64,7 +64,6 @@ delegate_picker.title: " ਡੈਲੀਗੇਟ ਮੰਜ਼ਿਲ "
 delegate_picker.tab: "ਨਵੀਂ ਟੈਬ"
 delegate_picker.panel: "ਨਵਾਂ ਪੈਨਲ"
 delegate_picker.intent_required: " ਸੌਂਪਣ ਲਈ ਕੰਮ ਦਾ ਵਰਣਨ ਕਰੋ।"
-delegate_picker.pane_not_allowed: "/delegate ਹਮੇਸ਼ਾ ਇੱਕ ਨਵੀਂ ਮੰਜ਼ਿਲ ਬਣਾਉਂਦਾ ਹੈ ਅਤੇ @pane ਨੂੰ ਸਵੀਕਾਰ ਨਹੀਂ ਕਰਦਾ ਹੈ।"
 delegate_picker.not_configured: "ਕੋਈ ਡੈਲੀਗੇਟ ਏਜੰਟ ਕੌਂਫਿਗਰ ਨਹੀਂ ਕੀਤਾ ਗਿਆ ਹੈ।"
 delegate_picker.no_parent_pane: "ਵਿਭਾਜਿਤ ਕਰਨ ਲਈ ਕੋਈ ਕਾਰਜ ਪੈਨ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
 delegate_picker.launch_failed: " ਡੈਲੀਗੇਟ ਨੂੰ ਲਾਂਚ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ਟਰਮੀਨਲ ਪੈਨ ਚੁਣੋ (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "ਕੋਈ ਲਿਖਣਯੋਗ ਟਰਮੀਨਲ ਪੈਨ ਉਪਲਬਧ ਨਹੀਂ ਹਨ।"
-pane_picker.target_unavailable: "ਚੁਣਿਆ ਪੈਨ ਹੁਣ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
+command_card.target_unavailable: "ਚੁਣਿਆ ਪੈਨ ਹੁਣ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ਏਜੰਟ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -2270,44 +2270,38 @@ impl App {
                         };
                     let invalidated_session = {
                         let tab = self.tab_mut(target_tab);
-                        let previous_agent_target =
-                            tab.pane_targets.agent_target_session_id.clone();
-                        tab.pane_targets.replace_snapshot(generation, panes);
-                        let agent_target_invalidated = previous_agent_target.is_some()
-                            && tab.pane_targets.agent_target_session_id.is_none();
+                        tab.pane_catalog.replace_snapshot(generation, panes);
                         let mode = tab
                             .pending_preparation
                             .as_ref()
                             .map(|preparation| preparation.mode)
                             .or(tab.active_prepared_mode);
-                        let target = tab
-                            .turn
-                            .prompt()
-                            .and_then(|prompt| prompt.context.target_pane_id())
-                            .map(str::to_string);
-                        let target_missing = target.as_ref().is_some_and(|target| {
-                            !tab.pane_targets.panes.contains_key(
+                        let target = (mode == Some(PreparedActionMode::Command))
+                            .then(|| {
+                                tab.pending_preparation
+                                    .as_ref()
+                                    .map(|preparation| preparation.target_session_id.as_str())
+                                    .filter(|target| !target.is_empty())
+                                    .or_else(|| {
+                                        tab.turn
+                                            .prompt()
+                                            .and_then(|prompt| prompt.context.target_pane_id())
+                                    })
+                            })
+                            .flatten();
+                        let target_missing = target.is_some_and(|target| {
+                            !tab.pane_catalog.panes.contains_key(
                                 &crate::pane_context::normalize_pane_session_id(target),
                             )
                         });
-                        (
-                            (mode != Some(PreparedActionMode::DelegateSend) && target_missing)
-                                .then(|| tab.session_id.clone())
-                                .flatten(),
-                            agent_target_invalidated,
-                        )
+                        target_missing.then(|| tab.session_id.clone()).flatten()
                     };
-                    if let Some(session_id) = invalidated_session.0 {
+                    if let Some(session_id) = invalidated_session {
                         self.turn_cancel(&session_id);
                         self.tab_mut(target_tab).messages.push(ChatMessage::warning(
-                            t!("pane_picker.target_unavailable").into_owned(),
-                        ));
-                    } else if invalidated_session.1 {
-                        self.tab_mut(target_tab).messages.push(ChatMessage::warning(
-                            t!("pane_picker.target_unavailable").into_owned(),
+                            t!("command_card.target_unavailable").into_owned(),
                         ));
                     }
-                    self.sync_pane_picker_chip_target();
                     return;
                 }
 

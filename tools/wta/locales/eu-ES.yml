@@ -64,7 +64,6 @@ delegate_picker.title: " Ordezkatu helmuga "
 delegate_picker.tab: "Fitxa berria"
 delegate_picker.panel: "Panel berria"
 delegate_picker.intent_required: "Deskribatu eskuordetu beharreko lana."
-delegate_picker.pane_not_allowed: "/delegate beti sortzen du helmuga berri bat eta ez du onartzen @pane."
 delegate_picker.not_configured: "Ez dago ordezkari ordezkaririk konfiguratuta."
 delegate_picker.no_parent_pane: "Ez dago lan panelik zatitzeko erabilgarri."
 delegate_picker.launch_failed: "Ezin izan da ordezkaria abiarazi: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Hautatu terminal-panela (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Ez dago terminal-panel idazgarririk erabilgarri."
-pane_picker.target_unavailable: "Hautatutako panela jada ez dago erabilgarri."
+command_card.target_unavailable: "Hautatutako panela jada ez dago erabilgarri."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Hautatu agentea (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

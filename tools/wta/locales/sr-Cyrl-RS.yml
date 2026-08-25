@@ -64,7 +64,6 @@ delegate_picker.title: "[[ЛИНЕ10]] Делегирајте одредиште
 delegate_picker.tab: "[[ЛИНЕ9]]Нова картица"
 delegate_picker.panel: "[[ЛИНЕ8]]Нова табла"
 delegate_picker.intent_required: "[[ЛИНЕ3]]Опишите посао за делегирање."
-delegate_picker.pane_not_allowed: "[[ЛИНЕ7]__ПХ0__ увек прави ново одредиште и не прихвата __ПХ3__."
 delegate_picker.not_configured: "[[ЛИНЕ6]]Није конфигурисан ниједан агент за делегирање."
 delegate_picker.no_parent_pane: "[[ЛИНЕ5]]Није доступно радно окно за раздвајање."
 delegate_picker.launch_failed: "[[ЛИНЕ4]]Није могуће покренути делегата: __ПХ2__"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Избор %{choice} није успео: %{err
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "[[ЛИНЕ13]]Изаберите терминалско окно (__ПХ9__ __ПХ10__ • __ПХ4__ • __ПХ6__)"
-pane_picker.empty: "[[ЛИНЕ11]]Није доступно ниједно терминалско окно за писање."
-pane_picker.target_unavailable: "[[ЛИНЕ12]]Изабрано окно више није доступно."
+command_card.target_unavailable: "[[ЛИНЕ12]]Изабрано окно више није доступно."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Изаберите агент (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

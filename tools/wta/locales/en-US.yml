@@ -78,7 +78,6 @@ delegate_picker.title: " Delegate destination "
 delegate_picker.tab: "New tab"
 delegate_picker.panel: "New panel"
 delegate_picker.intent_required: "Describe the work to delegate."
-delegate_picker.pane_not_allowed: "/delegate always creates a new destination and does not accept @pane."
 delegate_picker.not_configured: "No delegate agent is configured."
 delegate_picker.no_parent_pane: "No working pane is available to split."
 delegate_picker.launch_failed: "Could not launch the delegate: %{error}"
@@ -107,11 +106,8 @@ command_card.intent_required: "Describe the terminal command you want Copilot to
 command_card.adjustment_required: "Describe how you want to adjust the terminal command."
 commands.delegate.summary: "Prepare a task and open a delegate agent (/delegate <intent>)"  # {Locked="/delegate","<intent>"}
 
-# ── Pane picker ─────────────────────────────────────────────────────────────
-# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Select terminal pane (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "No writable terminal panes are available."
-pane_picker.target_unavailable: "The selected pane is no longer available."
+# Shown when a prepared command's snapshotted source pane disappears.
+command_card.target_unavailable: "The command target pane is no longer available."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 

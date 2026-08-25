@@ -64,7 +64,6 @@ delegate_picker.title: " Điểm đến của đại biểu "
 delegate_picker.tab: "Tab mới"
 delegate_picker.panel: "Bảng điều khiển mới"
 delegate_picker.intent_required: "Mô tả công việc để ủy quyền."
-delegate_picker.pane_not_allowed: "/delegate luôn tạo đích mới và không chấp nhận @pane."
 delegate_picker.not_configured: "Không có tác nhân đại diện nào được định cấu hình."
 delegate_picker.no_parent_pane: "Không có ngăn làm việc nào để phân chia."
 delegate_picker.launch_failed: "Không thể khởi chạy đại biểu: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Lựa chọn %{choice} không thành công: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Chọn ngăn thiết bị đầu cuối (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Không có bảng thiết bị đầu cuối có thể ghi nào."
-pane_picker.target_unavailable: "Khung đã chọn không còn khả dụng nữa."
+command_card.target_unavailable: "Khung đã chọn không còn khả dụng nữa."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Chọn agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

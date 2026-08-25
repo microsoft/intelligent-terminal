@@ -64,7 +64,6 @@ delegate_picker.title: " Italaga ang destinasyon "
 delegate_picker.tab: "Bagong tab"
 delegate_picker.panel: "Bagong panel"
 delegate_picker.intent_required: "Ilarawan ang gawaing italaga."
-delegate_picker.pane_not_allowed: "/delegate ay palaging gumagawa ng bagong destinasyon at hindi tumatanggap ng @pane."
 delegate_picker.not_configured: "Walang delegadong ahente ang naka-configure."
 delegate_picker.no_parent_pane: "Walang working pane na magagamit upang hatiin."
 delegate_picker.launch_failed: "Hindi mailunsad ang delegado: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Nabigo ang pagpipiliang %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Piliin ang terminal pane (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Walang available na mga nakasulat na terminal pane."
-pane_picker.target_unavailable: "Hindi na available ang napiling pane."
+command_card.target_unavailable: "Hindi na available ang napiling pane."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Pumili ng agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

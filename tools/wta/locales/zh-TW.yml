@@ -60,7 +60,6 @@ delegate_picker.title: "代表目的地"
 delegate_picker.tab: "新標籤頁"
 delegate_picker.panel: "新面板"
 delegate_picker.intent_required: "描述要委派的工作。"
-delegate_picker.pane_not_allowed: "/delegate 總是建立新目的地且不接受 @pane。"
 delegate_picker.not_configured: "未配置委派代理。"
 delegate_picker.no_parent_pane: "沒有可分割的工作窗格。"
 delegate_picker.launch_failed: "無法啟動委託：%{error}"
@@ -215,9 +214,7 @@ system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "選擇終端窗格 (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "沒有可寫入的終端窗格可用。"
-pane_picker.target_unavailable: "所選窗格不再可用。"
+command_card.target_unavailable: "所選窗格不再可用。"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "選擇智能體（↑ ↓ • Enter • Esc）"  # Agent means an AI coding agent

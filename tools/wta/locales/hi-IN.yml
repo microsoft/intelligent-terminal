@@ -64,7 +64,6 @@ delegate_picker.title: " प्रतिनिधि गंतव्य "
 delegate_picker.tab: "नया टैब"
 delegate_picker.panel: "नया पैनल"
 delegate_picker.intent_required: " सौंपे जाने वाले कार्य का वर्णन करें।"
-delegate_picker.pane_not_allowed: "/delegate हमेशा एक नया गंतव्य बनाता है और @pane को स्वीकार नहीं करता है।"
 delegate_picker.not_configured: "कोई प्रतिनिधि एजेंट कॉन्फ़िगर नहीं किया गया है।"
 delegate_picker.no_parent_pane: "विभाजित करने के लिए कोई कार्य फलक उपलब्ध नहीं है।"
 delegate_picker.launch_failed: "प्रतिनिधि लॉन्च नहीं किया जा सका: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "चुनाव %{choice} विफल रह�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "टर्मिनल फलक चुनें (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "कोई लिखने योग्य टर्मिनल पेन उपलब्ध नहीं है।"
-pane_picker.target_unavailable: "चयनित फलक अब उपलब्ध नहीं है।"
+command_card.target_unavailable: "चयनित फलक अब उपलब्ध नहीं है।"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "एजेंट चुनें (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

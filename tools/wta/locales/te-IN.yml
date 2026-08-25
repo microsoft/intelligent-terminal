@@ -64,7 +64,6 @@ delegate_picker.title: " డెలిగేట్ గమ్యం "
 delegate_picker.tab: "కొత్త ట్యాబ్"
 delegate_picker.panel: "కొత్త ప్యానెల్"
 delegate_picker.intent_required: "ప్రతినిధి చేయవలసిన పనిని వివరించండి."
-delegate_picker.pane_not_allowed: "/delegate ఎల్లప్పుడూ కొత్త గమ్యస్థానాన్ని సృష్టిస్తుంది మరియు @paneని అంగీకరించదు."
 delegate_picker.not_configured: "ఏ ప్రతినిధి ఏజెంట్ కాన్ఫిగర్ చేయబడలేదు."
 delegate_picker.no_parent_pane: "విభజన చేయడానికి పని చేసే పేన్ అందుబాటులో లేదు."
 delegate_picker.launch_failed: "ప్రతినిధిని ప్రారంభించడం సాధ్యపడలేదు: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "ఎంపిక %{choice} విఫలమైం
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "టెర్మినల్ పేన్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "రాయదగిన టెర్మినల్ పేన్‌లు ఏవీ అందుబాటులో లేవు."
-pane_picker.target_unavailable: "ఎంచుకున్న పేన్ ఇప్పుడు అందుబాటులో లేదు."
+command_card.target_unavailable: "ఎంచుకున్న పేన్ ఇప్పుడు అందుబాటులో లేదు."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ఏజెంట్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " Deleger destinasjon "
 delegate_picker.tab: "Ny fane"
 delegate_picker.panel: "Nytt panel"
 delegate_picker.intent_required: "Beskriv arbeidet som skal delegeres."
-delegate_picker.pane_not_allowed: "/delegate oppretter alltid en ny destinasjon og godtar ikke @pane."
 delegate_picker.not_configured: "Ingen delegatagent er konfigurert."
 delegate_picker.no_parent_pane: "Ingen arbeidsrute er tilgjengelig for å dele."
 delegate_picker.launch_failed: "Kunne ikke starte delegaten: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Val %{choice} mislukkast: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Velg terminalpanel (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Ingen skrivbare terminalpaneler er tilgjengelige."
-pane_picker.target_unavailable: "Den valgte ruten er ikke lenger tilgjengelig."
+command_card.target_unavailable: "Den valgte ruten er ikke lenger tilgjengelig."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Vel agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

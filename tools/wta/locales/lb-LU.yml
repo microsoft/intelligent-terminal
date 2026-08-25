@@ -64,7 +64,6 @@ delegate_picker.title: " Delegéiert Destinatioun "
 delegate_picker.tab: "Neien Tab"
 delegate_picker.panel: "Nei Panel"
 delegate_picker.intent_required: "Beschreift d'Aarbecht fir ze delegéieren."
-delegate_picker.pane_not_allowed: "/delegate erstellt ëmmer eng nei Destinatioun an akzeptéiert net @pane."
 delegate_picker.not_configured: "Keen Delegéierten Agent ass konfiguréiert."
 delegate_picker.no_parent_pane: "Keng Aarbechtsfenster ass verfügbar fir ze splécken."
 delegate_picker.launch_failed: "Konnt den Delegéierten net starten: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Terminal Panel auswielen (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Keng schreiwenbare Terminalpanele si verfügbar."
-pane_picker.target_unavailable: "Déi gewielte Fënster ass net méi verfügbar."
+command_card.target_unavailable: "Déi gewielte Fënster ass net méi verfügbar."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agent auswielen (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

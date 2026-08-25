@@ -64,7 +64,6 @@ delegate_picker.title: " יעד נציג "
 delegate_picker.tab: "כרטיסייה חדשה"
 delegate_picker.panel: "פאנל חדש"
 delegate_picker.intent_required: "תאר את העבודה שיש להאצל."
-delegate_picker.pane_not_allowed: "/delegate תמיד יוצר יעד חדש ואינו מקבל @pane."
 delegate_picker.not_configured: "אין סוכן נציג מוגדר."
 delegate_picker.no_parent_pane: "אין חלונית עבודה זמינה לפיצול."
 delegate_picker.launch_failed: "לא ניתן להפעיל את הנציג: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "בחר חלונית מסוף (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "אין חלוניות מסוף הניתנות לכתיבה זמינות."
-pane_picker.target_unavailable: "החלונית שנבחרה אינה זמינה יותר."
+command_card.target_unavailable: "החלונית שנבחרה אינה זמינה יותר."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "בחר סוכן (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

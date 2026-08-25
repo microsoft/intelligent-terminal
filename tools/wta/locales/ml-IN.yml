@@ -64,7 +64,6 @@ delegate_picker.title: " ഡെലിഗേറ്റ് ഡെസ്റ്റി
 delegate_picker.tab: "പുതിയ ടാബ്"
 delegate_picker.panel: "പുതിയ പാനൽ"
 delegate_picker.intent_required: "നിയോഗിക്കേണ്ട ജോലി വിവരിക്കുക."
-delegate_picker.pane_not_allowed: "/delegate എല്ലായ്‌പ്പോഴും ഒരു പുതിയ ലക്ഷ്യസ്ഥാനം സൃഷ്‌ടിക്കുന്നു, @pane അംഗീകരിക്കുന്നില്ല."
 delegate_picker.not_configured: "പ്രതിനിധി ഏജൻ്റൊന്നും കോൺഫിഗർ ചെയ്തിട്ടില്ല."
 delegate_picker.no_parent_pane: "വിഭജിക്കാൻ പ്രവർത്തിക്കുന്ന പാളികളൊന്നും ലഭ്യമല്ല."
 delegate_picker.launch_failed: "പ്രതിനിധിയെ സമാരംഭിക്കാനായില്ല: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "തിരഞ്ഞെടുപ്പ് %{choic
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "ടെർമിനൽ പാളി തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "എഴുതാവുന്ന ടെർമിനൽ പാളികളൊന്നും ലഭ്യമല്ല."
-pane_picker.target_unavailable: "തിരഞ്ഞെടുത്ത പാളി ഇനി ലഭ്യമല്ല."
+command_card.target_unavailable: "തിരഞ്ഞെടുത്ത പാളി ഇനി ലഭ്യമല്ല."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ഏജന്റ് തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

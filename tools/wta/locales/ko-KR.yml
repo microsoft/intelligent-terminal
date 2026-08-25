@@ -60,7 +60,6 @@ delegate_picker.title: " 위임 대상 "
 delegate_picker.tab: "새 탭"
 delegate_picker.panel: "새 패널"
 delegate_picker.intent_required: "위임할 업무를 설명합니다."
-delegate_picker.pane_not_allowed: "/delegate은 항상 새 대상을 생성하고 @pane을 허용하지 않습니다."
 delegate_picker.not_configured: "위임 에이전트가 구성되지 않았습니다."
 delegate_picker.no_parent_pane: "분할할 수 있는 작업 창이 없습니다."
 delegate_picker.launch_failed: "대리자를 시작할 수 없습니다: %{error}"
@@ -215,9 +214,7 @@ system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "터미널 창 선택(↑ ↓ • Enter • Esc)"
-pane_picker.empty: "쓰기 가능한 터미널 창을 사용할 수 없습니다."
-pane_picker.target_unavailable: "선택한 창은 더 이상 사용할 수 없습니다."
+command_card.target_unavailable: "선택한 창은 더 이상 사용할 수 없습니다."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "에이전트 선택 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

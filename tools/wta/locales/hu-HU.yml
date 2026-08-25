@@ -64,7 +64,6 @@ delegate_picker.title: " Adja meg az úti célt "
 delegate_picker.tab: "Új lap"
 delegate_picker.panel: "Új panel"
 delegate_picker.intent_required: "Írja le a delegálandó munkát."
-delegate_picker.pane_not_allowed: "/delegate mindig új célt hoz létre, és nem fogadja el a @pane-t."
 delegate_picker.not_configured: "Nincs delegált ügynök konfigurálva."
 delegate_picker.no_parent_pane: "Nincs felosztható munkaablak."
 delegate_picker.launch_failed: "Nem sikerült elindítani a delegált: %{error}"
@@ -219,9 +218,7 @@ system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Válassza ki a terminálpanelt (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Nem állnak rendelkezésre írható terminálpanelek."
-pane_picker.target_unavailable: "A kiválasztott panel már nem érhető el."
+command_card.target_unavailable: "A kiválasztott panel már nem érhető el."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Ügynök kiválasztása (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

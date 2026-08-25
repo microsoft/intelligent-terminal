@@ -64,7 +64,6 @@ delegate_picker.title: " Делегат "
 delegate_picker.tab: " Яңа кыстыргыч"
 delegate_picker.panel: " Яңа панель"
 delegate_picker.intent_required: " Тапшыру өчен эшне сурәтләгез."
-delegate_picker.pane_not_allowed: " __ PH0__ һәрвакыт яңа юнәлеш тудыра һәм @pane кабул итми."
 delegate_picker.not_configured: " Бер делегат агент конфигурацияләнмәгән."
 delegate_picker.no_parent_pane: " Бөлү өчен эш тактасы юк."
 delegate_picker.launch_failed: " Делегатны җибәрә алмадым: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "%{choice} сайлавы уңышсыз бул�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: " Терминал тактасын сайлагыз (↑ ↓ • Enter • Esc)"
-pane_picker.empty: " Терминал такталары юк."
-pane_picker.target_unavailable: " Сайланган такта инде мөмкин түгел."
+command_card.target_unavailable: " Сайланган такта инде мөмкин түгел."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Агент сайлагыз (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

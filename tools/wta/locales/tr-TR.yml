@@ -64,7 +64,6 @@ delegate_picker.title: " Hedefi delege et "
 delegate_picker.tab: "Yeni sekme"
 delegate_picker.panel: "Yeni panel"
 delegate_picker.intent_required: "Delege edilecek işi açıklayın."
-delegate_picker.pane_not_allowed: "/delegate her zaman yeni bir hedef oluşturur ve @pane'yi kabul etmez."
 delegate_picker.not_configured: "Hiçbir temsilci temsilcisi yapılandırılmadı."
 delegate_picker.no_parent_pane: "Bölünecek çalışma bölmesi yok."
 delegate_picker.launch_failed: "Yetkili başlatılamadı: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "%{choice} seçimi başarısız oldu: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Terminal bölmesini seçin (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Yazılabilir terminal bölmesi yok."
-pane_picker.target_unavailable: "Seçili bölme artık mevcut değil."
+command_card.target_unavailable: "Seçili bölme artık mevcut değil."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Aracı seçin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

@@ -64,7 +64,6 @@ delegate_picker.title: " டெலிகேட் இலக்கு "
 delegate_picker.tab: "புதிய தாவல்"
 delegate_picker.panel: "புதிய பேனல்"
 delegate_picker.intent_required: "ஒதுக்க வேண்டிய வேலையை விவரிக்கவும்."
-delegate_picker.pane_not_allowed: "/delegate எப்போதும் ஒரு புதிய இலக்கை உருவாக்கும் மற்றும் @pane ஐ ஏற்காது."
 delegate_picker.not_configured: "பிரதிநிதி ஏஜென்ட் எதுவும் உள்ளமைக்கப்படவில்லை."
 delegate_picker.no_parent_pane: "பிரிப்பதற்கு வேலை செய்யும் பலகம் இல்லை."
 delegate_picker.launch_failed: "பிரதிநிதியைத் தொடங்க முடியவில்லை: %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "தேர்வு %{choice} தோல்வி
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "டெர்மினல் பேனைத் தேர்ந்தெடு (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "எழுதக்கூடிய டெர்மினல் பேனல்கள் எதுவும் இல்லை."
-pane_picker.target_unavailable: "தேர்ந்தெடுக்கப்பட்ட பலகம் இனி கிடைக்காது."
+command_card.target_unavailable: "தேர்ந்தெடுக்கப்பட்ட பலகம் இனி கிடைக்காது."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

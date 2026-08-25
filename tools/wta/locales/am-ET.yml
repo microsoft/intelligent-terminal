@@ -65,7 +65,6 @@ delegate_picker.title: " መድረሻን ውክልና። "
 delegate_picker.tab: " አዲስ ትር"
 delegate_picker.panel: " አዲስ ፓነል"
 delegate_picker.intent_required: " የውክልና ሥራውን ይግለጹ።"
-delegate_picker.pane_not_allowed: "/delegate ሁልጊዜ አዲስ መድረሻ ይፈጥራል እና @pane አይቀበልም።"
 delegate_picker.not_configured: " ምንም የውክልና ወኪል አልተዋቀረም።"
 delegate_picker.no_parent_pane: " ለመከፋፈል ምንም የሚሰራ መስኮት የለም።"
 delegate_picker.launch_failed: " ልዑካንን ማስጀመር አልተቻለም፦ %{error}"
@@ -221,9 +220,7 @@ system.choice_execution_failed: "ምርጫ %{choice} አልተሳካም፦ %{err
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "የተርሚናል መቃን ምረጥ (↑ ↓ • Enter • Esc)"
-pane_picker.empty: " ምንም ሊጻፍ የሚችል ተርሚናል ፓነሎች አይገኙም።"
-pane_picker.target_unavailable: "የተመረጠው ፓነል ከአሁን በኋላ አይገኝም።"
+command_card.target_unavailable: "የተመረጠው ፓነል ከአሁን በኋላ አይገኝም።"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ኤጅንት ይምረጡ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

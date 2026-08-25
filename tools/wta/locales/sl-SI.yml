@@ -64,7 +64,6 @@ delegate_picker.title: " Pooblaščeni cilj "
 delegate_picker.tab: "Nov zavihek"
 delegate_picker.panel: "Nova plošča"
 delegate_picker.intent_required: "Opišite delo, ki ga želite prenesti."
-delegate_picker.pane_not_allowed: "/delegate vedno ustvari nov cilj in ne sprejme @pane."
 delegate_picker.not_configured: "Konfiguriran ni noben pooblaščenec."
 delegate_picker.no_parent_pane: "Nobeno delovno podokno ni na voljo za razdelitev."
 delegate_picker.launch_failed: "Ni bilo mogoče zagnati pooblaščenca: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Izbira %{choice} ni uspela: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Izberi terminalsko podokno (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Na voljo ni nobeno zapisljivo terminalsko podokno."
-pane_picker.target_unavailable: "Izbrano podokno ni več na voljo."
+command_card.target_unavailable: "Izbrano podokno ni več na voljo."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Izberi agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent

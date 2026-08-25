@@ -64,7 +64,6 @@ delegate_picker.title: "[ Ďéĺéğåţé ďéśţïñåţïöñ !!]"
 delegate_picker.tab: "[Ñéŵ ţåƀ!!]"
 delegate_picker.panel: "[Ñéŵ ṗåñéĺ!!]"
 delegate_picker.intent_required: "[Ďéśçŕïƀé ţĥé ŵöŕķ ţö ďéĺéğåţé.!!]"
-delegate_picker.pane_not_allowed: "[/delegate åĺŵåÿś çŕéåţéś å ñéŵ ďéśţïñåţïöñ åñď ďöéś ñöţ åççéṗţ @pane.!!]"
 delegate_picker.not_configured: "[Ñö ďéĺéğåţé åğéñţ ïś çöñƒïğûŕéď.!!]"
 delegate_picker.no_parent_pane: "[Ñö ŵöŕķïñğ ṗåñé ïś åṽåïĺåƀĺé ţö śṗĺïţ.!!]"
 delegate_picker.launch_failed: "[Çöûĺď ñöţ ĺåûñçĥ ţĥé ďéĺéğåţé: %{error}!!]"
@@ -218,9 +217,7 @@ system.choice_execution_failed: "[!!_Choice %{choice} failed: %{error}_!!]"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "[Śéĺéçţ ţéŕɱïñåĺ ṗåñé (↑ ↓ • Enter • Esc)!!]"
-pane_picker.empty: "[Ñö ŵŕïţåƀĺé ţéŕɱïñåĺ ṗåñéś åŕé åṽåïĺåƀĺé.!!]"
-pane_picker.target_unavailable: "[Ţĥé śéĺéçţéď ṗåñé ïś ñö ĺöñğéŕ åṽåïĺåƀĺé.!!]"
+command_card.target_unavailable: "[Ţĥé śéĺéçţéď ṗåñé ïś ñö ĺöñğéŕ åṽåïĺåƀĺé.!!]"
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "[!!_Select agent (↑ ↓ • Enter • Esc)_!!]"  # Agent means an AI coding agent

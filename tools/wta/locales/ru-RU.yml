@@ -64,7 +64,6 @@ delegate_picker.title: " Назначение делегата "
 delegate_picker.tab: "Новая вкладка"
 delegate_picker.panel: "Новая панель"
 delegate_picker.intent_required: "Опишите работу, которую нужно делегировать."
-delegate_picker.pane_not_allowed: "/delegate всегда создает новый пункт назначения и не принимает @pane."
 delegate_picker.not_configured: "Агент делегата не настроен."
 delegate_picker.no_parent_pane: "Нет рабочей панели, которую можно было бы разделить."
 delegate_picker.launch_failed: "Не удалось запустить делегат: %{error}"
@@ -220,9 +219,7 @@ system.choice_execution_failed: "Не удалось выполнить выбо
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
-pane_picker.title: "Выберите панель терминала (↑ ↓ • Enter • Esc)"
-pane_picker.empty: "Нет доступных для записи панелей терминала."
-pane_picker.target_unavailable: "Выбранная панель больше не доступна."
+command_card.target_unavailable: "Выбранная панель больше не доступна."
 direct_command.command_required: "Enter a command after $."  # {Locked="$"}
 direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Выбор агента (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
