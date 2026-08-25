@@ -1424,13 +1424,36 @@ fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
 fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Version> {
     let home = home?;
     match cli {
-        CliKind::Copilot => read_installed_copilot(home).ok().flatten()?.version,
+        CliKind::Copilot => read_installed_copilot(home)
+            .ok()
+            .flatten()
+            .and_then(|i| i.version)
+            .or_else(|| copilot_live_plugin_version(home)),
         CliKind::Gemini => read_installed_gemini(home).ok().flatten()?.version,
         CliKind::OpenCode => read_installed_opencode(home).ok().flatten()?.version,
         // Claude and Codex both unpack into `<cache>/<plugin>/<version>/`.
         CliKind::Claude => newest_live_cached_version(&claude_plugin_cache_dir(home)),
         CliKind::Codex => newest_live_cached_version(&codex_plugin_cache_dir(home)),
     }
+}
+
+/// Version a *live* Copilot plugin would load, read from the marketplace
+/// directory it is registered against.
+///
+/// Installing from a local marketplace directory makes Copilot load the plugin
+/// live: nothing is copied and no entry lands in `config.json`'s
+/// `installedPlugins`, so [`read_installed_copilot`] finds nothing at all. The
+/// version in effect is whatever `plugin.json` under the registered directory
+/// says right now — which is also what makes it worth reporting, because a
+/// registration pointing at a stale worktree really is running a different
+/// version from the bundle this wta ships.
+fn copilot_live_plugin_version(home: &Path) -> Option<Version> {
+    let info = copilot_marketplace_info(home);
+    if !info.valid {
+        return None;
+    }
+    let dir = info.path?;
+    read_version_field(&Path::new(&dir).join(PLUGIN_NAME).join("plugin.json"))
 }
 
 /// Highest version directory under a plugin cache root that is still live.
@@ -1980,12 +2003,32 @@ fn parse_copilot_plugin_list(stdout: &str) -> PluginPresence {
     let entry = stdout.lines().find(|line| line.contains(&needle));
     PluginPresence {
         installed: entry.is_some(),
-        enabled: entry.is_some_and(|line| !line.to_ascii_lowercase().contains("[disabled]")),
-        // Copilot CLI 1.0.44-2 prints no version column here; the version
-        // comes from `~/.copilot/config.json` instead, which is a plain file
-        // read and therefore cheaper than a second `copilot` invocation.
-        version: None,
+        // Copied plugins render the state as `[disabled]`; live plugins
+        // (installed from a local marketplace directory) render it as
+        // `(enabled)` / `(disabled)`. Accept both delimiters so a disabled
+        // live plugin isn't reported as enabled.
+        enabled: entry.is_some_and(|line| {
+            let lower = line.to_ascii_lowercase();
+            !lower.contains("[disabled]") && !lower.contains("(disabled)")
+        }),
+        version: entry.and_then(parse_copilot_list_version),
     }
+}
+
+/// Pull the version out of a `copilot plugin list` entry line.
+///
+/// Copilot renders it as a parenthesized `v`-prefixed token, both for copied
+/// entries (`• wt-agent-hooks@wt-local (v0.1.0)`) and live ones
+/// (`• wt-agent-hooks@wt-local (v0.1.6) (enabled)`). The line also carries
+/// `(enabled)` / `[disabled]` state markers, so match on the `v` prefix plus a
+/// successful semver parse rather than on "first parenthesized group".
+///
+/// `None` when the line carries no parseable version — the caller falls back
+/// to the CLI's on-disk records.
+fn parse_copilot_list_version(line: &str) -> Option<Version> {
+    line.split(['(', ')', '[', ']', ' ', '\t'])
+        .filter_map(|token| token.strip_prefix('v'))
+        .find_map(|token| token.parse::<Version>().ok())
 }
 
 /// Search for our marketplace name in the `Registered marketplaces:`
@@ -2021,9 +2064,9 @@ struct PluginPresence {
     installed: bool,
     enabled: bool,
     /// Version the CLI itself reported, when its listing carries one.
-    /// `None` means "this CLI's list output doesn't say" (Copilot's plain-text
-    /// listing) — the caller falls back to the CLI's on-disk records rather
-    /// than paying a second spawn just to learn a version number.
+    /// `None` means "this CLI's list output doesn't say" — the caller falls
+    /// back to the CLI's on-disk records rather than paying a second spawn
+    /// just to learn a version number.
     version: Option<Version>,
 }
 

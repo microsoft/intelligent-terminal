@@ -1800,6 +1800,25 @@ Installed plugins:
     let presence = parse_copilot_plugin_list(stdout);
     assert!(presence.installed);
     assert!(presence.enabled);
+    assert_eq!(presence.version, Some("0.1.0".parse().unwrap()));
+}
+
+/// Live-plugin rendering: installing from a local marketplace directory makes
+/// Copilot load the plugin in place and print an explicit `(enabled)` marker
+/// plus a `from <path>` continuation line. The version still has to come off
+/// the entry line, because a live plugin leaves no `installedPlugins` record
+/// behind for the on-disk reader to find.
+#[test]
+fn copilot_plugin_list_parser_reads_live_entry_version() {
+    let stdout = "\
+Live Plugins (loaded from a local marketplace directory, never copied):
+  • wt-agent-hooks@wt-local (v0.1.6) (enabled)
+      from C:\\repo\\bin\\AppX\\wt-agent-hooks\\copilot
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+    assert_eq!(presence.version, Some("0.1.6".parse().unwrap()));
 }
 
 #[test]
@@ -1811,6 +1830,33 @@ Installed plugins:
     let presence = parse_copilot_plugin_list(stdout);
     assert!(presence.installed);
     assert!(!presence.enabled);
+    assert_eq!(presence.version, Some("0.1.4".parse().unwrap()));
+}
+
+/// Live entries spell the state with parentheses rather than brackets.
+#[test]
+fn copilot_plugin_list_parser_reports_live_disabled() {
+    let stdout = "\
+Live Plugins (loaded from a local marketplace directory, never copied):
+  • wt-agent-hooks@wt-local (v0.1.6) (disabled)
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(!presence.enabled);
+}
+
+/// A listing without a version column is still a valid install — the caller
+/// falls back to the on-disk readers rather than treating it as missing.
+#[test]
+fn copilot_plugin_list_parser_tolerates_missing_version() {
+    let stdout = "\
+Installed plugins:
+  • wt-agent-hooks@wt-local
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+    assert_eq!(presence.version, None);
 }
 
 #[test]
@@ -3169,6 +3215,103 @@ fn read_installed_copilot_returns_none_when_not_installed() {
     fs::create_dir_all(&cfg_dir).unwrap();
     fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
     assert!(read_installed_copilot(&home).unwrap().is_none());
+}
+
+/// A live install leaves `installedPlugins` empty — the only record is the
+/// `wt-local` marketplace registration — so the version has to come from the
+/// `plugin.json` under the registered directory. Without this fallback
+/// `wta hooks status` renders a working install as `v?`.
+#[test]
+fn installed_version_from_disk_reads_live_copilot_marketplace() {
+    let home = unique_dir("copilot-live-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-live-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.6".parse().unwrap())
+    );
+}
+
+/// The copied-install record wins when both exist: it is what the CLI
+/// actually loaded, whereas the marketplace directory may have moved on.
+#[test]
+fn installed_version_from_disk_prefers_copilot_config_entry() {
+    let home = unique_dir("copilot-copied-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-copied-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.2".parse().unwrap())
+    );
+}
+
+/// A registration pointing at a pruned worktree has no readable manifest, so
+/// the version stays unknown rather than being reported as the bundle's.
+#[test]
+fn installed_version_from_disk_ignores_stale_copilot_marketplace() {
+    let home = unique_dir("copilot-stale-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-stale-bundle");
+    fs::remove_dir_all(&marketplace).ok();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        None
+    );
+}
+
+/// Write a `~/.copilot/settings.json` registering `wt-local` against
+/// `marketplace`, including the JSONC banner Copilot emits.
+fn write_copilot_marketplace_settings(copilot_dir: &Path, marketplace: &Path) {
+    let settings = serde_json::json!({
+        "extraKnownMarketplaces": {
+            MARKETPLACE_NAME: {
+                "source": {
+                    "source": "directory",
+                    "path": marketplace.display().to_string(),
+                }
+            }
+        }
+    });
+    let body = format!(
+        "// User settings belong in settings.json.\n{}\n",
+        serde_json::to_string_pretty(&settings).unwrap()
+    );
+    fs::write(copilot_dir.join("settings.json"), body).unwrap();
 }
 
 // ---- auto-upgrade: read_installed_gemini ---------------------------
