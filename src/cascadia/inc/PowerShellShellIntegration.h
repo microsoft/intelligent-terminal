@@ -376,19 +376,21 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // PSConsoleHostReadLine to retain the submitted line, then parse it lazily
     // in prompt only when no normal completion signal exists.
     //
-    // v7: the wrapper snapshotted $function:prompt once, at install time, so
-    // any prompt renderer loaded AFTERWARDS replaced it and silently removed
-    // shell integration - including `oh-my-posh init | Invoke-Expression`
-    // placed at the END of $PROFILE, which is the placement Oh My Posh's own
+    // v7: re-arm after a third-party prompt replacement. Through v6 the wrapper
+    // snapshotted $function:prompt once, at install time, so any prompt
+    // renderer loaded AFTERWARDS replaced it and silently removed shell
+    // integration - including `oh-my-posh init | Invoke-Expression` placed at
+    // the END of $PROFILE, which is the placement Oh My Posh's own
     // documentation shows. v7 keeps ownership of `prompt` but re-arms: at the
     // PSConsoleHostReadLine boundary (off the prompt path, so $? is
     // unaffected) it detects by object identity that something took the slot,
     // adopts that renderer as the prompt it wraps, and reinstalls itself. At
-    // most one prompt render is unmarked after a takeover. Also: restores the
-    // real $? for the wrapped prompt - previously it always saw success, which
-    // broke Oh My Posh's status segment - guards against prompt modules that
-    // chain back into us, and renders fail-safe, degrading to the wrapped
-    // prompt without marks instead of throwing on every prompt.
+    // most one prompt render is unmarked after a takeover. Also new in v7:
+    // restores a success/failure signal for the wrapped prompt - through v6 it
+    // always saw success, which broke Oh My Posh's status segment - guards
+    // against prompt modules that chain back into us, and renders fail-safe,
+    // degrading to the wrapped prompt without marks instead of throwing on
+    // every prompt.
     // ───────────────────────────────────────────────────────────────────
     inline constexpr int kVersion = 7;
 
@@ -615,13 +617,23 @@ function Global:__ShellInteg_Rearm {
     if ($null -eq $current) { return }
     if ([object]::ReferenceEquals($current, $Global:__ShellInteg_Wrapper)) { return }
 
-    if (-not [object]::ReferenceEquals($current, $Global:__ShellInteg_OriginalPrompt)) {
-        # Retain the renderer being displaced, in case the newcomer chains
-        # back into us.
-        $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
-        $Global:__ShellInteg_OriginalPrompt = $current
+    # Best-effort. This runs from PSConsoleHostReadLine, so a throw here would
+    # break the input path, and at script load, where it would break profile
+    # sourcing. `prompt` can legitimately be ReadOnly or Constant in a hardened
+    # profile, which makes Set-Item raise SessionStateUnauthorizedAccessException.
+    # Shell integration is a convenience; never let it take the shell down.
+    try {
+        if (-not [object]::ReferenceEquals($current, $Global:__ShellInteg_OriginalPrompt)) {
+            # Retain the renderer being displaced, in case the newcomer chains
+            # back into us.
+            $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
+            $Global:__ShellInteg_OriginalPrompt = $current
+        }
+        Set-Item Function:\global:prompt $Global:__ShellInteg_Wrapper -ErrorAction Stop
     }
-    Set-Item Function:\global:prompt $Global:__ShellInteg_Wrapper
+    catch {
+        # Leave whatever prompt is installed alone; try again next command.
+    }
 }
 
 __ShellInteg_Rearm
