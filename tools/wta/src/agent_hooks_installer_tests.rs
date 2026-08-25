@@ -3328,6 +3328,56 @@ fn read_installed_copilot_any_reads_live_enabled_flag() {
     assert!(!info.enabled);
 }
 
+/// The probe must mark a live install as such, so `decide_upgrade` can say
+/// "nothing to push here" instead of inferring it from the versions matching.
+#[test]
+fn read_installed_copilot_any_marks_live_installs() {
+    let home = unique_dir("copilot-live-marked");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-live-marked-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_settings(&cfg_dir, &marketplace, Some(true));
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(info.loads_live);
+    assert_eq!(info.version, Some("0.1.6".parse().unwrap()));
+}
+
+/// The copied record that a live install falls back to is not live, so it
+/// keeps driving the upgrade path.
+#[test]
+fn read_installed_copilot_any_leaves_copied_records_unmarked() {
+    let home = unique_dir("copilot-copied-unmarked");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(!info.loads_live);
+    assert_eq!(info.version, Some("0.1.2".parse().unwrap()));
+}
+
 /// A registration pointing at a pruned worktree has no readable manifest, so
 /// the version stays unknown rather than being reported as the bundle's.
 #[test]
@@ -3461,6 +3511,7 @@ fn installed(version: &str, enabled: bool) -> InstalledInfo {
     InstalledInfo {
         version: Some(version.parse().unwrap()),
         enabled,
+        loads_live: false,
         gemini_source: None,
         gemini_type: None,
     }
@@ -3482,6 +3533,54 @@ fn decide_skip_when_disabled() {
         None,
     );
     assert_eq!(a, UpgradeAction::Skip(SkipReason::Disabled));
+}
+
+/// A live install re-reads the bundle directory every session, so there is
+/// no copy to push a newer version into — even when the version it reports
+/// is behind the bundle. Reported distinctly from `UpToDate`, which would
+/// only be the two versions coinciding, and from `NotInstalled`, which is
+/// what this looked like before live installs were recognized at all.
+#[test]
+fn decide_skip_when_loaded_live() {
+    let mut info = installed("0.1.0", true);
+    info.loads_live = true;
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        None,
+    );
+    assert_eq!(a, UpgradeAction::Skip(SkipReason::LiveInstall));
+}
+
+/// Disabled wins over live: the user turned it off, and that is the more
+/// actionable thing to report.
+#[test]
+fn decide_skip_disabled_takes_precedence_over_live() {
+    let mut info = installed("0.1.0", false);
+    info.loads_live = true;
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        None,
+    );
+    assert_eq!(a, UpgradeAction::Skip(SkipReason::Disabled));
+}
+
+/// A copied record must keep driving the upgrade path — that is the shape a
+/// pre-1.0.81-8 CLI still has.
+#[test]
+fn decide_upgrades_copied_copilot_install() {
+    let info = installed("0.1.0", true);
+    assert!(!info.loads_live);
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        None,
+    );
+    assert_eq!(a, UpgradeAction::UpdatePlugin);
 }
 
 #[test]
@@ -3517,6 +3616,7 @@ fn decide_skip_when_bundle_or_installed_version_unknown() {
     let info = InstalledInfo {
         version: None,
         enabled: true,
+        loads_live: false,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3569,6 +3669,7 @@ fn decide_opencode_repairs_unknown_installed_version() {
     let info = InstalledInfo {
         version: None,
         enabled: true,
+        loads_live: false,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3619,6 +3720,7 @@ fn decide_gemini_in_place_when_source_under_current_bundle() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
         gemini_source: Some(nested_src.clone()),
         gemini_type: Some("local".into()),
     };
@@ -3640,6 +3742,7 @@ fn decide_gemini_reinstall_when_source_stale() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
         gemini_source: Some(stale_src),
         gemini_type: Some("local".into()),
     };
@@ -3660,6 +3763,7 @@ fn decide_gemini_reinstall_when_type_is_not_local() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
         gemini_source: Some(inside),
         gemini_type: Some("git".into()),
     };

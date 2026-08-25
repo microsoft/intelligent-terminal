@@ -1470,6 +1470,7 @@ fn read_live_copilot(home: &Path) -> Option<InstalledInfo> {
     Some(InstalledInfo {
         version: Some(version),
         enabled: copilot_plugin_enabled(home),
+        loads_live: true,
         gemini_source: None,
         gemini_type: None,
     })
@@ -2298,6 +2299,7 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
         return Some(InstalledInfo {
             version,
             enabled,
+            loads_live: false,
             gemini_source: None,
             gemini_type: None,
         });
@@ -3776,6 +3778,11 @@ fn read_bundled_version(cli: CliKind) -> Option<Version> {
 struct InstalledInfo {
     version: Option<Version>,
     enabled: bool,
+    /// The CLI loads the plugin in place from the registered marketplace
+    /// directory instead of keeping its own copy, so the bundle on disk is
+    /// already what runs and there is nothing to push an upgrade into.
+    /// Copilot-only today; every other CLI copies.
+    loads_live: bool,
     /// Gemini-only: the recorded install source path from
     /// `.gemini-extension-install.json`. `None` for Copilot/Claude.
     gemini_source: Option<PathBuf>,
@@ -3841,6 +3848,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
     Ok(Some(InstalledInfo {
         version,
         enabled,
+        loads_live: false,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -3879,6 +3887,7 @@ fn read_installed_claude() -> InstalledProbe {
         return Ok(Some(InstalledInfo {
             version,
             enabled,
+            loads_live: false,
             gemini_source: None,
             gemini_type: None,
         }));
@@ -3952,6 +3961,7 @@ fn read_installed_gemini(home: &Path) -> InstalledProbe {
         // purposes, default to `enabled: true` here; the fallback path
         // re-queries via CLI before any destructive action.
         enabled: true,
+        loads_live: false,
         gemini_source,
         gemini_type,
     }))
@@ -3977,6 +3987,7 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
         // surviving manifest already has the current bundle version.
         version: complete.then(|| read_version_field(&manifest)).flatten(),
         enabled: true,
+        loads_live: false,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -3990,6 +4001,13 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
 enum SkipReason {
     NotInstalled,
     Disabled,
+    /// Installed, but the CLI loads it in place from the bundle directory —
+    /// there is no copy to push a newer version into. Distinct from
+    /// `NotInstalled`, which is what this used to look like before
+    /// `read_live_copilot` recognized the shape, and from `UpToDate`, which
+    /// would be a coincidence of the two versions matching rather than a
+    /// statement that an upgrade cannot apply.
+    LiveInstall,
     UpToDate,
     UnknownInstalledVersion,
     UnknownBundleVersion,
@@ -4040,6 +4058,14 @@ fn decide_upgrade(
     };
     if !installed.enabled {
         return UpgradeAction::Skip(SkipReason::Disabled);
+    }
+    // A live install re-reads its directory every session, so it already runs
+    // whatever is on disk there. Checked before the version comparison so the
+    // decision doesn't hinge on the two versions happening to match: when a
+    // stale registration makes them differ, the repair is the install path's
+    // repoint, not an upgrade.
+    if installed.loads_live {
+        return UpgradeAction::Skip(SkipReason::LiveInstall);
     }
     let Some(installed_version) = installed.version else {
         if cli == CliKind::OpenCode {
