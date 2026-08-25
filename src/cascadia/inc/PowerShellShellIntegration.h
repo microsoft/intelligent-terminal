@@ -589,7 +589,7 @@ if (-not $Global:__ShellInteg_Installed) {
             # not. Degrade to the wrapped prompt without marks rather than
             # throwing on every prompt.
             #
-            # The re-entrancy flag must be held here too. The normal path clears
+            # The reentrancy flag must be held here too. The normal path clears
             # it in its finally before this catch runs, so an adopted CHAINING
             # prompt would call back into us with the flag false and recurse
             # until the engine's call-depth limit - the very cycle the guard
@@ -622,14 +622,20 @@ function Global:__ShellInteg_Rearm {
     if ($null -eq $Global:__ShellInteg_Wrapper) { return }
 
     # Identity is compared with -eq rather than a static reference-equality
-    # method. This runs unconditionally at script load and from
-    # PSConsoleHostReadLine, and under Constrained Language Mode a static method
-    # call raises "Method invocation is supported only on core types", which
-    # aborts the enclosing script even from inside try/catch - breaking profile
-    # sourcing or the input path. ScriptBlock does not override Equals, so -eq is
-    # reference identity here (verified: two script blocks with identical text
-    # compare False), and the operator is permitted in Constrained Language Mode.
-    # That keeps re-arming working there instead of disabling it.
+    # method. This function is called at script load and, when the readline
+    # wrapper is installed, once per command. Under Constrained Language Mode a
+    # static method call raises "Method invocation is supported only on core
+    # types", which aborts the enclosing script even from inside try/catch -
+    # breaking profile sourcing or the input path. ScriptBlock does not override
+    # Equals, so -eq is reference identity here (verified: two script blocks with
+    # identical text compare False), and the operator is permitted under
+    # Constrained Language Mode.
+    #
+    # Scope of that: -eq makes this function SAFE to invoke under Constrained
+    # Language Mode. It does not by itself make re-arming active there - the
+    # readline wrapper above is gated on $Global:__ShellInteg_CanInspectErrors,
+    # which is false in that mode, so the per-command driver is not installed and
+    # integration degrades to "marks work, no self-healing after a takeover".
     $current = $function:prompt
     if ($null -eq $current) { return }
     if ($current -eq $Global:__ShellInteg_Wrapper) { return }

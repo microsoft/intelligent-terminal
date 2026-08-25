@@ -642,7 +642,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
                        failSafeFlag < degradeToPrompt &&
                        degradeToPrompt < lastResort &&
                        lastResort < failSafeClear,
-                   L"The fail-safe must hold the re-entrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
+                   L"The fail-safe must hold the reentrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────
