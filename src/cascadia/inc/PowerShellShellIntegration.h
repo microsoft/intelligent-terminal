@@ -554,13 +554,19 @@ if (-not $Global:__ShellInteg_Installed) {
             # ── Prompt ended, command input starts (OSC 133;B) ──
             $suffix = "${E}]133;B${B}"
 
-            # ── Hand the real $? to the prompt we wrap ──
+            # ── Restore a success/failure signal for the prompt we wrap ──
             # Our work above has overwritten $?, so a prompt that reads it (Oh My
             # Posh's status segment, starship, posh-git) would wrongly see success.
             # $? cannot be assigned, but it mirrors the last statement: looking up
             # a variable that does not exist fails WITHOUT touching $Error, and a
             # trivial assignment succeeds. This must be the statement immediately
             # before the delegation.
+            #
+            # The value restored is derived from $gle, not the literal $? the
+            # engine had: parser-error detection above can turn a $?-true command
+            # into $gle -1. That is deliberate - $gle is the same failure signal
+            # reported in OSC 133;D, so the wrapped prompt and the terminal agree
+            # on whether the command failed.
             $Global:__ShellInteg_Rendering = $true
             try {
             if ($gle -eq 0) { $null = $true }
