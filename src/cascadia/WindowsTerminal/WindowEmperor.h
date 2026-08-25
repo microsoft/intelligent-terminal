@@ -115,6 +115,7 @@ private:
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
     bool _deferPersistedLayoutRestore = false;
+    bool _restoringPersistedLayouts = false;
     SafeDispatcherTimer _persistStateTimer;
     // Captured at startup so a deferred layout restore, which can be triggered
     // long after HandleCommandlineArgs() returned, still sees the environment
