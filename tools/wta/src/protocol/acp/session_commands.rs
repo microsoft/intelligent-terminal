@@ -15,16 +15,12 @@ pub(crate) fn normalize(commands: &[AvailableCommand]) -> Vec<AcpSessionCommand>
             {
                 return None;
             }
-            let input_hint = match command.input.as_ref() {
-                Some(AvailableCommandInput::Unstructured(input)) => {
-                    Some(input.hint.trim().to_string())
-                }
-                _ => None,
-            };
-            let completion_behavior = if command.input.is_some() {
-                CompletionBehavior::OptionalFreeText
-            } else {
-                CompletionBehavior::ExecuteImmediately
+            let (input_hint, completion_behavior) = match command.input.as_ref() {
+                Some(AvailableCommandInput::Unstructured(input)) => (
+                    Some(input.hint.trim().to_string()),
+                    CompletionBehavior::OptionalFreeText,
+                ),
+                _ => (None, CompletionBehavior::ExecuteImmediately),
             };
             Some(AcpSessionCommand {
                 name: name.to_string(),

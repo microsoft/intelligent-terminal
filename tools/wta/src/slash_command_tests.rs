@@ -178,7 +178,7 @@ fn agent_command_without_input_submits_as_a_normal_prompt() {
         session_id: "session-1".into(),
         commands: vec![session_command("plan", "Build a plan", None)],
     });
-    type_input(&mut app, "/pla");
+    type_input(&mut app, "/plan");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
