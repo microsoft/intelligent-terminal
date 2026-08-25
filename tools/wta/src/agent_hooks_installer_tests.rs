@@ -3557,11 +3557,12 @@ fn decide_skip_when_loaded_live_from_current_bundle() {
 }
 
 /// A registration left pointing at another tree keeps loading *that* tree's
-/// hooks. `upgrade_copilot` repoints it, so the decision must reach it —
-/// including when both trees carry the same hook version, which is the
-/// common case and the reason version comparison can't stand in for this.
+/// hooks. The repoint in `upgrade_copilot` is what fixes it, so the decision
+/// must reach it — including when both trees carry the same hook version,
+/// which is the common case and the reason version comparison can't stand in
+/// for this.
 #[test]
-fn decide_repoints_live_install_registered_against_another_tree() {
+fn decide_updates_live_install_registered_against_another_tree() {
     let bundle = unique_dir("live-current");
     let other = unique_dir("live-stale");
     let mut info = installed("0.1.6", true);
