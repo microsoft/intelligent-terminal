@@ -596,6 +596,15 @@ if (-not $Global:__ShellInteg_Installed) {
 # identity, adopt the newcomer as the prompt we wrap, and reinstall ourselves.
 # Runs on every source and once per command from the PSReadLine boundary.
 function Global:__ShellInteg_Rearm {
+    # No wrapper of our own to install. This happens when an OLDER version of
+    # this script is already installed in the session: it set
+    # __ShellInteg_Installed, so the block above was skipped and never created
+    # our wrapper. Do nothing. Installing a null would clobber `prompt`, and
+    # adopting the older version's wrapper as the prompt we wrap would make it
+    # delegate to itself and overflow the call stack. The upgrade completes in
+    # the next shell, which sources only this version.
+    if ($null -eq $Global:__ShellInteg_Wrapper) { return }
+
     $current = $function:prompt
     if ($null -eq $current) { return }
     if ([object]::ReferenceEquals($current, $Global:__ShellInteg_Wrapper)) { return }
