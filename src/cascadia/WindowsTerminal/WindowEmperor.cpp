@@ -274,7 +274,33 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     // icon — a layout that a headless COM activation deferred has to come back
     // first, or it is lost. Every window creation funnels through here, so this
     // is the one place that can make that promise.
-    _restoreDeferredPersistedLayouts(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+    if (_deferPersistedLayoutRestore)
+    {
+        // Restore with the context of the activation that is creating this
+        // window rather than the one COM started us with. For an ordinary
+        // launch the startup context *is* the activation context, and that
+        // parity is what the deferral exists to preserve. Fall back field by
+        // field: a window dragged out carries no Command at all, and a defterm
+        // handoff fills in only the show command.
+        std::wstring currentDirectory{ _startupCurrentDirectory };
+        std::wstring environment{ _startupEnvironment };
+        auto showWindowCommand = _startupShowWindowCommand;
+
+        if (const auto command = args.Command())
+        {
+            if (const std::wstring_view commandDirectory{ command.CurrentDirectory() }; !commandDirectory.empty())
+            {
+                currentDirectory = commandDirectory;
+            }
+            if (const std::wstring_view commandEnvironment{ command.CurrentEnvironment() }; !commandEnvironment.empty())
+            {
+                environment = commandEnvironment;
+            }
+            showWindowCommand = command.ShowWindowCommand();
+        }
+
+        _restoreDeferredPersistedLayouts(currentDirectory, environment, showWindowCommand);
+    }
 
     uint64_t id = args.Id();
     bool needsNewId = id == 0;
