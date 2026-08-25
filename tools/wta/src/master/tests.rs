@@ -8,6 +8,75 @@ use super::*;
 use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[test]
+fn durable_tab_session_requests_use_authenticated_pipe_elevation() {
+    use crate::durable_tab_session_store::{
+        DurableTabSessionDeleteParams, DurableTabSessionGetParams, DurableTabSessionSaveParams,
+        DurableTabSessionsListParams,
+    };
+    use crate::session_registry::WtaExtRequest as Req;
+
+    let mut requests = [
+        Req::DurableTabSessionsList(DurableTabSessionsListParams { elevated: false }),
+        Req::DurableTabSessionSave(DurableTabSessionSaveParams {
+            id: None,
+            expected_revision: None,
+            name: "name".to_string(),
+            active_pane_cwd: r"C:\repo".to_string(),
+            layout_json: "{}".to_string(),
+            elevated: false,
+            buffers: Vec::new(),
+        }),
+        Req::DurableTabSessionGet(DurableTabSessionGetParams {
+            id: uuid::Uuid::nil().to_string(),
+            elevated: false,
+        }),
+        Req::DurableTabSessionDelete(DurableTabSessionDeleteParams {
+            id: uuid::Uuid::nil().to_string(),
+            elevated: false,
+        }),
+    ];
+
+    for request in &mut requests {
+        assert_eq!(
+            scope_durable_tab_session_request(request, true),
+            Some(false)
+        );
+        let elevated = match request {
+            Req::DurableTabSessionsList(params) => params.elevated,
+            Req::DurableTabSessionSave(params) => params.elevated,
+            Req::DurableTabSessionGet(params) => params.elevated,
+            Req::DurableTabSessionDelete(params) => params.elevated,
+            _ => unreachable!(),
+        };
+        assert!(elevated);
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_client_elevation_is_available_after_first_read() -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::windows::named_pipe::ClientOptions;
+
+    let pipe_name = format!(r"\\.\pipe\wta-elevation-test-{}", uuid::Uuid::new_v4());
+    let mut server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(&pipe_name)?;
+    let mut client = ClientOptions::new().open(&pipe_name)?;
+    server.connect().await?;
+    client.write_all(b"{").await?;
+
+    let mut first_byte = [0u8; 1];
+    server.read_exact(&mut first_byte).await?;
+    assert_eq!(first_byte, *b"{");
+    assert_eq!(
+        connected_pipe_client_is_elevated(&server)
+            .map_err(|error| anyhow!("failed to authenticate test pipe client: {error:?}"))?,
+        crate::durable_tab_session_store::current_process_is_elevated()
+    );
+    Ok(())
+}
+
 fn empty_agent_cell() -> AgentCell {
     Arc::new(OnceCell::new())
 }
@@ -868,6 +937,7 @@ async fn repeated_helper_initialization_acquires_and_binds_once() {
             add_test_agent_to_pool(&state, &unused).await;
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: empty_agent_cell(),
                 state,
@@ -920,6 +990,7 @@ async fn concurrent_helper_initialization_publishes_only_the_winning_agent() {
             add_test_agent_to_pool(&state, &unused).await;
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: empty_agent_cell(),
                 state,
@@ -1190,6 +1261,7 @@ fn make_state_with_retirement_pending_timeout(
     Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
+        durable_tab_sessions: None,
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),
@@ -1950,12 +2022,116 @@ fn client_connection_to_model_agent(
     client_conn
 }
 
+fn client_connection_to_resume_agent(
+    events: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    first_load_already_loaded: bool,
+    close_fails: bool,
+) -> conn::ClientLink {
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let load_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let close_events = Arc::clone(&events);
+    let load_events = events;
+    let agent_builder = acp::Agent
+        .builder()
+        .name("resume-agent")
+        .on_receive_request(
+            move |_req: acp::schema::v1::CloseSessionRequest,
+                  responder: acp::Responder<acp::schema::v1::CloseSessionResponse>,
+                  _cx| {
+                let events = Arc::clone(&close_events);
+                async move {
+                    events
+                        .lock()
+                        .expect("resume events lock poisoned")
+                        .push("close");
+                    if close_fails {
+                        responder.respond_with_error(
+                            acp::Error::internal_error().data("mock session/close failure"),
+                        )
+                    } else {
+                        responder.respond(acp::schema::v1::CloseSessionResponse::new())
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_request(
+            move |_req: acp::schema::v1::LoadSessionRequest,
+                  responder: acp::Responder<acp::schema::v1::LoadSessionResponse>,
+                  _cx| {
+                let events = Arc::clone(&load_events);
+                let load_count = Arc::clone(&load_count);
+                async move {
+                    events
+                        .lock()
+                        .expect("resume events lock poisoned")
+                        .push("load");
+                    let attempt = load_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if first_load_already_loaded && attempt == 0 {
+                        responder.respond_with_error(acp::Error::new(
+                            -32602,
+                            "Session is already loaded",
+                        ))
+                    } else {
+                        responder.respond(acp::schema::v1::LoadSessionResponse::new())
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (client_conn, client_io) = conn::spawn_client(
+        acp::Client.builder().name("resume-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+
+    client_conn
+}
+
+fn agent_link_to_noop_helper() -> conn::AgentLink {
+    let (master_pipe, helper_pipe) = tokio::io::duplex(4096);
+    let (master_read, master_write) = tokio::io::split(master_pipe);
+    let (helper_read, helper_write) = tokio::io::split(helper_pipe);
+
+    let (agent_link, agent_io) = conn::spawn_agent(
+        acp::Agent.builder().name("master-helper-side"),
+        conn::byte_streams(master_write.compat_write(), master_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+
+    let (_helper_link, helper_io) = conn::spawn_client(
+        acp::Client.builder().name("noop-helper"),
+        conn::byte_streams(helper_write.compat_write(), helper_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = helper_io.await;
+    });
+
+    agent_link
+}
+
 fn model_handler(agent: Arc<AgentCli>, helper_id: u64) -> HelperHandler {
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let slot = empty_agent_cell();
     let _ = slot.set(agent);
     HelperHandler {
         helper_id: HelperId(helper_id),
+        client_elevated: false,
         agent: slot,
         state: make_state(),
         replacement_gate: Arc::new(Mutex::new(())),
@@ -2131,6 +2307,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id: HelperId(1),
                 agent,
                 state: make_state(),
@@ -2175,6 +2352,7 @@ async fn failed_pending_session_cleanup_retires_close_marked_recovery_state() {
     );
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -2219,6 +2397,7 @@ async fn failed_pending_cleanup_reads_destructive_marker_under_ownership_gate() 
             );
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: empty_agent_cell(),
                 state: Arc::clone(&state),
@@ -2283,6 +2462,7 @@ async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -2370,6 +2550,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -2430,6 +2611,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
 fn cloned_helper_handlers_share_the_lazy_agent_binding() {
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id: HelperId(1),
         agent: empty_agent_cell(),
         state: make_state(),
@@ -2486,6 +2668,7 @@ async fn helper_close_session_physically_closes_and_retires_owned_session() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -2917,6 +3100,7 @@ async fn no_owner_retirement_fences_outgoing_publication_and_allows_replacement(
 
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let outgoing_handler = HelperHandler {
+        client_elevated: false,
         helper_id: outgoing,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -2947,6 +3131,7 @@ async fn no_owner_retirement_fences_outgoing_publication_and_allows_replacement(
     complete_tab_retirement(&state, "tab-owner-race").await;
     state.connected_helpers.lock().await.insert(replacement);
     let replacement_handler = HelperHandler {
+        client_elevated: false,
         helper_id: replacement,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -3002,6 +3187,7 @@ async fn scope_all_fences_connected_helper_without_owner_after_completion() {
 
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let outgoing_handler = HelperHandler {
+                client_elevated: false,
                 helper_id: outgoing,
                 agent: empty_agent_cell(),
                 state: Arc::clone(&state),
@@ -3028,6 +3214,7 @@ async fn scope_all_fences_connected_helper_without_owner_after_completion() {
 
             state.connected_helpers.lock().await.insert(replacement);
             let replacement_handler = HelperHandler {
+                client_elevated: false,
                 helper_id: replacement,
                 agent: empty_agent_cell(),
                 state: Arc::clone(&state),
@@ -3082,6 +3269,7 @@ async fn helper_connecting_during_scope_all_is_outgoing_but_replacement_is_admit
 
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let outgoing_handler = HelperHandler {
+        client_elevated: false,
         helper_id: outgoing,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -3103,6 +3291,7 @@ async fn helper_connecting_during_scope_all_is_outgoing_but_replacement_is_admit
     let replacement = HelperId(216);
     register_connected_helper(&state, replacement).await;
     let replacement_handler = HelperHandler {
+        client_elevated: false,
         helper_id: replacement,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -3260,6 +3449,7 @@ async fn repeated_ownerless_stale_tab_retirement_keeps_fences_bounded() {
 
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id: unresolved,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -3296,6 +3486,7 @@ async fn ownerless_helper_cannot_claim_old_retired_tab_after_prior_fence_limits(
 
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -3329,6 +3520,7 @@ async fn ownerless_helper_publishing_different_owner_clears_unrelated_safety() {
 
     let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id,
         agent: empty_agent_cell(),
         state: Arc::clone(&state),
@@ -4330,6 +4522,7 @@ async fn scope_all_waits_for_ownerless_pending_transaction_cleanup() {
                 .expect("agent-side forwarder should be initialized");
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -4829,6 +5022,7 @@ async fn retirement_waits_for_and_retires_late_session_new() {
                 .expect("agent-side forwarder should be initialized");
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -4943,6 +5137,7 @@ async fn retirement_timeout_cleans_before_completion_and_fences_late_session_new
                 .expect("agent-side forwarder should be initialized");
             let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -5324,6 +5519,7 @@ async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() 
                 .set(agent_link_to_noop_client())
                 .expect("agent-side forwarder should be set once");
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -5461,6 +5657,7 @@ async fn disconnect_during_session_new_fences_late_result() {
                 .set(agent_link_to_noop_client())
                 .expect("agent-side forwarder should be set once");
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -5572,6 +5769,7 @@ async fn disconnect_tombstone_rejects_queued_replacement_after_in_flight_failure
                 .set(agent_link_to_noop_client())
                 .expect("agent-side forwarder should be set once");
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -5700,6 +5898,7 @@ async fn disconnect_during_session_load_fences_late_result() {
                 .set(agent_link_to_noop_client())
                 .expect("agent-side forwarder should be set once");
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -5840,6 +6039,7 @@ async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
             let agent_slot = empty_agent_cell();
             assert!(agent_slot.set(agent).is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent: agent_slot,
                 state: Arc::clone(&state),
@@ -6112,6 +6312,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -6305,6 +6506,7 @@ async fn unsupported_session_close_capability_cancels_and_logically_retires_sess
                 .await
                 .insert("unsupported-close-agent".to_string(), pooled_agent);
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -6626,6 +6828,7 @@ async fn close_failure_keeps_predecessor_and_does_not_create_replacement() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -6825,6 +7028,7 @@ async fn load_close_failure_restores_target_route_and_capability() {
                     .is_ok()
             );
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -6970,6 +7174,7 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -7090,6 +7295,7 @@ async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_
         }))
         .is_ok());
     let handler = HelperHandler {
+        client_elevated: false,
         helper_id,
         agent,
         state: Arc::clone(&state),
@@ -7238,6 +7444,7 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -7369,6 +7576,7 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
                 }))
                 .is_ok());
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id,
                 agent,
                 state: Arc::clone(&state),
@@ -7755,6 +7963,7 @@ async fn prompt_forward_survives_reentrant_permission() {
                 listed_ever: Mutex::new(HashSet::new()),
             }));
             let handler = HelperHandler {
+                client_elevated: false,
                 helper_id: HelperId(1),
                 agent,
                 state: Arc::clone(&state),
@@ -9109,6 +9318,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
     Arc::new(MasterStateInner {
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
+        durable_tab_sessions: None,
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
         pending_usage: Mutex::new(HashMap::new()),

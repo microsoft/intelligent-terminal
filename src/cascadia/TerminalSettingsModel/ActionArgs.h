@@ -389,10 +389,46 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         PARTIAL_ACTION_ARG_BODY(NewTerminalArgs, NEW_TERMINAL_ARGS);
         ACTION_ARG(winrt::hstring, Type, L"");
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
+        ACTION_ARG(winrt::hstring, AgentSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentSessionAgent, L"");
+        ACTION_ARG(winrt::hstring, AgentResumeCommandline, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneAgent, L"");
+        // Launch command for a custom agent; empty for built-ins, which resolve
+        // their command from the id alone.
+        ACTION_ARG(winrt::hstring, AgentPaneCustomCommand, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneView, L"");
+        ACTION_ARG(bool, AgentPaneOpen, false);
+        ACTION_ARG(winrt::hstring, AgentPanePosition, L"");
+        // Fraction of the split the agent pane occupies. Zero means "not
+        // recorded", so a restore falls back to the even split rather than
+        // collapsing the pane.
+        ACTION_ARG(float, AgentPaneSize, 0.0f);
+        ACTION_ARG(winrt::hstring, DurableTabSessionBufferPath, L"");
+        ACTION_ARG(winrt::hstring, DurableTabSessionId, L"");
+        ACTION_ARG(int64_t, DurableTabSessionRevision, 0);
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
         static constexpr std::string_view SessionIdKey{ "sessionId" };
+        static constexpr std::string_view AgentSessionKey{ "agentSession" };
+        static constexpr std::string_view PaneSessionIdKey{ "paneSessionId" };
+        static constexpr std::string_view AgentSessionIdKey{ "agentSessionId" };
+        static constexpr std::string_view AgentKey{ "agent" };
+        static constexpr std::string_view AgentResumeCommandlineKey{ "agentResumeCommandline" };
+        static constexpr std::string_view AgentPaneKey{ "agentPane" };
+        static constexpr std::string_view AgentPaneSessionIdKey{ "agentPaneSessionId" };
+        static constexpr std::string_view AgentPaneViewKey{ "agentPaneView" };
+        static constexpr std::string_view AgentPaneOpenKey{ "agentPaneOpen" };
+        static constexpr std::string_view AgentPanePositionKey{ "agentPanePosition" };
+        static constexpr std::string_view AgentPaneSizeKey{ "agentPaneSize" };
+        static constexpr std::string_view ViewKey{ "view" };
+        static constexpr std::string_view OpenKey{ "open" };
+        static constexpr std::string_view PositionKey{ "position" };
+        static constexpr std::string_view SizeKey{ "size" };
+        static constexpr std::string_view CustomCommandKey{ "customCommand" };
+        static constexpr std::string_view DurableTabSessionIdKey{ "durableTabSessionId" };
+        static constexpr std::string_view DurableTabSessionRevisionKey{ "durableTabSessionRevision" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -419,6 +455,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_ColorScheme == _ColorScheme &&
                        otherAsUs->_Elevate == _Elevate &&
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
+                       otherAsUs->_AgentSessionId == _AgentSessionId &&
+                       otherAsUs->_AgentSessionAgent == _AgentSessionAgent &&
+                       otherAsUs->_AgentResumeCommandline == _AgentResumeCommandline &&
+                       otherAsUs->_AgentPaneSessionId == _AgentPaneSessionId &&
+                       otherAsUs->_AgentPaneAgent == _AgentPaneAgent &&
+                       otherAsUs->_AgentPaneView == _AgentPaneView &&
+                       otherAsUs->_AgentPaneOpen == _AgentPaneOpen &&
+                       otherAsUs->_AgentPanePosition == _AgentPanePosition &&
+                       otherAsUs->_AgentPaneSize == _AgentPaneSize &&
+                       otherAsUs->_AgentPaneCustomCommand == _AgentPaneCustomCommand &&
                        otherAsUs->_ContentId == _ContentId;
             }
             return false;
@@ -433,11 +479,48 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::GetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::GetValueForKey(json, SessionIdKey, args->_SessionId);
+            // Legacy flat fields remain readable so snapshots produced before
+            // durable agent metadata became structured still restore.
+            JsonUtils::GetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
+            JsonUtils::GetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
+            JsonUtils::GetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
+            JsonUtils::GetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
+            JsonUtils::GetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
+            JsonUtils::GetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+            JsonUtils::GetValueForKey(json, AgentPaneSizeKey, args->_AgentPaneSize);
+            if (const auto& agentSession = json[AgentSessionKey.data()]; agentSession.isObject())
+            {
+                JsonUtils::GetValueForKey(agentSession, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::GetValueForKey(agentSession, AgentKey, args->_AgentSessionAgent);
+                if (args->_SessionId == winrt::guid{})
+                {
+                    JsonUtils::GetValueForKey(agentSession, PaneSessionIdKey, args->_SessionId);
+                }
+            }
+            if (const auto& agentPane = json[AgentPaneKey.data()]; agentPane.isObject())
+            {
+                if (const auto& agentSession = agentPane[AgentSessionKey.data()]; agentSession.isObject())
+                {
+                    JsonUtils::GetValueForKey(agentSession, AgentSessionIdKey, args->_AgentPaneSessionId);
+                    JsonUtils::GetValueForKey(agentSession, AgentKey, args->_AgentPaneAgent);
+                }
+                JsonUtils::GetValueForKey(agentPane, ViewKey, args->_AgentPaneView);
+                JsonUtils::GetValueForKey(agentPane, OpenKey, args->_AgentPaneOpen);
+                JsonUtils::GetValueForKey(agentPane, PositionKey, args->_AgentPanePosition);
+                JsonUtils::GetValueForKey(agentPane, SizeKey, args->_AgentPaneSize);
+                JsonUtils::GetValueForKey(agentPane, CustomCommandKey, args->_AgentPaneCustomCommand);
+            }
             JsonUtils::GetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::GetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::GetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::GetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
+            JsonUtils::GetValueForKey(json, DurableTabSessionIdKey, args->_DurableTabSessionId);
+            if (const auto& durableTabSessionRevision = json[DurableTabSessionRevisionKey.data()];
+                durableTabSessionRevision.isInt() || durableTabSessionRevision.isInt64())
+            {
+                args->_DurableTabSessionRevision = durableTabSessionRevision.asInt64();
+            }
             JsonUtils::GetValueForKey(json, ContentKey, args->_ContentId);
             return *args;
         }
@@ -455,11 +538,63 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::SetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::SetValueForKey(json, SessionIdKey, args->_SessionId);
+            if (!args->AgentSessionId().empty() && !args->AgentSessionAgent().empty())
+            {
+                Json::Value agentSession{ Json::ValueType::objectValue };
+                JsonUtils::SetValueForKey(agentSession, PaneSessionIdKey, args->_SessionId);
+                JsonUtils::SetValueForKey(agentSession, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::SetValueForKey(agentSession, AgentKey, args->_AgentSessionAgent);
+                json[AgentSessionKey.data()] = std::move(agentSession);
+            }
+            else
+            {
+                JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
+            }
+            if (!args->AgentPaneSessionId().empty() && !args->AgentPaneAgent().empty())
+            {
+                Json::Value agentPaneSession{ Json::ValueType::objectValue };
+                JsonUtils::SetValueForKey(agentPaneSession, AgentSessionIdKey, args->_AgentPaneSessionId);
+                JsonUtils::SetValueForKey(agentPaneSession, AgentKey, args->_AgentPaneAgent);
+                Json::Value agentPane{ Json::ValueType::objectValue };
+                agentPane[AgentSessionKey.data()] = std::move(agentPaneSession);
+                JsonUtils::SetValueForKey(agentPane, ViewKey, args->_AgentPaneView);
+                JsonUtils::SetValueForKey(agentPane, OpenKey, args->_AgentPaneOpen);
+                JsonUtils::SetValueForKey(agentPane, PositionKey, args->_AgentPanePosition);
+                JsonUtils::SetValueForKey(agentPane, CustomCommandKey, args->_AgentPaneCustomCommand);
+                // Only a real recorded fraction is worth writing: 0 means the
+                // size was never captured, and either extreme would restore a
+                // collapsed pane.
+                if (const auto size = args->AgentPaneSize(); size > 0.0f && size < 1.0f)
+                {
+                    JsonUtils::SetValueForKey(agentPane, SizeKey, args->_AgentPaneSize);
+                }
+                json[AgentPaneKey.data()] = std::move(agentPane);
+            }
+            else
+            {
+                JsonUtils::SetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
+                JsonUtils::SetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
+                JsonUtils::SetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
+                JsonUtils::SetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+                // A pane the user opened but never chatted in has no session id
+                // and lands here, so its size has to round-trip too.
+                if (const auto size = args->AgentPaneSize(); size > 0.0f && size < 1.0f)
+                {
+                    JsonUtils::SetValueForKey(json, AgentPaneSizeKey, args->_AgentPaneSize);
+                }
+            }
             JsonUtils::SetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::SetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::SetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
+            if (const auto durableTabSessionId = args->DurableTabSessionId();
+                !durableTabSessionId.empty())
+            {
+                JsonUtils::SetValueForKey(json, DurableTabSessionIdKey, durableTabSessionId);
+                json[DurableTabSessionRevisionKey.data()] = Json::Int64{ args->DurableTabSessionRevision() };
+            }
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
             return json;
         }
@@ -473,6 +608,19 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_ProfileIndex = _ProfileIndex;
             copy->_Profile = _Profile;
             copy->_SessionId = _SessionId;
+            copy->_AgentSessionId = _AgentSessionId;
+            copy->_AgentSessionAgent = _AgentSessionAgent;
+            copy->_AgentResumeCommandline = _AgentResumeCommandline;
+            copy->_AgentPaneSessionId = _AgentPaneSessionId;
+            copy->_AgentPaneAgent = _AgentPaneAgent;
+            copy->_AgentPaneView = _AgentPaneView;
+            copy->_AgentPaneOpen = _AgentPaneOpen;
+            copy->_AgentPanePosition = _AgentPanePosition;
+            copy->_AgentPaneSize = _AgentPaneSize;
+            copy->_AgentPaneCustomCommand = _AgentPaneCustomCommand;
+            copy->_DurableTabSessionBufferPath = _DurableTabSessionBufferPath;
+            copy->_DurableTabSessionId = _DurableTabSessionId;
+            copy->_DurableTabSessionRevision = _DurableTabSessionRevision;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;
@@ -498,6 +646,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(ColorScheme());
             h.write(Elevate());
             h.write(ReloadEnvironmentVariables());
+            h.write(AgentSessionId());
+            h.write(AgentSessionAgent());
+            h.write(AgentResumeCommandline());
+            h.write(AgentPaneSessionId());
+            h.write(AgentPaneAgent());
+            h.write(AgentPaneView());
+            h.write(AgentPaneOpen());
+            h.write(AgentPanePosition());
+            h.write(AgentPaneSize());
+            h.write(AgentPaneCustomCommand());
             h.write(ContentId());
         }
     };

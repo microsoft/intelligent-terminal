@@ -133,6 +133,7 @@ pub enum AppEvent {
     },
     UserMessageReplayChunk {
         session_id: String,
+        message_id: Option<String>,
         text: String,
     },
     AgentMessageEnd {
@@ -289,6 +290,24 @@ pub enum AppEvent {
     },
     RegisterBornBoundSession {
         event: crate::agent_sessions::SessionEvent,
+    },
+    DurableTabSessionsLoaded {
+        tab_id: String,
+        sessions: Vec<crate::durable_tab_session_store::DurableTabSessionSummary>,
+        /// Durable ids that are already open in a tab.
+        open: std::collections::HashSet<String>,
+        error: Option<String>,
+    },
+    DurableTabSessionRestored {
+        tab_id: String,
+        id: String,
+        error: Option<String>,
+    },
+    DurableTabSessionDeleted {
+        tab_id: String,
+        id: String,
+        deleted: bool,
+        error: Option<String>,
     },
     MasterMutationCompleted {
         request_id: u64,

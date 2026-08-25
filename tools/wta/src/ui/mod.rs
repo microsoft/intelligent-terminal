@@ -8,6 +8,7 @@ pub(crate) mod command_format;
 mod command_popup;
 mod config_popup;
 mod debug_panel;
+pub mod durable_tab_sessions_view;
 mod input;
 mod layout;
 mod model_popup;

@@ -42,7 +42,8 @@ namespace winrt::TerminalApp::implementation
                                                                           std::shared_ptr<Pane> newPane);
 
         std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> SplitPaneAtRoot(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
-                                                                                 std::shared_ptr<Pane> newPane);
+                                                                                 std::shared_ptr<Pane> newPane,
+                                                                                 float splitSize = 0.5f);
 
         void ToggleSplitOrientation();
         void UpdateIcon(const winrt::hstring& iconPath, const winrt::Microsoft::Terminal::Settings::Model::IconStyle iconStyle);
@@ -109,6 +110,7 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
+        float AgentPaneSize() const noexcept;
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but
@@ -178,6 +180,14 @@ namespace winrt::TerminalApp::implementation
         // _tabs which is reused when tabs close. Used as the tab_id for
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
+
+        const winrt::hstring& DurableTabSessionId() const noexcept { return _durableTabSessionId; }
+        int64_t DurableTabSessionRevision() const noexcept { return _durableTabSessionRevision; }
+        void SetDurableTabSession(const winrt::hstring& id, const int64_t revision)
+        {
+            _durableTabSessionId = id;
+            _durableTabSessionRevision = revision;
+        }
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -309,6 +319,8 @@ namespace winrt::TerminalApp::implementation
         bool _changingActivePane{ false };
 
         winrt::hstring _stableId{};
+        winrt::hstring _durableTabSessionId{};
+        int64_t _durableTabSessionRevision{ 0 };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };

@@ -51,7 +51,7 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     // Fuzz all three input parameters: eventType, paramsJson, and sessionId.
     {
         Json::Value evt;
-        wtcli::BuildSendEventJson(parts[0], parts[2], parts[3], evt);
+        wtcli::BuildSendEventJson(parts[0], parts[2], parts[3], !parts[3].empty(), evt);
     }
 
     // ── Target 2: BuildAgentHookEventJson ──

@@ -389,6 +389,105 @@ pub fn parse_sessions_list_response(
     serde_json::from_str::<SessionsListResponse>(raw.get())
 }
 
+// =============================================================
+// Durable tab-session extension protocol.
+// =============================================================
+
+pub const INTELLTERM_METHOD_DURABLE_TAB_SESSIONS_LIST: &str =
+    "_intellterm.wta/durable_tab_sessions/list";
+pub const INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE: &str =
+    "_intellterm.wta/durable_tab_sessions/save";
+pub const INTELLTERM_METHOD_DURABLE_TAB_SESSION_GET: &str =
+    "_intellterm.wta/durable_tab_sessions/get";
+pub const INTELLTERM_METHOD_DURABLE_TAB_SESSION_DELETE: &str =
+    "_intellterm.wta/durable_tab_sessions/delete";
+
+fn build_typed_ext_request<T: serde::Serialize>(
+    method: &'static str,
+    params: &T,
+) -> acp::schema::v1::ExtRequest {
+    let raw = serde_json::value::to_raw_value(params)
+        .expect("typed WTA extension parameters are serializable");
+    acp::schema::v1::ExtRequest::new(method, Arc::from(raw))
+}
+
+pub fn build_durable_tab_sessions_list_request(elevated: bool) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_DURABLE_TAB_SESSIONS_LIST,
+        &crate::durable_tab_session_store::DurableTabSessionsListParams { elevated },
+    )
+}
+
+pub fn parse_durable_tab_sessions_list_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionsListParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_durable_tab_sessions_list_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionsListResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_durable_tab_session_save_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionSaveParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_durable_tab_session_get_request(
+    id: String,
+    elevated: bool,
+) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_DURABLE_TAB_SESSION_GET,
+        &crate::durable_tab_session_store::DurableTabSessionGetParams { id, elevated },
+    )
+}
+
+pub fn parse_durable_tab_session_get_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionGetParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_durable_tab_session_get_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionGetResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_durable_tab_session_delete_request(
+    id: String,
+    elevated: bool,
+) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_DURABLE_TAB_SESSION_DELETE,
+        &crate::durable_tab_session_store::DurableTabSessionDeleteParams { id, elevated },
+    )
+}
+
+pub fn parse_durable_tab_session_delete_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionDeleteParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_durable_tab_session_delete_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::durable_tab_session_store::DurableTabSessionDeleteResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_durable_tab_session_ext_response<T: serde::Serialize>(
+    response: &T,
+) -> acp::schema::v1::ExtResponse {
+    let raw = serde_json::value::to_raw_value(response)
+        .expect("typed WTA extension response is serializable");
+    acp::schema::v1::ExtResponse::new(raw.into())
+}
+
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
 /// recognized by the helper's live-set mirror.
 ///
@@ -499,6 +598,10 @@ pub enum WtaExtRequest {
     SessionResumeDispatched(SessionResumeDispatchedParams),
     /// `_intellterm.wta/session_focus` — focus + typed focus result.
     SessionFocus(SessionFocusParams),
+    DurableTabSessionsList(crate::durable_tab_session_store::DurableTabSessionsListParams),
+    DurableTabSessionSave(crate::durable_tab_session_store::DurableTabSessionSaveParams),
+    DurableTabSessionGet(crate::durable_tab_session_store::DurableTabSessionGetParams),
+    DurableTabSessionDelete(crate::durable_tab_session_store::DurableTabSessionDeleteParams),
     /// `_intellterm.wta/session/close_tab` — close the session belonging to a
     /// destroyed stable tab id, regardless of which surviving helper observed
     /// the terminal event.
@@ -508,7 +611,10 @@ pub enum WtaExtRequest {
     ForwardToAgent(acp::schema::v1::ExtRequest),
     /// Method matched one of ours but the params failed to decode. The master
     /// answers `invalid_params` rather than acting on a half-parsed payload.
-    Malformed { method: String, error: String },
+    Malformed {
+        method: String,
+        error: String,
+    },
 }
 
 /// Classify and decode an inbound helper→master `ExtRequest`.
@@ -554,6 +660,20 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         )
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
         decode!(SessionFocus, parse_session_focus_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSIONS_LIST) {
+        decode!(
+            DurableTabSessionsList,
+            parse_durable_tab_sessions_list_params
+        )
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE) {
+        decode!(DurableTabSessionSave, parse_durable_tab_session_save_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_GET) {
+        decode!(DurableTabSessionGet, parse_durable_tab_session_get_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_DURABLE_TAB_SESSION_DELETE) {
+        decode!(
+            DurableTabSessionDelete,
+            parse_durable_tab_session_delete_params
+        )
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_CLOSE_TAB_SESSION) {
         decode!(CloseTabSession, parse_close_tab_session_params)
     } else {
@@ -3290,6 +3410,56 @@ mod tests {
         assert!(matches!(
             parse_ext_request(build_session_focus_request(&sid)),
             WtaExtRequest::SessionFocus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_ext_request_decodes_typed_durable_tab_session_methods() {
+        use crate::durable_tab_session_store::{
+            DurableTabSessionBufferInput, DurableTabSessionDeleteParams,
+            DurableTabSessionSaveParams,
+        };
+
+        let save = DurableTabSessionSaveParams {
+            id: None,
+            expected_revision: None,
+            name: "duplicate names are valid".to_string(),
+            active_pane_cwd: r"C:\repo".to_string(),
+            layout_json: "{}".to_string(),
+            elevated: false,
+            buffers: vec![DurableTabSessionBufferInput {
+                pane_key: "pane".to_string(),
+                staging_path: PathBuf::from("staging"),
+            }],
+        };
+        let delete = DurableTabSessionDeleteParams {
+            id: "id".to_string(),
+            elevated: true,
+        };
+        assert!(matches!(
+            parse_ext_request(build_durable_tab_sessions_list_request(false)),
+            WtaExtRequest::DurableTabSessionsList(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_typed_ext_request(
+                INTELLTERM_METHOD_DURABLE_TAB_SESSION_SAVE,
+                &save
+            )),
+            WtaExtRequest::DurableTabSessionSave(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_durable_tab_session_get_request(
+                "id".to_string(),
+                false
+            )),
+            WtaExtRequest::DurableTabSessionGet(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_durable_tab_session_delete_request(
+                delete.id,
+                delete.elevated
+            )),
+            WtaExtRequest::DurableTabSessionDelete(_)
         ));
     }
 

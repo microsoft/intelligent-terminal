@@ -28,6 +28,7 @@ class UtilsTests
 
 #if !__INSIDE_WINDOWS
     TEST_METHOD(TestMangleWSLPaths);
+    TEST_METHOD(TestIsUsableStartingDirectory);
 #endif
 
     TEST_METHOD(TestTrimTrailingWhitespace);
@@ -516,6 +517,39 @@ void UtilsTests::TestMangleWSLPaths()
         VERIFY_ARE_EQUAL(LR"(powershell.exe)", commandline);
         VERIFY_ARE_EQUAL(expectedUserProfilePath, path);
     }
+}
+
+void UtilsTests::TestIsUsableStartingDirectory()
+{
+    // Continue on failures
+    const WEX::TestExecution::DisableVerifyExceptions disableExceptionsScope;
+
+    const auto systemDirectory = wil::GetSystemDirectoryW<std::wstring>();
+    const auto wslCommandline = LR"("C:\Windows\system32\wsl.exe" --distribution-id {ecc3b2f3-e79b-4e76-9991-cdc8d126909a})";
+
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(L"powershell.exe", L""), L"An empty directory is never usable.");
+
+    VERIFY_IS_TRUE(IsUsableStartingDirectory(L"powershell.exe", systemDirectory),
+                   L"A real Windows directory is usable no matter the commandline.");
+
+    // The bug this guards: a WSL pane reports its cwd as a Linux path, which is
+    // never a valid *Windows* directory. Dropping it means a persisted session
+    // reopens in the distro's home directory instead of where the user was.
+    VERIFY_IS_TRUE(IsUsableStartingDirectory(wslCommandline, L"/home/user/test"),
+                   L"A Linux path is usable when the commandline is one we'd mangle into `--cd`.");
+    VERIFY_IS_TRUE(IsUsableStartingDirectory(LR"(wsl.exe -d Ubuntu)", L"~"),
+                   L"`~` is usable for WSL, which resolves it to the distro's home.");
+
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(L"powershell.exe", L"/home/user/test"),
+                    L"A Linux path is not usable for a non-WSL commandline.");
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(LR"(C:\Program Files\Git\bin\bash.exe)", L"/c/Users/user"),
+                    L"Git Bash's Linux-looking cwd is not usable - CreateProcess would fail on it.");
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(LR"(wsl.exe ~ -d Ubuntu)", L"/home/user/test"),
+                    L"A bare `~` on the commandline conflicts with `--cd`, so the directory is dropped.");
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(LR"(wsl.exe --cd /tmp)", L"/home/user/test"),
+                    L"An explicit `--cd` on the commandline wins, so the reported directory is dropped.");
+    VERIFY_IS_FALSE(IsUsableStartingDirectory(LR"(C:\wsl.exe -d Ubuntu)", L"/home/user/test"),
+                    L"Only the system32 wsl.exe gets the `--cd` treatment.");
 }
 #endif
 

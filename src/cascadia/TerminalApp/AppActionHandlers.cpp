@@ -500,7 +500,20 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            LOG_IF_FAILED(_OpenNewTab(realArgs.ContentArgs()));
+            const auto result = _OpenNewTab(realArgs.ContentArgs());
+            LOG_IF_FAILED(result);
+            if (SUCCEEDED(result))
+            {
+                if (const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+                    terminalArgs && !terminalArgs.DurableTabSessionId().empty())
+                {
+                    if (const auto tab = _GetFocusedTabImpl())
+                    {
+                        tab->SetDurableTabSession(terminalArgs.DurableTabSessionId(),
+                                                    terminalArgs.DurableTabSessionRevision());
+                    }
+                }
+            }
             args.Handled(true);
         }
     }

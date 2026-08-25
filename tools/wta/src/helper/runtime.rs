@@ -18,6 +18,21 @@ use crate::{agent_registry, app, event, logging, protocol, shell};
 
 use super::config::{HelperConfig, InitialView};
 
+fn seed_initial_tab_state(
+    tab: &mut app::TabSession,
+    start_stashed: bool,
+    initial_pane_position: Option<&str>,
+) {
+    tab.pane_open = !start_stashed;
+    tab.agent_pane_position = match initial_pane_position {
+        Some("left") => Some("left"),
+        Some("right") => Some("right"),
+        Some("top" | "up") => Some("up"),
+        Some("bottom") => Some("bottom"),
+        _ => None,
+    };
+}
+
 #[cfg(windows)]
 fn install_descendant_job() -> Result<()> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -949,7 +964,11 @@ async fn run_acp_app(
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
-                    tab.pane_open = !config.start_stashed;
+                    seed_initial_tab_state(
+                        tab,
+                        config.start_stashed,
+                        config.initial_pane_position.as_deref(),
+                    );
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }
@@ -1065,16 +1084,22 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if config.setup.is_none()
-                && !start_in_initial_auth
-                && config.initial_view == InitialView::Sessions
-            {
-                tracing::info!(target: "initial_view", "starting in agent session view");
+            if config.setup.is_none() && !start_in_initial_auth {
                 let tab_id = app_state
                     .tab_id
                     .clone()
                     .unwrap_or_else(|| app::DEFAULT_TAB_ID.to_string());
-                app_state.open_agents_view_for_tab(tab_id);
+                match config.initial_view {
+                    InitialView::Sessions => {
+                        tracing::info!(target: "initial_view", "starting in agent session view");
+                        app_state.open_agents_view_for_tab(tab_id);
+                    }
+                    InitialView::DurableTabSessions => {
+                        tracing::info!(target: "initial_view", "starting in durable tab sessions view");
+                        app_state.open_durable_tab_sessions_view_for_tab(tab_id);
+                    }
+                    InitialView::Chat => {}
+                }
             }
 
             // Project the initial active-tab state to C++ once, after the
@@ -1208,7 +1233,11 @@ async fn run_acp_app(
                     // pane_open=true. The exception is `--start-stashed`
                     // (pre-warm path) where C++ has already stashed the
                     // pane — see comment on the earlier seed block.
-                    tab.pane_open = !config.start_stashed;
+                    seed_initial_tab_state(
+                        tab,
+                        config.start_stashed,
+                        config.initial_pane_position.as_deref(),
+                    );
                     app_state.tab_id = Some(owner_tab_id.clone());
 
                     // Publish an initial chip-target state for this tab so
@@ -1250,4 +1279,22 @@ async fn run_acp_app(
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_tab_state_seeds_restored_pane_position() {
+        let mut tab = app::TabSession::default();
+
+        seed_initial_tab_state(&mut tab, true, Some("top"));
+        assert!(!tab.pane_open);
+        assert_eq!(tab.agent_pane_position, Some("up"));
+
+        seed_initial_tab_state(&mut tab, false, Some("right"));
+        assert!(tab.pane_open);
+        assert_eq!(tab.agent_pane_position, Some("right"));
+    }
 }

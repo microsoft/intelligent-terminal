@@ -28,6 +28,7 @@
 #include <io.h>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -189,6 +190,50 @@ static HRESULT CallJson(F&& call, Json::Value& out)
     return hr;
 }
 
+static std::string MethodDisplayName(std::string_view method)
+{
+    std::string displayName{ method };
+    for (auto& ch : displayName)
+    {
+        if (ch == '_')
+            ch = '-';
+    }
+    return displayName;
+}
+
+static bool SupportsMethod(ITerminalProtocol* server, std::string_view method, int& exitCode)
+{
+    Json::Value methods;
+    const auto hr = CallJson([&](BSTR* j) { return server->GetCapabilities(j); }, methods);
+    const auto displayName = MethodDisplayName(method);
+
+    if (FAILED(hr))
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities failed while checking %s support: 0x%08X\n",
+                displayName.c_str(),
+                static_cast<uint32_t>(hr));
+        exitCode = 1;
+        return false;
+    }
+    if (!methods.isArray())
+    {
+        fprintf(stderr, "[wtcli] GetCapabilities returned malformed capabilities while checking %s support.\n",
+                displayName.c_str());
+        exitCode = 1;
+        return false;
+    }
+
+    for (const auto& supportedMethod : methods)
+    {
+        if (supportedMethod.isString() && supportedMethod.asString() == method)
+            return true;
+    }
+
+    fprintf(stderr, "[wtcli] Connected Terminal does not support %s.\n", displayName.c_str());
+    exitCode = 1;
+    return false;
+}
+
 static std::string GuidToString(const GUID& g)
 {
     wchar_t buf[40]{};
@@ -347,7 +392,6 @@ int wmain(int argc, wchar_t** argv)
             exitCode = 1;
         return server;
     };
-
     // ── list-windows ──
     auto* listWindowsCmd = app.add_subcommand("list-windows", "List all windows")->alias("lsw");
     listWindowsCmd->callback([&]() {
@@ -468,6 +512,60 @@ int wmain(int argc, wchar_t** argv)
         else
         {
             FormatPanesHuman(panes);
+        }
+    });
+
+    // ── list-tab-sessions ──
+    auto* listTabSessionsCmd = app.add_subcommand("list-tab-sessions", "List saved durable tab sessions");
+    listTabSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "list_durable_tab_sessions", exitCode))
+            return;
+        Json::Value sessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListDurableTabSessions(j); }, sessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListDurableTabSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["durable_tab_sessions"] = sessions;
+            PrintJson(result);
+        }
+        else
+        {
+            FormatDurableTabSessionsHuman(sessions);
+        }
+    });
+
+    // ── restore-tab-session ──
+    std::string restoreTabSessionId;
+    std::string restoreTabSessionWindowId;
+    auto* restoreTabSessionCmd = app.add_subcommand("restore-tab-session", "Restore a saved durable tab session");
+    restoreTabSessionCmd->add_option("id", restoreTabSessionId, "Durable tab session ID")->required();
+    restoreTabSessionCmd->add_option("-w,--window-id", restoreTabSessionWindowId, "Target window ID");
+    restoreTabSessionCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        if (!SupportsMethod(server.get(), "restore_durable_tab_session", exitCode))
+            return;
+
+        uint64_t windowId = 0;
+        if (!restoreTabSessionWindowId.empty() && !TryParseU64(restoreTabSessionWindowId, windowId))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreTabSessionWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        wil::unique_bstr id{ Bstr(restoreTabSessionId) };
+        const auto hr = server->RestoreDurableTabSession(windowId, id.get());
+        if (FAILED(hr)) { fprintf(stderr, "RestoreDurableTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["id"] = restoreTabSessionId;
+            PrintJson(result);
         }
     });
 

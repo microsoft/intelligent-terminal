@@ -250,6 +250,18 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    void AgentPaneContent::SetDurableTabSessionsView(bool active)
+    {
+        if (_isDurableTabSessionsView == active)
+        {
+            return;
+        }
+        _isDurableTabSessionsView = active;
+        _refreshLabel();
+        _refreshLogo();
+        StateChanged.raise(*this, nullptr);
+    }
+
     void AgentPaneContent::ApplyAutofixState(AutofixState state,
                                              const winrt::hstring& paneId,
                                              const winrt::hstring& summary,
@@ -341,6 +353,14 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLabel()
     {
+        // The saved durable tab-session list is not about the agent, so it replaces
+        // the whole label rather than appending to the agent identity below.
+        if (_isDurableTabSessionsView)
+        {
+            AgentLabelText().Text(RS_(L"AgentPane_TabHistoryTitle"));
+            return;
+        }
+
         std::wstring text;
         if (_agentName.empty())
         {
@@ -396,6 +416,14 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLogo()
     {
+        // The durable tab-session list replaces the agent identity in the label, so
+        // an agent mark next to it would have nothing to label.
+        if (_isDurableTabSessionsView)
+        {
+            AgentLogo().Visibility(Visibility::Collapsed);
+            return;
+        }
+
         // The logo stays up in the session-management view: the bar keeps
         // showing which agent (and backend) owns the pane, so hiding the
         // mark there would make the two views look unrelated.

@@ -72,6 +72,7 @@ commands.fix.summary: "Діагностувати активний термін�
 commands.restart.summary: "Перезапустити агента"
 commands.stop.summary: "Скасувати поточний запит"
 commands.sessions.summary: "Відкрити вибір історичних сеансів (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Перегляд і відновлення збережених вкладок"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Виберіть агент для цієї вкладки (/agent <id> для прямого перемикання)"  # {Locked="/agent","<id>"}
 # ── Панель рекомендацій (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - назви клавіш і символ клавіші Enter, не перекладати

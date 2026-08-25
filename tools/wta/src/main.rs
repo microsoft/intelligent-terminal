@@ -18,6 +18,7 @@ mod commands;
 mod coordinator;
 mod custom_model_provider;
 mod cwd_util;
+mod durable_tab_session_store;
 mod event;
 mod helper;
 mod history_loader;
@@ -126,7 +127,9 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,
             InitialView::Sessions => helper::config::InitialView::Sessions,
+            InitialView::DurableTabSessions => helper::config::InitialView::DurableTabSessions,
         },
+        initial_pane_position: cli.initial_pane_position,
         owner_tab_id: cli.owner_tab_id,
         owner_window_id: cli.owner_window_id,
         initial_load_session_id: cli.initial_load_session_id,

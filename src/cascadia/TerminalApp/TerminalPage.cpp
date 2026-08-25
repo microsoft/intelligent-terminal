@@ -30,6 +30,7 @@
 #include "App.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
+#include "DurableSessionHelpers.h"
 #include "MarkdownPaneContent.h"
 #include "Remoting.h"
 #include "ScratchpadContent.h"
@@ -237,6 +238,9 @@ namespace clipboard
 
 namespace winrt::TerminalApp::implementation
 {
+    static std::optional<winrt::guid> _TryParsePaneSessionId(std::string_view value) noexcept;
+    static winrt::hstring _BuildAgentResumeCommandline(std::string_view cliSource, std::string_view agentSessionId);
+
     TerminalPage::TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager) :
         _tabs{ winrt::single_threaded_observable_vector<TerminalApp::Tab>() },
         _mruTabs{ winrt::single_threaded_observable_vector<TerminalApp::Tab>() },
@@ -1119,7 +1123,10 @@ namespace winrt::TerminalApp::implementation
         // elevated profile), close the window.
         if (_tabs.Size() == 0)
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             return;
         }
 
@@ -1383,6 +1390,55 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return _GetAgentSourceProfile(tab);
+    }
+
+    // The agent identity a durable tab session has to record.
+    //
+    // Not simply the agent id: a WSL-backed pane is only reproducible together
+    // with its distro, so the two are folded into one `AgentPaneBackend` token
+    // exactly as the live pane spells it. Recording the bare id would restore
+    // the pane against the host instead of the distro it was running in.
+    winrt::hstring TerminalPage::_GetDurableAgentIdentity(Tab* const tab) const
+    {
+        if (tab->HasAgentOverride())
+        {
+            if (tab->AgentSourceOverride() == L"wsl")
+            {
+                return winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Wsl(
+                    tab->AgentWslDistroOverride(),
+                    tab->AgentIdOverride()) };
+            }
+            return tab->AgentIdOverride();
+        }
+
+        if (const auto sourceProfile = _ResolveAgentSourceProfile(tab->get_strong(), _settings))
+        {
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ sourceProfile.AgentPaneBackend() }))
+            {
+                return backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                           winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Wsl(backend->wslDistro, backend->agentId) } :
+                           winrt::hstring{ backend->agentId };
+            }
+        }
+
+        return _settings.GlobalSettings().EffectiveAcpAgent();
+    }
+
+    // The launch command a durable tab session has to record for a custom
+    // agent. Built-in agents resolve their command from the id alone, so they
+    // record nothing here.
+    winrt::hstring TerminalPage::_GetDurableAgentCustomCommand(Tab* const tab) const
+    {
+        if (tab->HasAgentOverride())
+        {
+            return tab->AgentCustomCommandOverride();
+        }
+
+        const auto& globals = _settings.GlobalSettings();
+        return _IsCustomAgentId(globals.EffectiveAcpAgent()) ?
+                   globals.AcpCustomCommand() :
+                   winrt::hstring{};
     }
 
     // Resolve the effective delegate agent name from structured settings.
@@ -2151,6 +2207,48 @@ namespace winrt::TerminalApp::implementation
             winrt::to_hstring(Json::writeString(wb, evt)));
     }
 
+    void TerminalPage::_RaiseConnectionStateEvent(std::string_view paneId,
+                                                  std::string_view state,
+                                                  std::string_view tabId)
+    {
+        if (paneId.empty() || state.empty())
+        {
+            return;
+        }
+
+        Json::Value params;
+        params["pane_id"] = std::string{ paneId };
+        if (!tabId.empty())
+        {
+            params["tab_id"] = std::string{ tabId };
+        }
+        params["state"] = std::string{ state };
+        _RaiseProtocolEvent("connection_state", params);
+    }
+
+    bool TerminalPage::_TryRaiseTerminalEndStateEvent(std::string_view paneId,
+                                                      std::string_view state,
+                                                      std::string_view tabId)
+    {
+        if (paneId.empty() || (state != "closed" && state != "failed"))
+        {
+            return false;
+        }
+
+        if (const auto paneSessionId = _TryParsePaneSessionId(paneId))
+        {
+            _paneAgentSessions.erase(*paneSessionId);
+        }
+
+        if (!_panesWithEmittedTerminalEndState.emplace(std::string{ paneId }).second)
+        {
+            return false;
+        }
+
+        _RaiseConnectionStateEvent(paneId, state, tabId);
+        return true;
+    }
+
     // Close the agent pane in a specific tab, if it has one.
     //
     // Under the helper+master architecture, wta-helper processes are
@@ -2191,6 +2289,9 @@ namespace winrt::TerminalApp::implementation
             tab,
             /*intoSessionsView*/ false,
             options.autoStash,
+            {},
+            {},
+            {},
             {},
             {},
             {},
@@ -2256,6 +2357,9 @@ namespace winrt::TerminalApp::implementation
                             {},
                             {},
                             {},
+                            {},
+                            {},
+                            {},
                             recreationOptions.focusPane);
                     }
                     else if (focusedTab && focusedTab == currentTab)
@@ -2272,6 +2376,9 @@ namespace winrt::TerminalApp::implementation
                             currentTab,
                             /*intoSessionsView*/ false,
                             /*autoStash*/ true,
+                            {},
+                            {},
+                            {},
                             {},
                             {},
                             {},
@@ -2565,8 +2672,8 @@ namespace winrt::TerminalApp::implementation
         _RaiseProtocolEvent("tab_closed", tabParams);
     }
 
-    // Explicitly emit `connection_state:closed` for every terminal leaf
-    // under `rootPane`. Needed because UI-initiated pane/tab close goes
+    // Explicitly emit `connection_state` for every terminal leaf under
+    // `rootPane`. Needed because UI-initiated pane/tab close goes
     // through `ControlCore::_closeConnection` which revokes the
     // `ConnectionStateChanged` listener BEFORE the connection transitions
     // to Closed — so the normal `TermControl::ConnectionStateChanged ->
@@ -2606,18 +2713,8 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "connection_state";
-            Json::Value params;
-            params["pane_id"] = paneIdStr;
-            params["state"] = "closed";
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
+            const auto stateStr = control.ConnectionState() == ConnectionState::Failed ? "failed" : "closed";
+            _TryRaiseTerminalEndStateEvent(paneIdStr, stateStr);
         });
     }
 
@@ -2796,6 +2893,9 @@ namespace winrt::TerminalApp::implementation
                                                         std::string_view initialLoadSessionId,
                                                         std::string_view initialLoadCwd,
                                                         std::wstring_view initialAuthAgent,
+                                                        std::string_view initialView,
+                                                        std::wstring_view initialPanePosition,
+                                                        float initialPaneSize,
                                                         bool focusPane)
     {
         if (!tab || !tab->GetActiveTerminalControl())
@@ -3068,9 +3168,17 @@ namespace winrt::TerminalApp::implementation
         {
             appendHelperFlagValue(L"--language", lang);
         }
-        if (intoSessionsView)
+        if (initialView == "durable_tab_sessions")
+        {
+            helperCmd.append(L" --initial-view durable-tab-sessions");
+        }
+        else if (intoSessionsView || initialView == "sessions")
         {
             helperCmd.append(L" --initial-view sessions");
+        }
+        if (!initialPanePosition.empty())
+        {
+            appendHelperFlagValue(L"--initial-pane-position", initialPanePosition);
         }
         if (autoStash)
         {
@@ -3201,7 +3309,11 @@ namespace winrt::TerminalApp::implementation
         sharedAcquired.release();
 
         const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
-        tab->SplitPaneAtRoot(splitDirection, newPane);
+        // Zero means the size was never recorded (a fresh pre-warm, or a
+        // session saved before sizes were persisted), so fall back to an even
+        // split rather than collapsing the pane.
+        const auto splitSize = initialPaneSize > 0.0f && initialPaneSize < 1.0f ? initialPaneSize : 0.5f;
+        tab->SplitPaneAtRoot(splitDirection, newPane, splitSize);
 
         if (autoStash)
         {
@@ -3313,8 +3425,8 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-
     }
+
 
     // Window-level bottom-bar "agent toggle" click. Targets the active tab:
     //   - pane visible in sessions view → switch the view to chat
@@ -4771,7 +4883,10 @@ namespace winrt::TerminalApp::implementation
     //   nt -d .` from inside another directory to work as expected.
     // Return Value:
     // - <none>
-    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions, const winrt::hstring cwd, const winrt::hstring env)
+    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions,
+                                                            const winrt::hstring cwd,
+                                                            const winrt::hstring env,
+                                                            const bool forceFirstActionSynchronous)
     {
         const auto strong = get_strong();
 
@@ -4810,7 +4925,8 @@ namespace winrt::TerminalApp::implementation
         // This same logic is also applied to CreateTabFromConnection.
         //
         // See GH#13136.
-        auto suspend = _tabs.Size() > 0;
+        auto suspend = _tabs.Size() > 0 && !forceFirstActionSynchronous;
+        const auto startupActionBatchId = ++_nextStartupActionBatchId;
 
         for (size_t i = 0; i < actions.size(); ++i)
         {
@@ -4819,9 +4935,13 @@ namespace winrt::TerminalApp::implementation
                 co_await wil::resume_foreground(Dispatcher(), CoreDispatcherPriority::Low);
             }
 
+            _currentStartupActionBatchId = startupActionBatchId;
+            auto clearBatchId = wil::scope_exit([&]() noexcept { _currentStartupActionBatchId = 0; });
             _actionDispatch->DoAction(actions[i]);
             suspend = true;
         }
+
+        _RestorePendingDurableAgentPanes(startupActionBatchId);
 
         // GH#6586: now that we're done processing all startup commands,
         // focus the active control. This will work as expected for both
@@ -4832,6 +4952,66 @@ namespace winrt::TerminalApp::implementation
             {
                 content.Focus(FocusState::Programmatic);
             }
+        }
+    }
+
+    void TerminalPage::_RestorePendingDurableAgentPanes(const uint64_t startupActionBatchId)
+    {
+        for (auto it = _pendingDurableAgentPaneRestores.begin(); it != _pendingDurableAgentPaneRestores.end();)
+        {
+            if (it->second.startupActionBatchId != startupActionBatchId)
+            {
+                ++it;
+                continue;
+            }
+
+            winrt::com_ptr<Tab> targetTab;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto tabImpl = _GetTabImpl(tab); tabImpl && tabImpl->StableId() == it->first)
+                {
+                    targetTab = tabImpl;
+                    break;
+                }
+            }
+
+            if (!targetTab)
+            {
+                ++it;
+                continue;
+            }
+
+            auto pending = std::move(it->second);
+            it = _pendingDurableAgentPaneRestores.erase(it);
+            if (!pending.agent.empty())
+            {
+                // The saved identity folds a WSL pane's distro in with its
+                // agent id, so split it back apart or the pane comes back on
+                // the host instead of the distro it was running in.
+                if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                        std::wstring_view{ pending.agent }))
+                {
+                    targetTab->SetAgentOverride(
+                        winrt::hstring{ backend->agentId },
+                        {},
+                        pending.customCommand,
+                        backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ? L"wsl" : L"host",
+                        winrt::hstring{ backend->wslDistro });
+                }
+                else
+                {
+                    targetTab->SetAgentOverride(pending.agent, {}, pending.customCommand);
+                }
+            }
+            _AutoCreateHiddenAgentPaneShared(targetTab,
+                                             pending.view == "sessions",
+                                             !pending.paneOpen,
+                                             pending.sessionId,
+                                             pending.cwd,
+                                             {},
+                                             pending.view,
+                                             pending.panePosition,
+                                             pending.paneSize);
         }
     }
 
@@ -4897,7 +5077,10 @@ namespace winrt::TerminalApp::implementation
         // have a tab yet, but will once we're initialized.
         if (_tabs.Size() == 0 && !_IsFreRequired())
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             co_return;
         }
         else
@@ -6259,6 +6442,14 @@ namespace winrt::TerminalApp::implementation
 
         std::string logSuffix = " tab_id=" + winrt::to_string(tabId);
 
+        std::optional<winrt::hstring> agentSessionId;
+        if (params.isMember("agent_session_id"))
+        {
+            agentSessionId = params["agent_session_id"].isString() ?
+                                 winrt::to_hstring(params["agent_session_id"].asString()) :
+                                 winrt::hstring{};
+        }
+
         std::optional<bool> wantOpen;
         if (params.isMember("pane_open") && params["pane_open"].isBool())
         {
@@ -6310,12 +6501,17 @@ namespace winrt::TerminalApp::implementation
             targetTab->AgentPanePositionOverride(panePositionOverride);
         }
 
-        // Apply view to the existing AgentPaneContent if any.
-        if (view.has_value())
+        // Apply projected identity and view to the existing AgentPaneContent.
+        if (const auto agentContent = targetTab->FindAgentPaneContent())
         {
-            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            if (agentSessionId.has_value())
+            {
+                agentContent.SetAgentSessionId(*agentSessionId);
+            }
+            if (view.has_value())
             {
                 agentContent.SetSessionsView(*view == "sessions");
+                agentContent.SetDurableTabSessionsView(*view == "durable_tab_sessions");
             }
         }
 
@@ -7077,6 +7273,94 @@ namespace winrt::TerminalApp::implementation
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
+    void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder reader;
+        std::string errors;
+        std::istringstream stream{ winrt::to_string(eventJson) };
+        if (!Json::parseFromStream(reader, stream, &evt, &errors) ||
+            !evt.isMember("params") ||
+            !evt["params"].isObject())
+        {
+            return;
+        }
+
+        const auto& params = evt["params"];
+        const auto paneId = params.get("pane_id", "").asString();
+        const auto agentSessionId = params.get("agent_session_id", "").asString();
+        // An empty `pane_id` means "source pane unknown" — wtcli publishes that
+        // rather than substituting the focused pane, so a hook bridge that
+        // never inherited WT_SESSION cannot bind its ACP session to whatever
+        // pane the user happens to be looking at. Rejecting it here is what
+        // keeps a durable snapshot from recording a stranger's agent.
+        const auto paneSessionId = _TryParsePaneSessionId(paneId);
+        if (!paneSessionId)
+        {
+            return;
+        }
+
+        const auto eventName = params.get("event", "").asString();
+        const bool sessionEnded = eventName == "agent.session.stopped" ||
+                                  eventName == "agent.session.end";
+        const bool sessionStarted = eventName == "agent.session.started" ||
+                                    eventName == "agent.session.start" ||
+                                    eventName == "agent.prompt.submit";
+        const auto agent = params.get("agent", params.get("cli_source", "")).asString();
+        auto resumeCommandline = params.get("resume_commandline", "").asString();
+        if (resumeCommandline.empty() && !agent.empty() && !agentSessionId.empty())
+        {
+            resumeCommandline = winrt::to_string(_BuildAgentResumeCommandline(agent, agentSessionId));
+        }
+        if (!eventName.empty() && !sessionEnded && !sessionStarted)
+        {
+            return;
+        }
+        if (!sessionEnded &&
+            (agentSessionId.empty() ||
+             agentSessionId.starts_with("sidekick-") ||
+             (agent.empty() && resumeCommandline.empty())))
+        {
+            return;
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                if (const auto rootPane = tabImpl->GetRootPane();
+                    rootPane && rootPane->FindPaneBySessionId(*paneSessionId))
+                {
+                    if (sessionEnded)
+                    {
+                        // The agent exited, so there is nothing left to resume:
+                        // drop the binding and let the pane restore as the
+                        // plain shell it now is. Match the id when the event
+                        // carries one, so a late end from a previous session
+                        // cannot clear a newer binding.
+                        if (const auto binding = _paneAgentSessions.find(*paneSessionId);
+                            binding != _paneAgentSessions.end() &&
+                            (agentSessionId.empty() ||
+                             binding->second.sessionId == winrt::to_hstring(agentSessionId)))
+                        {
+                            _paneAgentSessions.erase(binding);
+                        }
+                    }
+                    else
+                    {
+                        _paneAgentSessions.insert_or_assign(
+                            *paneSessionId,
+                            _PaneAgentSession{
+                                winrt::to_hstring(agentSessionId),
+                                winrt::to_hstring(agent),
+                                winrt::to_hstring(resumeCommandline) });
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     // Method Description:
     // - Called when the users pressed keyBindings while CommandPaletteElement is open.
     // - As of GH#8480, this is also bound to the TabRowControl's KeyUp event.
@@ -7334,6 +7618,72 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    static std::optional<winrt::guid> _TryParsePaneSessionId(const std::string_view value) noexcept
+    {
+        try
+        {
+            const auto text = winrt::to_hstring(value);
+            return value.starts_with('{')
+                       ? ::Microsoft::Console::Utils::GuidFromString(text.c_str())
+                       : ::Microsoft::Console::Utils::GuidFromPlainString(text.c_str());
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    }
+
+    static winrt::hstring _BuildAgentResumeCommandline(const std::string_view cliSource, const std::string_view agentSessionId)
+    {
+        if (agentSessionId.empty() ||
+            agentSessionId.starts_with("sidekick-") ||
+            agentSessionId.size() > 256 ||
+            !std::all_of(agentSessionId.begin(), agentSessionId.end(), [](const unsigned char ch) {
+                return std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == ':';
+            }))
+        {
+            return {};
+        }
+
+        std::string cli{ cliSource };
+        std::transform(cli.begin(), cli.end(), cli.begin(), [](const unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        std::wstring_view executable;
+        std::wstring_view resumeArg;
+        if (cli == "copilot")
+        {
+            executable = L"copilot";
+            resumeArg = L"--resume";
+        }
+        else if (cli == "claude")
+        {
+            executable = L"claude";
+            resumeArg = L"--resume";
+        }
+        else if (cli == "codex")
+        {
+            executable = L"codex";
+            resumeArg = L"resume";
+        }
+        else if (cli == "gemini")
+        {
+            executable = L"gemini";
+            resumeArg = L"--resume";
+        }
+        else
+        {
+            return {};
+        }
+
+        return winrt::hstring{ fmt::format(
+            FMT_COMPILE(L"cmd.exe /d /s /c \"{} {} {}\""),
+            executable,
+            resumeArg,
+            winrt::to_hstring(agentSessionId)) };
+    }
+
     // Walk every tab's pane tree and return the StableId of the tab that
     // owns the given control. Used to tag protocol events with both pane
     // GUID and tab id so wta can route per-tab regardless of which tab is
@@ -7438,8 +7788,7 @@ namespace winrt::TerminalApp::implementation
                             // `IsAutoFixPolicyLocked()` returns true only
                             // for the Blocked policy state; Forced-on
                             // states the user can change fall through.
-                            if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
-                                return;
+                            const auto autoFixPolicyLocked = page->_settings.GlobalSettings().IsAutoFixPolicyLocked();
 
                             // Early filter: WTA only acts on osc:133;*
                             // and AgentEvent payloads. Every other VT
@@ -7486,6 +7835,39 @@ namespace winrt::TerminalApp::implementation
                                     agentParams.isMember("event") &&
                                     agentParams["event"].isString())
                                 {
+                                    const auto eventName = agentParams["event"].asString();
+                                    const auto agentSessionId = agentParams.get("agent_session_id", "").asString();
+                                    if (const auto connection = term2.Connection())
+                                    {
+                                        // This event arrived in-band on this
+                                        // pane's own VT stream, so the pane is
+                                        // the origin by construction — there is
+                                        // no reported `pane_id` to distrust.
+                                        const auto paneSessionId = connection.SessionId();
+                                        if ((eventName == "agent.session.started" || eventName == "agent.session.start") &&
+                                            !agentSessionId.empty() &&
+                                            !agentSessionId.starts_with("sidekick-"))
+                                        {
+                                            const auto resumeCommandline = _BuildAgentResumeCommandline(
+                                                agentParams.get("cli_source", "").asString(),
+                                                agentSessionId);
+                                            if (!resumeCommandline.empty())
+                                            {
+                                                page->_paneAgentSessions.insert_or_assign(
+                                                    paneSessionId,
+                                                    _PaneAgentSession{
+                                                        winrt::to_hstring(agentSessionId),
+                                                        winrt::to_hstring(agentParams.get("cli_source", "").asString()),
+                                                        resumeCommandline });
+                                            }
+                                        }
+                                    }
+
+                                    if (autoFixPolicyLocked)
+                                    {
+                                        return;
+                                    }
+
                                     agentParams["pane_id"] = paneIdStr;
                                     if (!tabIdStr.empty())
                                     {
@@ -7506,7 +7888,14 @@ namespace winrt::TerminalApp::implementation
                                 return; // AgentEvent never falls through to vt_sequence
                             }
 
-                            // isOsc133 path — forward as vt_sequence.
+                            // isOsc133 path — forward as vt_sequence. A shell
+                            // prompt after an agent exits does not clear the
+                            // pane's last resumable agent-session binding.
+                            if (autoFixPolicyLocked)
+                            {
+                                return;
+                            }
+
                             // Detection gate: when the user turned error
                             // detection off ("don't access my shell"), drop
                             // the OSC 133 command marks here — no Detected
@@ -7619,23 +8008,14 @@ namespace winrt::TerminalApp::implementation
                             const auto tabIdStr = term2
                                 ? page->_FindTabIdForControl(term2)
                                 : std::string{};
-
-                            Json::Value evt;
-                            evt["type"] = "event";
-                            evt["method"] = "connection_state";
-                            Json::Value params;
-                            params["pane_id"] = paneIdStr;
-                            if (!tabIdStr.empty())
+                            if (stateStr == "closed" || stateStr == "failed")
                             {
-                                params["tab_id"] = tabIdStr;
+                                page->_TryRaiseTerminalEndStateEvent(paneIdStr, stateStr, tabIdStr);
                             }
-                            params["state"] = stateStr;
-                            evt["params"] = params;
-                            Json::StreamWriterBuilder wb;
-                            wb["indentation"] = "";
-                            page->ProtocolVtSequenceReceived.raise(
-                                *page,
-                                winrt::to_hstring(Json::writeString(wb, evt)));
+                            else
+                            {
+                                page->_RaiseConnectionStateEvent(paneIdStr, stateStr, tabIdStr);
+                            }
                         });
                 });
         }
@@ -7893,6 +8273,11 @@ namespace winrt::TerminalApp::implementation
 
     WindowLayout TerminalPage::GetWindowLayout()
     {
+        return _GetWindowLayout(false);
+    }
+
+    WindowLayout TerminalPage::_GetWindowLayout(const bool includeDurableSessionMetadata)
+    {
         // This method may be called for a window even if it hasn't had a tab yet or lost all of them.
         // We shouldn't persist such windows.
         const auto tabCount = _tabs.Size();
@@ -7907,6 +8292,10 @@ namespace winrt::TerminalApp::implementation
         {
             auto t = winrt::get_self<implementation::Tab>(tab);
             auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
+            if (includeDurableSessionMetadata)
+            {
+                _AddDurableSessionMetadata(t, tabActions);
+            }
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));
         }
 
@@ -7965,13 +8354,43 @@ namespace winrt::TerminalApp::implementation
         return layout;
     }
 
+    // Saves every tab in this window as a durable tab session, applying the
+    // same eligibility rule the per-tab close path uses: a tab nobody ever
+    // interacted with is not worth restoring.
+    //
+    // Closing a window through its 'X' reaches this via CloseWindow, but
+    // quitting (the `quit` action closes every window with a bare
+    // PostQuitMessage) and session end (WM_ENDSESSION on shutdown, sign-out,
+    // or a servicing restart) both bypass that path, so WindowEmperor calls
+    // this directly on its way out. The one-shot guard keeps a window that
+    // already went through CloseWindow from saving twice.
+    void TerminalPage::PersistDurableTabSessions()
+    {
+        if (!TryClaimDurableTabSessionPersist(_durableTabSessionsPersisted))
+        {
+            return;
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                try
+                {
+                    _PersistDurableTabSession(tabImpl.get());
+                }
+                CATCH_LOG()
+            }
+        }
+    }
+
     void TerminalPage::PersistState()
     {
         // There are two persistence mechanisms in play here:
         //   * PersistedWindowLayouts (vector) — consumed on next startup to
         //     re-open a matching set of windows. Cleared after restore.
-        //   * PersistedWorkspaces (name-keyed map) — the full tab/buffer
-        //     state of a named window, claimed by name on demand via
+        //   * PersistedWorkspaces (name-keyed map) — the full layout of a
+        //     named window, claimed by name on demand via
         //     ApplicationState::TakeWorkspace.
         //
         // For named windows we save the full layout into the workspace map
@@ -7979,9 +8398,9 @@ namespace winrt::TerminalApp::implementation
         // so the generic restore path re-opens the named window which in
         // turn claims its own workspace. Unnamed windows don't have a stable
         // key, so their full layout is stored directly in the vector.
-        if (const auto layout = GetWindowLayout())
+        const auto& windowName = _WindowProperties.WindowName();
+        if (const auto layout = _GetWindowLayout(windowName.empty()))
         {
-            const auto& windowName = _WindowProperties.WindowName();
             if (!windowName.empty())
             {
                 // Persist the full layout into the workspace collection.
@@ -8064,11 +8483,19 @@ namespace winrt::TerminalApp::implementation
     //   warn for the current window state, show a warning dialog.
     safe_void_coroutine TerminalPage::CloseWindow()
     {
+        if (_windowCloseAccepted || _displayingCloseDialog)
+        {
+            co_return;
+        }
+
         // During FRE, tabs are deferred (zero tabs). No warning needed;
         // just close the window immediately.
         if (_tabs.Size() == 0)
         {
-            CloseWindowRequested.raise(*this, nullptr);
+            if (TryAcceptWindowClose(_windowCloseAccepted))
+            {
+                CloseWindowRequested.raise(*this, nullptr);
+            }
             co_return;
         }
 
@@ -8099,6 +8526,18 @@ namespace winrt::TerminalApp::implementation
                 co_return;
             }
         }
+
+        if (!TryAcceptWindowClose(_windowCloseAccepted))
+        {
+            co_return;
+        }
+
+        // Closing the window has to do what closing each tab would have done.
+        // The per-tab path runs from _HandleCloseTabRequested, which the window
+        // close never reaches — so without this, the single most common way to
+        // finish for the day ("close the terminal") would neither save the
+        // sessions nor keep them running.
+        PersistDurableTabSessions();
 
         CloseWindowRequested.raise(*this, nullptr);
     }
@@ -8325,6 +8764,7 @@ namespace winrt::TerminalApp::implementation
             if (tab)
             {
                 auto startupActions = tab->BuildStartupActions(BuildStartupKind::Content);
+                _AddTabIdentityMetadata(tab.get(), startupActions);
                 _DetachTabFromWindow(tab);
                 _MoveContent(std::move(startupActions), windowId, 0);
                 _RemoveTab(*tab, /*movingAway*/ true);
@@ -8525,7 +8965,14 @@ namespace winrt::TerminalApp::implementation
         }
         const auto contentWidth = static_cast<float>(_tabContent.ActualWidth());
         const auto contentHeight = static_cast<float>(_tabContent.ActualHeight());
-        const winrt::Windows::Foundation::Size availableSpace{ contentWidth, contentHeight };
+        // A tab created moments ago in the same synchronous batch (a durable
+        // session restore, a multi-pane tab dropped in from another window) has
+        // not been measured yet. Falling back to the window's own size keeps the
+        // split from being silently dropped for want of a layout pass.
+        const winrt::Windows::Foundation::Size availableSpace{
+            contentWidth > 0 ? contentWidth : static_cast<float>(ActualWidth()),
+            contentHeight > 0 ? contentHeight : static_cast<float>(ActualHeight())
+        };
 
         const auto realSplitType = activeTab->PreCalculateCanSplit(splitDirection, splitSize, availableSpace);
         if (!realSplitType)
@@ -9373,16 +9820,47 @@ namespace winrt::TerminalApp::implementation
         return _SetupControl(control);
     }
 
-    TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId)
+    TermControl TerminalPage::_AttachControlToContent(const uint64_t& contentId, const NewTerminalArgs& newTerminalArgs)
     {
         if (const auto& content{ _manager.TryLookupCore(contentId) })
         {
+            const auto rawControl = TermControl::NewControlByAttachingContent(content);
+            const auto attachedConnection = rawControl.Connection();
+            const auto attachedSessionId = attachedConnection ? attachedConnection.SessionId() : winrt::guid{};
+            const bool insertedAgentBinding = newTerminalArgs &&
+                                              !newTerminalArgs.AgentSessionId().empty() &&
+                                              attachedSessionId != winrt::guid{};
+            if (insertedAgentBinding)
+            {
+                _paneAgentSessions.insert_or_assign(
+                    attachedSessionId,
+                    _PaneAgentSession{
+                        newTerminalArgs.AgentSessionId(),
+                        newTerminalArgs.AgentSessionAgent(),
+                        newTerminalArgs.AgentResumeCommandline() });
+            }
+
+            auto closeOnSetupFailure = wil::scope_exit([&]() noexcept {
+                try
+                {
+                    rawControl.Close();
+                }
+                CATCH_LOG();
+
+                if (insertedAgentBinding)
+                {
+                    _paneAgentSessions.erase(attachedSessionId);
+                }
+            });
+
             // We have to pass in our current keybindings, because that's an
             // object that belongs to this TerminalPage, on this thread. If we
             // don't, then when we move the content to another thread, and it
             // tries to handle a key, it'll callback on the original page's
-            // stack, inevitably resulting in a wrong_thread
-            return _SetupControl(TermControl::NewControlByAttachingContent(content));
+            // stack, inevitably resulting in a wrong_thread.
+            const auto control = _SetupControl(rawControl);
+            closeOnSetupFailure.release();
+            return control;
         }
         return nullptr;
     }
@@ -9403,6 +9881,17 @@ namespace winrt::TerminalApp::implementation
         }
 
         term.KeyBindings(*_bindings);
+
+        // `_SetupControl` runs exactly once for each freshly created
+        // `TermControl`, including the ContentId reattach path that creates a
+        // new control around an existing content/core. If an earlier control
+        // lifetime on this page already emitted `closed`/`failed` for the same
+        // SessionId, drop that stale tombstone now so the new control can emit
+        // its own terminal end event exactly once.
+        if (const auto paneIdStr = _FindSessionIdForControl(term); !paneIdStr.empty())
+        {
+            _panesWithEmittedTerminalEndState.erase(paneIdStr);
+        }
 
         _RegisterTerminalEvents(term);
         return term;
@@ -9434,12 +9923,28 @@ namespace winrt::TerminalApp::implementation
         {
             // Don't need to worry about duplicating or anything - we'll
             // serialize the actual profile's GUID along with the content guid.
+            const uint64_t contentId = newTerminalArgs.ContentId();
             const auto& profile = _settings.GetProfileForArgs(newTerminalArgs);
-            const auto control = _AttachControlToContent(newTerminalArgs.ContentId());
+            const auto control = _AttachControlToContent(contentId, newTerminalArgs);
+            if (!control)
+            {
+                // A dead ContentId cannot be moved or restored. Clear the
+                // transient marker and use the normal snapshot/profile path.
+                winrt::hstring ignoredOldTabId;
+                std::optional<winrt::guid> ignoredSourceProfileGuid;
+                auto ignoredAttachDisposition = winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Take(contentId, ignoredOldTabId, ignoredSourceProfileGuid, ignoredAttachDisposition);
+                newTerminalArgs.ContentId(0);
+                return _MakeTerminalPane(newTerminalArgs, sourceTab, existingConnection);
+            }
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
 
-            const uint64_t contentId = newTerminalArgs.ContentId();
+            // Cross-window agent-pane drag: if the source tab stashed an
+            // original StableId for this ContentId, the migrating pane was
+            // an agent pane. Re-wrap into AgentPaneContent here so the
+            // target window restores the chrome (bottom bar, status, click
+            // handlers).
             winrt::hstring oldTabId;
             std::optional<winrt::guid> sourceProfileGuid;
             auto attachDisposition = winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
@@ -9522,6 +10027,25 @@ namespace winrt::TerminalApp::implementation
             return resultPane;
         }
 
+        const auto restoringAgentSession = newTerminalArgs &&
+                                           ShouldResumeAgentSession(
+                                               !newTerminalArgs.AgentSessionId().empty(),
+                                               !newTerminalArgs.DurableTabSessionBufferPath().empty());
+        auto resumingAgentSession = false;
+        if (restoringAgentSession)
+        {
+            const auto resumeCommandline = !newTerminalArgs.AgentSessionAgent().empty() ?
+                                               _BuildAgentResumeCommandline(
+                                                   winrt::to_string(newTerminalArgs.AgentSessionAgent()),
+                                                   winrt::to_string(newTerminalArgs.AgentSessionId())) :
+                                               newTerminalArgs.AgentResumeCommandline();
+            if (!resumeCommandline.empty())
+            {
+                newTerminalArgs.Commandline(resumeCommandline);
+                resumingAgentSession = true;
+            }
+        }
+
         Settings::TerminalSettingsCreateResult controlSettings{ nullptr };
         Profile profile{ nullptr };
 
@@ -9555,6 +10079,18 @@ namespace winrt::TerminalApp::implementation
         const auto sessionId = controlSettings.DefaultSettings()->SessionId();
         const auto hasSessionId = sessionId != winrt::guid{};
 
+        if (hasSessionId &&
+            newTerminalArgs &&
+            !newTerminalArgs.AgentSessionId().empty())
+        {
+            _paneAgentSessions.insert_or_assign(
+                sessionId,
+                _PaneAgentSession{
+                    newTerminalArgs.AgentSessionId(),
+                    newTerminalArgs.AgentSessionAgent(),
+                    newTerminalArgs.AgentResumeCommandline() });
+        }
+
         TerminalConnection::ITerminalConnection connection{ nullptr };
         if (existingConnection)
         {
@@ -9582,14 +10118,20 @@ namespace winrt::TerminalApp::implementation
 
         const auto control = _CreateNewControlAndContent(controlSettings, connection);
 
-        if (hasSessionId)
+        // The agent CLI replays its own transcript. Restoring the terminal buffer too
+        // duplicates that conversation and compounds it on every save/restore cycle.
+        if (hasSessionId && !resumingAgentSession)
         {
             using namespace std::string_view_literals;
 
             const auto settingsDir = CascadiaSettings::SettingsDirectory();
             const auto admin = IsRunningElevated();
             const auto filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
-            const auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
+            auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
+            if (newTerminalArgs && !newTerminalArgs.DurableTabSessionBufferPath().empty())
+            {
+                path = newTerminalArgs.DurableTabSessionBufferPath();
+            }
             control.RestoreFromPath(path);
         }
 
@@ -9614,6 +10156,16 @@ namespace winrt::TerminalApp::implementation
             // Set the non-debug pane as active
             resultPane->ClearActive();
             original->SetActive();
+        }
+
+        if (resumingAgentSession && hasSessionId)
+        {
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+            params["agent_session_id"] = winrt::to_string(newTerminalArgs.AgentSessionId());
+            params["agent"] = winrt::to_string(newTerminalArgs.AgentSessionAgent());
+            params["cwd"] = winrt::to_string(newTerminalArgs.StartingDirectory());
+            _RaiseProtocolEvent("session_born_bound", params);
         }
 
         return resultPane;
@@ -12044,6 +12596,7 @@ namespace winrt::TerminalApp::implementation
                                                std::optional<winrt::Windows::Foundation::Point> dragPoint)
     {
         auto startupActions = _stashed.draggedTab->BuildStartupActions(BuildStartupKind::Content);
+        _AddTabIdentityMetadata(_stashed.draggedTab.get(), startupActions);
         _DetachTabFromWindow(_stashed.draggedTab);
 
         _MoveContent(std::move(startupActions), windowId, tabIndex, dragPoint);

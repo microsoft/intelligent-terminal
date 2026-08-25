@@ -198,6 +198,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "Gespäichert Tabs duerchsichen a restauréieren"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "Wielt de Agent fir dës Panell (/agent <id> fir direkt ze wiesselen)"  # {Locked="/agent","<id>"}
 
 # ── Ausféierung vun der Recommandatioun (src/coordinator.rs) ───────────────────────────

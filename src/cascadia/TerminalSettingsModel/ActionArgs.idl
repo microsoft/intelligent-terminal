@@ -195,6 +195,21 @@ namespace Microsoft.Terminal.Settings.Model
         UInt64 ContentId{ get; set; };
 
         String ToCommandline();
+
+        // Keep new members at the end to preserve the ABI slots of existing members.
+        String AgentSessionId;
+        String AgentSessionAgent;
+        String AgentResumeCommandline;
+        String AgentPaneSessionId;
+        String AgentPaneAgent;
+        String AgentPaneView;
+        Boolean AgentPaneOpen;
+        String AgentPanePosition;
+        Single AgentPaneSize;
+        String AgentPaneCustomCommand;
+        String DurableTabSessionBufferPath;
+        String DurableTabSessionId;
+        Int64 DurableTabSessionRevision;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

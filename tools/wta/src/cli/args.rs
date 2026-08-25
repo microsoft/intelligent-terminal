@@ -127,6 +127,10 @@ pub(crate) struct Cli {
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     pub(crate) initial_view: InitialView,
 
+    /// Initial per-tab agent pane position restored by Windows Terminal.
+    #[arg(long, hide = true, value_parser = ["left", "right", "top", "up", "bottom"])]
+    pub(crate) initial_pane_position: Option<String>,
+
     /// UI language override, passed by Windows Terminal from the
     /// `settings.json` `Language` field. When present, wta uses this
     /// directly for i18n instead of detecting the OS locale — ensuring
@@ -553,4 +557,5 @@ impl HooksCliFilter {
 pub(crate) enum InitialView {
     Chat,
     Sessions,
+    DurableTabSessions,
 }

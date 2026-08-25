@@ -173,8 +173,7 @@ pub struct CompletedTurn {
 /// Maximum displayed characters for a collapsed turn header preview.
 /// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
 /// wrap width even after the chevron + prompt prefix; longer prompts get
-/// truncated with a trailing ellipsis. The full original text is always
-/// preserved in the turn's first `details` entry.
+/// truncated with a trailing ellipsis.
 const COLLAPSED_PROMPT_PREVIEW_CHARS: usize = 80;
 
 /// Build the single-line preview shown in a collapsed `CompletedTurn`
@@ -204,6 +203,14 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
         out.push('…');
     }
     out
+}
+
+fn replay_user_request(text: &str) -> &str {
+    const DELIMITER: &str = "## User Request\n";
+    text.rsplit_once(DELIMITER)
+        .map(|(_, request)| request.trim())
+        .filter(|request| !request.is_empty())
+        .unwrap_or_else(|| text.trim())
 }
 
 pub struct PermissionState {
@@ -400,6 +407,12 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Latched after the first prompt or session/load. A pre-warmed session/new
+    /// alone must not become durable; `/clear` keeps the same session durable.
+    pub has_meaningful_conversation: bool,
+    /// Preserves the current session's durability while a replacement
+    /// `session/load` is in flight so a failed load can roll back cleanly.
+    pub(crate) meaningful_conversation_before_load: Option<bool>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -414,6 +427,10 @@ pub struct TabSession {
     // is true and never share storage with a live turn.
     pub replay_agent_buffer: String,
     pub replay_user_buffer: String,
+    /// ACP message id for `replay_user_buffer`. Chunks with the same id belong
+    /// to one user message; an id change is a turn boundary even when the
+    /// preceding turn produced only an out-of-band recommendation card.
+    pub replay_user_message_id: Option<String>,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
     /// call. While set, session/update chunk handlers accept chunks
@@ -504,6 +521,17 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
+    pub durable_tab_sessions: Vec<crate::durable_tab_session_store::DurableTabSessionSummary>,
+    /// Durable ids that are already open in a tab.
+    pub durable_tab_sessions_open: std::collections::HashSet<String>,
+    pub durable_tab_sessions_query: String,
+    pub durable_tab_sessions_search_focused: bool,
+    pub durable_tab_sessions_list_state: ratatui::widgets::ListState,
+    pub durable_tab_sessions_loading: bool,
+    pub durable_tab_sessions_error: Option<String>,
+    pub durable_tab_session_restore_in_flight: bool,
+    pub durable_tab_session_delete_confirmation: Option<String>,
+    pub durable_tab_session_delete_in_flight: bool,
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     pub pane_open: bool,
@@ -516,6 +544,57 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn durable_session_id(&self) -> Option<&str> {
+        self.has_meaningful_conversation.then_some(
+            self.loading_target_session_id
+                .as_deref()
+                .or(self.session_id.as_deref()),
+        )?
+    }
+
+    pub(crate) fn matching_durable_tab_session_count(&self) -> usize {
+        self.durable_tab_sessions
+            .iter()
+            .filter(|session| {
+                crate::ui::durable_tab_sessions_view::matches_query(
+                    session,
+                    &self.durable_tab_sessions_query,
+                )
+            })
+            .count()
+    }
+
+    pub(crate) fn matching_durable_tab_session(
+        &self,
+        index: usize,
+    ) -> Option<&crate::durable_tab_session_store::DurableTabSessionSummary> {
+        self.durable_tab_sessions
+            .iter()
+            .filter(|session| {
+                crate::ui::durable_tab_sessions_view::matches_query(
+                    session,
+                    &self.durable_tab_sessions_query,
+                )
+            })
+            .nth(index)
+    }
+
+    pub(crate) fn reset_durable_tab_session_selection(&mut self) {
+        self.durable_tab_sessions_list_state
+            .select((self.matching_durable_tab_session_count() > 0).then_some(0));
+    }
+
+    pub(crate) fn begin_selected_durable_tab_session_delete(&mut self) {
+        let selected_id = self
+            .durable_tab_sessions_list_state
+            .selected()
+            .and_then(|index| self.matching_durable_tab_session(index))
+            .map(|session| session.id.clone());
+        if let Some(id) = selected_id {
+            self.durable_tab_session_delete_confirmation = Some(id);
+        }
+    }
+
     pub(crate) fn invalidate_pending_paste(&mut self) {
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
@@ -596,6 +675,7 @@ impl TabSession {
         self.activity_frame = 0;
         self.replay_agent_buffer.clear();
         self.replay_user_buffer.clear();
+        self.replay_user_message_id = None;
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
@@ -609,14 +689,19 @@ impl TabSession {
     }
 
     pub fn flush_load_replay_pending(&mut self) {
-        if !self.replay_user_buffer.is_empty() {
-            let text = std::mem::take(&mut self.replay_user_buffer);
-            self.messages.push(ChatMessage::User(text));
-        }
+        self.flush_replay_user_buffer();
         if !self.replay_agent_buffer.is_empty() {
             let text = std::mem::take(&mut self.replay_agent_buffer);
             self.messages.push(ChatMessage::Agent(text));
         }
+    }
+
+    pub fn flush_replay_user_buffer(&mut self) {
+        if !self.replay_user_buffer.is_empty() {
+            let text = std::mem::take(&mut self.replay_user_buffer);
+            self.messages.push(ChatMessage::User(text));
+        }
+        self.replay_user_message_id = None;
     }
 
     pub fn append_agent_chunk(&mut self, text: &str) {
@@ -677,17 +762,32 @@ impl TabSession {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded: false,
+                            expanded: true,
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
+                    // A replayed prompt still carries the terminal-agent
+                    // template, so the header shows only the request the user
+                    // actually typed; the wrapper is never rendered.
+                    let prompt = replay_user_request(&text);
+                    current = Some((collapsed_prompt_preview(prompt), Vec::new()));
                 }
                 other => {
                     if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                        match other {
+                            ChatMessage::Agent(text) => {
+                                if let Ok(recommendations) =
+                                    crate::coordinator::parse_recommendation_set(&text)
+                                {
+                                    details.push(ChatMessage::Agent(
+                                        super::format_recommendations_for_chat(&recommendations),
+                                    ));
+                                } else {
+                                    details.push(ChatMessage::Agent(text));
+                                }
+                            }
+                            other => details.push(other),
+                        }
                     } else {
                         kept.push(other);
                     }
@@ -698,7 +798,7 @@ impl TabSession {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded: false,
+                expanded: true,
                 trailing_marker: None,
             });
         }
@@ -770,6 +870,7 @@ impl TabSession {
 pub enum View {
     Chat,
     Agents,
+    DurableTabSessions,
 }
 
 impl Default for View {

@@ -319,6 +319,10 @@
     <value>Diagnostiek</value>
     <comment>Knopinfo in rust.</comment>
   </data>
+  <data name="AgentPane_TabHistoryTitle" xml:space="preserve">
+    <value>Tabbladgeschiedenis</value>
+  <comment>Title shown in the agent pane title bar when the saved tab-history view is active. It lists previously saved terminal tabs that can be restored.</comment>
+  </data>
   <data name="AgentPane_SessionsTitle" xml:space="preserve">
     <value>Agentsessies</value>
     <comment>Venstertitel wanneer sessiebeheer actief is.</comment>

@@ -27,6 +27,7 @@ pub enum CommandKind {
     /// a clean session. Only an unavailable helper requires pane recreation.
     Restart,
     Sessions,
+    DurableTabSessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
@@ -106,6 +107,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
+    },
+    CommandSpec {
+        name: "tab-history",
+        summary_key: "commands.tab_history.summary",
+        kind: CommandKind::DurableTabSessions,
     },
     CommandSpec {
         name: "agent",
@@ -370,6 +376,26 @@ mod tests {
     }
 
     #[test]
+    fn tab_history_parses() {
+        assert_eq!(
+            parse("/tab-history").unwrap().kind,
+            CommandKind::DurableTabSessions
+        );
+    }
+
+    #[test]
+    fn registry_summary_keys_follow_command_names() {
+        for spec in REGISTRY {
+            let expected = format!("commands.{}.summary", spec.name.replace('-', "_"));
+            assert_eq!(
+                spec.summary_key, expected,
+                "/{} must use its command-specific localization key",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
     fn agent_parses_with_optional_id() {
         let bare = parse("/agent").unwrap();
         assert_eq!(bare.kind, CommandKind::Agent);
@@ -454,16 +480,15 @@ mod tests {
         let all = matches("");
         assert_eq!(all.len(), REGISTRY.len());
 
-        let h = matches("h");
-        assert_eq!(h.len(), 1);
-        assert_eq!(h[0].name, "help");
+        let h: Vec<_> = matches("h").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(h, vec!["help", "tab-history"]);
 
         let middle = matches("lear");
         assert_eq!(middle.len(), 1);
         assert_eq!(middle[0].name, "clear");
 
         let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
-        assert_eq!(ranked, vec!["stop", "restart"]);
+        assert_eq!(ranked, vec!["stop", "restart", "tab-history"]);
 
         let none = matches("zzz");
         assert!(none.is_empty());

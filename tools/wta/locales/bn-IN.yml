@@ -76,6 +76,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "এজেন্ট পুনরায় চালু করুন"
 commands.stop.summary: "চলমান প্রম্পট বাতিল করুন"
 commands.sessions.summary: "ঐতিহাসিক সেশন পিকার খুলুন (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.tab_history.summary: "সংরক্ষিত ট্যাবগুলি ব্রাউজ এবং পুনরুদ্ধার করুন"  # Opens the list of saved terminal tabs; selecting one restores it
 commands.agent.summary: "এই ট্যাবের জন্য এজেন্ট নির্বাচন করুন (সরাসরি পরিবর্তন করতে /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── সুপারিশ প্যানেল (src/ui/recommendations.rs) ───────────────────────────────

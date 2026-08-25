@@ -1397,6 +1397,23 @@ void WindowEmperor::_finalizeSessionPersistence() const
 
     const auto state = ApplicationState::SharedInstance();
 
+    // Quitting (`quit`, or the tray's exit) and session end both tear the
+    // process down with a bare PostQuitMessage, so no window ever runs
+    // TerminalPage::CloseWindow. Save each surviving window's tabs here, and
+    // do it before _persistState so the layout it writes can reference the
+    // durable ids these saves hand out.
+    if (_app.Logic().Settings().GlobalSettings().FirstWindowPreference() != FirstWindowPreference::DefaultProfile)
+    {
+        for (const auto& w : _windows)
+        {
+            try
+            {
+                w->Logic().PersistDurableTabSessions();
+            }
+            CATCH_LOG();
+        }
+    }
+
     _persistState(state);
 
     const auto firstWindowPreference = _app.Logic().Settings().GlobalSettings().FirstWindowPreference();

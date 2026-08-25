@@ -6,7 +6,7 @@ use super::prompt_builder::{
 use super::soft_stop::SoftStopReason;
 use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
 use agent_client_protocol as acp;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -230,6 +230,20 @@ pub enum MasterExtRequest {
     SessionFocus {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
+    },
+    DurableTabSessionsList {
+        tab_id: String,
+        elevated: bool,
+    },
+    DurableTabSessionRestore {
+        tab_id: String,
+        id: String,
+        window_id: Option<String>,
+    },
+    DurableTabSessionDelete {
+        tab_id: String,
+        id: String,
+        elevated: bool,
     },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
@@ -1382,9 +1396,11 @@ impl WtaClient {
                 // this branch only fires during a load replay. The
                 // App handler gates on `loading_session` and drops
                 // late-arrivers.
+                let message_id = chunk.message_id.map(|id| id.to_string());
                 if let acp::schema::v1::ContentBlock::Text(text_content) = chunk.content {
                     let _ = self.state.event_tx.send(AppEvent::UserMessageReplayChunk {
                         session_id: sid,
+                        message_id,
                         text: text_content.text,
                     });
                 }
@@ -2566,8 +2582,8 @@ pub async fn run_acp_client_over_pipe(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -2645,15 +2661,15 @@ pub async fn run_acp_client_over_pipe(
                 move |notif: acp::schema::v1::AgentNotification, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::AgentNotification as N;
-            match notif {
-                N::SessionNotification(n) => c.dispatch_session_notification(n).await,
+                        use acp::schema::v1::AgentNotification as N;
+                        match notif {
+                            N::SessionNotification(n) => c.dispatch_session_notification(n).await,
                             N::ExtNotification(n) => {
                                 let _ = c.ext_notification(n).await;
                             }
-                _ => {}
-            }
-            Ok(())
+                            _ => {}
+                        }
+                        Ok(())
                     }
                 }
             },
@@ -2827,6 +2843,22 @@ pub async fn run_acp_client_over_pipe(
         "Agent init response received (over pipe): {:?}",
         init_resp
     ));
+
+    // Master answers the saved-session and agent-list lookups straight out of
+    // its own state — none of them go near the agent CLI, and the elevation
+    // scope they are checked against is taken from the pipe's client token at
+    // accept time, not from the ACP handshake. So start draining the queue
+    // here instead of from the main loop below: `session/new` waits on the
+    // agent CLI and can run for seconds on a cold start, and a view the user
+    // opened meanwhile has no reason to sit behind it.
+    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    spawn_master_ext_pump(
+        master_ext_rx,
+        conn.clone(),
+        event_tx.clone(),
+        Arc::clone(&tab_to_session),
+    );
 
     // ── Post-login authenticate ──────────────────────────────────────────
     // If this is a reconnect after LoginComplete (the user just completed
@@ -3189,8 +3221,6 @@ pub async fn run_acp_client_over_pipe(
     // and the agent CLI would reject the cancel for an unknown sid.
     // With no entry, the load arm sees `old_sid = None` and loads
     // cleanly.
-    let tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>> =
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     if has_bootstrap {
         let mut g = tab_to_session.lock().await;
         let initial_tab_key = owner_tab_id.clone().unwrap_or_else(|| "0".to_string());
@@ -3245,9 +3275,6 @@ pub async fn run_acp_client_over_pipe(
                         ),
                     }
                 });
-            }
-            Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
             }
             Some(req) = restart_rx.recv() => {
                 match req {
@@ -3371,6 +3398,26 @@ pub async fn run_acp_client_over_pipe(
     let _ = io_task.await;
     startup_probe.log("run_acp_client_over_pipe loop ended");
     Ok(AcpClientExit::ChannelsClosed)
+}
+
+/// Service `MasterExtRequest`s for the lifetime of the connection.
+///
+/// Deliberately not an arm of the main loop: the main loop only starts once
+/// `session/new` has come back from the agent CLI, and none of these requests
+/// need a session — master answers them from its own state. Draining them from
+/// their own task means a view opened during a cold handshake is not stuck
+/// behind agent startup.
+fn spawn_master_ext_pump(
+    mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
+    conn: conn::ClientLink,
+    event_tx: mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+) {
+    tokio::task::spawn_local(async move {
+        while let Some(req) = master_ext_rx.recv().await {
+            dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
+        }
+    });
 }
 
 /// Spawn a per-prompt task that resolves the tab's ACP session (lazily
@@ -3512,6 +3559,105 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::DurableTabSessionsList { tab_id, elevated } => {
+                let started = std::time::Instant::now();
+                // Which of those durable rows still has a live detached shell,
+                // and which are already open in a tab, is only known to Windows
+                // Terminal, and asking costs a `wtcli` process spawn. Overlap
+                // it with the master's own query so the view is not gated on
+                // the sum of the two. A failure here just means no row is
+                // marked.
+                let (result, marks) = tokio::join!(
+                    async {
+                        conn.ext_method(
+                            crate::session_registry::build_durable_tab_sessions_list_request(
+                                elevated,
+                            ),
+                        )
+                        .await
+                        .map_err(|error| anyhow::anyhow!("{error:?}"))
+                        .and_then(|response| {
+                            crate::session_registry::parse_durable_tab_sessions_list_response(
+                                &response.0,
+                            )
+                            .map_err(anyhow::Error::from)
+                        })
+                    },
+                    fetch_durable_tab_session_marks()
+                );
+                let (sessions, error) = match result {
+                    Ok(response) => (response.sessions, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+                tracing::info!(
+                    target: "durable_tab_sessions",
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    sessions = sessions.len(),
+                    marked_open = marks.open.len(),
+                    "durable tab-session list served"
+                );
+                let _ = event_tx.send(AppEvent::DurableTabSessionsLoaded {
+                    tab_id,
+                    sessions,
+                    open: marks.open,
+                    error,
+                });
+            }
+            MasterExtRequest::DurableTabSessionRestore {
+                tab_id,
+                id,
+                window_id,
+            } => {
+                let result = async {
+                    use crate::shell::wt_channel::WtChannel;
+
+                    let channel = crate::shell::wt_channel::CliChannel::connect().await?;
+                    channel
+                        .request(
+                            "restore_durable_tab_session",
+                            serde_json::json!({ "id": id, "window_id": window_id }),
+                        )
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .await;
+                let _ = event_tx.send(AppEvent::DurableTabSessionRestored {
+                    tab_id,
+                    id,
+                    error: result.err().map(|error| error.to_string()),
+                });
+            }
+            MasterExtRequest::DurableTabSessionDelete {
+                tab_id,
+                id,
+                elevated,
+            } => {
+                let result = conn
+                    .ext_method(
+                        crate::session_registry::build_durable_tab_session_delete_request(
+                            id.clone(),
+                            elevated,
+                        ),
+                    )
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error:?}"))
+                    .and_then(|response| {
+                        crate::session_registry::parse_durable_tab_session_delete_response(
+                            &response.0,
+                        )
+                        .map_err(anyhow::Error::from)
+                    });
+                let (deleted, error) = match result {
+                    Ok(response) => (response.deleted, None),
+                    Err(error) => (false, Some(error.to_string())),
+                };
+                let _ = event_tx.send(AppEvent::DurableTabSessionDeleted {
+                    tab_id,
+                    id,
+                    deleted,
+                    error,
+                });
             }
             MasterExtRequest::SetSessionModel {
                 session_id,
@@ -4574,6 +4720,85 @@ async fn dispatch_prompt_body(
     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
 }
 
+/// Durable ids of tabs that are open right now, so the list can show which
+/// saved sessions are already on screen.
+fn parse_open_tab_durable_tab_session_ids(
+    payload: &serde_json::Value,
+) -> std::collections::HashSet<String> {
+    payload
+        .get("tabs")
+        .and_then(|tabs| tabs.as_array())
+        .map(|tabs| {
+            tabs.iter()
+                .filter_map(|tab| tab.get("durable_tab_session_id")?.as_str())
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// How the durable tab-session list should annotate each saved row.
+#[derive(Default)]
+struct DurableTabSessionMarks {
+    open: std::collections::HashSet<String>,
+}
+
+/// Upper bound on the annotation lookup. Each `wtcli` call is a process spawn
+/// that talks COM to Windows Terminal's UI thread, so a busy or wedged window
+/// must not hold the saved-session list hostage — an unmarked list beats a
+/// spinner that never resolves.
+const DURABLE_TAB_SESSION_MARKS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+async fn fetch_durable_tab_session_marks() -> DurableTabSessionMarks {
+    with_marks_timeout(
+        DURABLE_TAB_SESSION_MARKS_TIMEOUT,
+        fetch_durable_tab_session_marks_inner(),
+    )
+    .await
+}
+
+/// Yields whatever the lookup produced, or an unmarked list if it overran
+/// `budget`.
+async fn with_marks_timeout<F>(budget: std::time::Duration, lookup: F) -> DurableTabSessionMarks
+where
+    F: std::future::Future<Output = DurableTabSessionMarks>,
+{
+    match tokio::time::timeout(budget, lookup).await {
+        Ok(marks) => marks,
+        Err(_) => {
+            tracing::debug!(
+                target: "durable_tab_sessions",
+                timeout_ms = budget.as_millis() as u64,
+                "durable tab-session marks timed out; listing without marks"
+            );
+            DurableTabSessionMarks::default()
+        }
+    }
+}
+
+async fn fetch_durable_tab_session_marks_inner() -> DurableTabSessionMarks {
+    use crate::shell::wt_channel::WtChannel;
+
+    let channel = match crate::shell::wt_channel::CliChannel::connect().await {
+        Ok(channel) => channel,
+        Err(error) => {
+            tracing::debug!(target: "durable_tab_sessions", %error, "no wt channel for durable tab-session marks");
+            return DurableTabSessionMarks::default();
+        }
+    };
+
+    let mut marks = DurableTabSessionMarks::default();
+    match channel.request("list_tabs", serde_json::Value::Null).await {
+        Ok(payload) => marks.open = parse_open_tab_durable_tab_session_ids(&payload),
+        Err(error) => {
+            tracing::debug!(target: "durable_tab_sessions", %error, "could not list tabs");
+        }
+    }
+
+    marks
+}
+
 #[cfg(test)]
 mod tests {
     use super::acp;
@@ -4585,6 +4810,7 @@ mod tests {
         tool_call_exit_code, tool_call_kind_label, AcpClientExit, ClientState, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
+    use super::{with_marks_timeout, DurableTabSessionMarks, DURABLE_TAB_SESSION_MARKS_TIMEOUT};
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
@@ -4760,6 +4986,34 @@ mod tests {
             tool_call_exit_code(Some(&serde_json::json!({ "exit_code": 9 }))),
             Some(9)
         );
+    }
+
+    #[tokio::test]
+    async fn marks_lookup_that_overruns_falls_back_to_an_unmarked_list() {
+        let budget = std::time::Duration::from_millis(20);
+        let slow = async {
+            tokio::time::sleep(budget * 10).await;
+            DurableTabSessionMarks {
+                open: std::collections::HashSet::from(["durable-1".to_string()]),
+            }
+        };
+
+        // A wedged Terminal must not hold the saved-session list hostage: an
+        // unmarked list beats a spinner that never resolves.
+        let marks = with_marks_timeout(budget, slow).await;
+        assert!(marks.open.is_empty());
+    }
+
+    #[tokio::test]
+    async fn marks_lookup_within_the_budget_is_kept() {
+        let ready = async {
+            DurableTabSessionMarks {
+                open: std::collections::HashSet::from(["durable-2".to_string()]),
+            }
+        };
+
+        let marks = with_marks_timeout(DURABLE_TAB_SESSION_MARKS_TIMEOUT, ready).await;
+        assert!(marks.open.contains("durable-2"));
     }
 
     fn proposal_permission_request(command: &str) -> acp::schema::v1::RequestPermissionRequest {
