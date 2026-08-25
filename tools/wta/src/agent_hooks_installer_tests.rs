@@ -3355,6 +3355,7 @@ fn read_installed_copilot_any_marks_live_installs() {
 
     let info = read_installed_copilot_any(&home).unwrap().unwrap();
     assert!(info.loads_live);
+    assert_eq!(info.live_source.as_deref(), Some(marketplace.as_path()));
     assert_eq!(info.version, Some("0.1.6".parse().unwrap()));
 }
 
@@ -3512,6 +3513,7 @@ fn installed(version: &str, enabled: bool) -> InstalledInfo {
         version: Some(version.parse().unwrap()),
         enabled,
         loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     }
@@ -3535,22 +3537,67 @@ fn decide_skip_when_disabled() {
     assert_eq!(a, UpgradeAction::Skip(SkipReason::Disabled));
 }
 
-/// A live install re-reads the bundle directory every session, so there is
-/// no copy to push a newer version into — even when the version it reports
-/// is behind the bundle. Reported distinctly from `UpToDate`, which would
-/// only be the two versions coinciding, and from `NotInstalled`, which is
-/// what this looked like before live installs were recognized at all.
+/// A live install loading the bundle we ship has no copy to push a newer
+/// version into. Reported distinctly from `UpToDate`, which would only be
+/// the two versions coinciding, and from `NotInstalled`, which is what this
+/// looked like before live installs were recognized at all.
 #[test]
-fn decide_skip_when_loaded_live() {
+fn decide_skip_when_loaded_live_from_current_bundle() {
+    let bundle = unique_dir("live-current-bundle");
     let mut info = installed("0.1.0", true);
     info.loads_live = true;
+    info.live_source = Some(bundle.clone());
     let a = decide_upgrade(
         CliKind::Copilot,
         Some("0.1.6".parse().unwrap()),
         Some(&info),
-        None,
+        Some(&bundle),
     );
     assert_eq!(a, UpgradeAction::Skip(SkipReason::LiveInstall));
+}
+
+/// A registration left pointing at another tree keeps loading *that* tree's
+/// hooks. `upgrade_copilot` repoints it, so the decision must reach it —
+/// including when both trees carry the same hook version, which is the
+/// common case and the reason version comparison can't stand in for this.
+#[test]
+fn decide_repoints_live_install_registered_against_another_tree() {
+    let bundle = unique_dir("live-current");
+    let other = unique_dir("live-stale");
+    let mut info = installed("0.1.6", true);
+    info.loads_live = true;
+    info.live_source = Some(other);
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&bundle),
+    );
+    assert_eq!(a, UpgradeAction::UpdatePlugin);
+}
+
+/// Path comparison is case-insensitive on Windows, so a differently-cased
+/// registration is not mistaken for another tree.
+#[test]
+fn decide_skip_when_live_source_differs_only_by_case() {
+    let bundle = unique_dir("live-CASE-bundle");
+    let mut info = installed("0.1.6", true);
+    info.loads_live = true;
+    info.live_source = Some(PathBuf::from(
+        bundle.display().to_string().to_ascii_uppercase(),
+    ));
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&bundle),
+    );
+    let expected = if cfg!(windows) {
+        UpgradeAction::Skip(SkipReason::LiveInstall)
+    } else {
+        UpgradeAction::UpdatePlugin
+    };
+    assert_eq!(a, expected);
 }
 
 /// Disabled wins over live: the user turned it off, and that is the more
@@ -3617,6 +3664,7 @@ fn decide_skip_when_bundle_or_installed_version_unknown() {
         version: None,
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3670,6 +3718,7 @@ fn decide_opencode_repairs_unknown_installed_version() {
         version: None,
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3721,6 +3770,7 @@ fn decide_gemini_in_place_when_source_under_current_bundle() {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: Some(nested_src.clone()),
         gemini_type: Some("local".into()),
     };
@@ -3743,6 +3793,7 @@ fn decide_gemini_reinstall_when_source_stale() {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: Some(stale_src),
         gemini_type: Some("local".into()),
     };
@@ -3764,6 +3815,7 @@ fn decide_gemini_reinstall_when_type_is_not_local() {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: Some(inside),
         gemini_type: Some("git".into()),
     };

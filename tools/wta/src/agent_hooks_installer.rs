@@ -1471,6 +1471,7 @@ fn read_live_copilot(home: &Path) -> Option<InstalledInfo> {
         version: Some(version),
         enabled: copilot_plugin_enabled(home),
         loads_live: true,
+        live_source: Some(PathBuf::from(&dir)),
         gemini_source: None,
         gemini_type: None,
     })
@@ -2300,6 +2301,7 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
             version,
             enabled,
             loads_live: false,
+            live_source: None,
             gemini_source: None,
             gemini_type: None,
         });
@@ -3783,6 +3785,11 @@ struct InstalledInfo {
     /// already what runs and there is nothing to push an upgrade into.
     /// Copilot-only today; every other CLI copies.
     loads_live: bool,
+    /// Copilot-only: the directory a live install is registered against.
+    /// Carried so the decision can tell "loading the bundle we ship" from
+    /// "loading some other tree's bundle", which is a repoint, not an
+    /// upgrade. `None` for copied installs.
+    live_source: Option<PathBuf>,
     /// Gemini-only: the recorded install source path from
     /// `.gemini-extension-install.json`. `None` for Copilot/Claude.
     gemini_source: Option<PathBuf>,
@@ -3849,6 +3856,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
         version,
         enabled,
         loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -3888,6 +3896,7 @@ fn read_installed_claude() -> InstalledProbe {
             version,
             enabled,
             loads_live: false,
+            live_source: None,
             gemini_source: None,
             gemini_type: None,
         }));
@@ -3962,6 +3971,7 @@ fn read_installed_gemini(home: &Path) -> InstalledProbe {
         // re-queries via CLI before any destructive action.
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source,
         gemini_type,
     }))
@@ -3988,6 +3998,7 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
         version: complete.then(|| read_version_field(&manifest)).flatten(),
         enabled: true,
         loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -4059,13 +4070,24 @@ fn decide_upgrade(
     if !installed.enabled {
         return UpgradeAction::Skip(SkipReason::Disabled);
     }
-    // A live install re-reads its directory every session, so it already runs
-    // whatever is on disk there. Checked before the version comparison so the
-    // decision doesn't hinge on the two versions happening to match: when a
-    // stale registration makes them differ, the repair is the install path's
-    // repoint, not an upgrade.
+    // A live install runs whatever is in the directory it is registered
+    // against, so there is no copy to push a newer bundle into — but only
+    // while that directory is the bundle this wta ships. A registration left
+    // pointing at another tree keeps loading *that* tree's hooks, and the
+    // repair is the repoint in `upgrade_copilot`, not a version bump. Version
+    // comparison can't stand in for this: the two trees usually carry the
+    // same hook version, so a stale registration reads as up to date.
     if installed.loads_live {
-        return UpgradeAction::Skip(SkipReason::LiveInstall);
+        let on_current_bundle = match (&installed.live_source, current_bundle_dir) {
+            (Some(src), Some(bundle)) => paths_equivalent(src, bundle),
+            // Bundle unresolvable: we couldn't repoint even if we wanted to.
+            _ => true,
+        };
+        return if on_current_bundle {
+            UpgradeAction::Skip(SkipReason::LiveInstall)
+        } else {
+            UpgradeAction::UpdatePlugin
+        };
     }
     let Some(installed_version) = installed.version else {
         if cli == CliKind::OpenCode {
