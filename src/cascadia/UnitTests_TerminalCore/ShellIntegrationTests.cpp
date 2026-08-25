@@ -515,9 +515,11 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary(
     // Detection is by object identity against our own scriptblock — never by
     // text matching, which a renderer could accidentally satisfy.
     const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
-    // -eq, NOT [object]::ReferenceEquals: re-arm runs at script load and from the
-    // readline boundary, and a static method call under Constrained Language Mode
-    // aborts the enclosing script even from inside try/catch.
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, rearmFunc,
+                         L"__ShellInteg_Rearm must exist");
+    // -eq, NOT a static reference-equality method: re-arm runs at script load and
+    // from the readline boundary, and a static method call under Constrained
+    // Language Mode aborts the enclosing script even from inside try/catch.
     const auto identityCheck = script.find("if ($current -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
     const auto noStaticCall = script.substr(rearmFunc).find("[object]::ReferenceEquals");
     const auto adopt = script.find("$Global:__ShellInteg_OriginalPrompt = $current", identityCheck);
@@ -628,15 +630,19 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
     const auto renderTry = script.find("try {", promptStart);
     const auto normalReturn = script.find("return \"${prefix}${originalOutput}${suffix}\"", renderTry);
     const auto renderCatch = script.find("catch {", normalReturn);
-    const auto degradeToPrompt = script.find("try { return (& $Global:__ShellInteg_OriginalPrompt) }", renderCatch);
+    const auto failSafeFlag = script.find("$Global:__ShellInteg_Rendering = $true", renderCatch);
+    const auto degradeToPrompt = script.find("try { return (& $Global:__ShellInteg_OriginalPrompt) }", failSafeFlag);
     const auto lastResort = script.find("catch { return \"PS $($executionContext.SessionState.Path.CurrentLocation)> \" }", degradeToPrompt);
+    const auto failSafeClear = script.find("finally { $Global:__ShellInteg_Rendering = $false }", lastResort);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, lastResort);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, failSafeClear);
     VERIFY_IS_TRUE(renderTry < normalReturn &&
                        normalReturn < renderCatch &&
-                       renderCatch < degradeToPrompt &&
-                       degradeToPrompt < lastResort,
-                   L"Rendering must fall back to the wrapped prompt, then to a plain prompt, instead of throwing");
+                       renderCatch < failSafeFlag &&
+                       failSafeFlag < degradeToPrompt &&
+                       degradeToPrompt < lastResort &&
+                       lastResort < failSafeClear,
+                   L"The fail-safe must hold the re-entrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────

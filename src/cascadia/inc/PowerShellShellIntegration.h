@@ -588,8 +588,16 @@ if (-not $Global:__ShellInteg_Installed) {
             # FAIL SAFE. Shell integration is a convenience; a broken prompt is
             # not. Degrade to the wrapped prompt without marks rather than
             # throwing on every prompt.
+            #
+            # The re-entrancy flag must be held here too. The normal path clears
+            # it in its finally before this catch runs, so an adopted CHAINING
+            # prompt would call back into us with the flag false and recurse
+            # until the engine's call-depth limit - the very cycle the guard
+            # above exists to prevent.
+            $Global:__ShellInteg_Rendering = $true
             try { return (& $Global:__ShellInteg_OriginalPrompt) }
             catch { return "PS $($executionContext.SessionState.Path.CurrentLocation)> " }
+            finally { $Global:__ShellInteg_Rendering = $false }
         }
     }
 
@@ -619,7 +627,7 @@ function Global:__ShellInteg_Rearm {
     # call raises "Method invocation is supported only on core types", which
     # aborts the enclosing script even from inside try/catch - breaking profile
     # sourcing or the input path. ScriptBlock does not override Equals, so -eq is
-    # reference identity here (verified: two scriptblocks with identical text
+    # reference identity here (verified: two script blocks with identical text
     # compare False), and the operator is permitted in Constrained Language Mode.
     # That keeps re-arming working there instead of disabling it.
     $current = $function:prompt
