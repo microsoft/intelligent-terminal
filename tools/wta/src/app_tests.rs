@@ -10049,6 +10049,77 @@ fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
     assert!(!app.current_tab().completed_turns[0].expanded);
 }
 
+#[test]
+fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Inspect".into(),
+        details: vec![
+            ChatMessage::ToolCall {
+                id: "first-tool".into(),
+                title: "Read first".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\first.txt".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "FIRST_DETAIL".into(),
+                    truncated: false,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::ToolCall {
+                id: "second-tool".into(),
+                title: "Read second".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\second.txt".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "SECOND_DETAIL".into(),
+                    truncated: false,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+        ],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    render_to_text(&mut app, 80, 20);
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| hit.kind == (CompletedTurnHitKind::ToolCall { detail_index: 0 }))
+        .expect("first tool status-marker hit must exist");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: hit.start_column,
+            row: hit.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    let expanded = render_to_text(&mut app, 80, 20);
+    assert!(expanded.contains("FIRST_DETAIL"));
+    assert!(!expanded.contains("SECOND_DETAIL"));
+    assert!(app.current_tab().completed_turns[0].expanded);
+}
+
 /// Render: while the helper is still connecting, the fixed activity row must
 /// paint the animated "Connecting…" label.
 #[test]
@@ -10232,8 +10303,14 @@ fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
         expanded: true,
         trailing_marker: None,
     });
+    let latest_turn = app.current_tab().completed_turns.len() - 1;
+    for detail_index in [1, 2, 3] {
+        app.current_tab_mut()
+            .toggle_completed_tool_call(latest_turn, detail_index);
+    }
 
     crate::ui::chat::reset_completed_turn_line_build_count();
+    crate::ui::chat::reset_tool_detail_build_count();
     let width = 56;
     let buffer = render_to_buffer(&mut app, width, 38);
     let rendered = buffer_to_text(&buffer);
@@ -10259,8 +10336,13 @@ fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
     }
     assert!(!rendered.contains("OLD_TURN_000"));
     assert!(
-        built_turns < 20,
+        built_turns < 50,
         "layout and bottom-up rendering must not build all 201 turns; built {built_turns}",
+    );
+    assert_eq!(
+        crate::ui::chat::tool_detail_build_count(),
+        6,
+        "only the three explicitly expanded latest tools may build details for height and paint",
     );
 
     for row in buffer.content.chunks(width as usize) {
@@ -10729,6 +10811,7 @@ fn completed_tool_output_update_invalidates_cached_turn_height() {
         expanded: true,
         trailing_marker: None,
     });
+    app.current_tab_mut().toggle_completed_tool_call(0, 0);
     render_to_text(&mut app, 80, 20);
 
     app.handle_event(AppEvent::ToolTerminalOutput {
@@ -11322,7 +11405,7 @@ fn legacy_tool_call_deserialization_defaults_standard_details() {
 }
 
 #[test]
-fn expanded_tool_call_renders_typed_details() {
+fn completed_tool_call_defaults_compact_and_expands_independently() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().completed_turns.push(CompletedTurn {
@@ -11371,7 +11454,22 @@ fn expanded_tool_call_renders_typed_details() {
         trailing_marker: None,
     });
 
+    crate::ui::chat::reset_tool_detail_build_count();
+    let compact = render_to_text(&mut app, 100, 40);
+    assert!(compact.contains("✓ Edit source"));
+    assert!(!compact.contains("OLD_TYPED_LINE"));
+    assert_eq!(
+        crate::ui::chat::tool_detail_build_count(),
+        0,
+        "successful completed tools must skip detail materialization while collapsed",
+    );
+
+    assert!(
+        app.current_tab_mut().toggle_completed_tool_call(0, 0),
+        "tool detail must be independently expandable",
+    );
     let text = render_to_text(&mut app, 100, 40);
+    assert!(text.contains("✓ Edit source"));
     for needle in [
         r"C:\src\main.rs:42",
         "OLD_TYPED_LINE",
@@ -11385,6 +11483,142 @@ fn expanded_tool_call_renders_typed_details() {
             "missing {needle:?}; rendered:\n{text}"
         );
     }
+}
+
+#[test]
+fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Run checks".into(),
+        details: vec![ChatMessage::ToolCall {
+            id: "failed-tool".into(),
+            title: "Run checks".into(),
+            status: "Failed: tests failed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "diagnostic one\ndiagnostic two".into(),
+                truncated: false,
+            }),
+            exit_code: Some(1),
+            content: Vec::new(),
+            locations: Vec::new(),
+        }],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let text = render_to_text(&mut app, 80, 20);
+    assert!(text.contains("✗ Run checks"));
+    assert!(text.contains("tests failed"));
+    assert!(text.contains("diagnostic one"));
+    assert!(text.contains("diagnostic two"));
+}
+
+#[test]
+fn ctrl_o_toggles_all_completed_tool_details_without_folding_turns() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Inspect files".into(),
+        details: (0..2)
+            .map(|index| ChatMessage::ToolCall {
+                id: format!("tool-{index}"),
+                title: format!("Read file {index}"),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(format!(r"C:\repo\file-{index}.txt")),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: format!("DETAIL_{index}"),
+                    truncated: false,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect(),
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let compact = render_to_text(&mut app, 80, 20);
+    assert!(!compact.contains("DETAIL_0"));
+    assert!(!compact.contains("DETAIL_1"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
+    let expanded = render_to_text(&mut app, 80, 20);
+    assert!(expanded.contains("DETAIL_0"));
+    assert!(expanded.contains("DETAIL_1"));
+    assert!(app.current_tab().completed_turns[0].expanded);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
+    let collapsed = render_to_text(&mut app, 80, 20);
+    assert!(!collapsed.contains("DETAIL_0"));
+    assert!(!collapsed.contains("DETAIL_1"));
+    assert!(app.current_tab().completed_turns[0].expanded);
+}
+
+#[test]
+fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Anchored tool".into(),
+        details: vec![
+            ChatMessage::ToolCall {
+                id: "anchored-tool".into(),
+                title: "Run anchored command".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Execute,
+                location: Some("run anchored".into()),
+                location_is_command: true,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: (0..10)
+                        .map(|index| format!("ANCHORED_OUTPUT_{index}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    truncated: false,
+                }),
+                exit_code: Some(0),
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::Agent("answer below the tool".repeat(8)),
+        ],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let compact = render_to_text(&mut app, 60, 12);
+    let compact_row = compact
+        .lines()
+        .position(|line| line.contains("Run anchored command"))
+        .expect("compact tool header must be visible");
+
+    assert!(app.current_tab_mut().toggle_completed_tool_call(0, 0));
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let expanded = render_to_text(&mut app, 60, 12);
+    let expanded_row = expanded
+        .lines()
+        .position(|line| line.contains("Run anchored command"))
+        .expect("expanded tool header must stay visible");
+    assert_eq!(expanded_row, compact_row);
+    assert!(
+        expanded.contains("ANCHORED_OUTPUT_0"),
+        "expanded details must open below the stable tool header:\n{expanded}",
+    );
+    assert!(
+        crate::ui::chat::completed_turn_line_build_count() > 0,
+        "tool disclosure changes must invalidate the containing turn height",
+    );
 }
 
 #[test]

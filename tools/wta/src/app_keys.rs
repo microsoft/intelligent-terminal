@@ -634,6 +634,9 @@ impl App {
                 // Recommendation focus is arrow-only. Consume Tab so a
                 // slash-command popup cannot edit the input behind a card.
             }
+            KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.current_tab_mut().toggle_all_completed_tool_calls();
+            }
             KeyCode::F(12) => {
                 self.show_debug_panel = !self.show_debug_panel;
                 self.debug_capture_enabled

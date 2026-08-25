@@ -4631,6 +4631,7 @@ impl App {
 pub(crate) enum CompletedTurnHitKind {
     Triangle,
     UserInput,
+    ToolCall { detail_index: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
