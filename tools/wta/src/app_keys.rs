@@ -865,6 +865,9 @@ impl App {
                         tab.scroll_to_bottom();
                         return;
                     }
+                    let is_agent_command = self
+                        .agent_command_for_input(&self.current_tab().input)
+                        .is_some();
                     let tab = self.current_tab_mut();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
@@ -890,8 +893,12 @@ impl App {
                         cwd: self.source_cwd.clone(),
                         source_pane_id: self.source_session_id.clone(),
                     };
-                    let prompt =
-                        PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
+                    let prompt = if is_agent_command {
+                        PromptSubmission::new_agent_command(text.clone(), Some(pane_context))
+                    } else {
+                        PromptSubmission::new(text.clone(), Some(pane_context))
+                    }
+                    .with_images(images);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,

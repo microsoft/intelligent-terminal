@@ -662,6 +662,7 @@ impl App {
                     self.session_to_tab.remove(&replaced_session_id);
                     self.session_model_configs.remove(&replaced_session_id);
                     self.session_config_options.remove(&replaced_session_id);
+                    self.session_commands.remove(&replaced_session_id);
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
@@ -829,6 +830,12 @@ impl App {
                     .unwrap_or_default();
                 picker.reconcile(options);
                 self.tab_mut(&target_tab).config_picker = picker;
+            }
+            AppEvent::SessionCommandsUpdated {
+                session_id,
+                commands,
+            } => {
+                self.session_commands.insert(session_id, commands);
             }
             AppEvent::SessionConfigSetCompleted {
                 session_id,
